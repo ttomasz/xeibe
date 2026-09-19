@@ -1,0 +1,72 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/xeibe-core",
+    "crates/xeibe-geom",
+    "crates/xeibe-schema",
+    "crates/xeibe-arrow",
+    "crates/xeibe-io",
+    "crates/xeibe-wfs",
+    "crates/xeibe-datafusion",
+    "crates/xeibe-cli",
+    "crates/xeibe-py",
+]
+# xeibe-datafusion and xeibe-py pull in heavy dependencies (DataFusion, pyo3);
+# build them explicitly with `-p` or `--workspace`.
+default-members = [
+    "crates/xeibe-core",
+    "crates/xeibe-geom",
+    "crates/xeibe-schema",
+    "crates/xeibe-arrow",
+    "crates/xeibe-io",
+    "crates/xeibe-wfs",
+    "crates/xeibe-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "CC0-1.0"
+publish = false
+
+[workspace.dependencies]
+xeibe-core = { path = "crates/xeibe-core" }
+xeibe-geom = { path = "crates/xeibe-geom" }
+xeibe-schema = { path = "crates/xeibe-schema" }
+xeibe-arrow = { path = "crates/xeibe-arrow" }
+xeibe-io = { path = "crates/xeibe-io", default-features = false }
+xeibe-wfs = { path = "crates/xeibe-wfs" }
+xeibe-datafusion = { path = "crates/xeibe-datafusion" }
+
+# Arrow is pinned to 59: geoarrow-array 0.9 and datafusion 55 both depend on arrow ^59.
+arrow-array = "59"
+arrow-buffer = "59"
+arrow-schema = { version = "59", features = ["serde"] }
+parquet = { version = "59", default-features = false, features = ["arrow", "zstd", "snap", "geospatial"] }
+geoarrow-array = "0.9"
+geoarrow-schema = "0.9"
+geo-traits = "0.3"
+wkb = "0.9"
+datafusion = "55"
+
+quick-xml = "0.42"
+encoding_rs = "0.8"
+flate2 = "1"
+zstd = "0.13"
+fast-float2 = "0.2"
+bytes = "1"
+indexmap = { version = "2", features = ["serde"] }
+bitflags = { version = "2", features = ["serde"] }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+thiserror = "2"
+globset = "0.4"
+crossbeam-channel = "0.5"
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls", "gzip", "deflate"] }
+url = "2"
+zip = { version = "8", default-features = false, features = ["deflate"] }
+object_store = { version = "0.13", default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+clap = { version = "4", features = ["derive"] }
+pyo3 = { version = "0.29", features = ["extension-module", "abi3-py310"] }
