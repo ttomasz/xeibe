@@ -1,0 +1,18 @@
+[package]
+name = "xeibe-schema"
+description = "Scan → path tree (observations), InferenceOptions (policy) → Arrow schema, binding given schemas, --explain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+xeibe-core.workspace = true
+xeibe-geom.workspace = true
+arrow-schema.workspace = true
+indexmap.workspace = true
+bitflags.workspace = true
+globset.workspace = true
+serde.workspace = true
+thiserror.workspace = true

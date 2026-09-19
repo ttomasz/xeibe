@@ -1,0 +1,18 @@
+[package]
+name = "xeibe-core"
+description = "Streaming GML reading primitives: namespaces, version detection, feature-boundary splitting, byte sources, zip"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+quick-xml.workspace = true
+encoding_rs.workspace = true
+flate2.workspace = true
+zstd.workspace = true
+zip.workspace = true
+bytes.workspace = true
+serde.workspace = true
+thiserror.workspace = true

@@ -1,0 +1,18 @@
+[package]
+name = "xeibe-py"
+description = "Python bindings: scan() and read(), layers exposed via the Arrow PyCapsule stream interface"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "xeibe"
+crate-type = ["cdylib"]
+
+[dependencies]
+xeibe-core.workspace = true
+xeibe-arrow.workspace = true
+arrow-array = { workspace = true, features = ["ffi"] }
+pyo3.workspace = true

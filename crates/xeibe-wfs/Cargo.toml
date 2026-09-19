@@ -1,0 +1,23 @@
+[package]
+name = "xeibe-wfs"
+description = "WFS 1.0/1.1/2.0 bulk read: capabilities, paging, pages streamed into a read"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+default = ["http"]
+# Without `http`, only capabilities/response parsing and request building are available.
+http = ["dep:reqwest", "xeibe-io/http"]
+
+[dependencies]
+xeibe-core.workspace = true
+xeibe-geom.workspace = true
+xeibe-io = { workspace = true, default-features = false }
+reqwest = { workspace = true, optional = true }
+url.workspace = true
+bytes.workspace = true
+serde.workspace = true
+thiserror.workspace = true

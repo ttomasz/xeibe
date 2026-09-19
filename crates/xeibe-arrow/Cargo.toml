@@ -1,0 +1,23 @@
+[package]
+name = "xeibe-arrow"
+description = "GML features → Arrow RecordBatches with GeoArrow geometry: scan, read, settings file, parallel pipeline"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+xeibe-core.workspace = true
+xeibe-geom.workspace = true
+xeibe-schema.workspace = true
+arrow-array.workspace = true
+arrow-buffer.workspace = true
+arrow-schema.workspace = true
+geoarrow-array.workspace = true
+geoarrow-schema.workspace = true
+crossbeam-channel.workspace = true
+indexmap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

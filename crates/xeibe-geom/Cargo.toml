@@ -1,0 +1,17 @@
+[package]
+name = "xeibe-geom"
+description = "GML 2/3.1/3.2 geometry parsing into a curve-preserving model; geo-traits and ISO WKB output; CRS and axis-order handling"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+xeibe-core.workspace = true
+geo-traits.workspace = true
+wkb.workspace = true
+fast-float2.workspace = true
+globset.workspace = true
+serde.workspace = true
+thiserror.workspace = true

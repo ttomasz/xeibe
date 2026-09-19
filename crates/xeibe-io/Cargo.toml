@@ -1,0 +1,24 @@
+[package]
+name = "xeibe-io"
+description = "Byte sources for GML input: HTTP and object stores, read as streams"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+default = ["http"]
+http = ["dep:reqwest"]
+# S3/GCS/Azure/HTTP via `object_store`; needs a tokio runtime (bridged to sync reads).
+object-store = ["dep:object_store", "object_store/aws", "object_store/gcp", "object_store/azure", "dep:tokio"]
+
+[dependencies]
+xeibe-core.workspace = true
+bytes.workspace = true
+url.workspace = true
+thiserror.workspace = true
+crossbeam-channel.workspace = true
+reqwest = { workspace = true, optional = true }
+object_store = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
