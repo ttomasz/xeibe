@@ -1,0 +1,97 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["lxml>=5"]
+# ///
+"""Validate GML/WFS documents against their schemas with xmllint (streaming).
+
+    scripts/validate-gml tests/data/*.gml
+    scripts/validate-gml --schema ns=path/or/url.xsd file.gml   # add/override a schema
+    scripts/validate-gml --net file.gml                         # allow downloads (e.g. remote app schemas)
+
+Schemas are taken from each file's xsi:schemaLocation. OGC and W3C schemas are
+resolved offline through schemas-extra/catalog.xml (→ ogc_schemas/). Remote
+application schemas (e.g. PRG's prgad.xsd) need --net or a local copy passed with --schema.
+"""
+
+import argparse
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from xml.sax.saxutils import quoteattr
+
+from lxml import etree
+
+PROJECT = Path(__file__).resolve().parent.parent
+CATALOG = PROJECT / "schemas-extra" / "catalog.xml"
+XSI = "{http://www.w3.org/2001/XMLSchema-instance}"
+
+
+def schema_locations(path: Path) -> list[tuple[str, str]]:
+    """Read xsi:schemaLocation from the root element only (streaming)."""
+    for _, elem in etree.iterparse(str(path), events=("start",)):
+        value = elem.get(XSI + "schemaLocation") or ""
+        parts = value.split()
+        base = path.resolve().parent
+        pairs = []
+        for ns, loc in zip(parts[0::2], parts[1::2]):
+            if "://" not in loc:
+                loc = (base / loc).resolve().as_uri()
+            pairs.append((ns, loc))
+        return pairs
+    return []
+
+
+def wrapper_xsd(pairs: list[tuple[str, str]]) -> str:
+    imports = "\n".join(
+        f"  <xs:import namespace={quoteattr(ns)} schemaLocation={quoteattr(loc)}/>" for ns, loc in pairs
+    )
+    return (
+        '<?xml version="1.0"?>\n'
+        '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" '
+        'targetNamespace="urn:gml-validate:wrapper">\n'
+        f"{imports}\n</xs:schema>\n"
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("files", nargs="+", type=Path)
+    parser.add_argument("--schema", action="append", default=[], metavar="NS=LOCATION",
+                        help="add or override the schema for a namespace")
+    parser.add_argument("--net", action="store_true", help="allow network access for schemas")
+    args = parser.parse_args()
+
+    extra = {}
+    for item in args.schema:
+        ns, _, loc = item.partition("=")
+        if "://" not in loc:
+            loc = Path(loc).resolve().as_uri()
+        extra[ns] = loc
+
+    env = dict(os.environ, XML_CATALOG_FILES=str(CATALOG))
+    failed = 0
+    for path in args.files:
+        pairs = dict(schema_locations(path))
+        pairs.update(extra)
+        if not pairs:
+            print(f"{path}: no xsi:schemaLocation and no --schema given", file=sys.stderr)
+            failed += 1
+            continue
+        with tempfile.NamedTemporaryFile("w", suffix=".xsd", delete=False) as tmp:
+            tmp.write(wrapper_xsd(list(pairs.items())))
+        try:
+            cmd = ["xmllint", "--noout", "--stream", "--schema", tmp.name, str(path)]
+            if not args.net:
+                cmd.insert(1, "--nonet")
+            result = subprocess.run(cmd, env=env)
+            failed += result.returncode != 0
+        finally:
+            os.unlink(tmp.name)
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

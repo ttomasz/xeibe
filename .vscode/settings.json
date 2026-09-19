@@ -1,0 +1,5 @@
+{
+    // example_data/ holds downloaded corpora, including a sparse GDAL clone
+    // (example_data/gdal-autotest-src); don't show it in Source Control.
+    "git.repositoryScanIgnoredFolders": ["node_modules", "example_data"]
+}

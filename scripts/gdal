@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Run a GDAL command from the pinned GDAL Docker image (reference implementation
+# for differential tests and benchmarks). The system GDAL is not used.
+#
+#   scripts/gdal ogr2ogr -f Parquet out.parquet in.gml
+#   scripts/gdal ogrinfo -so -al in.gml
+#   scripts/gdal gdal vector info in.gml                 # GDAL >= 3.11 unified CLI
+#   GML_SWAP_COORDINATES=YES scripts/gdal ogr2ogr ...    # GDAL/OGR/CPL/GML/WFS/PROJ_* env vars are forwarded
+#   scripts/gdal --stop                                  # remove the background container
+#
+# Starting a container costs ~5 s on this machine, so a long-running container
+# (`sleep infinity`) is started on first use and commands run via `docker exec`
+# (~50 ms). It is keyed by project directory and image.
+#
+# Mounts: the project directory read-write at the same path; the test corpus
+# (example_data/, ogc_schemas/, tests/data/) read-only, which also stops GDAL's
+# GML driver from writing .gfs files next to inputs. Write outputs elsewhere,
+# e.g. target/gdal/. Paths outside the project fall back to a one-shot
+# `docker run` (slow) that mounts the current directory.
+#
+# Override the image with GDAL_IMAGE=... (e.g. for another version).
+set -euo pipefail
+
+IMAGE="${GDAL_IMAGE:-ghcr.io/osgeo/gdal:ubuntu-full-3.13.3}"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+NAME="xeibe-gdal-$(printf '%s %s' "$PROJECT_DIR" "$IMAGE" | sha1sum | cut -c1-10)"
+READ_ONLY_DIRS=(example_data ogc_schemas tests/data)
+
+if [[ $# -eq 0 ]]; then
+    echo "usage: scripts/gdal <gdal command> [args...] | --stop" >&2
+    exit 2
+fi
+
+if [[ "$1" == "--stop" ]]; then
+    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    exit 0
+fi
+
+envs=(-e HOME=/tmp)
+while IFS='=' read -r name _; do
+    case "$name" in
+        GDAL_IMAGE) ;;
+        GDAL_* | OGR_* | CPL_* | GML_* | WFS_* | PROJ_*) envs+=(-e "$name") ;;
+    esac
+done < <(env)
+
+tty=()
+if [[ -t 0 && -t 1 ]]; then
+    tty=(-t)
+fi
+
+user=(--user "$(id -u):$(id -g)")
+
+# Outside the project: one-shot container with the current directory mounted.
+if [[ "$PWD" != "$PROJECT_DIR" && "$PWD" != "$PROJECT_DIR"/* ]]; then
+    exec docker run --rm -i "${tty[@]}" "${user[@]}" --network host \
+        -v "$PWD:$PWD" "${envs[@]}" -w "$PWD" "$IMAGE" "$@"
+fi
+
+if [[ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null || true)" != "true" ]]; then
+    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    mounts=(-v "$PROJECT_DIR:$PROJECT_DIR")
+    for dir in "${READ_ONLY_DIRS[@]}"; do
+        if [[ -d "$PROJECT_DIR/$dir" ]]; then
+            mounts+=(-v "$PROJECT_DIR/$dir:$PROJECT_DIR/$dir:ro")
+        fi
+    done
+    # --network host: WFS and /vsicurl/ access use the host network.
+    # A concurrent first call may have started it already; that is fine.
+    docker run -d --rm --name "$NAME" "${user[@]}" --network host \
+        "${mounts[@]}" "$IMAGE" sleep infinity >/dev/null 2>&1 ||
+        docker inspect "$NAME" >/dev/null
+fi
+
+exec docker exec -i "${tty[@]}" "${user[@]}" "${envs[@]}" -w "$PWD" "$NAME" "$@"
