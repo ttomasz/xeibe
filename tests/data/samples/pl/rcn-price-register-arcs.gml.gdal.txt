@@ -1,0 +1,234 @@
+
+Layer name: RCN_Transakcja
+Geometry: None
+Feature Count: 1
+Layer SRS WKT:
+(unknown)
+gml_id: String (0.0) NOT NULL
+przestrzenNazw: String (12.0)
+lokalnyId: String (36.0)
+wersjaId: DateTime
+oznaczenieTransakcji: String (32.0)
+rodzajTransakcji: Integer (0.0)
+rodzajRynku: Integer (0.0)
+stronaSprzedajaca: Integer (0.0)
+stronaKupujaca: Integer (0.0)
+cenaTransakcjiBrutto: Integer (0.0)
+OGRFeature(RCN_Transakcja):14
+  gml_id (String) = PL.PZGiK.RCN_2B6A9B1B-7AD4-4F50-AFE4-2E467D4110EB_2026-09-08T09-17-14
+  przestrzenNazw (String) = PL.PZGiK.RCN
+  lokalnyId (String) = 2B6A9B1B-7AD4-4F50-AFE4-2E467D4110EB
+  wersjaId (DateTime) = 2026/09/08 09:17:14
+  oznaczenieTransakcji (String) = 2B6A9B1B7AD44F50AFE42E467D4110EB
+  rodzajTransakcji (Integer) = 1
+  rodzajRynku (Integer) = 1
+  stronaSprzedajaca (Integer) = 4
+  stronaKupujaca (Integer) = 3
+  cenaTransakcjiBrutto (Integer) = 460000
+
+
+Layer name: RCN_Budynek
+Geometry: Curve Polygon
+Feature Count: 3
+Extent: (5588399.580000, 5775074.005547) - (5603321.272804, 5779913.940000)
+Layer SRS WKT:
+PROJCRS["ETRF2000-PL / CS2000/15",
+    BASEGEOGCRS["ETRF2000-PL",
+        DATUM["ETRF2000 Poland",
+            ELLIPSOID["GRS 1980",6378137,298.257222101,
+                LENGTHUNIT["metre",1]]],
+        PRIMEM["Greenwich",0,
+            ANGLEUNIT["degree",0.0174532925199433]],
+        ID["EPSG",9702]],
+    CONVERSION["Poland CS2000 zone 5",
+        METHOD["Transverse Mercator",
+            ID["EPSG",9807]],
+        PARAMETER["Latitude of natural origin",0,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8801]],
+        PARAMETER["Longitude of natural origin",15,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8802]],
+        PARAMETER["Scale factor at natural origin",0.999923,
+            SCALEUNIT["unity",1],
+            ID["EPSG",8805]],
+        PARAMETER["False easting",5500000,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8806]],
+        PARAMETER["False northing",0,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8807]]],
+    CS[Cartesian,2],
+        AXIS["northing (x)",north,
+            ORDER[1],
+            LENGTHUNIT["metre",1]],
+        AXIS["easting (y)",east,
+            ORDER[2],
+            LENGTHUNIT["metre",1]],
+    USAGE[
+        SCOPE["Cadastre, engineering survey, topographic mapping (1:5000 and larger scales)."],
+        AREA["Poland - onshore and offshore west of 16°30'E."],
+        BBOX[50.26,14.14,55.35,16.5]],
+    ID["EPSG",2176]]
+Data axis to CRS axis mapping: 2,1
+Geometry Column = geometria
+gml_id: String (0.0) NOT NULL
+idBudynku: String (23.0)
+rodzajBudynku: Integer (0.0)
+OGRFeature(RCN_Budynek):6435043
+  gml_id (String) = ID_1_obj_id_6435043
+  idBudynku (String) = 300504_5.0005.201_BUD
+  rodzajBudynku (Integer) = 110
+  CURVEPOLYGON ((5588403.47 5779901.61,5588403.90551623 5779903.01203682,5588399.58 5779904.41,5588402.66 5779913.94,5588417.27 5779909.37,5588414.33 5779899.86,5588409.94807641 5779901.21466375,5588409.49 5779899.74,5588403.47 5779901.61))
+
+OGRFeature(RCN_Budynek):5942647
+  gml_id (String) = ID_1_obj_id_5942647
+  idBudynku (String) = 300503_2.0011.71_BUD
+  rodzajBudynku (Integer) = 110
+  CURVEPOLYGON (COMPOUNDCURVE (CIRCULARSTRING (5602187.4 5775366.76,5602187.15 5775366.62,5602187.01 5775366.86),(5602187.01 5775366.86,5602183.89 5775367.72),CIRCULARSTRING (5602183.89 5775367.72,5602183.65 5775367.58,5602183.51 5775367.83),(5602183.51 5775367.83,5602184.01 5775369.66,5602179.57 5775370.88,5602178.99 5775371.04,5602176.48 5775371.73,5602179.1 5775381.23,5602182.86 5775380.18),CIRCULARSTRING (5602182.86 5775380.18,5602183.1 5775380.32,5602183.24 5775380.07),(5602183.24 5775380.07,5602186.71 5775379.11,5602190.6 5775378.03,5602187.4 5775366.76)))
+
+OGRFeature(RCN_Budynek):5002832
+  gml_id (String) = ID_1_obj_id_5002832
+  idBudynku (String) = 300503_2.0011.469.1_BUD
+  CURVEPOLYGON (COMPOUNDCURVE (CIRCULARSTRING (5603313.37468587 5775074.00554675,5603312.15293003 5775074.45857025,5603311.03758456 5775075.13230769),CIRCULARSTRING (5603311.03758456 5775075.13230769,5603310.0457384 5775075.97684518,5603309.2829614 5775077.03286299),CIRCULARSTRING (5603309.2829614 5775077.03286299,5603308.8519899 5775078.19926389,5603308.60770966 5775079.41850736),CIRCULARSTRING (5603308.60770966 5775079.41850736,5603308.50947434 5775080.69129622,5603308.70943909 5775081.95211174),CIRCULARSTRING (5603308.70943909 5775081.95211174,5603309.2503063 5775083.11398442,5603309.95873187 5775084.18198194),CIRCULARSTRING (5603309.95873187 5775084.18198194,5603310.71431524 5775085.09001097,5603311.64182912 5775085.82154424),CIRCULARSTRING (5603311.64182912 5775085.82154424,5603312.83021195 5775086.36854301,5603314.10355623 5775086.66863592),CIRCULARSTRING (5603314.10355623 5775086.66863592,5603315.2649891 5775086.71548934,5603316.41716714 5775086.56184258),CIRCULARSTRING (5603316.41716714 5775086.56184258,5603317.6116917 5775086.19595062,5603318.70081564 5775085.58392537),CIRCULARSTRING (5603318.70081564 5775085.58392537,5603319.66444689 5775084.71788086,5603320.41590075 5775083.66244948),CIRCULARSTRING (5603320.41590075 5775083.66244948,5603320.85526775 5775082.57681921,5603321.1274665 5775081.43772119),CIRCULARSTRING (5603321.1274665 5775081.43772119,5603321.2727507 5775080.16128896,5603321.11619481 5775078.88619015),CIRCULARSTRING (5603321.11619481 5775078.88619015,5603319.95758999 5775076.62839365,5603318.23748783 5775074.85791422),(5603318.23748783 5775074.85791422,5603313.37468587 5775074.00554675)))
+
+
+Layer name: RCN_Dzialka
+Geometry: Polygon
+Feature Count: 1
+Extent: (5588392.845000, 5779887.799852) - (5588426.828800, 5779932.988400)
+Layer SRS WKT:
+PROJCRS["ETRF2000-PL / CS2000/15",
+    BASEGEOGCRS["ETRF2000-PL",
+        DATUM["ETRF2000 Poland",
+            ELLIPSOID["GRS 1980",6378137,298.257222101,
+                LENGTHUNIT["metre",1]]],
+        PRIMEM["Greenwich",0,
+            ANGLEUNIT["degree",0.0174532925199433]],
+        ID["EPSG",9702]],
+    CONVERSION["Poland CS2000 zone 5",
+        METHOD["Transverse Mercator",
+            ID["EPSG",9807]],
+        PARAMETER["Latitude of natural origin",0,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8801]],
+        PARAMETER["Longitude of natural origin",15,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8802]],
+        PARAMETER["Scale factor at natural origin",0.999923,
+            SCALEUNIT["unity",1],
+            ID["EPSG",8805]],
+        PARAMETER["False easting",5500000,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8806]],
+        PARAMETER["False northing",0,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8807]]],
+    CS[Cartesian,2],
+        AXIS["northing (x)",north,
+            ORDER[1],
+            LENGTHUNIT["metre",1]],
+        AXIS["easting (y)",east,
+            ORDER[2],
+            LENGTHUNIT["metre",1]],
+    USAGE[
+        SCOPE["Cadastre, engineering survey, topographic mapping (1:5000 and larger scales)."],
+        AREA["Poland - onshore and offshore west of 16°30'E."],
+        BBOX[50.26,14.14,55.35,16.5]],
+    ID["EPSG",2176]]
+Data axis to CRS axis mapping: 2,1
+Geometry Column = geometria
+gml_id: String (0.0) NOT NULL
+idDzialki: String (20.0)
+polePowierzchniEwidencyjnej: Real (0.0)
+polePowierzchniEwidencyjnej_uom: String (2.0)
+sposobUzytkowania: Integer (0.0)
+OGRFeature(RCN_Dzialka):6435042
+  gml_id (String) = ID_1_obj_id_6435042
+  idDzialki (String) = 300504_5.0005.167/16
+  polePowierzchniEwidencyjnej (Real) = 0.0926
+  polePowierzchniEwidencyjnej_uom (String) = ha
+  sposobUzytkowania (Integer) = 3
+  POLYGON ((5588392.845 5779895.9655,5588404.3973 5779932.9884,5588426.8288 5779925.9817,5588414.91304611 5779887.79985164,5588392.845 5779895.9655))
+
+
+Layer name: RCN_Lokal
+Geometry: Point
+Feature Count: 1
+Extent: (5588408.342266, 5779906.563095) - (5588408.342266, 5779906.563095)
+Layer SRS WKT:
+PROJCRS["ETRF2000-PL / CS2000/15",
+    BASEGEOGCRS["ETRF2000-PL",
+        DATUM["ETRF2000 Poland",
+            ELLIPSOID["GRS 1980",6378137,298.257222101,
+                LENGTHUNIT["metre",1]]],
+        PRIMEM["Greenwich",0,
+            ANGLEUNIT["degree",0.0174532925199433]],
+        ID["EPSG",9702]],
+    CONVERSION["Poland CS2000 zone 5",
+        METHOD["Transverse Mercator",
+            ID["EPSG",9807]],
+        PARAMETER["Latitude of natural origin",0,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8801]],
+        PARAMETER["Longitude of natural origin",15,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8802]],
+        PARAMETER["Scale factor at natural origin",0.999923,
+            SCALEUNIT["unity",1],
+            ID["EPSG",8805]],
+        PARAMETER["False easting",5500000,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8806]],
+        PARAMETER["False northing",0,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8807]]],
+    CS[Cartesian,2],
+        AXIS["northing (x)",north,
+            ORDER[1],
+            LENGTHUNIT["metre",1]],
+        AXIS["easting (y)",east,
+            ORDER[2],
+            LENGTHUNIT["metre",1]],
+    USAGE[
+        SCOPE["Cadastre, engineering survey, topographic mapping (1:5000 and larger scales)."],
+        AREA["Poland - onshore and offshore west of 16°30'E."],
+        BBOX[50.26,14.14,55.35,16.5]],
+    ID["EPSG",2176]]
+Data axis to CRS axis mapping: 2,1
+Geometry Column = georeferencja
+gml_id: String (0.0) NOT NULL
+idLokalu: String (27.0)
+funkcjaLokalu: Integer (0.0)
+liczbaIzb: Integer (0.0)
+nrKondygnacji: Integer (0.0)
+powUzytkowaLokalu: Real (0.0)
+powUzytkowaLokalu_uom: String (2.0)
+OGRFeature(RCN_Lokal):6435041
+  gml_id (String) = ID_1_obj_id_6435041
+  idLokalu (String) = 300504_5.0005.201_BUD.2_LOK
+  funkcjaLokalu (Integer) = 1
+  liczbaIzb (Integer) = 3
+  nrKondygnacji (Integer) = 1
+  powUzytkowaLokalu (Real) = 63.86
+  powUzytkowaLokalu_uom (String) = m2
+  POINT (5588408.34226571 5779906.56309512)
+
+
+Layer name: RCN_Nieruchomosc
+Geometry: None
+Feature Count: 1
+Layer SRS WKT:
+(unknown)
+gml_id: String (0.0) NOT NULL
+rodzajNieruchomosci: Integer (0.0)
+rodzajPrawaDoNieruchomosci: Integer (0.0)
+udzialWPrawieDoNieruchomosci: String (3.0)
+opis: String (87.0)
+OGRFeature(RCN_Nieruchomosc):6435040
+  gml_id (String) = ID_1_obj_id_6435040
+  rodzajNieruchomosci (Integer) = 4
+  rodzajPrawaDoNieruchomosci (Integer) = 3
+  udzialWPrawieDoNieruchomosci (String) = 1/1
+  opis (String) = Do lokalu przynależy udział wynoszący 6386/12772 części w nieruchomości wspólnej
+

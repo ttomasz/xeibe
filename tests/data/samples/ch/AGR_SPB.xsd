@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schema xmlns:fme="http://www.safe.com/gml/fme" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:gml="http://www.opengis.net/gml" xmlns="http://www.w3.org/2001/XMLSchema" targetNamespace="http://www.safe.com/gml/fme" elementFormDefault="qualified">
+<import namespace="http://www.opengis.net/gml" schemaLocation="http://schemas.opengis.net/gml/3.1.1/base/gml.xsd"/>
+<element name="AGR_SPB" type="fme:AGR_SPBType" substitutionGroup="gml:_Feature"/>
+<complexType name="AGR_SPBType">
+<complexContent>
+<extension base="gml:AbstractFeatureType">
+<sequence>
+<element name="OBJECTID" minOccurs="0" type="int"/>
+<element name="ORACLE_ID" minOccurs="0" type="int"/>
+<element name="CODE_FED" minOccurs="0" type="short"/>
+<element name="TYPE" minOccurs="0">
+<simpleType>
+<restriction base="string">
+<maxLength value="100"/>
+</restriction>
+</simpleType></element>
+<element name="AFFEC_CANT" minOccurs="0">
+<simpleType>
+<restriction base="string">
+<maxLength value="40"/>
+</restriction>
+</simpleType></element>
+<element name="SAU" minOccurs="0">
+<simpleType>
+<restriction base="string">
+<maxLength value="4"/>
+</restriction>
+</simpleType></element>
+<element name="SPB" minOccurs="0">
+<simpleType>
+<restriction base="string">
+<maxLength value="4"/>
+</restriction>
+</simpleType></element>
+<element name="QII" minOccurs="0">
+<simpleType>
+<restriction base="string">
+<maxLength value="4"/>
+</restriction>
+</simpleType></element>
+<element name="CONTRATQI" minOccurs="0" type="short"/>
+<element name="CONTRATQII" minOccurs="0" type="short"/>
+<element name="RAE" minOccurs="0">
+<simpleType>
+<restriction base="string">
+<maxLength value="4"/>
+</restriction>
+</simpleType></element>
+<element name="EXERCICE" minOccurs="0" type="short"/>
+<element name="EXPL_GE_VD" minOccurs="0">
+<simpleType>
+<restriction base="string">
+<maxLength value="4"/>
+</restriction>
+</simpleType></element>
+<element name="SURFACE_QII" minOccurs="0" type="int"/>
+<element name="TYPE_ATTRIBUT" minOccurs="0">
+<simpleType>
+<restriction base="string">
+<maxLength value="255"/>
+</restriction>
+</simpleType></element>
+<element name="SHAPE" minOccurs="0">
+<complexType>
+<sequence>
+<element name="AREA" minOccurs="0" type="double"/>
+<element name="LEN" minOccurs="0" type="double"/>
+</sequence>
+</complexType>
+</element>
+<element ref="gml:surfaceProperty" minOccurs="0"/>
+<element ref="gml:multiSurfaceProperty" minOccurs="0"/>
+</sequence>
+</extension>
+</complexContent>
+</complexType>
+</schema>

@@ -1,0 +1,106 @@
+
+Layer name: AD.Address
+Geometry: Point
+Feature Count: 2
+Extent: (547502.590000, 394384.170000) - (547535.170000, 394464.460000)
+Layer SRS WKT:
+PROJCRS["ETRF2000-PL / CS92",
+    BASEGEOGCRS["ETRF2000-PL",
+        DATUM["ETRF2000 Poland",
+            ELLIPSOID["GRS 1980",6378137,298.257222101,
+                LENGTHUNIT["metre",1]]],
+        PRIMEM["Greenwich",0,
+            ANGLEUNIT["degree",0.0174532925199433]],
+        ID["EPSG",9702]],
+    CONVERSION["Poland CS92",
+        METHOD["Transverse Mercator",
+            ID["EPSG",9807]],
+        PARAMETER["Latitude of natural origin",0,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8801]],
+        PARAMETER["Longitude of natural origin",19,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8802]],
+        PARAMETER["Scale factor at natural origin",0.9993,
+            SCALEUNIT["unity",1],
+            ID["EPSG",8805]],
+        PARAMETER["False easting",500000,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8806]],
+        PARAMETER["False northing",-5300000,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8807]]],
+    CS[Cartesian,2],
+        AXIS["northing (x)",north,
+            ORDER[1],
+            LENGTHUNIT["metre",1]],
+        AXIS["easting (y)",east,
+            ORDER[2],
+            LENGTHUNIT["metre",1]],
+    USAGE[
+        SCOPE["Topographic mapping (medium and small scale)."],
+        AREA["Poland - onshore and offshore."],
+        BBOX[49,14.14,55.93,24.15]],
+    ID["EPSG",2180]]
+Data axis to CRS axis mapping: 2,1
+Geometry Column = msGeometry
+gml_id: String (0.0) NOT NULL
+coordinates: String (55.0)
+id: Integer (0.0)
+gml_id: String (39.0)
+jednostkaadmnistracyjna: String (66.0)
+miejscowosc: String (21.0)
+ulica: String (6.0)
+numer: Integer (0.0)
+teryt: Integer (0.0)
+simc: String (7.0)
+ulic: Integer (0.0)
+ulica_pol: String (6.0)
+data_od: Date
+kod: String (6.0)
+ulica_skr: String (6.0)
+miejscowosc_lower: String (21.0)
+lokalnyid: String (36.0)
+adres: String (31.0)
+OGRFeature(AD.Address):97426176
+  gml_id (String) = AD.Address.97426176
+  coordinates (String) = 547502.590000,394384.170000 547502.590000,394384.170000
+  id (Integer) = 97426176
+  gml_id (String) = PL.ZIPIN.3742.EMUiA_9945001100000172050
+  jednostkaadmnistracyjna (String) = {Polska,łódzkie,"Piotrków Trybunalski","Piotrków Trybunalski"}
+  miejscowosc (String) = Piotrków Trybunalski
+  ulica (String) = 1 Maja
+  numer (Integer) = 10
+  teryt (Integer) = 106201
+  simc (String) = 0967430
+  ulic (Integer) = 11926
+  ulica_pol (String) = 1 maja
+  data_od (Date) = 2016/03/09
+  kod (String) = 97-300
+  ulica_skr (String) = 1 maja
+  miejscowosc_lower (String) = piotrków trybunalski
+  lokalnyid (String) = 94a4c0aa-eb6b-4faa-be00-810f492298eb
+  adres (String) = Piotrków Trybunalski 1 Maja 10
+  POINT (547502.59 394384.17)
+
+OGRFeature(AD.Address):97426177
+  gml_id (String) = AD.Address.97426177
+  coordinates (String) = 547535.170000,394464.460000 547535.170000,394464.460000
+  id (Integer) = 97426177
+  gml_id (String) = PL.ZIPIN.3742.EMUiA_9945001100000172051
+  jednostkaadmnistracyjna (String) = {Polska,łódzkie,"Piotrków Trybunalski","Piotrków Trybunalski"}
+  miejscowosc (String) = Piotrków Trybunalski
+  ulica (String) = 1 Maja
+  numer (Integer) = 11
+  teryt (Integer) = 106201
+  simc (String) = 0967430
+  ulic (Integer) = 11926
+  ulica_pol (String) = 1 maja
+  data_od (Date) = 2016/03/09
+  kod (String) = 97-300
+  ulica_skr (String) = 1 maja
+  miejscowosc_lower (String) = piotrków trybunalski
+  lokalnyid (String) = 580d6f78-10a6-4d6b-ba5b-faf98e390b67
+  adres (String) = Piotrków Trybunalski 1 Maja 11
+  POINT (547535.17 394464.46)
+

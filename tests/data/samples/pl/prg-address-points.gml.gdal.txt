@@ -1,0 +1,234 @@
+
+Layer name: AD_Miejscowosc
+Geometry: Point
+Feature Count: 2
+Extent: (205249.100000, 529893.730000) - (206702.010000, 530976.790000)
+Layer SRS WKT:
+PROJCRS["ETRF2000-PL / CS92",
+    BASEGEOGCRS["ETRF2000-PL",
+        DATUM["ETRF2000 Poland",
+            ELLIPSOID["GRS 1980",6378137,298.257222101,
+                LENGTHUNIT["metre",1]]],
+        PRIMEM["Greenwich",0,
+            ANGLEUNIT["degree",0.0174532925199433]],
+        ID["EPSG",9702]],
+    CONVERSION["Poland CS92",
+        METHOD["Transverse Mercator",
+            ID["EPSG",9807]],
+        PARAMETER["Latitude of natural origin",0,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8801]],
+        PARAMETER["Longitude of natural origin",19,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8802]],
+        PARAMETER["Scale factor at natural origin",0.9993,
+            SCALEUNIT["unity",1],
+            ID["EPSG",8805]],
+        PARAMETER["False easting",500000,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8806]],
+        PARAMETER["False northing",-5300000,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8807]]],
+    CS[Cartesian,2],
+        AXIS["northing (x)",north,
+            ORDER[1],
+            LENGTHUNIT["metre",1]],
+        AXIS["easting (y)",east,
+            ORDER[2],
+            LENGTHUNIT["metre",1]],
+    USAGE[
+        SCOPE["Topographic mapping (medium and small scale)."],
+        AREA["Poland - onshore and offshore."],
+        BBOX[49,14.14,55.93,24.15]],
+    ID["EPSG",2180]]
+Data axis to CRS axis mapping: 2,1
+Geometry Column = georeferencja
+gml_id: String (0.0) NOT NULL
+lokalnyId: String (36.0)
+przestrzenNazw: String (12.0)
+wersjaId: DateTime
+poczatekWersjiObiektu: DateTime
+nazwa: String (8.0)
+rodzaj: String (2.0)
+identyfikatorSIMC: String (7.0)
+TERYTGminy: String (7.0)
+OGRFeature(AD_Miejscowosc):0
+  gml_id (String) = PL.ZIPIN.515.EMUiA_0181728_2017-04-13T12_49_22_02_00
+  lokalnyId (String) = a339e481-f24d-491e-9b7d-f9226a758e07
+  przestrzenNazw (String) = PL.PZGIK.200
+  wersjaId (DateTime) = 2017/04/13 12:49:22+02
+  poczatekWersjiObiektu (DateTime) = 2017/04/13 12:49:22
+  nazwa (String) = Chyrzyno
+  rodzaj (String) = 04
+  identyfikatorSIMC (String) = 0181728
+  TERYTGminy (String) = 0805022
+  POINT (205249.1 530976.79)
+
+OGRFeature(AD_Miejscowosc):1
+  gml_id (String) = PL.ZIPIN.515.EMUiA_0181734_2017-04-13T12_49_22_02_00
+  lokalnyId (String) = 8886c7b2-1f8b-47c9-9f3d-6af7f530e709
+  przestrzenNazw (String) = PL.PZGIK.200
+  wersjaId (DateTime) = 2017/04/13 12:49:22+02
+  poczatekWersjiObiektu (DateTime) = 2017/04/13 12:49:22
+  nazwa (String) = Żabczyn
+  rodzaj (String) = 04
+  identyfikatorSIMC (String) = 0181734
+  TERYTGminy (String) = 0805022
+  POINT (206702.01 529893.73)
+
+
+Layer name: AD_UlicaPlac
+Geometry: Polygon
+Feature Count: 2
+Extent: (245273.420000, 522942.510000) - (262972.040000, 530543.240000)
+Layer SRS WKT:
+PROJCRS["ETRF2000-PL / CS92",
+    BASEGEOGCRS["ETRF2000-PL",
+        DATUM["ETRF2000 Poland",
+            ELLIPSOID["GRS 1980",6378137,298.257222101,
+                LENGTHUNIT["metre",1]]],
+        PRIMEM["Greenwich",0,
+            ANGLEUNIT["degree",0.0174532925199433]],
+        ID["EPSG",9702]],
+    CONVERSION["Poland CS92",
+        METHOD["Transverse Mercator",
+            ID["EPSG",9807]],
+        PARAMETER["Latitude of natural origin",0,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8801]],
+        PARAMETER["Longitude of natural origin",19,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8802]],
+        PARAMETER["Scale factor at natural origin",0.9993,
+            SCALEUNIT["unity",1],
+            ID["EPSG",8805]],
+        PARAMETER["False easting",500000,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8806]],
+        PARAMETER["False northing",-5300000,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8807]]],
+    CS[Cartesian,2],
+        AXIS["northing (x)",north,
+            ORDER[1],
+            LENGTHUNIT["metre",1]],
+        AXIS["easting (y)",east,
+            ORDER[2],
+            LENGTHUNIT["metre",1]],
+    USAGE[
+        SCOPE["Topographic mapping (medium and small scale)."],
+        AREA["Poland - onshore and offshore."],
+        BBOX[49,14.14,55.93,24.15]],
+    ID["EPSG",2180]]
+Data axis to CRS axis mapping: 2,1
+Geometry Column = geometria
+gml_id: String (0.0) NOT NULL
+lokalnyId: String (36.0)
+przestrzenNazw: String (12.0)
+wersjaId: DateTime
+poczatekWersjiObiektu: DateTime
+nazwaPelna: String (16.0)
+rodzaj: Integer (0.0)
+TERYTNazwa1: String (16.0)
+identyfikatorULIC: String (5.0)
+OGRFeature(AD_UlicaPlac):0
+  gml_id (String) = PL.ZIPIN.3122.EMUiA_24ee6a48-8011-42d4-af8e-b048691e2c8c_2017-04-13T15_30_04_02_00
+  lokalnyId (String) = db91a69d-01d9-410a-ae73-653018f31700
+  przestrzenNazw (String) = PL.PZGIK.200
+  wersjaId (DateTime) = 2017/04/13 15:30:04+02
+  poczatekWersjiObiektu (DateTime) = 2017/04/13 15:30:04
+  nazwaPelna (String) = Plac Kasztanowy
+  rodzaj (Integer) = 3
+  TERYTNazwa1 (String) = Plac Kasztanowy
+  identyfikatorULIC (String) = 08173
+  POLYGON ((245281.43 522942.51,245284.55 522943.68,245300.37 522958.14,245283.38 522983.14,245273.42 522980.6,245276.55 522947.4,245278.3 522944.66,245281.43 522942.51))
+
+OGRFeature(AD_UlicaPlac):1
+  gml_id (String) = PL.ZIPIN.1525.EMUiA_5ace85bb-57ed-42e6-861e-9c596dec6d08_2025-10-31T18_47_42_02_00
+  lokalnyId (String) = cb55c622-944b-45f2-848a-9ee152235fed
+  przestrzenNazw (String) = PL.PZGIK.200
+  wersjaId (DateTime) = 2025/10/31 18:47:42+02
+  poczatekWersjiObiektu (DateTime) = 2025/10/31 18:47:42
+  nazwaPelna (String) = Osiedle Grunwald
+  rodzaj (Integer) = 11
+  TERYTNazwa1 (String) = Osiedle Grunwald
+  identyfikatorULIC (String) = 55288
+  POLYGON ((262741.48 530542.26,262707.88 530399.61,262706.71 530395.9,262706.12 530391.6,262699.48 530356.06,262700.95 530353.03,262704.07 530351.95,262729.27 530351.37,262733.47 530351.37,262735.81 530349.81,262752.22 530337.99,262755.15 530336.82,262758.57 530337.89,262780.73 530348.73,262782.59 530350.29,262814.72 530357.23,262820.87 530357.81,262867.65 530342.38,262869.31 530341.9,262872.14 530341.99,262928.88 530348.15,262931.42 530348.54,262934.44 530348.24,262965.89 530346.97,262968.33 530347.85,262969.6 530350.29,262972.04 530406.25,262970.87 530409.57,262967.75 530411.13,262935.71 530411.91,262931.61 530412.11,262930.05 530416.8,262928.49 530422.07,262930.25 530466.8,262929.07 530473.24,262921.65 530475.98,262900.85 530475.88,262898.02 530476.47,262896.85 530479.69,262897.43 530514.65,262895.87 530516.99,262891.18 530517.97,262818.53 530519.04,262814.62 530519.73,262802.51 530523.56,262802.12 530526.49,262801.14 530528.25,262745.19 530543.24,262743.04 530543.14,262741.48 530542.26))
+
+
+Layer name: AD_PunktAdresowy
+Geometry: Point
+Feature Count: 2
+Extent: (220155.390000, 426441.080000) - (222442.200000, 431274.250000)
+Layer SRS WKT:
+PROJCRS["ETRF2000-PL / CS92",
+    BASEGEOGCRS["ETRF2000-PL",
+        DATUM["ETRF2000 Poland",
+            ELLIPSOID["GRS 1980",6378137,298.257222101,
+                LENGTHUNIT["metre",1]]],
+        PRIMEM["Greenwich",0,
+            ANGLEUNIT["degree",0.0174532925199433]],
+        ID["EPSG",9702]],
+    CONVERSION["Poland CS92",
+        METHOD["Transverse Mercator",
+            ID["EPSG",9807]],
+        PARAMETER["Latitude of natural origin",0,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8801]],
+        PARAMETER["Longitude of natural origin",19,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8802]],
+        PARAMETER["Scale factor at natural origin",0.9993,
+            SCALEUNIT["unity",1],
+            ID["EPSG",8805]],
+        PARAMETER["False easting",500000,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8806]],
+        PARAMETER["False northing",-5300000,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8807]]],
+    CS[Cartesian,2],
+        AXIS["northing (x)",north,
+            ORDER[1],
+            LENGTHUNIT["metre",1]],
+        AXIS["easting (y)",east,
+            ORDER[2],
+            LENGTHUNIT["metre",1]],
+    USAGE[
+        SCOPE["Topographic mapping (medium and small scale)."],
+        AREA["Poland - onshore and offshore."],
+        BBOX[49,14.14,55.93,24.15]],
+    ID["EPSG",2180]]
+Data axis to CRS axis mapping: 2,1
+Geometry Column = georeferencja
+gml_id: String (0.0) NOT NULL
+lokalnyId: String (36.0)
+przestrzenNazw: String (12.0)
+wersjaId: DateTime
+poczatekWersjiObiektu: DateTime
+numerPorzadkowy: Integer (0.0)
+kodPocztowy: String (6.0)
+dataNadania: Date
+OGRFeature(AD_PunktAdresowy):0
+  gml_id (String) = PL.ZIPIN.3719.EMUiA_b44f1a7b-4327-4bc7-9164-c4bf5401e791_2017-04-13T16_10_59_02_00
+  lokalnyId (String) = 3f310369-371d-42f8-8afc-a93ca2481314
+  przestrzenNazw (String) = PL.PZGIK.200
+  wersjaId (DateTime) = 2017/04/13 16:10:59+02
+  poczatekWersjiObiektu (DateTime) = 2017/04/13 16:10:59
+  numerPorzadkowy (Integer) = 43
+  kodPocztowy (String) = 68-213
+  dataNadania (Date) = 2014/06/09
+  POINT (222442.2 431274.25)
+
+OGRFeature(AD_PunktAdresowy):1
+  gml_id (String) = PL.ZIPIN.3719.EMUiA_f244dc6c-4aa6-4e06-8569-95117adf57a3_2017-04-13T16_11_09_02_00
+  lokalnyId (String) = 7195dc4d-ce63-4085-8c47-c2e2c418d2e9
+  przestrzenNazw (String) = PL.PZGIK.200
+  wersjaId (DateTime) = 2017/04/13 16:11:09+02
+  poczatekWersjiObiektu (DateTime) = 2017/04/13 16:11:09
+  numerPorzadkowy (Integer) = 48
+  kodPocztowy (String) = 68-213
+  dataNadania (Date) = 2014/06/17
+  POINT (220155.39 426441.08)
+

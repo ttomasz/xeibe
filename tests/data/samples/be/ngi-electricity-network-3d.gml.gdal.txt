@@ -1,0 +1,172 @@
+
+Layer name: Pole
+Geometry: Unknown (any)
+Feature Count: 1
+Extent: (729894.901500, 649980.773400) - (729894.901500, 649980.773400)
+Layer SRS WKT:
+PROJCRS["ETRS89 / Belgian Lambert 2008",
+    BASEGEOGCRS["ETRS89",
+        ENSEMBLE["European Terrestrial Reference System 1989 ensemble",
+            MEMBER["European Terrestrial Reference Frame 1989"],
+            MEMBER["European Terrestrial Reference Frame 1990"],
+            MEMBER["European Terrestrial Reference Frame 1991"],
+            MEMBER["European Terrestrial Reference Frame 1992"],
+            MEMBER["European Terrestrial Reference Frame 1993"],
+            MEMBER["European Terrestrial Reference Frame 1994"],
+            MEMBER["European Terrestrial Reference Frame 1996"],
+            MEMBER["European Terrestrial Reference Frame 1997"],
+            MEMBER["European Terrestrial Reference Frame 2000"],
+            MEMBER["European Terrestrial Reference Frame 2005"],
+            MEMBER["European Terrestrial Reference Frame 2014"],
+            MEMBER["European Terrestrial Reference Frame 2020"],
+            ELLIPSOID["GRS 1980",6378137,298.257222101,
+                LENGTHUNIT["metre",1]],
+            ENSEMBLEACCURACY[0.1]],
+        PRIMEM["Greenwich",0,
+            ANGLEUNIT["degree",0.0174532925199433]],
+        ID["EPSG",4258]],
+    CONVERSION["Belgian Lambert 2008",
+        METHOD["Lambert Conic Conformal (2SP)",
+            ID["EPSG",9802]],
+        PARAMETER["Latitude of false origin",50.797815,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8821]],
+        PARAMETER["Longitude of false origin",4.35921583333333,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8822]],
+        PARAMETER["Latitude of 1st standard parallel",49.8333333333333,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8823]],
+        PARAMETER["Latitude of 2nd standard parallel",51.1666666666667,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8824]],
+        PARAMETER["Easting at false origin",649328,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8826]],
+        PARAMETER["Northing at false origin",665262,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8827]]],
+    CS[Cartesian,2],
+        AXIS["easting (X)",east,
+            ORDER[1],
+            LENGTHUNIT["metre",1]],
+        AXIS["northing (Y)",north,
+            ORDER[2],
+            LENGTHUNIT["metre",1]],
+    USAGE[
+        SCOPE["Engineering survey, topographic mapping."],
+        AREA["Belgium - onshore."],
+        BBOX[49.5,2.5,51.51,6.4]],
+    ID["EPSG",3812]]
+Data axis to CRS axis mapping: 1,2
+Geometry Column = geometry
+gml_id: String (0.0) NOT NULL
+description: String (10.0)
+identifier: String (106.0)
+currentStatus: String (0.0)
+validFrom: String (0.0)
+verticalPosition: String (0.0)
+utilityFacilityReference: String (0.0)
+governmentalServiceReference: String (0.0)
+localId: String (39.0)
+namespace: String (67.0)
+poleHeight: Integer (0.0)
+poleHeight_uom: String (1.0)
+OGRFeature(Pole):693
+  gml_id (String) = ID_313A89F5-048F-4703-9BE7-DDAF60FC0693
+  description (String) = PowerPylon
+  identifier (String) = http://data.geo.be/id/us.pole/067c8ccb-50fa-4918-9f6b-6b1248b3bef3/ID_313A89F5-048F-4703-9BE7-DDAF60FC0693
+  currentStatus (String) = (null)
+  validFrom (String) = (null)
+  verticalPosition (String) = (null)
+  utilityFacilityReference (String) = (null)
+  governmentalServiceReference (String) = (null)
+  localId (String) = ID_313A89F5-048F-4703-9BE7-DDAF60FC0693
+  namespace (String) = http://data.geo.be/id/us.pole/067c8ccb-50fa-4918-9f6b-6b1248b3bef3/
+  poleHeight (Integer) = -999
+  poleHeight_uom (String) = m
+  POINT (729894.901500002 649980.773400001)
+
+
+Layer name: UtilityLink
+Geometry: Line String
+Feature Count: 1
+Extent: (50.843700, 51.100000) - (711470.236000, 711198.876500)
+Layer SRS WKT:
+PROJCRS["ETRS89 / Belgian Lambert 2008",
+    BASEGEOGCRS["ETRS89",
+        ENSEMBLE["European Terrestrial Reference System 1989 ensemble",
+            MEMBER["European Terrestrial Reference Frame 1989"],
+            MEMBER["European Terrestrial Reference Frame 1990"],
+            MEMBER["European Terrestrial Reference Frame 1991"],
+            MEMBER["European Terrestrial Reference Frame 1992"],
+            MEMBER["European Terrestrial Reference Frame 1993"],
+            MEMBER["European Terrestrial Reference Frame 1994"],
+            MEMBER["European Terrestrial Reference Frame 1996"],
+            MEMBER["European Terrestrial Reference Frame 1997"],
+            MEMBER["European Terrestrial Reference Frame 2000"],
+            MEMBER["European Terrestrial Reference Frame 2005"],
+            MEMBER["European Terrestrial Reference Frame 2014"],
+            MEMBER["European Terrestrial Reference Frame 2020"],
+            ELLIPSOID["GRS 1980",6378137,298.257222101,
+                LENGTHUNIT["metre",1]],
+            ENSEMBLEACCURACY[0.1]],
+        PRIMEM["Greenwich",0,
+            ANGLEUNIT["degree",0.0174532925199433]],
+        ID["EPSG",4258]],
+    CONVERSION["Belgian Lambert 2008",
+        METHOD["Lambert Conic Conformal (2SP)",
+            ID["EPSG",9802]],
+        PARAMETER["Latitude of false origin",50.797815,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8821]],
+        PARAMETER["Longitude of false origin",4.35921583333333,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8822]],
+        PARAMETER["Latitude of 1st standard parallel",49.8333333333333,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8823]],
+        PARAMETER["Latitude of 2nd standard parallel",51.1666666666667,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8824]],
+        PARAMETER["Easting at false origin",649328,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8826]],
+        PARAMETER["Northing at false origin",665262,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8827]]],
+    CS[Cartesian,2],
+        AXIS["easting (X)",east,
+            ORDER[1],
+            LENGTHUNIT["metre",1]],
+        AXIS["northing (Y)",north,
+            ORDER[2],
+            LENGTHUNIT["metre",1]],
+    USAGE[
+        SCOPE["Engineering survey, topographic mapping."],
+        AREA["Belgium - onshore."],
+        BBOX[49.5,2.5,51.51,6.4]],
+    ID["EPSG",3812]]
+Data axis to CRS axis mapping: 1,2
+Geometry Column = centrelineGeometry
+gml_id: String (0.0) NOT NULL
+description: String (46.0)
+identifier: String (113.0)
+beginLifespanVersion: DateTime
+localId: String (39.0)
+namespace: String (74.0)
+currentStatus: String (0.0)
+validFrom: String (0.0)
+verticalPosition: String (0.0)
+OGRFeature(UtilityLink):2
+  gml_id (String) = ID_B61B8E30-2F3D-4253-A846-008307ACAFD2
+  description (String) = Electricity cable with nominal voltage unknown
+  identifier (String) = http://data.geo.be/id/us.utilitylink/067c8ccb-50fa-4918-9f6b-6b1248b3bef3/ID_B61B8E30-2F3D-4253-A846-008307ACAFD2
+  beginLifespanVersion (DateTime) = 2018/02/15 00:00:00
+  localId (String) = ID_B61B8E30-2F3D-4253-A846-008307ACAFD2
+  namespace (String) = http://data.geo.be/id/us.utilitylink/067c8ccb-50fa-4918-9f6b-6b1248b3bef3/
+  currentStatus (String) = (null)
+  validFrom (String) = (null)
+  verticalPosition (String) = (null)
+  LINESTRING (701548.237499997 711198.876499999,50.8436999999999 701594.745499998,711470.236000001 51.0999999999999)
+

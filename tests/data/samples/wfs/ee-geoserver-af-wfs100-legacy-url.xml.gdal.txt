@@ -1,0 +1,103 @@
+
+Layer name: AF.AgriculturalHolding
+Geometry: Point
+Feature Count: 2
+Extent: (612786.000000, 6476829.000000) - (689028.230000, 6571225.710000)
+Layer SRS WKT:
+PROJCRS["Estonian Coordinate System of 1997",
+    BASEGEOGCRS["EST97",
+        DATUM["Estonia 1997",
+            ELLIPSOID["GRS 1980",6378137,298.257222101,
+                LENGTHUNIT["metre",1]]],
+        PRIMEM["Greenwich",0,
+            ANGLEUNIT["degree",0.0174532925199433]],
+        ID["EPSG",4180]],
+    CONVERSION["Estonian National Grid",
+        METHOD["Lambert Conic Conformal (2SP)",
+            ID["EPSG",9802]],
+        PARAMETER["Latitude of false origin",57.5175539305556,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8821]],
+        PARAMETER["Longitude of false origin",24,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8822]],
+        PARAMETER["Latitude of 1st standard parallel",59.3333333333333,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8823]],
+        PARAMETER["Latitude of 2nd standard parallel",58,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8824]],
+        PARAMETER["Easting at false origin",500000,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8826]],
+        PARAMETER["Northing at false origin",6375000,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8827]]],
+    CS[Cartesian,2],
+        AXIS["northing (X)",north,
+            ORDER[1],
+            LENGTHUNIT["metre",1]],
+        AXIS["easting (Y)",east,
+            ORDER[2],
+            LENGTHUNIT["metre",1]],
+    USAGE[
+        SCOPE["Topographic mapping (large scale)."],
+        AREA["Estonia - onshore and offshore."],
+        BBOX[57.52,20.37,60,28.2]],
+    ID["EPSG",3301]]
+Data axis to CRS axis mapping: 2,1
+Geometry Column = geom
+gml_id: String (0.0) NOT NULL
+gml_id: String (20.0)
+gml_metadataproperty_xlink_href: String (111.0)
+gml_metadataproperty_xlink_title: String (60.0)
+gml_original_coordinate_system: String (42.0)
+gml_parent_property: String (13.0)
+gml_description: String (22.0)
+inspireid_identifier_localid: String (20.0)
+inspireid_identifier_namespace: String (34.0)
+function_function_activity_xlink_href: String (58.0)
+function_function_activity_xlink_title: String (5.0)
+contains_xlink_title: String (7.0)
+contains_xlink_href: String (152.0)
+xml_ns_uri: String (42.0)
+validfrom_xsi_nil: Integer(Boolean) (0.0)
+beginlifespanversion_xsi_nil: Integer(Boolean) (0.0)
+OGRFeature(AF.AgriculturalHolding):0
+  gml_id (String) = AF.AgriculturalHolding.EE38583_AGRIHOLDING_
+  gml_id (String) = EE38583_AGRIHOLDING_
+  gml_metadataproperty_xlink_href (String) = https://metadata.geoportaal.ee/geonetwork/srv/est/catalog.search#/metadata/0a3587dc-c154-432d-b79e-7b8410555bbd
+  gml_metadataproperty_xlink_title (String) = Eesti põllumajandus- ja vesiviljelusettevõtted (andmekogu)
+  gml_original_coordinate_system (String) = http://www.opengis.net/def/crs/EPSG/0/3301
+  gml_parent_property (String) = featureMember
+  gml_description (String) = Last update:2026-09-19
+  inspireid_identifier_localid (String) = EE38583_AGRIHOLDING_
+  inspireid_identifier_namespace (String) = ee.pria.af-loomaderegister-holding
+  function_function_activity_xlink_href (String) = http://inspire.ec.europa.eu/codelist/EconomicActivityValue
+  function_function_activity_xlink_title (String) = 01.04
+  contains_xlink_title (String) = EE38583
+  contains_xlink_href (String) = https://inspire.geoportaal.ee/geoserver/AF_holding_site/ows?service=WFS&version=2.0.0&request=GetFeature&typeNames=AF_holding_site%3AAF.Sites&featureID=
+  xml_ns_uri (String) = http://inspire.ec.europa.eu/schemas/af/4.0
+  validfrom_xsi_nil (Integer(Boolean)) = 1
+  beginlifespanversion_xsi_nil (Integer(Boolean)) = 1
+  POINT (689028.23 6571225.71)
+
+OGRFeature(AF.AgriculturalHolding):1
+  gml_id (String) = AF.AgriculturalHolding.EE14237_AGRIHOLDING_
+  gml_id (String) = EE14237_AGRIHOLDING_
+  gml_metadataproperty_xlink_href (String) = https://metadata.geoportaal.ee/geonetwork/srv/est/catalog.search#/metadata/0a3587dc-c154-432d-b79e-7b8410555bbd
+  gml_metadataproperty_xlink_title (String) = Eesti põllumajandus- ja vesiviljelusettevõtted (andmekogu)
+  gml_original_coordinate_system (String) = http://www.opengis.net/def/crs/EPSG/0/3301
+  gml_parent_property (String) = featureMember
+  gml_description (String) = Last update:2026-09-19
+  inspireid_identifier_localid (String) = EE14237_AGRIHOLDING_
+  inspireid_identifier_namespace (String) = ee.pria.af-loomaderegister-holding
+  function_function_activity_xlink_href (String) = http://inspire.ec.europa.eu/codelist/EconomicActivityValue
+  function_function_activity_xlink_title (String) = 01.04
+  contains_xlink_title (String) = EE14237
+  contains_xlink_href (String) = https://inspire.geoportaal.ee/geoserver/AF_holding_site/ows?service=WFS&version=2.0.0&request=GetFeature&typeNames=AF_holding_site%3AAF.Sites&featureID=
+  xml_ns_uri (String) = http://inspire.ec.europa.eu/schemas/af/4.0
+  validfrom_xsi_nil (Integer(Boolean)) = 1
+  beginlifespanversion_xsi_nil (Integer(Boolean)) = 1
+  POINT (612786 6476829)
+

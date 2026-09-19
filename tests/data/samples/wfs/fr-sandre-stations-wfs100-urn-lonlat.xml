@@ -1,0 +1,104 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<wfs:FeatureCollection xmlns:sa="http://xml.sandre.eaufrance.fr/" xmlns:wfs="http://www.opengis.net/wfs" xmlns:gml="http://www.opengis.net/gml" xmlns:ogc="http://www.opengis.net/ogc" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.0.0/WFS-basic.xsd                         http://xml.sandre.eaufrance.fr/ https://services.sandre.eaufrance.fr/geo/stq?SERVICE=WFS&amp;VERSION=1.0.0&amp;REQUEST=DescribeFeatureType&amp;TYPENAME=sa:StationMesureEauxSurface&amp;OUTPUTFORMAT=XMLSCHEMA">
+      <gml:boundedBy>
+      	<gml:Box srsName="urn:ogc:def:crs:EPSG::4326">
+      		<gml:coordinates>45.115299,-12.884430 45.131043,-12.802392</gml:coordinates>
+      	</gml:Box>
+      </gml:boundedBy>
+    <gml:featureMember>
+      <sa:StationMesureEauxSurface fid="StationMesureEauxSurface.11000013">
+        <gml:boundedBy>
+        	<gml:Box srsName="urn:ogc:def:crs:EPSG::4326">
+        		<gml:coordinates>45.127806,-12.807975 45.127806,-12.807975</gml:coordinates>
+        	</gml:Box>
+        </gml:boundedBy>
+        <sa:msGeometry>
+        <gml:Point srsName="urn:ogc:def:crs:EPSG::4326">
+          <gml:coordinates>45.127806,-12.807975</gml:coordinates>
+        </gml:Point>
+        </sa:msGeometry>
+        <sa:CdStationMesureEauxSurface>11000013</sa:CdStationMesureEauxSurface>
+        <sa:LbStationMesureEauxSurface>Ourovéni aval</sa:LbStationMesureEauxSurface>
+        <sa:DateCreationStationMesureEauxSurface>2008-02-29</sa:DateCreationStationMesureEauxSurface>
+        <sa:DateMAJInfosStationMesureEauxSurface/>
+        <sa:StStationMesure>Validé</sa:StStationMesure>
+        <sa:NomStationMesureEauxSurface>Ourovéni aval</sa:NomStationMesureEauxSurface>
+        <sa:FinaliteStationMesureEauxSurface>2,2</sa:FinaliteStationMesureEauxSurface>
+        <sa:LocPreciseStationMesureEauxSurface>Aval de la rivière Ourovéni</sa:LocPreciseStationMesureEauxSurface>
+        <sa:CarteLocStationMesureEauxSurface/>
+        <sa:SchemaLocStationMesureEauxSurface/>
+        <sa:AltitudePointCaracteritisque/>
+        <sa:SuperficieBassinVersantTopo/>
+        <sa:SuperficieBassinVersantReel/>
+        <sa:PremierMoisAnneeEtiage/>
+        <sa:PkPointTronconEntiteHydroPrincipale/>
+        <sa:DateArretActiviteStationMesureEauxSurface/>
+        <sa:ComStationMesureEauxSurface>Appartient aux réseaux de définition des RCS (RNESUQMAYDEFRCS) +FRMSUSR</sa:ComStationMesureEauxSurface>
+        <sa:ModeObtentionCoordStationMesureEauxSurface/>
+        <sa:NatureStationMesureEauxSurface/>
+        <sa:ClasseDurete/>
+        <sa:CdMasseDEau>FRMR15</sa:CdMasseDEau>
+        <sa:CdEntiteHydrographique>30530200</sa:CdEntiteHydrographique>
+        <sa:CdTronconHydrographique>30530200</sa:CdTronconHydrographique>
+        <sa:CdCommune>97617</sa:CdCommune>
+        <sa:CdBassin/>
+        <sa:DateDuJeuDeDonnee/>
+        <sa:ProducteurDuJeu>DEAL Mayotte</sa:ProducteurDuJeu>
+        <sa:CoordXStationMesureEauxSurface>513870</sa:CoordXStationMesureEauxSurface>
+        <sa:CoordYStationMesureEauxSurface>8584096</sa:CoordYStationMesureEauxSurface>
+        <sa:ProjStationMesureEauxSurface>41</sa:ProjStationMesureEauxSurface>
+        <sa:NomEntiteHydrographique>Mro wa Ourovéni</sa:NomEntiteHydrographique>
+        <sa:TypeCEStationMesureEauxSurface/>
+        <sa:TypEthStationMesureEauxSurface/>
+        <sa:CdIntervenant/>
+        <sa:DurStationMesureEauxSurface/>
+      </sa:StationMesureEauxSurface>
+    </gml:featureMember><gml:featureMember>
+      <sa:StationMesureEauxSurface fid="StationMesureEauxSurface.11000012">
+        <gml:boundedBy>
+        	<gml:Box srsName="urn:ogc:def:crs:EPSG::4326">
+        		<gml:coordinates>45.131043,-12.884430 45.131043,-12.884430</gml:coordinates>
+        	</gml:Box>
+        </gml:boundedBy>
+        <sa:msGeometry>
+        <gml:Point srsName="urn:ogc:def:crs:EPSG::4326">
+          <gml:coordinates>45.131043,-12.884430</gml:coordinates>
+        </gml:Point>
+        </sa:msGeometry>
+        <sa:CdStationMesureEauxSurface>11000012</sa:CdStationMesureEauxSurface>
+        <sa:LbStationMesureEauxSurface>M’tsangachéhi aval</sa:LbStationMesureEauxSurface>
+        <sa:DateCreationStationMesureEauxSurface>2008-02-29</sa:DateCreationStationMesureEauxSurface>
+        <sa:DateMAJInfosStationMesureEauxSurface/>
+        <sa:StStationMesure>Validé</sa:StStationMesure>
+        <sa:NomStationMesureEauxSurface>M’tsangachéhi aval</sa:NomStationMesureEauxSurface>
+        <sa:FinaliteStationMesureEauxSurface>2,2</sa:FinaliteStationMesureEauxSurface>
+        <sa:LocPreciseStationMesureEauxSurface>Aval de la rivière M'tsangachéhi</sa:LocPreciseStationMesureEauxSurface>
+        <sa:CarteLocStationMesureEauxSurface/>
+        <sa:SchemaLocStationMesureEauxSurface/>
+        <sa:AltitudePointCaracteritisque/>
+        <sa:SuperficieBassinVersantTopo/>
+        <sa:SuperficieBassinVersantReel/>
+        <sa:PremierMoisAnneeEtiage/>
+        <sa:PkPointTronconEntiteHydroPrincipale/>
+        <sa:DateArretActiviteStationMesureEauxSurface>2010-12-31</sa:DateArretActiviteStationMesureEauxSurface>
+        <sa:ComStationMesureEauxSurface>Station présente seulement dans la Définition des RCS (RNESUQMAYDEFRCS),                                                      Pas de masse d'eau pour cette station </sa:ComStationMesureEauxSurface>
+        <sa:ModeObtentionCoordStationMesureEauxSurface/>
+        <sa:NatureStationMesureEauxSurface/>
+        <sa:ClasseDurete/>
+        <sa:CdMasseDEau>s.o.</sa:CdMasseDEau>
+        <sa:CdEntiteHydrographique>30618400</sa:CdEntiteHydrographique>
+        <sa:CdTronconHydrographique>30618400</sa:CdTronconHydrographique>
+        <sa:CdCommune>97616</sa:CdCommune>
+        <sa:CdBassin/>
+        <sa:DateDuJeuDeDonnee/>
+        <sa:ProducteurDuJeu>DEAL Mayotte</sa:ProducteurDuJeu>
+        <sa:CoordXStationMesureEauxSurface>514217</sa:CoordXStationMesureEauxSurface>
+        <sa:CoordYStationMesureEauxSurface>8575641</sa:CoordYStationMesureEauxSurface>
+        <sa:ProjStationMesureEauxSurface>41</sa:ProjStationMesureEauxSurface>
+        <sa:NomEntiteHydrographique/>
+        <sa:TypeCEStationMesureEauxSurface/>
+        <sa:TypEthStationMesureEauxSurface/>
+        <sa:CdIntervenant/>
+        <sa:DurStationMesureEauxSurface/>
+      </sa:StationMesureEauxSurface>
+    </gml:featureMember></wfs:FeatureCollection>

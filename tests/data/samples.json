@@ -1,0 +1,1928 @@
+{
+ "samples": [
+  {
+   "name": "pl-prg-address-points",
+   "axis_order": "x/y",
+   "axis_places": [
+    {
+     "layer": "pl_wojewodztwa",
+     "code": "08",
+     "why": "source file 08_lubuskie_*.gml (TERYT 08 = lubuskie); prgad:TERYTGminy 08xxxxx"
+    }
+   ],
+   "file": "samples/pl/prg-address-points.gml",
+   "source": "example_data/downloads/dane.gov.pl/api.dane.gov.pl/d0e6c516_PRG-punkty_adresowe_6e4326c3.zip",
+   "member": "08_lubuskie_18.09.2026_11.23.44.gml",
+   "covers": [
+    "GML 3.2",
+    "several feature types in one file (sequential layers)",
+    "xlink:href feature references (#id)",
+    "INSPIRE-style type wrapper (idIIP/AD_IdentyfikatorIIP)",
+    "srsName short form EPSG:2180 in x/y order",
+    "datetimes with and without time zone",
+    "empty elements"
+   ],
+   "publisher": "Główny Urząd Geodezji i Kartografii (GUGiK)",
+   "dataset": "Państwowy rejestr granic i powierzchni jednostek podziałów terytorialnych kraju (PRG) – punkty adresowe",
+   "dataset_url": "https://dane.gov.pl/pl/dataset/726",
+   "licence": "pzgik",
+   "licence_evidence": "official material, not subject to copyright; https://api.dane.gov.pl/1.4/datasets/726 labels it CC BY 4.0 and states it 'może być wykorzystywany bez ograniczeń' with the PZGiK attribution condition",
+   "attribution": "Wykorzystano/opracowano na podstawie materiałów państwowego zasobu geodezyjnego i kartograficznego (GUGiK, PRG, dane.gov.pl)",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "per_layer=2"
+    ],
+    "features_kept": 6,
+    "features_scanned": 214914,
+    "changes": [
+     "kept 6 of 214914 features scanned"
+    ],
+    "original_encoding": "UTF-8"
+   },
+   "provenance": {
+    "download_url": "https://api.dane.gov.pl/resources/2355387,panstwowy-rejestr-granic-i-powierzchni-jednostek-podziaow-terytorialnych-kraju-adresy-format-gml/file",
+    "retrieved": "2026-09-19T17:31:05",
+    "portal": "dane.gov.pl"
+   },
+   "sha256": "e564445757b9343ecfd9a13fb75feb8f3d5addf3426e8ad03e727153ccd08849",
+   "bytes": 12264,
+   "validation": {
+    "status": "schema unavailable",
+    "messages": [
+     "warning: failed to load external entity \"https://opendata.geoportal.gov.pl/prg/schemas/prgad/1.0/PRGAD.xsd\"",
+     "/tmp/tmpy52deb_m.xsd:3: element import: Schemas parser warning : Element '{http://www.w3.org/2001/XMLSchema}import': Failed to locate a schema at location 'https://opendata.geoportal.gov.pl/prg/schemas/prgad/1.0/PRGAD.xsd'. Skipping the import.",
+     "ERROR 1: https://opendata.geoportal.gov.pl/prg/schemas/prgad/1.0/PRGAD.xsd:1:1 invalid document structure",
+     "ERROR 1: https://opendata.geoportal.gov.pl/prg/schemas/prgad/1.0/PRGAD.xsd:1:1 invalid document structure"
+    ]
+   },
+   "gdal": {
+    "file": "samples/pl/prg-address-points.gml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 3,
+    "feature_counts": [
+     2,
+     2,
+     2
+    ],
+    "stderr": []
+   },
+   "axis": {
+    "source_order": "x/y",
+    "first_position_as_written": [
+     205249.1,
+     530976.79
+    ],
+    "expected_first_xy": [
+     205249.1,
+     530976.79
+    ],
+    "gdal_first_xy": [
+     205249.1,
+     530976.79
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "x/y",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 62,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:2180",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 1.0,
+       "passes": true,
+       "rejects_swapped": false
+      },
+      {
+       "check": "place",
+       "detail": "lubuskie (pl_wojewodztwa 08); expected because: source file 08_lubuskie_*.gml (TERYT 08 = lubuskie); prgad:TERYTGminy 08xxxxx",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 310.9
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "pl-rcn-parcels-arcs",
+   "axis_order": "y/x",
+   "axis_places": [
+    {
+     "layer": "pl_powiaty",
+     "code": "3005",
+     "why": "file 3005_RCN_*.zip from the register of powiat 3005 (grodziski); rcn:idDzialki 300504_5.* (TERYT 3005…)"
+    }
+   ],
+   "file": "samples/pl/rcn-price-register-arcs.gml",
+   "source": "example_data/downloads/dane.gov.pl/api.dane.gov.pl/de7fe2c6_3005_RCN_08_09_2026_fcf9b107.zip",
+   "member": "3005_RCN_08_09_2026.gml",
+   "covers": [
+    "GML 3.2",
+    "gml:Arc in parcel boundaries (Curve/segments)",
+    "Polish GMLAS-style application schema",
+    "feature references between layers"
+   ],
+   "publisher": "Starostwo Powiatowe w Grodzisku Wielkopolskim (powiat 3005)",
+   "dataset": "Rejestr Cen Nieruchomości (RCN)",
+   "dataset_url": "https://dane.gov.pl/pl/dataset/34577",
+   "licence": "pzgik",
+   "licence_evidence": "official material, not subject to copyright; https://api.dane.gov.pl/1.4/datasets/34577 labels it CC BY 4.0 with the PZGiK attribution condition",
+   "attribution": "Wykorzystano/opracowano na podstawie materiałów państwowego zasobu geodezyjnego i kartograficznego (Rejestr Cen Nieruchomości, dane.gov.pl)",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "contains=Arc;count=2",
+     "per_layer=1"
+    ],
+    "features_kept": 7,
+    "features_scanned": 44391,
+    "changes": [
+     "kept 7 of 44391 features scanned"
+    ],
+    "original_encoding": "UTF-8"
+   },
+   "provenance": {
+    "download_url": "https://api.dane.gov.pl/resources/2592131,rejestr-cen-nieruchomosci-plik-gml/file",
+    "retrieved": "2026-09-19T17:21:40",
+    "portal": "dane.gov.pl"
+   },
+   "sha256": "75f4f294e8e40fa95d328a4e99ef86c2419f91e77540d097925ed631533b09b0",
+   "bytes": 9437,
+   "validation": {
+    "status": "schema unavailable",
+    "messages": [
+     "warning: failed to load external entity \"file://tests/data/samples/pl/RCN_1.4.XSD\"",
+     "/tmp/tmph33ta4fg.xsd:4: element import: Schemas parser warning : Element '{http://www.w3.org/2001/XMLSchema}import': Failed to locate a schema at location 'file://tests/data/samples/pl/RCN_1.4.XSD'. Skipping the import.",
+     "ERROR 3: Cannot resolve samples/pl/RCN_1.4.XSD"
+    ]
+   },
+   "gdal": {
+    "file": "samples/pl/rcn-price-register-arcs.gml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 5,
+    "feature_counts": [
+     1,
+     3,
+     1,
+     1,
+     1
+    ],
+    "stderr": []
+   },
+   "axis": {
+    "source_order": "y/x",
+    "first_position_as_written": [
+     5779901.61,
+     5588403.47
+    ],
+    "expected_first_xy": [
+     5588403.47,
+     5779901.61
+    ],
+    "gdal_first_xy": [
+     5588403.47,
+     5779901.61
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "y/x",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 78,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:2176",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true
+      },
+      {
+       "check": "place",
+       "detail": "powiat grodziski (pl_powiaty 3005); expected because: file 3005_RCN_*.zip from the register of powiat 3005 (grodziski); rcn:idDzialki 300504_5.* (TERYT 3005…)",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 254.1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "de-hamburg-alkis-nas-arcs",
+   "axis_order": "x/y",
+   "axis_places": [
+    {
+     "layer": "countries",
+     "code": "DEU",
+     "why": "ALKIS extract published by Hamburg (LGV)"
+    }
+   ],
+   "file": "samples/de/hamburg-alkis-nas-arcs.xml",
+   "source": "example_data/downloads/data.europa.eu/daten-hamburg.de/744df9bf_ALKIS_Liegenschaftskarte_ausgewaehlteDaten_HH_2023-01-07.zip",
+   "member": "ALKIS_HH_0008.xml",
+   "covers": [
+    "NAS (ALKIS) document structure: AX_Bestandsdatenauszug/enthaelt/wfs:FeatureCollection",
+    "gml:Arc and gml:Circle",
+    "AdV CRS URN urn:adv:crs:ETRS89_UTM32",
+    "GML 3.2"
+   ],
+   "publisher": "Freie und Hansestadt Hamburg, Landesbetrieb Geoinformation und Vermessung (LGV)",
+   "dataset": "ALKIS – ausgewählte Daten Hamburg",
+   "dataset_url": "https://data.europa.eu/data/datasets/dc71f8a1-7a8c-488c-ac99-23776fa7775e",
+   "licence": "dl-de-by-2",
+   "licence_evidence": "publisher's GovData record (harvested by data.europa.eu): every distribution of the dataset carries http://dcat-ap.de/def/licenses/dl-by-de/2.0",
+   "attribution": "Freie und Hansestadt Hamburg, Landesbetrieb Geoinformation und Vermessung (LGV); Datenlizenz Deutschland – Namensnennung – Version 2.0 (https://www.govdata.de/dl-de/by-2-0); Datensatz ALKIS – ausgewählte Daten Hamburg (https://data.europa.eu/data/datasets/dc71f8a1-7a8c-488c-ac99-23776fa7775e); Daten geändert (Auszug)",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "contains=Circle;count=1",
+     "contains=Arc;count=2",
+     "count=1"
+    ],
+    "features_kept": 4,
+    "features_scanned": 1937,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "kept 4 of 1937 features scanned"
+    ],
+    "original_encoding": "utf-8"
+   },
+   "provenance": {
+    "download_url": "https://daten-hamburg.de/opendata/ALKIS_Liegenschaftskarte/ALKIS_Liegenschaftskarte_ausgewaehlteDaten_HH_2023-01-07.zip",
+    "retrieved": "2026-09-19T17:23:11",
+    "portal": "data.europa.eu"
+   },
+   "sha256": "591af079851c51447d477cb72a33c399572d4c4b1eab6ae2c2473e9ece3d0328",
+   "bytes": 107076,
+   "validation": {
+    "status": "schema unavailable",
+    "messages": [
+     "warning: failed to load external entity \"file://tests/data/samples/de/NAS-Operationen.xsd\"",
+     "/tmp/tmpa677g8cq.xsd:3: element import: Schemas parser warning : Element '{http://www.w3.org/2001/XMLSchema}import': Failed to locate a schema at location 'file://tests/data/samples/de/NAS-Operationen.xsd'. Skipping the import.",
+     "ERROR 3: Cannot resolve samples/de/NAS-Operationen.xsd"
+    ]
+   },
+   "gdal": {
+    "file": "samples/de/hamburg-alkis-nas-arcs.xml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 4,
+    "feature_counts": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "stderr": []
+   },
+   "axis": {
+    "source_order": "x/y",
+    "first_position_as_written": [
+     577129.778,
+     5917838.842
+    ],
+    "expected_first_xy": [
+     577129.778,
+     5917838.842
+    ],
+    "gdal_first_xy": [
+     577129.778,
+     5917838.842
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "x/y",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 341,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:25832",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true
+      },
+      {
+       "check": "place",
+       "detail": "Germany (countries DEU, tolerance 5000 m); expected because: ALKIS extract published by Hamburg (LGV)",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 6161.2
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "ch-geneva-arcbycenterpoint-fme",
+   "axis_order": "x/y",
+   "axis_places": [
+    {
+     "layer": "countries",
+     "code": "CHE",
+     "why": "published by SITG, Canton of Geneva"
+    }
+   ],
+   "file": "samples/ch/geneva-agr-spb-arcbycenterpoint.gml",
+   "source": "example_data/downloads/data.europa.eu/ge.ch/58fbf6b8_AGR_SPB-GML.zip",
+   "member": "AGR_SPB.gml",
+   "companion_files": [
+    "AGR_SPB.xsd"
+   ],
+   "covers": [
+    "gml:ArcByCenterPoint",
+    "FME-produced GML (xmlns:fme) – axis-order rule",
+    "GML 3.2"
+   ],
+   "publisher": "République et canton de Genève, Office cantonal de l'agriculture et de la nature (SITG)",
+   "dataset": "Surfaces de promotion de la biodiversité (AGR_SPB)",
+   "dataset_url": "https://data.europa.eu/data/datasets/agr_spb-canton-geneve",
+   "licence": "sitg-open",
+   "licence_evidence": "terms shipped in the zip: 'DOC/Conditions generales d'utilisation des donnees et produits du SITG en libre acces.pdf' (version 19 May 2026; § 4.1 level A: private and commercial use; § 5.3 source and modification notice required); opendata.swiss/data.europa.eu: terms_open",
+   "attribution": "Source : Portail des données SITG (État de Genève), téléchargé et/ou extrait en date du 2026-09-19. Extrait réalisé sur la base de Données du Portail SITG (sélection d'entités).",
+   "companions": [
+    {
+     "file": "samples/ch/AGR_SPB.xsd",
+     "original": "AGR_SPB.xsd",
+     "sha256": "318e20ef3893387814d080d5422e21f38a54d3476648ec3e3431132df7a7fab3",
+     "bytes": 2479
+    }
+   ],
+   "extraction": {
+    "rules": [
+     "contains=ArcByCenterPoint;count=2",
+     "count=1"
+    ],
+    "features_kept": 3,
+    "features_scanned": 2162,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "kept 3 of 2162 features scanned"
+    ],
+    "original_encoding": "UTF-8"
+   },
+   "provenance": {
+    "download_url": "https://ge.ch/sitg/geodata/SITG/OPENDATA/AGR_SPB-GML.zip",
+    "retrieved": "2026-09-19T17:22:19",
+    "portal": "data.europa.eu"
+   },
+   "sha256": "bd87d2c32293653730aa5ac8762f06bdd084946f0ab4deefecad0dd09c2a9ce5",
+   "bytes": 7513,
+   "validation": {
+    "status": "invalid",
+    "validator": "Xerces (GDAL GMLAS)",
+    "messages": [
+     "ERROR 1: samples/ch/geneva-agr-spb-arcbycenterpoint.gml:20:18 value '' does not match regular expression facet '[+\\-]?[0-9]+'",
+     "ERROR 1: samples/ch/geneva-agr-spb-arcbycenterpoint.gml:24:19 value '' does not match regular expression facet '[+\\-]?[0-9]+'",
+     "ERROR 1: samples/ch/geneva-agr-spb-arcbycenterpoint.gml:59:19 value '' does not match regular expression facet '[+\\-]?[0-9]+'",
+     "ERROR 1: samples/ch/geneva-agr-spb-arcbycenterpoint.gml:116:18 value '' does not match regular expression facet '[+\\-]?[0-9]+'"
+    ]
+   },
+   "gdal": {
+    "file": "samples/ch/geneva-agr-spb-arcbycenterpoint.gml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     3
+    ],
+    "stderr": []
+   },
+   "axis": {
+    "source_order": "x/y",
+    "first_position_as_written": [
+     2497636.2776999995,
+     1111458.6339999996
+    ],
+    "expected_first_xy": [
+     2497636.2776999995,
+     1111458.6339999996
+    ],
+    "gdal_first_xy": [
+     2497636.2777,
+     1111458.634
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "x/y",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 84,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:2056",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true
+      },
+      {
+       "check": "place",
+       "detail": "Switzerland (countries CHE, tolerance 5000 m); expected because: published by SITG, Canton of Geneva",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 1895.4
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "be-ngi-electricity-network-3d",
+   "axis_order": "x/y",
+   "axis_places": [
+    {
+     "layer": "countries",
+     "code": "BEL",
+     "why": "published by NGI (Belgian national mapping agency), nationwide network"
+    }
+   ],
+   "axis_scope": "source",
+   "file": "samples/be/ngi-electricity-network-3d.gml",
+   "source": "example_data/downloads/data.europa.eu/ac.ngi.be/d8a3792a_ElectricityNetwork_gml_L08.zip",
+   "member": "ElectricityNetwork.gml",
+   "covers": [
+    "3D coordinates (srsDimension=3)",
+    "INSPIRE Utility networks",
+    "GML 3.2"
+   ],
+   "publisher": "Nationaal Geografisch Instituut / Institut géographique national (NGI-IGN)",
+   "dataset": "INSPIRE Electricity Network",
+   "dataset_url": "https://data.europa.eu/data/datasets/be-ngi-ign-067c8ccb-50fa-4918-9f6b-6b1248b3bef3",
+   "licence": "cc-by-4",
+   "licence_evidence": "data.europa.eu distribution licence CC_BY_4_0; NGI open data policy: free open data under CC BY 4.0, cite as '©NGI-IGN, year, licence CC BY 4.0' and state modifications (https://ngi.be/faq-open-data-en/)",
+   "attribution": "Electricity network INSPIRE – ©NGI-IGN, 2021, licence CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); extract, modified (feature selection)",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "layer=Pole;count=1",
+     "layer=UtilityLink;count=1"
+    ],
+    "features_kept": 2,
+    "features_scanned": 20946,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "kept 2 of 20946 features scanned"
+    ],
+    "original_encoding": "UTF-8"
+   },
+   "provenance": {
+    "download_url": "https://ac.ngi.be/remoteclient-open/ngi-standard-open/Vectordata/INSPIRE/ElectricityNetwork_gml_L08.zip",
+    "retrieved": "2026-09-19T17:21:33",
+    "portal": "data.europa.eu"
+   },
+   "sha256": "79c3617aec3309a0da2097d22218cb57813d5b96ebd1cf05b3604e8bb76dcff2",
+   "bytes": 4646,
+   "validation": {
+    "status": "invalid",
+    "validator": "Xerces (GDAL GMLAS)",
+    "messages": [
+     "ERROR 1: samples/be/ngi-electricity-network-3d.gml:51:31 element 'currentStatus' is not allowed for content model '(metaDataProperty*,description?,descriptionReference?,identifier?,name*,boundedBy?,location?,beginLifespanVersion,inspireId?,endLifespanVersion?,inNetwork+,centrelineGeometry,fictitious,endNode?,startNode?,currentStatus,validFrom,validTo?,verticalPosition,utilityFacilityReference?,governmentalServiceReference?)'",
+     "ERROR 1: Validation errors encountered"
+    ]
+   },
+   "gdal": {
+    "file": "samples/be/ngi-electricity-network-3d.gml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 2,
+    "feature_counts": [
+     1,
+     1
+    ],
+    "stderr": []
+   },
+   "axis": {
+    "source_order": "x/y",
+    "first_position_as_written": [
+     729894.9015000015,
+     649980.7734000012
+    ],
+    "expected_first_xy": [
+     729894.9015000015,
+     649980.7734000012
+    ],
+    "gdal_first_xy": [
+     729894.901500002,
+     649980.773400001
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "x/y",
+     "status": "confirmed",
+     "scope": "source",
+     "positions_checked": 500,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:3812",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 1.0,
+       "passes": true,
+       "rejects_swapped": false
+      },
+      {
+       "check": "place",
+       "detail": "Belgium (countries BEL, tolerance 5000 m); expected because: published by NGI (Belgian national mapping agency), nationwide network",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.832,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 0.0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "de-sachsen-anhalt-inspire-su",
+   "axis_order": "y/x",
+   "axis_places": [
+    {
+     "layer": "countries",
+     "code": "DEU",
+     "why": "INSPIRE statistical units of Saxony-Anhalt"
+    }
+   ],
+   "file": "samples/de/sachsen-anhalt-inspire-statistical-units.gml",
+   "source": "example_data/downloads/data.europa.eu/geodatenportal.sachsen-anhalt.de/a663aebb_GDHST2_LSBB_SU.gml",
+   "covers": [
+    "INSPIRE application schema (su-vector 4.0) with nested properties",
+    "xlink:href references",
+    "GML 3.2"
+   ],
+   "publisher": "Landesstraßenbaubehörde (LSBB) Sachsen-Anhalt",
+   "dataset": "INSPIRE Statistical Units (LSBB)",
+   "dataset_url": "https://data.europa.eu/data/datasets/ae62d669-6cb7-425a-88ae-8f244dd3db71",
+   "licence": "dl-de-by-2",
+   "licence_evidence": "data.europa.eu distribution licence: http://dcat-ap.de/def/licenses/dl-by-de/2.0",
+   "attribution": "Landesstraßenbaubehörde Sachsen-Anhalt (LSBB); Datenlizenz Deutschland – Namensnennung – Version 2.0 (https://www.govdata.de/dl-de/by-2-0); Datensatz INSPIRE ST Statistical Units Road Construction Administration (https://data.europa.eu/data/datasets/ae62d669-6cb7-425a-88ae-8f244dd3db71); Daten geändert (Auszug)",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "count=2"
+    ],
+    "features_kept": 2,
+    "features_scanned": 2,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "kept 2 of 2 features scanned"
+    ],
+    "original_encoding": "UTF-8"
+   },
+   "provenance": {
+    "download_url": "https://geodatenportal.sachsen-anhalt.de/arcgisinspire/rest/directories/web/INSPIRE_LSBB/GDHST2_LSBB_SU_MapServer/GDHST2_LSBB_SU.gml",
+    "retrieved": "2026-09-19T17:22:26",
+    "portal": "data.europa.eu"
+   },
+   "sha256": "18aecc0c35fb8469f9f1c3f349a6fa3d9a7a796c04323cce0dda4965e79f4e0d",
+   "bytes": 5820,
+   "validation": {
+    "status": "valid",
+    "validator": "Xerces (GDAL GMLAS)",
+    "notes": [
+     "xmllint could not decide: warning: failed to load external entity \"https://inspire.ec.europa.eu/schemas/su-vector/4.0/StatisticalUnitVector.xsd\""
+    ]
+   },
+   "gdal": {
+    "file": "samples/de/sachsen-anhalt-inspire-statistical-units.gml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     2
+    ],
+    "stderr": []
+   },
+   "axis": {
+    "source_order": "y/x",
+    "first_position_as_written": [
+     51.733649206999985,
+     11.591498441999988
+    ],
+    "expected_first_xy": [
+     11.591498441999988,
+     51.733649206999985
+    ],
+    "gdal_first_xy": [
+     11.591498442,
+     51.733649207
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "y/x",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 4,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:4258",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true
+      },
+      {
+       "check": "place",
+       "detail": "Germany (countries DEU, tolerance 5000 m); expected because: INSPIRE statistical units of Saxony-Anhalt",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 5372.2
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "pl-gugik-mapserver-addresses-wfs100",
+   "axis_order": "x/y",
+   "axis_places": [
+    {
+     "layer": "pl_powiaty",
+     "code": "1062",
+     "why": "attributes ms:teryt 106201 and ms:miejscowosc Piotrków Trybunalski"
+    }
+   ],
+   "file": "samples/wfs/pl-gugik-mapserver-addresses-wfs100.xml",
+   "source": "example_data/wfs/mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses/ms_AD.Address/getfeature-1.0.0.xml",
+   "covers": [
+    "WFS 1.0.0 / GML 2 (gml:coordinates)",
+    "MapServer",
+    "EPSG:2180 short form, x/y order"
+   ],
+   "publisher": "Główny Urząd Geodezji i Kartografii (GUGiK)",
+   "dataset": "Polska usługa pobierania INSPIRE dla tematu Adresy",
+   "dataset_url": "https://mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses?SERVICE=WFS&REQUEST=GetCapabilities",
+   "licence": "pzgik",
+   "licence_evidence": "GetCapabilities: Fees 'No fees', AccessConstraints 'No constraints'",
+   "attribution": "Wykorzystano/opracowano na podstawie materiałów państwowego zasobu geodezyjnego i kartograficznego (GUGiK)",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "count=2"
+    ],
+    "features_kept": 2,
+    "features_scanned": 2,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "kept 2 of 2 features scanned"
+    ],
+    "original_encoding": "UTF-8"
+   },
+   "provenance": {
+    "download_url": "https://mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses?SERVICE=WFS&REQUEST=GetFeature&VERSION=1.0.0&TYPENAME=ms%3AAD.Address&MAXFEATURES=3",
+    "retrieved": "2026-09-19T16:27:48",
+    "portal": "WFS GetFeature"
+   },
+   "sha256": "0cd1b7b1655530962d32dc6b0c146234c0bf0565877fdcd1b0472bf056d93a8e",
+   "bytes": 3702,
+   "validation": {
+    "status": "valid",
+    "validator": "Xerces (GDAL GMLAS)",
+    "notes": [
+     "xmllint could not decide: /mnt/nvme/git/xeibe/ogc_schemas/filter/1.0.0/filter.xsd:9: element import: Schemas parser warning : Element '{http://www.w3.org/2001/XMLSchema}import': Skipping import of schema located at 'http://schemas.opengis.net/gml/2.1.2/geometry.xsd' for the namespace 'http://www.opengis.net/gml', since this namespace was already imported with the schema located at 'http://schemas.opengis.net/gml/2.1.2/feature.xsd'."
+    ]
+   },
+   "gdal": {
+    "file": "samples/wfs/pl-gugik-mapserver-addresses-wfs100.xml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     2
+    ],
+    "stderr": []
+   },
+   "axis": {
+    "source_order": "x/y",
+    "first_position_as_written": [
+     547502.59,
+     394384.17
+    ],
+    "expected_first_xy": [
+     547502.59,
+     394384.17
+    ],
+    "gdal_first_xy": [
+     547502.59,
+     394384.17
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "x/y",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 8,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:2180",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 1.0,
+       "passes": true,
+       "rejects_swapped": false
+      },
+      {
+       "check": "place",
+       "detail": "powiat Piotrków Trybunalski (pl_powiaty 1062); expected because: attributes ms:teryt 106201 and ms:miejscowosc Piotrków Trybunalski",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 213.0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "pl-gugik-mapserver-addresses-wfs110",
+   "axis_order": "y/x",
+   "axis_places": [
+    {
+     "layer": "pl_powiaty",
+     "code": "1062",
+     "why": "attributes ms:teryt 106201 and ms:miejscowosc Piotrków Trybunalski"
+    }
+   ],
+   "axis_same_as": "pl-gugik-mapserver-addresses-wfs100",
+   "file": "samples/wfs/pl-gugik-mapserver-addresses-wfs110.xml",
+   "source": "example_data/wfs/mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses/ms_AD.Address/getfeature-1.1.0.xml",
+   "covers": [
+    "WFS 1.1.0 / GML 3.1.1",
+    "MapServer",
+    "EPSG:2180 SHORT form but y/x (authority) order – producer quirk"
+   ],
+   "publisher": "Główny Urząd Geodezji i Kartografii (GUGiK)",
+   "dataset": "Polska usługa pobierania INSPIRE dla tematu Adresy",
+   "dataset_url": "https://mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses?SERVICE=WFS&REQUEST=GetCapabilities",
+   "licence": "pzgik",
+   "licence_evidence": "GetCapabilities: Fees 'No fees', AccessConstraints 'No constraints'",
+   "attribution": "Wykorzystano/opracowano na podstawie materiałów państwowego zasobu geodezyjnego i kartograficznego (GUGiK)",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "count=2"
+    ],
+    "features_kept": 2,
+    "features_scanned": 2,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "kept 2 of 2 features scanned"
+    ],
+    "original_encoding": "UTF-8"
+   },
+   "provenance": {
+    "download_url": "https://mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses?SERVICE=WFS&REQUEST=GetFeature&VERSION=1.1.0&TYPENAME=ms%3AAD.Address&MAXFEATURES=3",
+    "retrieved": "2026-09-19T16:27:47",
+    "portal": "WFS GetFeature"
+   },
+   "sha256": "761a1d6b26b0ec68355eee4efe45103b688fb99fd85a88b1583c434a803fa179",
+   "bytes": 3842,
+   "validation": {
+    "status": "valid",
+    "validator": "Xerces (GDAL GMLAS)",
+    "notes": [
+     "xmllint could not decide: /mnt/nvme/git/xeibe/ogc_schemas/gml/3.1.1/smil/smil20-language.xsd:33: element import: Schemas parser warning : Element '{http://www.w3.org/2001/XMLSchema}import': Skipping import of schema located at '/mnt/nvme/git/xeibe/ogc_schemas/gml/3.1.1/smil/smil20.xsd' for the namespace 'http://www.w3.org/2001/SMIL20/', since this namespace was already imported with the schema located at 'http://schemas.opengis.net/gml/3.1.1/smil/smil20.xsd'."
+    ]
+   },
+   "gdal": {
+    "file": "samples/wfs/pl-gugik-mapserver-addresses-wfs110.xml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     2
+    ],
+    "stderr": []
+   },
+   "axis": {
+    "source_order": "y/x",
+    "first_position_as_written": [
+     394384.17,
+     547502.59
+    ],
+    "expected_first_xy": [
+     547502.59,
+     394384.17
+    ],
+    "gdal_first_xy": [
+     394384.17,
+     547502.59
+    ],
+    "gdal_agrees": false,
+    "evidence": {
+     "axis_order": "y/x",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 8,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:2180",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 1.0,
+       "passes": true,
+       "rejects_swapped": false
+      },
+      {
+       "check": "place",
+       "detail": "powiat Piotrków Trybunalski (pl_powiaty 1062); expected because: attributes ms:teryt 106201 and ms:miejscowosc Piotrków Trybunalski",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 213.0
+       }
+      },
+      {
+       "check": "same_as",
+       "detail": "same positions as `pl-gugik-mapserver-addresses-wfs100` read in its recorded order (x/y)",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "pl-gugik-mapserver-addresses-wfs200",
+   "axis_order": "y/x",
+   "axis_places": [
+    {
+     "layer": "pl_powiaty",
+     "code": "1062",
+     "why": "attributes ms:teryt 106201 and ms:miejscowosc Piotrków Trybunalski"
+    }
+   ],
+   "axis_same_as": "pl-gugik-mapserver-addresses-wfs100",
+   "file": "samples/wfs/pl-gugik-mapserver-addresses-wfs200.xml",
+   "source": "example_data/wfs/mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses/ms_AD.Address/getfeature-2.0.0.xml",
+   "covers": [
+    "WFS 2.0.0 / GML 3.2",
+    "MapServer",
+    "urn:ogc:def:crs:EPSG::2180, y/x order",
+    "numberMatched/next paging attributes (next removed)"
+   ],
+   "publisher": "Główny Urząd Geodezji i Kartografii (GUGiK)",
+   "dataset": "Polska usługa pobierania INSPIRE dla tematu Adresy",
+   "dataset_url": "https://mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses?SERVICE=WFS&REQUEST=GetCapabilities",
+   "licence": "pzgik",
+   "licence_evidence": "GetCapabilities: Fees 'No fees', AccessConstraints 'No constraints'",
+   "attribution": "Wykorzystano/opracowano na podstawie materiałów państwowego zasobu geodezyjnego i kartograficznego (GUGiK)",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "count=2"
+    ],
+    "features_kept": 2,
+    "features_scanned": 2,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "FeatureCollection@numberReturned: 3 -> 2",
+     "FeatureCollection@next removed",
+     "kept 2 of 2 features scanned"
+    ],
+    "original_encoding": "UTF-8"
+   },
+   "provenance": {
+    "download_url": "https://mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses?SERVICE=WFS&REQUEST=GetFeature&VERSION=2.0.0&TYPENAMES=ms%3AAD.Address&COUNT=3",
+    "retrieved": "2026-09-19T16:27:46",
+    "portal": "WFS GetFeature"
+   },
+   "sha256": "faf40d881fee0ffc613f66359f0572046a06ed872de6b8efd57138bd4363fbf4",
+   "bytes": 4095,
+   "validation": {
+    "status": "valid",
+    "validator": "xmllint (libxml2)"
+   },
+   "gdal": {
+    "file": "samples/wfs/pl-gugik-mapserver-addresses-wfs200.xml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     2
+    ],
+    "stderr": []
+   },
+   "axis": {
+    "source_order": "y/x",
+    "first_position_as_written": [
+     394384.17,
+     547502.59
+    ],
+    "expected_first_xy": [
+     547502.59,
+     394384.17
+    ],
+    "gdal_first_xy": [
+     547502.59,
+     394384.17
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "y/x",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 8,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:2180",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 1.0,
+       "passes": true,
+       "rejects_swapped": false
+      },
+      {
+       "check": "place",
+       "detail": "powiat Piotrków Trybunalski (pl_powiaty 1062); expected because: attributes ms:teryt 106201 and ms:miejscowosc Piotrków Trybunalski",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 213.0
+       }
+      },
+      {
+       "check": "same_as",
+       "detail": "same positions as `pl-gugik-mapserver-addresses-wfs100` read in its recorded order (x/y)",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "pl-gugik-inspire-au-wfs200-latlon",
+   "axis_order": "y/x",
+   "axis_places": [
+    {
+     "layer": "pl_gminy",
+     "code": "1434082",
+     "tolerance_m": 100,
+     "why": "au:nationalCode 1434082 (gmina Poświętne); the feature IS that unit, so boundary vertices lie on the PRG boundary (100 m tolerance)"
+    }
+   ],
+   "file": "samples/wfs/pl-gugik-inspire-au-wfs200-latlon.xml",
+   "source": "example_data/wfs/mapy.geoportal.gov.pl/wss/service/wfsAU/guest/au_AdministrativeUnit/getfeature-2.0.0.xml",
+   "covers": [
+    "WFS 2.0.0 / GML 3.2",
+    "INSPIRE Administrative Units (complex feature)",
+    "http://www.opengis.net/def/crs/EPSG/0/4258 lat/lon"
+   ],
+   "publisher": "Główny Urząd Geodezji i Kartografii (GUGiK)",
+   "dataset": "Polska usługa pobierania INSPIRE dla tematu Jednostki Administracyjne",
+   "dataset_url": "https://mapy.geoportal.gov.pl/wss/service/wfsAU/guest?SERVICE=WFS&REQUEST=GetCapabilities",
+   "licence": "pzgik",
+   "licence_evidence": "GetCapabilities: Fees 'Brak warunków dostępu i użytkowania', AccessConstraints 'Brak ograniczeń w publicznym dostępie'",
+   "attribution": "Wykorzystano/opracowano na podstawie materiałów państwowego zasobu geodezyjnego i kartograficznego (GUGiK)",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "count=1"
+    ],
+    "features_kept": 1,
+    "features_scanned": 1,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "FeatureCollection@numberReturned: 3 -> 1",
+     "kept 1 of 1 features scanned"
+    ],
+    "original_encoding": "UTF-8"
+   },
+   "provenance": {
+    "download_url": "https://mapy.geoportal.gov.pl/wss/service/wfsAU/guest?SERVICE=WFS&REQUEST=GetFeature&VERSION=2.0.0&TYPENAMES=au%3AAdministrativeUnit&COUNT=3",
+    "retrieved": "2026-09-19T16:33:03",
+    "portal": "WFS GetFeature"
+   },
+   "sha256": "12d23467cf7c406778c6c8a5e8c50e95230333cde9823e7cf0841a7f38c0e9e2",
+   "bytes": 64293,
+   "validation": {
+    "status": "valid",
+    "validator": "xmllint (libxml2)"
+   },
+   "gdal": {
+    "file": "samples/wfs/pl-gugik-inspire-au-wfs200-latlon.xml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     1
+    ],
+    "stderr": [
+     "Warning 1: Field with same name (identifier) already exists in (AdministrativeUnit). Skipping newer ones"
+    ]
+   },
+   "axis": {
+    "source_order": "y/x",
+    "first_position_as_written": [
+     52.28670008,
+     21.39951259
+    ],
+    "expected_first_xy": [
+     21.39951259,
+     52.28670008
+    ],
+    "gdal_first_xy": [
+     21.39951259,
+     52.28670008
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "y/x",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 500,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:4258",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true
+      },
+      {
+       "check": "place",
+       "detail": "Poświętne (pl_gminy 1434082, tolerance 100 m); expected because: au:nationalCode 1434082 (gmina Poświętne); the feature IS that unit, so boundary vertices lie on the PRG boundary (100 m tolerance)",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 4328.0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "pl-gugik-inspire-bu-wfs200-legacy-url-latlon",
+   "axis_order": "y/x",
+   "axis_places": [
+    {
+     "layer": "countries",
+     "code": "POL",
+     "why": "Polish national building service (GUGiK)"
+    }
+   ],
+   "file": "samples/wfs/pl-gugik-inspire-bu-wfs200-legacy-url-latlon.xml",
+   "source": "example_data/wfs/mapy.geoportal.gov.pl/wss/service/wfsBU/guest/bu-core2d_Building/getfeature-2.0.0.xml",
+   "covers": [
+    "WFS 2.0.0 / GML 3.2",
+    "INSPIRE Buildings",
+    "LEGACY URL srsName epsg.xml#4258 but lat/lon order"
+   ],
+   "publisher": "Główny Urząd Geodezji i Kartografii (GUGiK)",
+   "dataset": "Usługa pobierania WFS z budynkami INSPIRE dla obszaru Polski",
+   "dataset_url": "https://mapy.geoportal.gov.pl/wss/service/wfsBU/guest?SERVICE=WFS&REQUEST=GetCapabilities",
+   "licence": "pzgik",
+   "licence_evidence": "GetCapabilities: Fees 'Brak', AccessConstraints 'Brak'",
+   "attribution": "Wykorzystano/opracowano na podstawie materiałów państwowego zasobu geodezyjnego i kartograficznego (GUGiK)",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "count=2"
+    ],
+    "features_kept": 2,
+    "features_scanned": 2,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "FeatureCollection@numberReturned: 3 -> 2",
+     "kept 2 of 2 features scanned"
+    ],
+    "original_encoding": "UTF-8"
+   },
+   "provenance": {
+    "download_url": "https://mapy.geoportal.gov.pl/wss/service/wfsBU/guest?SERVICE=WFS&REQUEST=GetFeature&VERSION=2.0.0&TYPENAMES=bu-core2d%3ABuilding&COUNT=3",
+    "retrieved": "2026-09-19T16:33:17",
+    "portal": "WFS GetFeature"
+   },
+   "sha256": "11cc96d9baed85d27dd7116359a710f2d5d3c97cab85c5261aaf9944e1e1cab5",
+   "bytes": 4803,
+   "validation": {
+    "status": "valid",
+    "validator": "xmllint (libxml2)"
+   },
+   "gdal": {
+    "file": "samples/wfs/pl-gugik-inspire-bu-wfs200-legacy-url-latlon.xml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     2
+    ],
+    "stderr": [
+     "Warning 1: Field with same name (identifier) already exists in (Building). Skipping newer ones"
+    ]
+   },
+   "axis": {
+    "source_order": "y/x",
+    "first_position_as_written": [
+     50.00715042,
+     19.97119598
+    ],
+    "expected_first_xy": [
+     19.97119598,
+     50.00715042
+    ],
+    "gdal_first_xy": [
+     50.00715042,
+     19.97119598
+    ],
+    "gdal_agrees": false,
+    "evidence": {
+     "axis_order": "y/x",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 18,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:4258",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true
+      },
+      {
+       "check": "place",
+       "detail": "Poland (countries POL, tolerance 5000 m); expected because: Polish national building service (GUGiK)",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 4027.9
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "fr-sandre-stations-wfs100-urn-lonlat",
+   "axis_order": "x/y",
+   "axis_places": [
+    {
+     "layer": "countries",
+     "code": "FRA",
+     "why": "French national water data service (Sandre); France incl. overseas departments"
+    }
+   ],
+   "file": "samples/wfs/fr-sandre-stations-wfs100-urn-lonlat.xml",
+   "source": "example_data/wfs/services.sandre.eaufrance.fr/geo/stq/sa_StationMesureEauxSurface/getfeature-1.0.0.xml",
+   "covers": [
+    "WFS 1.0.0",
+    "URN srsName urn:ogc:def:crs:EPSG::4326 but lon/lat order"
+   ],
+   "publisher": "Sandre – Système d'Information sur l'Eau (Office International de l'Eau for OFB)",
+   "dataset": "Stations de mesure de la qualité des eaux superficielles continentales (STQ)",
+   "dataset_url": "https://services.sandre.eaufrance.fr/geo/stq?SERVICE=WFS&REQUEST=GetCapabilities",
+   "licence": "etalab-2",
+   "licence_evidence": "the same STQ station data is published on data.gouv.fr by 'Système d'Information sur l'Eau' under Licence Ouverte 2.0 (https://www.data.gouv.fr/datasets/points-de-prelevements-associes-aux-stations-de-mesure-de-la-qualite-des-eaux-superficielles-continentales-stq-france-entiere); GetCapabilities: Fees 'no conditions apply', AccessConstraints 'accés libre'",
+   "attribution": "Source : Sandre – Système d'Information sur l'Eau, stations de mesure de la qualité des eaux superficielles continentales, extrait du service WFS le 2026-09-19 (Licence Ouverte 2.0)",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "count=2"
+    ],
+    "features_kept": 2,
+    "features_scanned": 2,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "kept 2 of 2 features scanned"
+    ],
+    "original_encoding": "UTF-8"
+   },
+   "provenance": {
+    "download_url": "https://services.sandre.eaufrance.fr/geo/stq?SERVICE=WFS&REQUEST=GetFeature&VERSION=1.0.0&TYPENAME=sa%3AStationMesureEauxSurface&MAXFEATURES=3",
+    "retrieved": "2026-09-19T17:08:45",
+    "portal": "WFS GetFeature"
+   },
+   "sha256": "d96f540661af1c42646f752e89894a8c4c82964a8f6168973265fc2c758063b2",
+   "bytes": 6395,
+   "validation": {
+    "status": "valid",
+    "validator": "Xerces (GDAL GMLAS)",
+    "notes": [
+     "xmllint could not decide: /mnt/nvme/git/xeibe/ogc_schemas/filter/1.0.0/filter.xsd:9: element import: Schemas parser warning : Element '{http://www.w3.org/2001/XMLSchema}import': Skipping import of schema located at 'http://schemas.opengis.net/gml/2.1.2/geometry.xsd' for the namespace 'http://www.opengis.net/gml', since this namespace was already imported with the schema located at 'http://schemas.opengis.net/gml/2.1.2/feature.xsd'."
+    ]
+   },
+   "gdal": {
+    "file": "samples/wfs/fr-sandre-stations-wfs100-urn-lonlat.xml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     2
+    ],
+    "stderr": []
+   },
+   "axis": {
+    "source_order": "x/y",
+    "first_position_as_written": [
+     45.127806,
+     -12.807975
+    ],
+    "expected_first_xy": [
+     45.127806,
+     -12.807975
+    ],
+    "gdal_first_xy": [
+     -12.807975,
+     45.127806
+    ],
+    "gdal_agrees": false,
+    "evidence": {
+     "axis_order": "x/y",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 8,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:4326",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 1.0,
+       "passes": true,
+       "rejects_swapped": false
+      },
+      {
+       "check": "place",
+       "detail": "France (countries FRA, tolerance 5000 m); expected because: French national water data service (Sandre); France incl. overseas departments",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 725.9
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "fr-sandre-stations-wfs110-urn-latlon",
+   "axis_order": "y/x",
+   "axis_places": [
+    {
+     "layer": "countries",
+     "code": "FRA",
+     "why": "French national water data service (Sandre); France incl. overseas departments"
+    }
+   ],
+   "axis_same_as": "fr-sandre-stations-wfs100-urn-lonlat",
+   "file": "samples/wfs/fr-sandre-stations-wfs110-urn-latlon.xml",
+   "source": "example_data/wfs/services.sandre.eaufrance.fr/geo/stq/sa_StationMesureEauxSurface/getfeature-1.1.0.xml",
+   "covers": [
+    "WFS 1.1.0",
+    "same data and srsName as the 1.0.0 sample, lat/lon order"
+   ],
+   "publisher": "Sandre – Système d'Information sur l'Eau (Office International de l'Eau for OFB)",
+   "dataset": "Stations de mesure de la qualité des eaux superficielles continentales (STQ)",
+   "dataset_url": "https://services.sandre.eaufrance.fr/geo/stq?SERVICE=WFS&REQUEST=GetCapabilities",
+   "licence": "etalab-2",
+   "licence_evidence": "the same STQ station data is published on data.gouv.fr by 'Système d'Information sur l'Eau' under Licence Ouverte 2.0 (https://www.data.gouv.fr/datasets/points-de-prelevements-associes-aux-stations-de-mesure-de-la-qualite-des-eaux-superficielles-continentales-stq-france-entiere); GetCapabilities: Fees 'no conditions apply', AccessConstraints 'accés libre'",
+   "attribution": "Source : Sandre – Système d'Information sur l'Eau, stations de mesure de la qualité des eaux superficielles continentales, extrait du service WFS le 2026-09-19 (Licence Ouverte 2.0)",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "count=2"
+    ],
+    "features_kept": 2,
+    "features_scanned": 2,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "kept 2 of 2 features scanned"
+    ],
+    "original_encoding": "UTF-8"
+   },
+   "provenance": {
+    "download_url": "https://services.sandre.eaufrance.fr/geo/stq?SERVICE=WFS&REQUEST=GetFeature&VERSION=1.1.0&TYPENAME=sa%3AStationMesureEauxSurface&MAXFEATURES=3",
+    "retrieved": "2026-09-19T17:08:44",
+    "portal": "WFS GetFeature"
+   },
+   "sha256": "991bf241796bc822f8f48e2120e8933dc4e9357f021e852d45281598b8c0ce18",
+   "bytes": 6535,
+   "validation": {
+    "status": "valid",
+    "validator": "Xerces (GDAL GMLAS)",
+    "notes": [
+     "xmllint could not decide: warning: failed to load external entity \"https://services.sandre.eaufrance.fr/geo/stq?SERVICE=WFS&VERSION=1.1.0&REQUEST=DescribeFeatureType&TYPENAME=sa:StationMesureEauxSurface&OUTPUTFORMAT=text/xml;%20subtype=gml/3.1.1\""
+    ]
+   },
+   "gdal": {
+    "file": "samples/wfs/fr-sandre-stations-wfs110-urn-latlon.xml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     2
+    ],
+    "stderr": []
+   },
+   "axis": {
+    "source_order": "y/x",
+    "first_position_as_written": [
+     -12.807975,
+     45.127806
+    ],
+    "expected_first_xy": [
+     45.127806,
+     -12.807975
+    ],
+    "gdal_first_xy": [
+     45.127806,
+     -12.807975
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "y/x",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 8,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:4326",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 1.0,
+       "passes": true,
+       "rejects_swapped": false
+      },
+      {
+       "check": "place",
+       "detail": "France (countries FRA, tolerance 5000 m); expected because: French national water data service (Sandre); France incl. overseas departments",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 725.9
+       }
+      },
+      {
+       "check": "same_as",
+       "detail": "same positions as `fr-sandre-stations-wfs100-urn-lonlat` read in its recorded order (x/y)",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "ee-geoserver-af-wfs100-legacy-url",
+   "axis_order": "x/y",
+   "axis_places": [
+    {
+     "layer": "countries",
+     "code": "EST",
+     "why": "Estonian national INSPIRE service"
+    }
+   ],
+   "file": "samples/wfs/ee-geoserver-af-wfs100-legacy-url.xml",
+   "source": "example_data/wfs/inspire.geoportaal.ee/geoserver/AF_holding_site/wfs/AF_holding_site_AF.AgriculturalHolding/getfeature-1.0.0.xml",
+   "covers": [
+    "WFS 1.0.0 / GML 2",
+    "GeoServer",
+    "legacy URL epsg.xml#3301, x/y order"
+   ],
+   "publisher": "Põllumajanduse Registrite ja Informatsiooni Amet (PRIA, data owner); service by Maa- ja Ruumiamet",
+   "dataset": "INSPIRE (AF) – Eesti põllumajandus- ja vesiviljelusrajatised",
+   "dataset_url": "https://inspire.geoportaal.ee/geoserver/AF_holding_site/wfs?SERVICE=WFS&REQUEST=GetCapabilities",
+   "licence": "cc-by-sa-3-ee",
+   "licence_evidence": "layer metadata (MetadataURL in GetCapabilities) https://metadata.geoportaal.ee/geonetwork/srv/est/catalog.search#/metadata/0a3587dc-c154-432d-b79e-7b8410555bbd: otherConstraints 'Andmete kasutamisel nõustute Creative Commons 3.0 litsentsiga: https://creativecommons.org/licenses/by-sa/3.0/ee/legalcode'; GetCapabilities Fees/AccessConstraints 'puudub' refer to access only",
+   "attribution": "Allikas: Põllumajanduse Registrite ja Informatsiooni Amet (PRIA), Eesti põllumajandus- ja vesiviljelusettevõtted, INSPIRE WFS of Maa- ja Ruumiamet; CC BY-SA 3.0 EE; excerpt, modified (feature selection)",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "count=2"
+    ],
+    "features_kept": 2,
+    "features_scanned": 2,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "kept 2 of 2 features scanned"
+    ],
+    "original_encoding": "UTF-8"
+   },
+   "provenance": {
+    "download_url": "https://inspire.geoportaal.ee/geoserver/AF_holding_site/wfs?SERVICE=WFS&REQUEST=GetFeature&VERSION=1.0.0&TYPENAME=AF_holding_site%3AAF.AgriculturalHolding&MAXFEATURES=3",
+    "retrieved": "2026-09-19T17:08:29",
+    "portal": "WFS GetFeature"
+   },
+   "sha256": "ce6fa106e518fd8f5740e804ad111ec1afe03a05e5a45bdcba5dddbb7cd282f5",
+   "bytes": 5224,
+   "validation": {
+    "status": "invalid",
+    "validator": "Xerces (GDAL GMLAS)",
+    "messages": [
+     "ERROR 1: Validation errors encountered"
+    ]
+   },
+   "gdal": {
+    "file": "samples/wfs/ee-geoserver-af-wfs100-legacy-url.xml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     2
+    ],
+    "stderr": [
+     "ERROR 1: Cannot import http://www.opengis.net/gml/srs/epsg.xml#3301 due to ALLOW_NETWORK_ACCESS=NO",
+     "ERROR 1: Cannot import http://www.opengis.net/gml/srs/epsg.xml#3301 due to ALLOW_NETWORK_ACCESS=NO"
+    ]
+   },
+   "axis": {
+    "source_order": "x/y",
+    "first_position_as_written": [
+     689028.23,
+     6571225.71
+    ],
+    "expected_first_xy": [
+     689028.23,
+     6571225.71
+    ],
+    "gdal_first_xy": [
+     689028.23,
+     6571225.71
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "x/y",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 2,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:3301",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true
+      },
+      {
+       "check": "place",
+       "detail": "Estonia (countries EST, tolerance 5000 m); expected because: Estonian national INSPIRE service",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 7044.8
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "ee-geoserver-af-wfs110-urnx-yx",
+   "axis_order": "y/x",
+   "axis_places": [
+    {
+     "layer": "countries",
+     "code": "EST",
+     "why": "Estonian national INSPIRE service"
+    }
+   ],
+   "axis_same_as": "ee-geoserver-af-wfs100-legacy-url",
+   "file": "samples/wfs/ee-geoserver-af-wfs110-urnx-yx.xml",
+   "source": "example_data/wfs/inspire.geoportaal.ee/geoserver/AF_holding_site/wfs/AF_holding_site_AF.AgriculturalHolding/getfeature-1.1.0.xml",
+   "covers": [
+    "WFS 1.1.0 / GML 3.1.1",
+    "GeoServer",
+    "urn:x-ogc:def:crs:EPSG:3301, y/x (authority) order"
+   ],
+   "publisher": "Põllumajanduse Registrite ja Informatsiooni Amet (PRIA, data owner); service by Maa- ja Ruumiamet",
+   "dataset": "INSPIRE (AF) – Eesti põllumajandus- ja vesiviljelusrajatised",
+   "dataset_url": "https://inspire.geoportaal.ee/geoserver/AF_holding_site/wfs?SERVICE=WFS&REQUEST=GetCapabilities",
+   "licence": "cc-by-sa-3-ee",
+   "licence_evidence": "layer metadata (MetadataURL in GetCapabilities) https://metadata.geoportaal.ee/geonetwork/srv/est/catalog.search#/metadata/0a3587dc-c154-432d-b79e-7b8410555bbd: otherConstraints 'Andmete kasutamisel nõustute Creative Commons 3.0 litsentsiga: https://creativecommons.org/licenses/by-sa/3.0/ee/legalcode'; GetCapabilities Fees/AccessConstraints 'puudub' refer to access only",
+   "attribution": "Allikas: Põllumajanduse Registrite ja Informatsiooni Amet (PRIA), Eesti põllumajandus- ja vesiviljelusettevõtted, INSPIRE WFS of Maa- ja Ruumiamet; CC BY-SA 3.0 EE; excerpt, modified (feature selection)",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "count=2"
+    ],
+    "features_kept": 2,
+    "features_scanned": 2,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "FeatureCollection@numberOfFeatures: 3 -> 2",
+     "kept 2 of 2 features scanned"
+    ],
+    "original_encoding": "UTF-8"
+   },
+   "provenance": {
+    "download_url": "https://inspire.geoportaal.ee/geoserver/AF_holding_site/wfs?SERVICE=WFS&REQUEST=GetFeature&VERSION=1.1.0&TYPENAME=AF_holding_site%3AAF.AgriculturalHolding&MAXFEATURES=3",
+    "retrieved": "2026-09-19T17:08:29",
+    "portal": "WFS GetFeature"
+   },
+   "sha256": "3c03bcb180597ac501a88442f876add42593cdd3eae86c1cd29f0d10a9947f35",
+   "bytes": 5439,
+   "validation": {
+    "status": "valid",
+    "validator": "Xerces (GDAL GMLAS)",
+    "notes": [
+     "xmllint could not decide: warning: failed to load external entity \"https://inspire.geoportaal.ee/geoserver/AF_holding_site/wfs?service=WFS&version=1.1.0&request=DescribeFeatureType&typeName=AF_holding_site%3AAF.AgriculturalHolding\""
+    ]
+   },
+   "gdal": {
+    "file": "samples/wfs/ee-geoserver-af-wfs110-urnx-yx.xml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     2
+    ],
+    "stderr": []
+   },
+   "axis": {
+    "source_order": "y/x",
+    "first_position_as_written": [
+     6571225.71,
+     689028.23
+    ],
+    "expected_first_xy": [
+     689028.23,
+     6571225.71
+    ],
+    "gdal_first_xy": [
+     689028.23,
+     6571225.71
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "y/x",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 2,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:3301",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true
+      },
+      {
+       "check": "place",
+       "detail": "Estonia (countries EST, tolerance 5000 m); expected because: Estonian national INSPIRE service",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 7044.8
+       }
+      },
+      {
+       "check": "same_as",
+       "detail": "same positions as `ee-geoserver-af-wfs100-legacy-url` read in its recorded order (x/y)",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "at-wien-geoserver-gml2-wfs100",
+   "axis_order": "x/y",
+   "axis_places": [
+    {
+     "layer": "countries",
+     "code": "AUT",
+     "why": "City of Vienna open data"
+    }
+   ],
+   "file": "samples/wfs/at-wien-geoserver-gml2-wfs100.xml",
+   "source": "example_data/wfs/data.wien.gv.at/daten/geo/ogdwien_SCOOTERABSTELLOGD/getfeature-1.0.0.xml",
+   "covers": [
+    "WFS 1.0.0 / GML 2",
+    "GeoServer",
+    "gml:coordinates with cs/ts",
+    "epsg.xml#31256"
+   ],
+   "publisher": "Stadt Wien – data.wien.gv.at",
+   "dataset": "Abstellflächen für E-Scooter (SCOOTERABSTELLOGD)",
+   "dataset_url": "https://data.wien.gv.at/daten/geo?SERVICE=WFS&REQUEST=GetCapabilities",
+   "licence": "cc-by-4",
+   "licence_evidence": "data.gv.at record https://www.data.gv.at/katalog/dataset/90e4765e-4d5f-4ec2-8b41-ce9eab737c3e (Scooterabstellplätze Wien): CC BY 4.0; https://data.wien.gv.at/nutzungsbedingungen: OGD Wien under CC BY 4.0 with 'Datenquelle: Stadt Wien – data.wien.gv.at' (GetCapabilities Fees still names CC BY 3.0 AT, outdated)",
+   "attribution": "Datenquelle: Stadt Wien – data.wien.gv.at (CC BY 4.0); Auszug, verändert",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "count=2"
+    ],
+    "features_kept": 2,
+    "features_scanned": 2,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "kept 2 of 2 features scanned"
+    ],
+    "original_encoding": "UTF-8"
+   },
+   "provenance": {
+    "download_url": "https://data.wien.gv.at/daten/geo?SERVICE=WFS&REQUEST=GetFeature&VERSION=1.0.0&TYPENAME=ogdwien%3ASCOOTERABSTELLOGD&MAXFEATURES=3",
+    "retrieved": "2026-09-19T17:08:09",
+    "portal": "WFS GetFeature"
+   },
+   "sha256": "dd0bf40d0ba376869d9efad86bf9eea085a1618bfc436557e537d4db334e6855",
+   "bytes": 2061,
+   "validation": {
+    "status": "schema unavailable",
+    "messages": [
+     "warning: failed to load external entity \"https://stp.wien.gv.at/geoserverneuogd/schemas/wfs/1.0.0/WFS-basic.xsd\"",
+     "/tmp/tmpu2d3b4wc.xsd:3: element import: Schemas parser warning : Element '{http://www.w3.org/2001/XMLSchema}import': Failed to locate a schema at location 'https://stp.wien.gv.at/geoserverneuogd/schemas/wfs/1.0.0/WFS-basic.xsd'. Skipping the import.",
+     "warning: failed to load external entity \"https://stp.wien.gv.at/geoserverneuogd/ogdwien/wfs?service=WFS&version=1.0.0&request=DescribeFeatureType&typeName=ogdwien%3ASCOOTERABSTELLOGD\"",
+     "/tmp/tmpu2d3b4wc.xsd:4: element import: Schemas parser warning : Element '{http://www.w3.org/2001/XMLSchema}import': Failed to locate a schema at location 'https://stp.wien.gv.at/geoserverneuogd/ogdwien/wfs?service=WFS&version=1.0.0&request=DescribeFeatureType&typeName=ogdwien%3ASCOOTERABSTELLOGD'. Skipping the import."
+    ]
+   },
+   "gdal": {
+    "file": "samples/wfs/at-wien-geoserver-gml2-wfs100.xml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     2
+    ],
+    "stderr": [
+     "ERROR 1: Cannot import http://www.opengis.net/gml/srs/epsg.xml#31256 due to ALLOW_NETWORK_ACCESS=NO",
+     "ERROR 1: Cannot import http://www.opengis.net/gml/srs/epsg.xml#31256 due to ALLOW_NETWORK_ACCESS=NO"
+    ]
+   },
+   "axis": {
+    "source_order": "x/y",
+    "first_position_as_written": [
+     2502.5415,
+     339865.8076
+    ],
+    "expected_first_xy": [
+     2502.5415,
+     339865.8076
+    ],
+    "gdal_first_xy": [
+     2502.5415,
+     339865.8076
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "x/y",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 2,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:31256",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true
+      },
+      {
+       "check": "place",
+       "detail": "Austria (countries AUT, tolerance 5000 m); expected because: City of Vienna open data",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 386.3
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "de-bfn-wfs100-short-latlon",
+   "axis_order": "y/x",
+   "axis_places": [
+    {
+     "layer": "countries",
+     "code": "DEU",
+     "why": "German federal nature agency (BfN), species distribution in Germany"
+    }
+   ],
+   "file": "samples/wfs/de-bfn-inspire-sd-wfs100-short-latlon.xml",
+   "source": "example_data/wfs/geodienste.bfn.de/ogc/wfs/INSPIRE_SD_DE_distribution/SD_INSPIRE_SD_VORKOMMEN.SpeciesDistributionUnitS/getfeature-1.0.0.xml",
+   "covers": [
+    "WFS 1.0.0",
+    "short srsName EPSG:4258 but lat/lon order",
+    "INSPIRE Species Distribution"
+   ],
+   "publisher": "Bundesamt für Naturschutz (BfN)",
+   "dataset": "WFS INSPIRE SD DE Vorkommen",
+   "dataset_url": "https://geodienste.bfn.de/ogc/wfs/INSPIRE_SD_DE_distribution?SERVICE=WFS&REQUEST=GetCapabilities",
+   "licence": "geonutzv",
+   "licence_evidence": "GeoNutzV (§ 3: keep the source notice, add a modification notice); GetCapabilities Fees 'Die Nutzung des Dienstes ist entgeltfrei.', AccessConstraints: 'Dieser Dienst und die darin verfügbaren Daten können gemäß der Nutzungsbestimmungen für die Bereitstellung von Geodaten des Bundes genutzt werden. Quelle: Bundesamt für Naturschutz (BfN) Jahr.'",
+   "attribution": "Quelle: Bundesamt für Naturschutz (BfN) 2026; Daten verändert (Auszug) – Veränderungshinweis nach § 3 Nr. 2 GeoNutzV",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "count=2"
+    ],
+    "features_kept": 2,
+    "features_scanned": 2,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "kept 2 of 2 features scanned"
+    ],
+    "original_encoding": "utf-8"
+   },
+   "provenance": {
+    "download_url": "https://geodienste.bfn.de/ogc/wfs/INSPIRE_SD_DE_distribution?SERVICE=WFS&REQUEST=GetFeature&VERSION=1.0.0&TYPENAME=SD%3AINSPIRE_SD_VORKOMMEN.SpeciesDistributionUnitS&MAXFEATURES=3",
+    "retrieved": "2026-09-19T17:08:10",
+    "portal": "WFS GetFeature"
+   },
+   "sha256": "d20314b111f363c70d14d7e1afa4dd3a9b6681d2c44b18e80a2fea5929553dd0",
+   "bytes": 11128,
+   "validation": {
+    "status": "schema unavailable",
+    "messages": [
+     "warning: failed to load external entity \"https://geodienste.bfn.de/server/services/inspire/INSPIRE_SD_DE_dis/MapServer/WFSServer?service=wfs%26version=1.0.0%26request=DescribeFeatureType\"",
+     "/tmp/tmpsowsn8j6.xsd:5: element import: Schemas parser warning : Element '{http://www.w3.org/2001/XMLSchema}import': Failed to locate a schema at location 'https://geodienste.bfn.de/server/services/inspire/INSPIRE_SD_DE_dis/MapServer/WFSServer?service=wfs%26version=1.0.0%26request=DescribeFeatureType'. Skipping the import.",
+     "ERROR 1: https://geodienste.bfn.de/server/services/inspire/INSPIRE_SD_DE_dis/MapServer/WFSServer?service=wfs%26version=1.0.0%26request=DescribeFeatureType:84:7 expected end of tag 'img'",
+     "ERROR 1: loadGrammar failed"
+    ]
+   },
+   "gdal": {
+    "file": "samples/wfs/de-bfn-inspire-sd-wfs100-short-latlon.xml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     2
+    ],
+    "stderr": []
+   },
+   "axis": {
+    "source_order": "y/x",
+    "first_position_as_written": [
+     49.33990386,
+     6.54544932
+    ],
+    "expected_first_xy": [
+     6.54544932,
+     49.33990386
+    ],
+    "gdal_first_xy": [
+     49.33990386,
+     6.54544932
+    ],
+    "gdal_agrees": false,
+    "evidence": {
+     "axis_order": "y/x",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 171,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:4258",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true
+      },
+      {
+       "check": "place",
+       "detail": "Germany (countries DEU, tolerance 5000 m); expected because: German federal nature agency (BfN), species distribution in Germany",
+       "recorded_order_inside": 0.994,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.4,
+        "swapped": 5699.0
+       }
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "static": [
+  {
+   "name": "gdal-gml-geometry-cases",
+   "file": "gdal/gml_geometry_cases.jsonl",
+   "covers": [
+    "292 inline GML geometry snippets with GDAL 3.13.3 results (181 parsed, 111 rejected)"
+   ],
+   "publisher": "GDAL/OGR project (Frank Warmerdam, Even Rouault and contributors)",
+   "dataset": "autotest/ogr/ogr_gml_geom.py",
+   "dataset_url": "https://github.com/OSGeo/gdal/blob/ec7b4b055f80b69dac45b303ed92376301ee2f34/autotest/ogr/ogr_gml_geom.py",
+   "licence_name": "MIT",
+   "licence_url": "https://github.com/OSGeo/gdal/blob/master/LICENSE.TXT",
+   "licence_evidence": "file header of ogr_gml_geom.py; notice in tests/data/LICENSE-GDAL.txt",
+   "attribution": "Copyright (c) 2003 Frank Warmerdam; Copyright (c) 2009-2014 Even Rouault",
+   "generated_by": "scripts/corpus/extract_gdal_geom_cases.py",
+   "sha256": "75c51ea020cd708c662058b91cfd2e4b92dfaebdab9e65c531cf7abe8620694c",
+   "bytes": 145157
+  }
+ ],
+ "licences": {
+  "cc-by-4": {
+   "name": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
+   "url": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  "cc-by-sa-3-ee": {
+   "name": "Creative Commons Attribution-ShareAlike 3.0 Estonia (CC BY-SA 3.0 EE) – excerpts stay under this licence",
+   "url": "https://creativecommons.org/licenses/by-sa/3.0/ee/legalcode"
+  },
+  "etalab-2": {
+   "name": "Licence Ouverte / Open Licence 2.0 (Etalab)",
+   "url": "https://www.etalab.gouv.fr/licence-ouverte-open-licence/"
+  },
+  "dl-de-by-2": {
+   "name": "Datenlizenz Deutschland – Namensnennung – Version 2.0 (dl-de/by-2-0)",
+   "url": "https://www.govdata.de/dl-de/by-2-0"
+  },
+  "geonutzv": {
+   "name": "Nutzungsbestimmungen für die Bereitstellung von Geodaten des Bundes (GeoNutzV)",
+   "url": "https://www.gesetze-im-internet.de/geonutzv/"
+  },
+  "sitg-open": {
+   "name": "SITG – conditions générales d'utilisation des données et produits du SITG en libre accès (version of 19 May 2026; level A open data; source and modifications must be stated, § 5.3)",
+   "url": "https://opendata.swiss/en/terms-of-use#terms_open"
+  },
+  "pzgik": {
+   "name": "Public domain in effect – Polish official material (art. 4 pkt 2 ustawy o prawie autorskim), PZGiK data made available free of charge (Prawo geodezyjne i kartograficzne)",
+   "url": "https://isap.sejm.gov.pl/isap.nsf/DocDetails.xsp?id=WDU19940240083"
+  }
+ }
+}

@@ -1,0 +1,102 @@
+
+Layer name: StationMesureEauxSurface
+Geometry: Point
+Feature Count: 2
+Extent: (45.127806, -12.884430) - (45.131043, -12.807975)
+Layer SRS WKT:
+GEOGCRS["WGS 84",
+    ENSEMBLE["World Geodetic System 1984 ensemble",
+        MEMBER["World Geodetic System 1984 (Transit)"],
+        MEMBER["World Geodetic System 1984 (G730)"],
+        MEMBER["World Geodetic System 1984 (G873)"],
+        MEMBER["World Geodetic System 1984 (G1150)"],
+        MEMBER["World Geodetic System 1984 (G1674)"],
+        MEMBER["World Geodetic System 1984 (G1762)"],
+        MEMBER["World Geodetic System 1984 (G2139)"],
+        MEMBER["World Geodetic System 1984 (G2296)"],
+        ELLIPSOID["WGS 84",6378137,298.257223563,
+            LENGTHUNIT["metre",1]],
+        ENSEMBLEACCURACY[2.0]],
+    PRIMEM["Greenwich",0,
+        ANGLEUNIT["degree",0.0174532925199433]],
+    CS[ellipsoidal,2],
+        AXIS["geodetic latitude (Lat)",north,
+            ORDER[1],
+            ANGLEUNIT["degree",0.0174532925199433]],
+        AXIS["geodetic longitude (Lon)",east,
+            ORDER[2],
+            ANGLEUNIT["degree",0.0174532925199433]],
+    USAGE[
+        SCOPE["Horizontal component of 3D system."],
+        AREA["World."],
+        BBOX[-90,-180,90,180]],
+    ID["EPSG",4326]]
+Data axis to CRS axis mapping: 2,1
+Geometry Column = msGeometry
+gml_id: String (0.0) NOT NULL
+lowerCorner: String (20.0)
+upperCorner: String (20.0)
+CdStationMesureEauxSurface: Integer (0.0)
+LbStationMesureEauxSurface: String (21.0)
+DateCreationStationMesureEauxSurface: Date
+StStationMesure: String (7.0)
+NomStationMesureEauxSurface: String (21.0)
+FinaliteStationMesureEauxSurface: String (3.0)
+LocPreciseStationMesureEauxSurface: String (34.0)
+ComStationMesureEauxSurface: String (166.0)
+CdMasseDEau: String (6.0)
+CdEntiteHydrographique: Integer (0.0)
+CdTronconHydrographique: Integer (0.0)
+CdCommune: Integer (0.0)
+ProducteurDuJeu: String (12.0)
+CoordXStationMesureEauxSurface: Integer (0.0)
+CoordYStationMesureEauxSurface: Integer (0.0)
+ProjStationMesureEauxSurface: Integer (0.0)
+NomEntiteHydrographique: String (16.0)
+DateArretActiviteStationMesureEauxSurface: Date
+OGRFeature(StationMesureEauxSurface):11000013
+  gml_id (String) = StationMesureEauxSurface.11000013
+  lowerCorner (String) = -12.807975 45.127806
+  upperCorner (String) = -12.807975 45.127806
+  CdStationMesureEauxSurface (Integer) = 11000013
+  LbStationMesureEauxSurface (String) = Ourovéni aval
+  DateCreationStationMesureEauxSurface (Date) = 2008/02/29
+  StStationMesure (String) = Validé
+  NomStationMesureEauxSurface (String) = Ourovéni aval
+  FinaliteStationMesureEauxSurface (String) = 2,2
+  LocPreciseStationMesureEauxSurface (String) = Aval de la rivière Ourovéni
+  ComStationMesureEauxSurface (String) = Appartient aux réseaux de définition des RCS (RNESUQMAYDEFRCS) +FRMSUSR
+  CdMasseDEau (String) = FRMR15
+  CdEntiteHydrographique (Integer) = 30530200
+  CdTronconHydrographique (Integer) = 30530200
+  CdCommune (Integer) = 97617
+  ProducteurDuJeu (String) = DEAL Mayotte
+  CoordXStationMesureEauxSurface (Integer) = 513870
+  CoordYStationMesureEauxSurface (Integer) = 8584096
+  ProjStationMesureEauxSurface (Integer) = 41
+  NomEntiteHydrographique (String) = Mro wa Ourovéni
+  POINT (45.127806 -12.807975)
+
+OGRFeature(StationMesureEauxSurface):11000012
+  gml_id (String) = StationMesureEauxSurface.11000012
+  lowerCorner (String) = -12.884430 45.131043
+  upperCorner (String) = -12.884430 45.131043
+  CdStationMesureEauxSurface (Integer) = 11000012
+  LbStationMesureEauxSurface (String) = M’tsangachéhi aval
+  DateCreationStationMesureEauxSurface (Date) = 2008/02/29
+  StStationMesure (String) = Validé
+  NomStationMesureEauxSurface (String) = M’tsangachéhi aval
+  FinaliteStationMesureEauxSurface (String) = 2,2
+  LocPreciseStationMesureEauxSurface (String) = Aval de la rivière M'tsangachéhi
+  ComStationMesureEauxSurface (String) = Station présente seulement dans la Définition des RCS (RNESUQMAYDEFRCS),                                                      Pas de masse d'eau pour cette station 
+  CdMasseDEau (String) = s.o.
+  CdEntiteHydrographique (Integer) = 30618400
+  CdTronconHydrographique (Integer) = 30618400
+  CdCommune (Integer) = 97616
+  ProducteurDuJeu (String) = DEAL Mayotte
+  CoordXStationMesureEauxSurface (Integer) = 514217
+  CoordYStationMesureEauxSurface (Integer) = 8575641
+  ProjStationMesureEauxSurface (Integer) = 41
+  DateArretActiviteStationMesureEauxSurface (Date) = 2010/12/31
+  POINT (45.131043 -12.88443)
+

@@ -1,0 +1,75 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<wfs:FeatureCollection xmlns:ms="http://mapserver.gis.umn.edu/mapserver" xmlns:gml="http://www.opengis.net/gml" xmlns:wfs="http://www.opengis.net/wfs" xmlns:ogc="http://www.opengis.net/ogc" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://mapserver.gis.umn.edu/mapserver http://mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses?SERVICE=WFS&amp;VERSION=1.1.0&amp;REQUEST=DescribeFeatureType&amp;TYPENAME=ms:AD.Address&amp;OUTPUTFORMAT=text/xml;%20subtype=gml/3.1.1  http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
+      <gml:boundedBy>
+      	<gml:Envelope srsName="EPSG:2180">
+      		<gml:lowerCorner>394384.170000 547502.590000</gml:lowerCorner>
+      		<gml:upperCorner>394484.640000 547565.140000</gml:upperCorner>
+      	</gml:Envelope>
+      </gml:boundedBy>
+    <gml:featureMember>
+      <ms:AD.Address gml:id="AD.Address.97426176">
+        <gml:boundedBy>
+        	<gml:Envelope srsName="EPSG:2180">
+        		<gml:lowerCorner>394384.170000 547502.590000</gml:lowerCorner>
+        		<gml:upperCorner>394384.170000 547502.590000</gml:upperCorner>
+        	</gml:Envelope>
+        </gml:boundedBy>
+        <ms:msGeometry>
+          <gml:Point srsName="EPSG:2180">
+            <gml:pos>394384.170000 547502.590000</gml:pos>
+          </gml:Point>
+        </ms:msGeometry>
+        <ms:id>97426176</ms:id>
+        <ms:gml_id>PL.ZIPIN.3742.EMUiA_9945001100000172050</ms:gml_id>
+        <ms:jednostkaadmnistracyjna>{Polska,łódzkie,"Piotrków Trybunalski","Piotrków Trybunalski"}</ms:jednostkaadmnistracyjna>
+        <ms:miejscowosc>Piotrków Trybunalski</ms:miejscowosc>
+        <ms:ulica>1 Maja</ms:ulica>
+        <ms:numer>10</ms:numer>
+        <ms:teryt>106201</ms:teryt>
+        <ms:simc>0967430</ms:simc>
+        <ms:ulic>11926</ms:ulic>
+        <ms:ulica_pol>1 maja</ms:ulica_pol>
+        <ms:status/>
+        <ms:data_od>2016-03-09</ms:data_od>
+        <ms:kod>97-300</ms:kod>
+        <ms:ulica_skr>1 maja</ms:ulica_skr>
+        <ms:miejscowosc_lower>piotrków trybunalski</ms:miejscowosc_lower>
+        <ms:lokalnyid>94a4c0aa-eb6b-4faa-be00-810f492298eb</ms:lokalnyid>
+        <ms:adres>Piotrków Trybunalski 1 Maja 10</ms:adres>
+        <ms:czescmiejscowosci/>
+        <ms:wazny_od/>
+      </ms:AD.Address>
+    </gml:featureMember><gml:featureMember>
+      <ms:AD.Address gml:id="AD.Address.97426177">
+        <gml:boundedBy>
+        	<gml:Envelope srsName="EPSG:2180">
+        		<gml:lowerCorner>394464.460000 547535.170000</gml:lowerCorner>
+        		<gml:upperCorner>394464.460000 547535.170000</gml:upperCorner>
+        	</gml:Envelope>
+        </gml:boundedBy>
+        <ms:msGeometry>
+          <gml:Point srsName="EPSG:2180">
+            <gml:pos>394464.460000 547535.170000</gml:pos>
+          </gml:Point>
+        </ms:msGeometry>
+        <ms:id>97426177</ms:id>
+        <ms:gml_id>PL.ZIPIN.3742.EMUiA_9945001100000172051</ms:gml_id>
+        <ms:jednostkaadmnistracyjna>{Polska,łódzkie,"Piotrków Trybunalski","Piotrków Trybunalski"}</ms:jednostkaadmnistracyjna>
+        <ms:miejscowosc>Piotrków Trybunalski</ms:miejscowosc>
+        <ms:ulica>1 Maja</ms:ulica>
+        <ms:numer>11</ms:numer>
+        <ms:teryt>106201</ms:teryt>
+        <ms:simc>0967430</ms:simc>
+        <ms:ulic>11926</ms:ulic>
+        <ms:ulica_pol>1 maja</ms:ulica_pol>
+        <ms:status/>
+        <ms:data_od>2016-03-09</ms:data_od>
+        <ms:kod>97-300</ms:kod>
+        <ms:ulica_skr>1 maja</ms:ulica_skr>
+        <ms:miejscowosc_lower>piotrków trybunalski</ms:miejscowosc_lower>
+        <ms:lokalnyid>580d6f78-10a6-4d6b-ba5b-faf98e390b67</ms:lokalnyid>
+        <ms:adres>Piotrków Trybunalski 1 Maja 11</ms:adres>
+        <ms:czescmiejscowosci/>
+        <ms:wazny_od/>
+      </ms:AD.Address>
+    </gml:featureMember></wfs:FeatureCollection>

@@ -1,0 +1,79 @@
+
+Layer name: Building
+Geometry: Polygon
+Feature Count: 2
+Extent: (50.007032, 19.946935) - (50.015029, 19.971314)
+Layer SRS WKT:
+GEOGCRS["ETRS89",
+    ENSEMBLE["European Terrestrial Reference System 1989 ensemble",
+        MEMBER["European Terrestrial Reference Frame 1989"],
+        MEMBER["European Terrestrial Reference Frame 1990"],
+        MEMBER["European Terrestrial Reference Frame 1991"],
+        MEMBER["European Terrestrial Reference Frame 1992"],
+        MEMBER["European Terrestrial Reference Frame 1993"],
+        MEMBER["European Terrestrial Reference Frame 1994"],
+        MEMBER["European Terrestrial Reference Frame 1996"],
+        MEMBER["European Terrestrial Reference Frame 1997"],
+        MEMBER["European Terrestrial Reference Frame 2000"],
+        MEMBER["European Terrestrial Reference Frame 2005"],
+        MEMBER["European Terrestrial Reference Frame 2014"],
+        MEMBER["European Terrestrial Reference Frame 2020"],
+        ELLIPSOID["GRS 1980",6378137,298.257222101,
+            LENGTHUNIT["metre",1]],
+        ENSEMBLEACCURACY[0.1]],
+    PRIMEM["Greenwich",0,
+        ANGLEUNIT["degree",0.0174532925199433]],
+    CS[ellipsoidal,2],
+        AXIS["geodetic latitude (Lat)",north,
+            ORDER[1],
+            ANGLEUNIT["degree",0.0174532925199433]],
+        AXIS["geodetic longitude (Lon)",east,
+            ORDER[2],
+            ANGLEUNIT["degree",0.0174532925199433]],
+    USAGE[
+        SCOPE["Spatial referencing."],
+        AREA["Europe - onshore and offshore: Albania; Andorra; Austria; Belgium; Bosnia and Herzegovina; Bulgaria; Croatia; Czechia; Denmark; Estonia; Faroe Islands; Finland; France; Germany; Gibraltar; Greece; Hungary; Ireland; Italy; Kosovo; Latvia; Liechtenstein; Lithuania; Luxembourg; Malta; Moldova; Monaco; Montenegro; Netherlands; North Macedonia; Norway including Svalbard and Jan Mayen; Poland; Portugal - mainland; Romania; San Marino; Serbia; Slovakia; Slovenia; Spain - mainland and Balearic islands; Sweden; Switzerland; United Kingdom (UK) including Channel Islands and Isle of Man; Vatican City State."],
+        BBOX[33.26,-16.1,84.73,38.01]],
+    ID["EPSG",4258],
+    REMARK["Has been realized through ETRF89, ETRF90, ETRF91, ETRF92, ETRF93, ETRF94, ETRF96, ETRF97, ETRF2000, ETRF2005 and ETRF2014. This 'ensemble' covers any or all of these realizations without distinction."]]
+Data axis to CRS axis mapping: 2,1
+Geometry Column = geometry
+gml_id: String (0.0) NOT NULL
+identifier: String (96.0)
+beginLifespanVersion: DateTime
+localId: String (36.0)
+namespace: String (20.0)
+versionId: DateTime
+percentage: String (0.0)
+numberOfFloorsAboveGround: Integer (0.0)
+referenceGeometry: Integer(Boolean) (0.0)
+horizontalGeometryEstimatedAccuracy: Real (0.0)
+horizontalGeometryEstimatedAccuracy_uom: String (1.0)
+OGRFeature(Building):1
+  gml_id (String) = buildings1.1
+  identifier (String) = http://iip.gugik.gov.pl/so/BU/Building/PL.PZGiK.283.BDOT10k/28BA1C4E-4C1E-8554-E053-CC2BA8C0F941
+  beginLifespanVersion (DateTime) = 2020/11/19 00:00:00+00
+  localId (String) = 28BA1C4E-4C1E-8554-E053-CC2BA8C0F941
+  namespace (String) = PL.PZGiK.283.BDOT10k
+  versionId (DateTime) = 2020/11/19 12:00:00
+  percentage (String) = (null)
+  numberOfFloorsAboveGround (Integer) = 2
+  referenceGeometry (Integer(Boolean)) = 1
+  horizontalGeometryEstimatedAccuracy (Real) = 2
+  horizontalGeometryEstimatedAccuracy_uom (String) = m
+  POLYGON ((50.00715042 19.97119598,50.00715126 19.97120354,50.00714341 19.97120561,50.00715124 19.9712919,50.00704848 19.9713144,50.00704057 19.97122797,50.007033 19.97122963,50.00703234 19.97122222,50.00715042 19.97119598))
+
+OGRFeature(Building):2
+  gml_id (String) = buildings1.2
+  identifier (String) = http://iip.gugik.gov.pl/so/BU/Building/PL.PZGiK.283.BDOT10k/28BA1C4E-4C1F-8554-E053-CC2BA8C0F941
+  beginLifespanVersion (DateTime) = 2020/11/19 00:00:00+00
+  localId (String) = 28BA1C4E-4C1F-8554-E053-CC2BA8C0F941
+  namespace (String) = PL.PZGiK.283.BDOT10k
+  versionId (DateTime) = 2020/11/19 12:00:00
+  percentage (String) = (null)
+  numberOfFloorsAboveGround (Integer) = 3
+  referenceGeometry (Integer(Boolean)) = 1
+  horizontalGeometryEstimatedAccuracy (Real) = 2
+  horizontalGeometryEstimatedAccuracy_uom (String) = m
+  POLYGON ((50.01502405 19.94696271,50.01501864 19.94699653,50.01502869 19.94700036,50.01501892 19.94706132,50.0149252 19.94702513,50.01493495 19.94696528,50.01494536 19.9469694,50.01495095 19.94693502,50.01502405 19.94696271))
+

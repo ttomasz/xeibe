@@ -1,0 +1,331 @@
+# Curated test samples. Built by scripts/corpus/build_samples.py, which extracts
+# each sample from example_data/, validates it, records GDAL's reference output
+# and regenerates samples.json + BOM.md.
+#
+# Every entry needs a reviewed licence. Fields filled automatically: the download
+# URL and retrieval time (from example_data/downloads/log.jsonl or
+# example_data/wfs/requests.tsv), sha256, size, validation and GDAL results.
+
+[defaults]
+gdal_image = "ghcr.io/osgeo/gdal:ubuntu-full-3.13.3"
+
+# ---------------------------------------------------------------- licences
+[licences.cc-by-4]
+name = "Creative Commons Attribution 4.0 International (CC BY 4.0)"
+url = "https://creativecommons.org/licenses/by/4.0/"
+
+[licences.cc-by-sa-3-ee]
+name = "Creative Commons Attribution-ShareAlike 3.0 Estonia (CC BY-SA 3.0 EE) – excerpts stay under this licence"
+url = "https://creativecommons.org/licenses/by-sa/3.0/ee/legalcode"
+
+[licences.etalab-2]
+name = "Licence Ouverte / Open Licence 2.0 (Etalab)"
+url = "https://www.etalab.gouv.fr/licence-ouverte-open-licence/"
+
+[licences.dl-de-by-2]
+name = "Datenlizenz Deutschland – Namensnennung – Version 2.0 (dl-de/by-2-0)"
+url = "https://www.govdata.de/dl-de/by-2-0"
+
+[licences.geonutzv]
+name = "Nutzungsbestimmungen für die Bereitstellung von Geodaten des Bundes (GeoNutzV)"
+url = "https://www.gesetze-im-internet.de/geonutzv/"
+
+[licences.sitg-open]
+name = "SITG – conditions générales d'utilisation des données et produits du SITG en libre accès (version of 19 May 2026; level A open data; source and modifications must be stated, § 5.3)"
+url = "https://opendata.swiss/en/terms-of-use#terms_open"
+
+# Polish PZGiK data (PRG, BDOT10k, EGiB, RCN, ...) are official materials, excluded from
+# copyright by art. 4 pkt 2 of the copyright act (cf. NSA II FSK 369/16: geodetic maps are
+# official materials). dane.gov.pl labels some datasets "CC BY 4.0" and asks for the PZGiK
+# attribution sentence; no statutory basis for that request was found, so the attribution
+# is kept as a courtesy. Possible residual: sui generis database right of the state.
+[licences.pzgik]
+name = "Public domain in effect – Polish official material (art. 4 pkt 2 ustawy o prawie autorskim), PZGiK data made available free of charge (Prawo geodezyjne i kartograficzne)"
+url = "https://isap.sejm.gov.pl/isap.nsf/DocDetails.xsp?id=WDU19940240083"
+
+
+# ---------------------------------------------------------------- file downloads
+[[sample]]
+name = "pl-prg-address-points"
+axis_order = "x/y"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "pl_wojewodztwa", code = "08", why = "source file 08_lubuskie_*.gml (TERYT 08 = lubuskie); prgad:TERYTGminy 08xxxxx" }]
+file = "samples/pl/prg-address-points.gml"
+source = "example_data/downloads/dane.gov.pl/api.dane.gov.pl/d0e6c516_PRG-punkty_adresowe_6e4326c3.zip"
+member = "08_lubuskie_18.09.2026_11.23.44.gml"
+rules = ["per_layer=2"]
+covers = ["GML 3.2", "several feature types in one file (sequential layers)", "xlink:href feature references (#id)",
+          "INSPIRE-style type wrapper (idIIP/AD_IdentyfikatorIIP)", "srsName short form EPSG:2180 in x/y order",
+          "datetimes with and without time zone", "empty elements"]
+publisher = "Główny Urząd Geodezji i Kartografii (GUGiK)"
+dataset = "Państwowy rejestr granic i powierzchni jednostek podziałów terytorialnych kraju (PRG) – punkty adresowe"
+dataset_url = "https://dane.gov.pl/pl/dataset/726"
+licence = "pzgik"
+licence_evidence = "official material, not subject to copyright; https://api.dane.gov.pl/1.4/datasets/726 labels it CC BY 4.0 and states it 'może być wykorzystywany bez ograniczeń' with the PZGiK attribution condition"
+attribution = "Wykorzystano/opracowano na podstawie materiałów państwowego zasobu geodezyjnego i kartograficznego (GUGiK, PRG, dane.gov.pl)"
+
+[[sample]]
+name = "pl-rcn-parcels-arcs"
+axis_order = "y/x"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "pl_powiaty", code = "3005", why = "file 3005_RCN_*.zip from the register of powiat 3005 (grodziski); rcn:idDzialki 300504_5.* (TERYT 3005…)" }]
+file = "samples/pl/rcn-price-register-arcs.gml"
+source = "example_data/downloads/dane.gov.pl/api.dane.gov.pl/de7fe2c6_3005_RCN_08_09_2026_fcf9b107.zip"
+member = "3005_RCN_08_09_2026.gml"
+rules = ["contains=Arc;count=2", "per_layer=1"]
+covers = ["GML 3.2", "gml:Arc in parcel boundaries (Curve/segments)", "Polish GMLAS-style application schema",
+          "feature references between layers"]
+publisher = "Starostwo Powiatowe w Grodzisku Wielkopolskim (powiat 3005)"
+dataset = "Rejestr Cen Nieruchomości (RCN)"
+dataset_url = "https://dane.gov.pl/pl/dataset/34577"
+licence = "pzgik"
+licence_evidence = "official material, not subject to copyright; https://api.dane.gov.pl/1.4/datasets/34577 labels it CC BY 4.0 with the PZGiK attribution condition"
+attribution = "Wykorzystano/opracowano na podstawie materiałów państwowego zasobu geodezyjnego i kartograficznego (Rejestr Cen Nieruchomości, dane.gov.pl)"
+
+[[sample]]
+name = "de-hamburg-alkis-nas-arcs"
+axis_order = "x/y"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "countries", code = "DEU", why = "ALKIS extract published by Hamburg (LGV)" }]
+file = "samples/de/hamburg-alkis-nas-arcs.xml"
+source = "example_data/downloads/data.europa.eu/daten-hamburg.de/744df9bf_ALKIS_Liegenschaftskarte_ausgewaehlteDaten_HH_2023-01-07.zip"
+member = "ALKIS_HH_0008.xml"
+rules = ["contains=Circle;count=1", "contains=Arc;count=2", "count=1"]
+covers = ["NAS (ALKIS) document structure: AX_Bestandsdatenauszug/enthaelt/wfs:FeatureCollection",
+          "gml:Arc and gml:Circle", "AdV CRS URN urn:adv:crs:ETRS89_UTM32", "GML 3.2"]
+publisher = "Freie und Hansestadt Hamburg, Landesbetrieb Geoinformation und Vermessung (LGV)"
+dataset = "ALKIS – ausgewählte Daten Hamburg"
+dataset_url = "https://data.europa.eu/data/datasets/dc71f8a1-7a8c-488c-ac99-23776fa7775e"
+licence = "dl-de-by-2"
+licence_evidence = "publisher's GovData record (harvested by data.europa.eu): every distribution of the dataset carries http://dcat-ap.de/def/licenses/dl-by-de/2.0"
+attribution = "Freie und Hansestadt Hamburg, Landesbetrieb Geoinformation und Vermessung (LGV); Datenlizenz Deutschland – Namensnennung – Version 2.0 (https://www.govdata.de/dl-de/by-2-0); Datensatz ALKIS – ausgewählte Daten Hamburg (https://data.europa.eu/data/datasets/dc71f8a1-7a8c-488c-ac99-23776fa7775e); Daten geändert (Auszug)"
+
+[[sample]]
+name = "ch-geneva-arcbycenterpoint-fme"
+axis_order = "x/y"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "countries", code = "CHE", why = "published by SITG, Canton of Geneva" }]
+file = "samples/ch/geneva-agr-spb-arcbycenterpoint.gml"
+source = "example_data/downloads/data.europa.eu/ge.ch/58fbf6b8_AGR_SPB-GML.zip"
+member = "AGR_SPB.gml"
+companion_files = ["AGR_SPB.xsd"]
+rules = ["contains=ArcByCenterPoint;count=2", "count=1"]
+covers = ["gml:ArcByCenterPoint", "FME-produced GML (xmlns:fme) – axis-order rule", "GML 3.2"]
+publisher = "République et canton de Genève, Office cantonal de l'agriculture et de la nature (SITG)"
+dataset = "Surfaces de promotion de la biodiversité (AGR_SPB)"
+dataset_url = "https://data.europa.eu/data/datasets/agr_spb-canton-geneve"
+licence = "sitg-open"
+licence_evidence = "terms shipped in the zip: 'DOC/Conditions generales d'utilisation des donnees et produits du SITG en libre acces.pdf' (version 19 May 2026; § 4.1 level A: private and commercial use; § 5.3 source and modification notice required); opendata.swiss/data.europa.eu: terms_open"
+attribution = "Source : Portail des données SITG (État de Genève), téléchargé et/ou extrait en date du 2026-09-19. Extrait réalisé sur la base de Données du Portail SITG (sélection d'entités)."
+
+[[sample]]
+name = "be-ngi-electricity-network-3d"
+axis_order = "x/y"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "countries", code = "BEL", why = "published by NGI (Belgian national mapping agency), nationwide network" }]
+axis_scope = "source"  # the 3 sampled positions fit Belgium both ways; the whole network does not
+file = "samples/be/ngi-electricity-network-3d.gml"
+source = "example_data/downloads/data.europa.eu/ac.ngi.be/d8a3792a_ElectricityNetwork_gml_L08.zip"
+member = "ElectricityNetwork.gml"
+rules = ["layer=Pole;count=1", "layer=UtilityLink;count=1"]
+covers = ["3D coordinates (srsDimension=3)", "INSPIRE Utility networks", "GML 3.2"]
+publisher = "Nationaal Geografisch Instituut / Institut géographique national (NGI-IGN)"
+dataset = "INSPIRE Electricity Network"
+dataset_url = "https://data.europa.eu/data/datasets/be-ngi-ign-067c8ccb-50fa-4918-9f6b-6b1248b3bef3"
+licence = "cc-by-4"
+licence_evidence = "data.europa.eu distribution licence CC_BY_4_0; NGI open data policy: free open data under CC BY 4.0, cite as '©NGI-IGN, year, licence CC BY 4.0' and state modifications (https://ngi.be/faq-open-data-en/)"
+attribution = "Electricity network INSPIRE – ©NGI-IGN, 2021, licence CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); extract, modified (feature selection)"
+
+[[sample]]
+name = "de-sachsen-anhalt-inspire-su"
+axis_order = "y/x"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "countries", code = "DEU", why = "INSPIRE statistical units of Saxony-Anhalt" }]
+file = "samples/de/sachsen-anhalt-inspire-statistical-units.gml"
+source = "example_data/downloads/data.europa.eu/geodatenportal.sachsen-anhalt.de/a663aebb_GDHST2_LSBB_SU.gml"
+rules = ["count=2"]
+covers = ["INSPIRE application schema (su-vector 4.0) with nested properties", "xlink:href references", "GML 3.2"]
+publisher = "Landesstraßenbaubehörde (LSBB) Sachsen-Anhalt"
+dataset = "INSPIRE Statistical Units (LSBB)"
+dataset_url = "https://data.europa.eu/data/datasets/ae62d669-6cb7-425a-88ae-8f244dd3db71"
+licence = "dl-de-by-2"
+licence_evidence = "data.europa.eu distribution licence: http://dcat-ap.de/def/licenses/dl-by-de/2.0"
+attribution = "Landesstraßenbaubehörde Sachsen-Anhalt (LSBB); Datenlizenz Deutschland – Namensnennung – Version 2.0 (https://www.govdata.de/dl-de/by-2-0); Datensatz INSPIRE ST Statistical Units Road Construction Administration (https://data.europa.eu/data/datasets/ae62d669-6cb7-425a-88ae-8f244dd3db71); Daten geändert (Auszug)"
+
+# ---------------------------------------------------------------- WFS responses (axis order, versions)
+[[sample]]
+name = "pl-gugik-mapserver-addresses-wfs100"
+axis_order = "x/y"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "pl_powiaty", code = "1062", why = "attributes ms:teryt 106201 and ms:miejscowosc Piotrków Trybunalski" }]
+file = "samples/wfs/pl-gugik-mapserver-addresses-wfs100.xml"
+source = "example_data/wfs/mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses/ms_AD.Address/getfeature-1.0.0.xml"
+rules = ["count=2"]
+covers = ["WFS 1.0.0 / GML 2 (gml:coordinates)", "MapServer", "EPSG:2180 short form, x/y order"]
+publisher = "Główny Urząd Geodezji i Kartografii (GUGiK)"
+dataset = "Polska usługa pobierania INSPIRE dla tematu Adresy"
+dataset_url = "https://mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses?SERVICE=WFS&REQUEST=GetCapabilities"
+licence = "pzgik"
+licence_evidence = "GetCapabilities: Fees 'No fees', AccessConstraints 'No constraints'"
+attribution = "Wykorzystano/opracowano na podstawie materiałów państwowego zasobu geodezyjnego i kartograficznego (GUGiK)"
+
+[[sample]]
+name = "pl-gugik-mapserver-addresses-wfs110"
+axis_order = "y/x"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "pl_powiaty", code = "1062", why = "attributes ms:teryt 106201 and ms:miejscowosc Piotrków Trybunalski" }]
+axis_same_as = "pl-gugik-mapserver-addresses-wfs100"
+file = "samples/wfs/pl-gugik-mapserver-addresses-wfs110.xml"
+source = "example_data/wfs/mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses/ms_AD.Address/getfeature-1.1.0.xml"
+rules = ["count=2"]
+covers = ["WFS 1.1.0 / GML 3.1.1", "MapServer", "EPSG:2180 SHORT form but y/x (authority) order – producer quirk"]
+publisher = "Główny Urząd Geodezji i Kartografii (GUGiK)"
+dataset = "Polska usługa pobierania INSPIRE dla tematu Adresy"
+dataset_url = "https://mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses?SERVICE=WFS&REQUEST=GetCapabilities"
+licence = "pzgik"
+licence_evidence = "GetCapabilities: Fees 'No fees', AccessConstraints 'No constraints'"
+attribution = "Wykorzystano/opracowano na podstawie materiałów państwowego zasobu geodezyjnego i kartograficznego (GUGiK)"
+
+[[sample]]
+name = "pl-gugik-mapserver-addresses-wfs200"
+axis_order = "y/x"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "pl_powiaty", code = "1062", why = "attributes ms:teryt 106201 and ms:miejscowosc Piotrków Trybunalski" }]
+axis_same_as = "pl-gugik-mapserver-addresses-wfs100"
+file = "samples/wfs/pl-gugik-mapserver-addresses-wfs200.xml"
+source = "example_data/wfs/mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses/ms_AD.Address/getfeature-2.0.0.xml"
+rules = ["count=2"]
+covers = ["WFS 2.0.0 / GML 3.2", "MapServer", "urn:ogc:def:crs:EPSG::2180, y/x order", "numberMatched/next paging attributes (next removed)"]
+publisher = "Główny Urząd Geodezji i Kartografii (GUGiK)"
+dataset = "Polska usługa pobierania INSPIRE dla tematu Adresy"
+dataset_url = "https://mapy.geoportal.gov.pl/wss/service/INSPIRE/Addresses?SERVICE=WFS&REQUEST=GetCapabilities"
+licence = "pzgik"
+licence_evidence = "GetCapabilities: Fees 'No fees', AccessConstraints 'No constraints'"
+attribution = "Wykorzystano/opracowano na podstawie materiałów państwowego zasobu geodezyjnego i kartograficznego (GUGiK)"
+
+[[sample]]
+name = "pl-gugik-inspire-au-wfs200-latlon"
+axis_order = "y/x"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "pl_gminy", code = "1434082", tolerance_m = 100, why = "au:nationalCode 1434082 (gmina Poświętne); the feature IS that unit, so boundary vertices lie on the PRG boundary (100 m tolerance)" }]
+file = "samples/wfs/pl-gugik-inspire-au-wfs200-latlon.xml"
+source = "example_data/wfs/mapy.geoportal.gov.pl/wss/service/wfsAU/guest/au_AdministrativeUnit/getfeature-2.0.0.xml"
+rules = ["count=1"]
+covers = ["WFS 2.0.0 / GML 3.2", "INSPIRE Administrative Units (complex feature)", "http://www.opengis.net/def/crs/EPSG/0/4258 lat/lon"]
+publisher = "Główny Urząd Geodezji i Kartografii (GUGiK)"
+dataset = "Polska usługa pobierania INSPIRE dla tematu Jednostki Administracyjne"
+dataset_url = "https://mapy.geoportal.gov.pl/wss/service/wfsAU/guest?SERVICE=WFS&REQUEST=GetCapabilities"
+licence = "pzgik"
+licence_evidence = "GetCapabilities: Fees 'Brak warunków dostępu i użytkowania', AccessConstraints 'Brak ograniczeń w publicznym dostępie'"
+attribution = "Wykorzystano/opracowano na podstawie materiałów państwowego zasobu geodezyjnego i kartograficznego (GUGiK)"
+
+[[sample]]
+name = "pl-gugik-inspire-bu-wfs200-legacy-url-latlon"
+axis_order = "y/x"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "countries", code = "POL", why = "Polish national building service (GUGiK)" }]
+file = "samples/wfs/pl-gugik-inspire-bu-wfs200-legacy-url-latlon.xml"
+source = "example_data/wfs/mapy.geoportal.gov.pl/wss/service/wfsBU/guest/bu-core2d_Building/getfeature-2.0.0.xml"
+rules = ["count=2"]
+covers = ["WFS 2.0.0 / GML 3.2", "INSPIRE Buildings", "LEGACY URL srsName epsg.xml#4258 but lat/lon order"]
+publisher = "Główny Urząd Geodezji i Kartografii (GUGiK)"
+dataset = "Usługa pobierania WFS z budynkami INSPIRE dla obszaru Polski"
+dataset_url = "https://mapy.geoportal.gov.pl/wss/service/wfsBU/guest?SERVICE=WFS&REQUEST=GetCapabilities"
+licence = "pzgik"
+licence_evidence = "GetCapabilities: Fees 'Brak', AccessConstraints 'Brak'"
+attribution = "Wykorzystano/opracowano na podstawie materiałów państwowego zasobu geodezyjnego i kartograficznego (GUGiK)"
+
+[[sample]]
+name = "fr-sandre-stations-wfs100-urn-lonlat"
+axis_order = "x/y"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "countries", code = "FRA", why = "French national water data service (Sandre); France incl. overseas departments" }]
+file = "samples/wfs/fr-sandre-stations-wfs100-urn-lonlat.xml"
+source = "example_data/wfs/services.sandre.eaufrance.fr/geo/stq/sa_StationMesureEauxSurface/getfeature-1.0.0.xml"
+rules = ["count=2"]
+covers = ["WFS 1.0.0", "URN srsName urn:ogc:def:crs:EPSG::4326 but lon/lat order"]
+publisher = "Sandre – Système d'Information sur l'Eau (Office International de l'Eau for OFB)"
+dataset = "Stations de mesure de la qualité des eaux superficielles continentales (STQ)"
+dataset_url = "https://services.sandre.eaufrance.fr/geo/stq?SERVICE=WFS&REQUEST=GetCapabilities"
+licence = "etalab-2"
+licence_evidence = "the same STQ station data is published on data.gouv.fr by 'Système d'Information sur l'Eau' under Licence Ouverte 2.0 (https://www.data.gouv.fr/datasets/points-de-prelevements-associes-aux-stations-de-mesure-de-la-qualite-des-eaux-superficielles-continentales-stq-france-entiere); GetCapabilities: Fees 'no conditions apply', AccessConstraints 'accés libre'"
+attribution = "Source : Sandre – Système d'Information sur l'Eau, stations de mesure de la qualité des eaux superficielles continentales, extrait du service WFS le 2026-09-19 (Licence Ouverte 2.0)"
+
+[[sample]]
+name = "fr-sandre-stations-wfs110-urn-latlon"
+axis_order = "y/x"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "countries", code = "FRA", why = "French national water data service (Sandre); France incl. overseas departments" }]
+axis_same_as = "fr-sandre-stations-wfs100-urn-lonlat"
+file = "samples/wfs/fr-sandre-stations-wfs110-urn-latlon.xml"
+source = "example_data/wfs/services.sandre.eaufrance.fr/geo/stq/sa_StationMesureEauxSurface/getfeature-1.1.0.xml"
+rules = ["count=2"]
+covers = ["WFS 1.1.0", "same data and srsName as the 1.0.0 sample, lat/lon order"]
+publisher = "Sandre – Système d'Information sur l'Eau (Office International de l'Eau for OFB)"
+dataset = "Stations de mesure de la qualité des eaux superficielles continentales (STQ)"
+dataset_url = "https://services.sandre.eaufrance.fr/geo/stq?SERVICE=WFS&REQUEST=GetCapabilities"
+licence = "etalab-2"
+licence_evidence = "the same STQ station data is published on data.gouv.fr by 'Système d'Information sur l'Eau' under Licence Ouverte 2.0 (https://www.data.gouv.fr/datasets/points-de-prelevements-associes-aux-stations-de-mesure-de-la-qualite-des-eaux-superficielles-continentales-stq-france-entiere); GetCapabilities: Fees 'no conditions apply', AccessConstraints 'accés libre'"
+attribution = "Source : Sandre – Système d'Information sur l'Eau, stations de mesure de la qualité des eaux superficielles continentales, extrait du service WFS le 2026-09-19 (Licence Ouverte 2.0)"
+
+[[sample]]
+name = "ee-geoserver-af-wfs100-legacy-url"
+axis_order = "x/y"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "countries", code = "EST", why = "Estonian national INSPIRE service" }]
+file = "samples/wfs/ee-geoserver-af-wfs100-legacy-url.xml"
+source = "example_data/wfs/inspire.geoportaal.ee/geoserver/AF_holding_site/wfs/AF_holding_site_AF.AgriculturalHolding/getfeature-1.0.0.xml"
+rules = ["count=2"]
+covers = ["WFS 1.0.0 / GML 2", "GeoServer", "legacy URL epsg.xml#3301, x/y order"]
+publisher = "Põllumajanduse Registrite ja Informatsiooni Amet (PRIA, data owner); service by Maa- ja Ruumiamet"
+dataset = "INSPIRE (AF) – Eesti põllumajandus- ja vesiviljelusrajatised"
+dataset_url = "https://inspire.geoportaal.ee/geoserver/AF_holding_site/wfs?SERVICE=WFS&REQUEST=GetCapabilities"
+licence = "cc-by-sa-3-ee"
+licence_evidence = "layer metadata (MetadataURL in GetCapabilities) https://metadata.geoportaal.ee/geonetwork/srv/est/catalog.search#/metadata/0a3587dc-c154-432d-b79e-7b8410555bbd: otherConstraints 'Andmete kasutamisel nõustute Creative Commons 3.0 litsentsiga: https://creativecommons.org/licenses/by-sa/3.0/ee/legalcode'; GetCapabilities Fees/AccessConstraints 'puudub' refer to access only"
+attribution = "Allikas: Põllumajanduse Registrite ja Informatsiooni Amet (PRIA), Eesti põllumajandus- ja vesiviljelusettevõtted, INSPIRE WFS of Maa- ja Ruumiamet; CC BY-SA 3.0 EE; excerpt, modified (feature selection)"
+
+[[sample]]
+name = "ee-geoserver-af-wfs110-urnx-yx"
+axis_order = "y/x"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "countries", code = "EST", why = "Estonian national INSPIRE service" }]
+axis_same_as = "ee-geoserver-af-wfs100-legacy-url"
+file = "samples/wfs/ee-geoserver-af-wfs110-urnx-yx.xml"
+source = "example_data/wfs/inspire.geoportaal.ee/geoserver/AF_holding_site/wfs/AF_holding_site_AF.AgriculturalHolding/getfeature-1.1.0.xml"
+rules = ["count=2"]
+covers = ["WFS 1.1.0 / GML 3.1.1", "GeoServer", "urn:x-ogc:def:crs:EPSG:3301, y/x (authority) order"]
+publisher = "Põllumajanduse Registrite ja Informatsiooni Amet (PRIA, data owner); service by Maa- ja Ruumiamet"
+dataset = "INSPIRE (AF) – Eesti põllumajandus- ja vesiviljelusrajatised"
+dataset_url = "https://inspire.geoportaal.ee/geoserver/AF_holding_site/wfs?SERVICE=WFS&REQUEST=GetCapabilities"
+licence = "cc-by-sa-3-ee"
+licence_evidence = "layer metadata (MetadataURL in GetCapabilities) https://metadata.geoportaal.ee/geonetwork/srv/est/catalog.search#/metadata/0a3587dc-c154-432d-b79e-7b8410555bbd: otherConstraints 'Andmete kasutamisel nõustute Creative Commons 3.0 litsentsiga: https://creativecommons.org/licenses/by-sa/3.0/ee/legalcode'; GetCapabilities Fees/AccessConstraints 'puudub' refer to access only"
+attribution = "Allikas: Põllumajanduse Registrite ja Informatsiooni Amet (PRIA), Eesti põllumajandus- ja vesiviljelusettevõtted, INSPIRE WFS of Maa- ja Ruumiamet; CC BY-SA 3.0 EE; excerpt, modified (feature selection)"
+
+[[sample]]
+name = "at-wien-geoserver-gml2-wfs100"
+axis_order = "x/y"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "countries", code = "AUT", why = "City of Vienna open data" }]
+file = "samples/wfs/at-wien-geoserver-gml2-wfs100.xml"
+source = "example_data/wfs/data.wien.gv.at/daten/geo/ogdwien_SCOOTERABSTELLOGD/getfeature-1.0.0.xml"
+rules = ["count=2"]
+covers = ["WFS 1.0.0 / GML 2", "GeoServer", "gml:coordinates with cs/ts", "epsg.xml#31256"]
+publisher = "Stadt Wien – data.wien.gv.at"
+dataset = "Abstellflächen für E-Scooter (SCOOTERABSTELLOGD)"
+dataset_url = "https://data.wien.gv.at/daten/geo?SERVICE=WFS&REQUEST=GetCapabilities"
+licence = "cc-by-4"
+licence_evidence = "data.gv.at record https://www.data.gv.at/katalog/dataset/90e4765e-4d5f-4ec2-8b41-ce9eab737c3e (Scooterabstellplätze Wien): CC BY 4.0; https://data.wien.gv.at/nutzungsbedingungen: OGD Wien under CC BY 4.0 with 'Datenquelle: Stadt Wien – data.wien.gv.at' (GetCapabilities Fees still names CC BY 3.0 AT, outdated)"
+attribution = "Datenquelle: Stadt Wien – data.wien.gv.at (CC BY 4.0); Auszug, verändert"
+
+[[sample]]
+name = "de-bfn-wfs100-short-latlon"
+axis_order = "y/x"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "countries", code = "DEU", why = "German federal nature agency (BfN), species distribution in Germany" }]
+file = "samples/wfs/de-bfn-inspire-sd-wfs100-short-latlon.xml"
+source = "example_data/wfs/geodienste.bfn.de/ogc/wfs/INSPIRE_SD_DE_distribution/SD_INSPIRE_SD_VORKOMMEN.SpeciesDistributionUnitS/getfeature-1.0.0.xml"
+rules = ["count=2"]
+covers = ["WFS 1.0.0", "short srsName EPSG:4258 but lat/lon order", "INSPIRE Species Distribution"]
+publisher = "Bundesamt für Naturschutz (BfN)"
+dataset = "WFS INSPIRE SD DE Vorkommen"
+dataset_url = "https://geodienste.bfn.de/ogc/wfs/INSPIRE_SD_DE_distribution?SERVICE=WFS&REQUEST=GetCapabilities"
+licence = "geonutzv"
+licence_evidence = "GeoNutzV (§ 3: keep the source notice, add a modification notice); GetCapabilities Fees 'Die Nutzung des Dienstes ist entgeltfrei.', AccessConstraints: 'Dieser Dienst und die darin verfügbaren Daten können gemäß der Nutzungsbestimmungen für die Bereitstellung von Geodaten des Bundes genutzt werden. Quelle: Bundesamt für Naturschutz (BfN) Jahr.'"
+attribution = "Quelle: Bundesamt für Naturschutz (BfN) 2026; Daten verändert (Auszug) – Veränderungshinweis nach § 3 Nr. 2 GeoNutzV"
+
+# ---------------------------------------------------------------- static (not extracted)
+[[static]]
+name = "gdal-gml-geometry-cases"
+file = "gdal/gml_geometry_cases.jsonl"
+covers = ["292 inline GML geometry snippets with GDAL 3.13.3 results (181 parsed, 111 rejected)"]
+publisher = "GDAL/OGR project (Frank Warmerdam, Even Rouault and contributors)"
+dataset = "autotest/ogr/ogr_gml_geom.py"
+dataset_url = "https://github.com/OSGeo/gdal/blob/ec7b4b055f80b69dac45b303ed92376301ee2f34/autotest/ogr/ogr_gml_geom.py"
+licence_name = "MIT"
+licence_url = "https://github.com/OSGeo/gdal/blob/master/LICENSE.TXT"
+licence_evidence = "file header of ogr_gml_geom.py; notice in tests/data/LICENSE-GDAL.txt"
+attribution = "Copyright (c) 2003 Frank Warmerdam; Copyright (c) 2009-2014 Even Rouault"
+generated_by = "scripts/corpus/extract_gdal_geom_cases.py"

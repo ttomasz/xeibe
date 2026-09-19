@@ -1,0 +1,1680 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<AX_Bestandsdatenauszug xmlns="http://www.adv-online.de/namespaces/adv/gid/6.0" xmlns:gsr="http://www.isotc211.org/2005/gsr" xmlns:gmd="http://www.isotc211.org/2005/gmd" xmlns:fc="http://www.adv-online.de/namespaces/adv/gid/fc/6.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:wfsext="http://www.adv-online.de/namespaces/adv/gid/wfsext" xmlns:gco="http://www.isotc211.org/2005/gco" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:gts="http://www.isotc211.org/2005/gts" xmlns:ogc="http://www.adv-online.de/namespaces/adv/gid/ogc" xmlns:wfs="http://www.adv-online.de/namespaces/adv/gid/wfs" xmlns:gss="http://www.isotc211.org/2005/gss" xsi:schemaLocation="http://www.adv-online.de/namespaces/adv/gid/6.0 NAS-Operationen.xsd">
+  <erlaeuterung>&lt;?xml version="1.0" encoding="utf-8"?&gt;&lt;Protocol xmlns="http://www.aed-sicad.de/namespaces/va" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"&gt;&lt;auftragsid&gt;AMGR000001072248&lt;/auftragsid&gt;&lt;profilkennung&gt;HmbTG&lt;/profilkennung&gt;&lt;antragsnummer&gt;HmbTG_FHH&lt;/antragsnummer&gt;&lt;nasoperation&gt;Bestandsdatenauszug&lt;/nasoperation&gt;&lt;status&gt;beendet&lt;/status&gt;&lt;startzeitreal&gt;2023-01-07T02:01:27.2906361+01:00&lt;/startzeitreal&gt;&lt;endzeitreal&gt;2023-01-07T02:01:27.3218649+01:00&lt;/endzeitreal&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Das Ergebnis wurde mit der FI-Version 6.4.3.18361 erstellt.&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.2906361+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 5 für AP_Darstellung&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 28 für AP_LPO&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 11 für AP_PPO&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 682 für AP_PTO&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 6 für AX_Baublock&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 38 für AX_BauRaumOderBodenordnungsrecht&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 4 für AX_Bauteil&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 2 für AX_BauwerkImGewaesserbereich&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 33 für AX_BesondereFlurstuecksgrenze&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 1 für AX_BesondereGebaeudelinie&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 23 für AX_Bodenschaetzung&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 28 für AX_BoeschungKliff&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 28 für AX_Boeschungsflaeche&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 3 für AX_DammWallDeich&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 15 für AX_Denkmalschutzrecht&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 1 für AX_FlaecheBesondererFunktionalerPraegung&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 10 für AX_FlaecheGemischterNutzung&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 2 für AX_Fliessgewaesser&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 162 für AX_Flurstueck&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 252 für AX_Gebaeude&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 3 für AX_Gehoelz&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 1099 für AX_Gelaendekante&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 95 für AX_GeoreferenzierteGebaeudeadresse&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 3 für AX_GrablochDerBodenschaetzung&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 15 für AX_IndustrieUndGewerbeflaeche&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 1 für AX_KlassifizierungNachWasserrecht&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 95 für AX_LagebezeichnungMitHausnummer&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 119 für AX_LagebezeichnungMitPseudonummer&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 48 für AX_LagebezeichnungOhneHausnummer&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 32 für AX_Landwirtschaft&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 8 für AX_SonstigesBauwerkOderSonstigeEinrichtung&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 11 für AX_SonstigesRecht&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 6 für AX_SportFreizeitUndErholungsflaeche&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 1 für AX_StehendesGewaesser&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 3 für AX_Strassenverkehr&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 190 für AX_Strassenverkehrsanlage&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 3 für AX_UnlandVegetationsloseFlaeche&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 5 für AX_UntergeordnetesGewaesser&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 18 für AX_Vegetationsmerkmal&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 1 für AX_VorratsbehaelterSpeicherbauwerk&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 4 für AX_Weg&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;Message&gt;&lt;Category&gt;NOTHING&lt;/Category&gt;&lt;MessageLevel&gt;Info&lt;/MessageLevel&gt;&lt;MessageText&gt;Bestandsdatenauszug: Anzahl gefundener Features für Portion 8: 23 für AX_Wohnbauflaeche&lt;/MessageText&gt;&lt;ProcessingTime&gt;2023-01-07T02:01:27.3218649+01:00&lt;/ProcessingTime&gt;&lt;StateSpecified&gt;false&lt;/StateSpecified&gt;&lt;MapCategorySpecified&gt;false&lt;/MapCategorySpecified&gt;&lt;/Message&gt;&lt;portionskennung&gt;&lt;profilkennung&gt;HmbTG&lt;/profilkennung&gt;&lt;datum&gt;2023-01-07T01:00:02Z&lt;/datum&gt;&lt;laufendeNummerVonGesamtzahl&gt;8&lt;/laufendeNummerVonGesamtzahl&gt;&lt;gesamtzahl&gt;249&lt;/gesamtzahl&gt;&lt;suedwestEcke xsi:type="q1:DirectPositionType" srsName="urn:adv:crs:ETRS89_UTM32" xmlns:q1="http://www.opengis.net/gml/3.2"&gt;576000.000 5916000.000&lt;/suedwestEcke&gt;&lt;/portionskennung&gt;&lt;/Protocol&gt;</erlaeuterung>
+  <erfolgreich>true</erfolgreich>
+  <antragsnummer>HmbTG_FHH</antragsnummer>
+  <allgemeineAngaben>
+    <AX_K_Benutzungsergebnis>
+      <folgeverarbeitung>
+        <AX_FOLGEVA>
+          <datenformat>1000</datenformat>
+        </AX_FOLGEVA>
+      </folgeverarbeitung>
+      <empfaenger>
+        <AA_Empfaenger>
+          <direkt>true</direkt>
+        </AA_Empfaenger>
+      </empfaenger>
+    </AX_K_Benutzungsergebnis>
+  </allgemeineAngaben>
+  <koordinatenangaben>
+    <AA_Koordinatenreferenzsystemangaben>
+      <crs xlink:href="urn:adv:crs:ETRS89_UTM32"/>
+      <anzahlDerNachkommastellen>3</anzahlDerNachkommastellen>
+      <standard>true</standard>
+    </AA_Koordinatenreferenzsystemangaben>
+  </koordinatenangaben>
+  <enthaelt>
+    <wfs:FeatureCollection gml:id="FC35">
+      <gml:boundedBy>
+        <gml:Envelope srsName="urn:adv:crs:ETRS89_UTM32">
+          <gml:lowerCorner>569725.192 5916918.107</gml:lowerCorner>
+          <gml:upperCorner>588010.382 5932854.406</gml:upperCorner>
+        </gml:Envelope>
+      </gml:boundedBy>
+      <gml:featureMember>
+        <AP_LPO gml:id="DEHHALKAn00004km">
+          <gml:identifier codeSpace="http://www.adv-online.de/">urn:adv:oid:DEHHALKAn00004km</gml:identifier>
+          <lebenszeitintervall>
+            <AA_Lebenszeitintervall>
+              <beginnt>2010-03-05T21:30:05Z</beginnt>
+            </AA_Lebenszeitintervall>
+          </lebenszeitintervall>
+          <modellart>
+            <AA_Modellart>
+              <advStandardModell>DKKM1000</advStandardModell>
+            </AA_Modellart>
+          </modellart>
+          <position>
+            <gml:MultiCurve gml:id="DEHHALKAn00004km_G0" srsName="urn:adv:crs:ETRS89_UTM32">
+              <gml:curveMember>
+                <gml:Curve gml:id="DEHHALKAn00004km_G1">
+                  <gml:segments>
+                    <gml:LineStringSegment>
+                      <gml:posList>577129.778 5917838.842 577129.639 5917840.366</gml:posList>
+                    </gml:LineStringSegment>
+                  </gml:segments>
+                </gml:Curve>
+              </gml:curveMember>
+            </gml:MultiCurve>
+          </position>
+          <art>TAN</art>
+          <dientZurDarstellungVon xlink:href="urn:adv:oid:DEHHALKAn00004kn"/>
+          <dientZurDarstellungVon xlink:href="urn:adv:oid:DEHHALKAn00004ko"/>
+        </AP_LPO>
+      </gml:featureMember><gml:featureMember>
+        <AX_Bodenschaetzung gml:id="DEHHALKAD00006ox">
+          <gml:identifier codeSpace="http://www.adv-online.de/">urn:adv:oid:DEHHALKAD00006ox</gml:identifier>
+          <lebenszeitintervall>
+            <AA_Lebenszeitintervall>
+              <beginnt>2022-04-07T08:48:19Z</beginnt>
+            </AA_Lebenszeitintervall>
+          </lebenszeitintervall>
+          <modellart>
+            <AA_Modellart>
+              <advStandardModell>DLKM</advStandardModell>
+            </AA_Modellart>
+          </modellart>
+          <anlass>010999</anlass>
+          <position>
+            <gml:Surface gml:id="DEHHALKAD00006ox_G0" srsName="urn:adv:crs:ETRS89_UTM32">
+              <gml:patches>
+                <gml:PolygonPatch interpolation="planar">
+                  <gml:exterior>
+                    <gml:Ring>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G1">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577266.096 5918662.537 577273.571 5918681.943</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G2">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577273.571 5918681.943 577255.804 5918686.083</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G3">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577255.804 5918686.083 577254.055 5918686.491</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G4">
+                          <gml:segments>
+                            <gml:Arc numArc="1">
+                              <gml:posList>577254.055 5918686.491 577244.766 5918688.399 577235.399 5918689.814</gml:posList>
+                            </gml:Arc>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G5">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577235.399 5918689.814 577217.636 5918644.553</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G6">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577217.636 5918644.553 577195.498 5918588.820</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G7">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577195.498 5918588.820 577173.082 5918533.201</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G8">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577173.082 5918533.201 577160.608 5918502.849</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G9">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577160.608 5918502.849 577196.347 5918487.852</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G10">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577196.347 5918487.852 577195.257 5918485.176</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G11">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577195.257 5918485.176 577164.389 5918410.919</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G12">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577164.389 5918410.919 577173.498 5918406.441</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G13">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577173.498 5918406.441 577176.042 5918412.892</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G14">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577176.042 5918412.892 577183.619 5918409.924</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G15">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577183.619 5918409.924 577180.821 5918402.841</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G16">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577180.821 5918402.841 577183.041 5918401.750</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G17">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577183.041 5918401.750 577185.282 5918406.959</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G18">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577185.282 5918406.959 577187.047 5918411.257</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G19">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577187.047 5918411.257 577204.268 5918404.311</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G20">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577204.268 5918404.311 577189.680 5918368.229</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G21">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577189.680 5918368.229 577188.391 5918365.055</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G22">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577188.391 5918365.055 577176.033 5918369.399</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G23">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577176.033 5918369.399 577174.662 5918368.691</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G24">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577174.662 5918368.691 577169.934 5918366.101</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G25">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577169.934 5918366.101 577170.472 5918362.528</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G26">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577170.472 5918362.528 577171.551 5918355.380</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G27">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577171.551 5918355.380 577170.635 5918344.067</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G28">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577170.635 5918344.067 577168.448 5918329.809</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G29">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577168.448 5918329.809 577167.279 5918320.571</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G30">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577167.279 5918320.571 577205.594 5918305.517</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G31">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577205.594 5918305.517 577205.175 5918304.294</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G32">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577205.175 5918304.294 577224.100 5918297.250</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G33">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577224.100 5918297.250 577214.527 5918273.580</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G34">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577214.527 5918273.580 577208.887 5918257.020</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G35">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577208.887 5918257.020 577207.777 5918252.920</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G36">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577207.777 5918252.920 577265.364 5918151.881</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G37">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577265.364 5918151.881 577275.957 5918178.113</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G38">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577275.957 5918178.113 577286.215 5918174.136</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G39">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577286.215 5918174.136 577282.200 5918163.771</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G40">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577282.200 5918163.771 577289.616 5918161.232</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G41">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577289.616 5918161.232 577286.807 5918154.361</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G42">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577286.807 5918154.361 577284.982 5918155.046</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G43">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577284.982 5918155.046 577278.517 5918137.596</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G44">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577278.517 5918137.596 577277.300 5918134.312</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G45">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577277.300 5918134.312 577315.791 5918071.618</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G46">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577315.791 5918071.618 577313.429 5918065.724</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G47">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577313.429 5918065.724 577308.704 5918053.935</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G48">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577308.704 5918053.935 577309.565 5918053.661</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G49">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577309.565 5918053.661 577308.983 5918051.130</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G50">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577308.983 5918051.130 577308.378 5918048.497</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G51">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577308.378 5918048.497 577306.773 5918044.185</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G52">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577306.773 5918044.185 577340.096 5917966.272</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G53">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577340.096 5917966.272 577335.639 5917956.020</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G54">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577335.639 5917956.020 577337.559 5917955.378</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G55">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577337.559 5917955.378 577341.287 5917954.184</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G56">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577341.287 5917954.184 577353.800 5917948.564</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G57">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577353.800 5917948.564 577352.358 5917943.011</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G58">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577352.358 5917943.011 577351.842 5917941.842</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G59">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577351.842 5917941.842 577347.973 5917933.085</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G60">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577347.973 5917933.085 577361.579 5917926.868</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G61">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577361.579 5917926.868 577356.982 5917914.870</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G62">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577356.982 5917914.870 577375.271 5917907.861</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G63">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577375.271 5917907.861 577366.530 5917884.964</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G64">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577366.530 5917884.964 577377.631 5917879.420</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G65">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577377.631 5917879.420 577391.707 5917907.975</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G66">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577391.707 5917907.975 577379.790 5917912.865</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G67">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577379.790 5917912.865 577388.884 5917935.023</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G68">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577388.884 5917935.023 577402.078 5917929.607</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G69">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577402.078 5917929.607 577403.505 5917933.065</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G70">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577403.505 5917933.065 577406.563 5917931.552</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G71">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577406.563 5917931.552 577417.057 5917956.844</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G72">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577417.057 5917956.844 577428.028 5917952.291</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G73">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577428.028 5917952.291 577417.760 5917927.544</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G74">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577417.760 5917927.544 577416.314 5917928.144</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G75">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577416.314 5917928.144 577391.606 5917878.164</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G76">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577391.606 5917878.164 577397.654 5917887.444</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G77">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577397.654 5917887.444 577402.654 5917884.730</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G78">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577402.654 5917884.730 577400.566 5917868.831</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G79">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577400.566 5917868.831 577399.304 5917864.844</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G80">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577399.304 5917864.844 577415.201 5917853.275</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G81">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577415.201 5917853.275 577441.522 5917834.118</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G82">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577441.522 5917834.118 577455.927 5917858.193</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G83">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577455.927 5917858.193 577459.158 5917866.358</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G84">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577459.158 5917866.358 577466.637 5917884.538</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G85">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577466.637 5917884.538 577482.594 5917923.750</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G86">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577482.594 5917923.750 577447.943 5917939.370</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G87">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577447.943 5917939.370 577477.407 5918012.089</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G88">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577477.407 5918012.089 577495.337 5918055.300</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G89">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577495.337 5918055.300 577518.675 5918110.669</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G90">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577518.675 5918110.669 577534.122 5918150.623</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G91">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577534.122 5918150.623 577544.716 5918176.512</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G92">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577544.716 5918176.512 577526.380 5918183.542</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G93">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577526.380 5918183.542 577533.288 5918200.002</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G94">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577533.288 5918200.002 577548.354 5918238.451</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G95">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577548.354 5918238.451 577563.201 5918276.340</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G96">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577563.201 5918276.340 577594.724 5918348.756</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G97">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577594.724 5918348.756 577609.186 5918384.966</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G98">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577609.186 5918384.966 577617.426 5918404.033</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G99">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577617.426 5918404.033 577615.706 5918405.227</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G100">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577615.706 5918405.227 577612.376 5918407.577</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G101">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577612.376 5918407.577 577601.722 5918415.954</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G102">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577601.722 5918415.954 577585.509 5918428.703</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G103">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577585.509 5918428.703 577582.362 5918431.178</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G104">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577582.362 5918431.178 577579.647 5918433.597</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G105">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577579.647 5918433.597 577570.157 5918443.763</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G106">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577570.157 5918443.763 577539.726 5918476.358</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G107">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577539.726 5918476.358 577530.217 5918486.361</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G108">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577530.217 5918486.361 577527.173 5918488.378</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G109">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577527.173 5918488.378 577526.058 5918489.117</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G110">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577526.058 5918489.117 577516.029 5918493.232</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G111">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577516.029 5918493.232 577506.543 5918496.528</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G112">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577506.543 5918496.528 577489.605 5918504.547</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G113">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577489.605 5918504.547 577455.547 5918520.668</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G114">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577455.547 5918520.668 577445.721 5918525.320</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G115">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577445.721 5918525.320 577438.408 5918528.831</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G116">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577438.408 5918528.831 577420.706 5918537.330</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G117">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577420.706 5918537.330 577419.620 5918537.852</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G118">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577419.620 5918537.852 577409.935 5918541.634</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G119">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577409.935 5918541.634 577401.857 5918543.698</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G120">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577401.857 5918543.698 577383.077 5918548.497</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G121">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577383.077 5918548.497 577369.386 5918551.998</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G122">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577369.386 5918551.998 577365.303 5918554.132</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G123">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577365.303 5918554.132 577364.935 5918554.325</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G124">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577364.935 5918554.325 577352.439 5918566.386</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G125">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577352.439 5918566.386 577340.362 5918579.890</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G126">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577340.362 5918579.890 577337.324 5918583.581</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G127">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577337.324 5918583.581 577323.147 5918600.802</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G128">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577323.147 5918600.802 577316.267 5918609.161</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G129">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577316.267 5918609.161 577320.856 5918612.807</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G130">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577320.856 5918612.807 577320.059 5918614.526</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G131">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577320.059 5918614.526 577316.250 5918623.176</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G132">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577316.250 5918623.176 577314.845 5918628.213</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G133">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577314.845 5918628.213 577310.714 5918618.375</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G134">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577310.714 5918618.375 577306.500 5918608.025</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G135">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577306.500 5918608.025 577289.524 5918614.261</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G136">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577289.524 5918614.261 577283.443 5918599.388</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G137">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577283.443 5918599.388 577266.333 5918607.448</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G138">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577266.333 5918607.448 577280.949 5918644.659</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G139">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577280.949 5918644.659 577292.793 5918677.465</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G140">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577292.793 5918677.465 577294.185 5918681.323</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G141">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577294.185 5918681.323 577290.813 5918682.119</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G142">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577290.813 5918682.119 577281.660 5918656.757</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G143">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577281.660 5918656.757 577266.096 5918662.537</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                    </gml:Ring>
+                  </gml:exterior>
+                  <gml:interior>
+                    <gml:Ring>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G144">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577215.112 5918380.223 577232.049 5918373.541</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G145">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577232.049 5918373.541 577228.780 5918365.190</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G146">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577228.780 5918365.190 577220.388 5918343.668</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G147">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577220.388 5918343.668 577203.322 5918350.451</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G148">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577203.322 5918350.451 577205.364 5918355.607</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G149">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577205.364 5918355.607 577215.112 5918380.223</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                    </gml:Ring>
+                  </gml:interior>
+                  <gml:interior>
+                    <gml:Ring>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G150">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577491.304 5918251.008 577501.300 5918275.709</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G151">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577501.300 5918275.709 577519.869 5918267.963</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G152">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577519.869 5918267.963 577509.817 5918243.347</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G153">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577509.817 5918243.347 577491.304 5918251.008</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                    </gml:Ring>
+                  </gml:interior>
+                  <gml:interior>
+                    <gml:Ring>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G154">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577326.427 5918154.718 577334.749 5918175.182</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G155">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577334.749 5918175.182 577353.962 5918167.263</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G156">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577353.962 5918167.263 577347.868 5918152.286</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G157">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577347.868 5918152.286 577345.634 5918146.646</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G158">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577345.634 5918146.646 577326.427 5918154.718</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                    </gml:Ring>
+                  </gml:interior>
+                  <gml:interior>
+                    <gml:Ring>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G159">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577411.394 5917904.850 577415.054 5917912.320</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G160">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577415.054 5917912.320 577416.575 5917914.075</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G161">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577416.575 5917914.075 577430.072 5917908.810</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G162">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577430.072 5917908.810 577428.172 5917904.008</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G163">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577428.172 5917904.008 577427.112 5917904.428</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G164">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577427.112 5917904.428 577425.172 5917899.540</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKAD00006ox_G165">
+                          <gml:segments>
+                            <gml:LineStringSegment>
+                              <gml:posList>577425.172 5917899.540 577411.394 5917904.850</gml:posList>
+                            </gml:LineStringSegment>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                    </gml:Ring>
+                  </gml:interior>
+                </gml:PolygonPatch>
+              </gml:patches>
+            </gml:Surface>
+          </position>
+          <kulturart>2000</kulturart>
+          <bodenart>3100</bodenart>
+          <zustandsstufeOderBodenstufe>1300</zustandsstufeOderBodenstufe>
+          <entstehungsartOderKlimastufeWasserverhaeltnisse>3000</entstehungsartOderKlimastufeWasserverhaeltnisse>
+          <bodenzahlOderGruenlandgrundzahl>71</bodenzahlOderGruenlandgrundzahl>
+          <ackerzahlOderGruenlandzahl>68</ackerzahlOderGruenlandzahl>
+        </AX_Bodenschaetzung>
+      </gml:featureMember><gml:featureMember>
+        <AX_Gelaendekante gml:id="DEHHALKAn0007QIV">
+          <gml:identifier codeSpace="http://www.adv-online.de/">urn:adv:oid:DEHHALKAn0007QIV</gml:identifier>
+          <lebenszeitintervall>
+            <AA_Lebenszeitintervall>
+              <beginnt>2010-03-05T21:30:05Z</beginnt>
+            </AA_Lebenszeitintervall>
+          </lebenszeitintervall>
+          <modellart>
+            <AA_Modellart>
+              <advStandardModell>DLKM</advStandardModell>
+            </AA_Modellart>
+          </modellart>
+          <istTeilVon xlink:href="urn:adv:oid:DEHHALKAn0006jPF"/>
+          <position>
+            <gml:CompositeCurve gml:id="DEHHALKAn0007QIV_G0" srsName="urn:adv:crs:ETRS89_UTM32">
+              <gml:curveMember>
+                <gml:Curve gml:id="DEHHALKAn0007QIV_G1">
+                  <gml:segments>
+                    <gml:Arc numArc="1">
+                      <gml:posList>578029.655 5917342.638 578026.668 5917344.052 578023.628 5917345.354</gml:posList>
+                    </gml:Arc>
+                  </gml:segments>
+                </gml:Curve>
+              </gml:curveMember>
+            </gml:CompositeCurve>
+          </position>
+          <artDerGelaendekante>1230</artDerGelaendekante>
+          <erfassung>
+            <AX_Erfassung_DGM>
+              <description>
+                <AX_DQErfassungsmethode>5030</AX_DQErfassungsmethode>
+              </description>
+              <identifikation>5410</identifikation>
+            </AX_Erfassung_DGM>
+          </erfassung>
+        </AX_Gelaendekante>
+      </gml:featureMember><gml:featureMember>
+        <AX_Denkmalschutzrecht gml:id="DEHHALKA3FV006kj">
+          <gml:identifier codeSpace="http://www.adv-online.de/">urn:adv:oid:DEHHALKA3FV006kj</gml:identifier>
+          <lebenszeitintervall>
+            <AA_Lebenszeitintervall>
+              <beginnt>2017-12-29T07:31:24Z</beginnt>
+            </AA_Lebenszeitintervall>
+          </lebenszeitintervall>
+          <modellart>
+            <AA_Modellart>
+              <advStandardModell>DLKM</advStandardModell>
+            </AA_Modellart>
+          </modellart>
+          <anlass>300000</anlass>
+          <position>
+            <gml:Surface gml:id="DEHHALKA3FV006kj_G0" srsName="urn:adv:crs:ETRS89_UTM32">
+              <gml:patches>
+                <gml:PolygonPatch interpolation="planar">
+                  <gml:exterior>
+                    <gml:Ring>
+                      <gml:curveMember>
+                        <gml:Curve gml:id="DEHHALKA3FV006kj_G1">
+                          <gml:segments>
+                            <gml:Circle>
+                              <gml:posList>577949.018 5917556.065 577948.596 5917555.297 577949.440 5917555.297</gml:posList>
+                            </gml:Circle>
+                          </gml:segments>
+                        </gml:Curve>
+                      </gml:curveMember>
+                    </gml:Ring>
+                  </gml:exterior>
+                </gml:PolygonPatch>
+              </gml:patches>
+            </gml:Surface>
+          </position>
+          <artDerFestlegung>2712</artDerFestlegung>
+          <ausfuehrendeStelle>
+            <AX_Dienststelle_Schluessel>
+              <land>02</land>
+              <stelle>300</stelle>
+            </AX_Dienststelle_Schluessel>
+          </ausfuehrendeStelle>
+          <bezeichnung>29775</bezeichnung>
+        </AX_Denkmalschutzrecht>
+      </gml:featureMember></wfs:FeatureCollection></enthaelt></AX_Bestandsdatenauszug>
