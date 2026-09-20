@@ -4267,6 +4267,8 @@ dependencies = [
  "xeibe-core",
  "xeibe-geom",
  "xeibe-schema",
+ "xeibe-testkit",
+ "zip",
 ]
 
 [[package]]
@@ -4296,7 +4298,16 @@ dependencies = [
  "quick-xml 0.42.0",
  "serde",
  "thiserror 2.0.20",
+ "xeibe-testkit",
  "zip",
+ "zstd 0.13.3",
+]
+
+[[package]]
+name = "xeibe-crs"
+version = "0.1.0+epsg-13.103"
+dependencies = [
+ "serde_json",
  "zstd 0.13.3",
 ]
 
@@ -4318,9 +4329,12 @@ dependencies = [
  "geo-traits",
  "globset",
  "serde",
+ "serde_json",
  "thiserror 2.0.20",
  "wkb",
  "xeibe-core",
+ "xeibe-crs",
+ "xeibe-testkit",
 ]
 
 [[package]]
@@ -4335,6 +4349,7 @@ dependencies = [
  "tokio",
  "url",
  "xeibe-core",
+ "xeibe-testkit",
 ]
 
 [[package]]
@@ -4359,6 +4374,15 @@ dependencies = [
  "thiserror 2.0.20",
  "xeibe-core",
  "xeibe-geom",
+ "xeibe-testkit",
+]
+
+[[package]]
+name = "xeibe-testkit"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -4373,6 +4397,7 @@ dependencies = [
  "xeibe-core",
  "xeibe-geom",
  "xeibe-io",
+ "xeibe-testkit",
 ]
 
 [[package]]

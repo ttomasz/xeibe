@@ -17,7 +17,7 @@ use those names.
 
 | Path | Contents | In git |
 |---|---|---|
-| `crates/xeibe-*` | Workspace crates: core, geom, schema, arrow, io, wfs, datafusion, cli (binary `xeibe`), py (Python module `xeibe`) | yes |
+| `crates/xeibe-*` | Workspace crates: core, crs (generated EPSG tables), geom, schema, arrow, io, wfs, datafusion, cli (binary `xeibe`), py (Python module `xeibe`), testkit (test support only) | yes |
 | `docs/` | Design docs | yes |
 | `tests/data/` | Small curated samples, `samples.toml`, generated `samples.json`/`BOM.md`; see `tests/data/README.md` | yes |
 | `scripts/` | Tooling (see below) | yes |
@@ -102,6 +102,27 @@ sources, but their contents haven't been checked against the local copies:
 - `scripts/schema_coverage.py` lists GML/WFS schema elements that aren't in the
   support matrix. `scripts/support_summary.py` regenerates the summary table in
   the matrix.
+- `scripts/gen_crs_tables.py` regenerates `crates/xeibe-crs` from an official
+  EPSG Dataset release in `example_data/` (see `docs/geometry.md`). The EPSG
+  data it embeds is IOGP's, not CC0 like the rest of the workspace; the crate
+  records this in its `license` field and `EPSG-NOTICE.md`. Its version
+  carries the EPSG version as semver build metadata (`0.1.0+epsg-13.103`),
+  which the script rewrites; the semver core stays hand-maintained.
+- `scripts/fetch_epsg_dataset.py` signs in to epsg.org and downloads the
+  current EPSG archives into `example_data/`. Needs `EPSG_LOGIN_USER` and
+  `EPSG_LOGIN_PASSWORD` in the environment or in a git-ignored `.env`
+  (free account at <https://epsg.org/>). The credentials only read the link
+  targets off the gated page; the archives themselves are public.
+- `scripts/verify_crs_tables.py` checks the generated tables beyond the
+  generator's own WKT gate: PROJJSON schema and a pyproj cross-check (both
+  cover the ~836 deprecated CRSs EPSG publishes no WKT for), plus a
+  regression diff against what is committed. Run it before releasing.
+- `scripts/check_epsg_release.py` asks the public EPSG API
+  (`apps.epsg.org/api/v1/VersionHistory`, no account needed) whether a newer
+  Dataset release exists than the one in `crates/xeibe-crs`. Exits 1 if so.
+  `.github/workflows/epsg.yml` runs it daily; on a new release it downloads,
+  regenerates, verifies and opens a PR. `gen_crs_tables.py` also writes
+  `crates/xeibe-crs/CHANGELOG.md` from EPSG's own release notes.
 - `scripts/corpus/build_samples.py` rebuilds `tests/data/samples/**`,
   `samples.json` and `BOM.md` from `samples.toml`. It needs `example_data/`,
   Docker and `reference_data.py` to have run.

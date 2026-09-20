@@ -31,3 +31,8 @@ __pycache__/
 # Local mirror of schemas.opengis.net and the offline-validation catalog; scripts/fetch_ogc_schemas.py
 /ogc_schemas
 /schemas-extra
+
+# Local secrets (EPSG download account); never commit
+.env
+.env.*
+!.env.example

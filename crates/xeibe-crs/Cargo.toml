@@ -1,0 +1,28 @@
+[package]
+name = "xeibe-crs"
+description = "EPSG CRS facts and PROJJSON definitions, generated from the EPSG Geodetic Parameter Dataset"
+version = "0.1.0+epsg-13.103"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# NOT the workspace licence. The xeibe code in this crate is CC0-1.0 like the
+# rest of the workspace, but the embedded data is the EPSG Geodetic Parameter
+# Dataset, which is owned by IOGP and cannot be placed in the public domain or
+# relicensed by us. It is redistributed under the EPSG Dataset Terms of Use,
+# which permit extracting subsets but require that IOGP's ownership is
+# acknowledged and that these terms are passed on to anyone who receives the
+# data. See EPSG-NOTICE.md, which is that notice.
+license = "CC0-1.0 AND LicenseRef-EPSG"
+readme = "README.md"
+include = ["src/**", "data/**", "EPSG-NOTICE.md", "README.md"]
+
+[dependencies]
+zstd.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"

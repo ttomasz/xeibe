@@ -353,15 +353,33 @@ evidence wins:
 |---|---|---|---|
 | 1 | User override matching the key | final | |
 | 2 | `axisLabels` on the geometry, e.g. `axisLabels="Lat Long"` or `"x y"` (07-036 §10.1.3.3) | decisive | Declares the order explicitly. Label table: `Lat`/`φ`/`N`/`Northing`/`y` first → y/x |
-| 3 | **Coordinate range check** against the CRS's valid area (from the EPSG area of use, projected into the CRS) | decisive only if *exactly one* of {as written, swapped} fits the sampled extent | Clear-cut for geographic CRSs (\|lat\| ≤ 90). Often **inconclusive** for projected CRSs whose easting and northing ranges overlap (e.g. EPSG:2180) |
+| 3 | **Coordinate range check** against the CRS's valid area (from the EPSG area of use, projected into the CRS) | decisive only if *exactly one* of {as written, swapped} fits the sampled extent | Clear-cut for projected CRSs with a small area of use (EPSG:2180 → Poland). **Inconclusive** for projected CRSs whose easting and northing ranges overlap, and for EPSG:4326, whose area of use is the whole world: it then only rejects an ordinate above 90 |
 | 4 | Known producer quirks (fingerprint of the root element, namespaces, comments, WFS capabilities `ServiceIdentification`) | strong | FME → authority for short form (**[GDAL]**). More in a curated `producer_quirks` table, e.g. specific GeoServer/MapServer/ArcGIS versions |
-| 5 | WFS context: version and the srsName form *we requested* | strong | 1.0 → x/y; 1.1 with `EPSG:` → x/y; 1.1 with URN → authority; 2.0 → authority |
-| 6 | Envelope consistency: the collection/feature `boundedBy` and the `BBOX` we sent must match the geometry under the chosen order | supporting | Only used to break ties and to raise warnings |
-| 7 | `CrsHeuristic` rule | fallback | |
+| 5 | **GML 2 dialect** (the detection table above), whatever the srsName says | strong | GML 2 predates the authority-order policy: 02-069 has no axis-order concept and every GML 2 producer writes x/y. This is the `GmlVersion { gml2: XY, … }` rule used as evidence. It needs nothing but the geometry, so it is the only strong evidence available for a plain file |
+| 6 | WFS context: version and the srsName form *we requested* | strong | 1.0 → x/y; 1.1 with `EPSG:` → x/y; 1.1 with URN → authority; 2.0 → authority. Known on a live WFS read, which begins with `GetCapabilities` ([wfs.md](wfs.md#flow)). When a saved response is read as a file, take the version from `xsi:schemaLocation` (`…/wfs/1.0.0/…`, or the `VERSION=` of the `DescribeFeatureType` URL) — the WFS 1.0 and 1.1 namespaces are identical and neither response carries a `version` attribute |
+| 7 | Envelope consistency: the collection/feature `boundedBy` and the `BBOX` we sent must match the geometry under the chosen order | supporting | Only used to break ties and to raise warnings |
+| 8 | `CrsHeuristic` rule | fallback | |
 
 - The range check needs raw coordinates. Evidence gathering therefore reads the **first
   position of every geometry**, which is cheap, instead of skipping coordinates
   entirely. It keeps a bounding box per decision key, in *as written* order.
+- The range check knows only what the CRS declares. It cannot use **where the data
+  came from**: that a file holds French stations, or Polish parcels, is provenance a
+  reader doesn't have. (`tests/data/samples.toml` does record it, per sample, in
+  `axis_places` — which is why the axis order in `samples.json` is ground truth that
+  tests may assert against, and `Auto`'s own output never is. See
+  [testing.md](testing.md#two-kinds-of-test).)
+- Evidence 5 exists because rows 2 and 3 are so often silent on a file with no
+  request behind it. Worked example,
+  `tests/data/samples/wfs/fr-sandre-stations-wfs100-urn-lonlat.xml`: a
+  `<gml:Point srsName="urn:ogc:def:crs:EPSG::4326">` whose `<gml:coordinates>` read
+  `45.127806,-12.807975`, a station in Mayotte written lon/lat although the URN
+  promises authority order. No `axisLabels` (row 2 needs GML 3); both orders are legal
+  latitudes (row 3); no quirk for this server (row 4); the envelope is written in the
+  same order as the geometry, so it agrees either way (row 7); and the fallback (row 8)
+  reads the URN and swaps, putting the station in the Atlantic — which is what GDAL
+  3.13 does with it. The `<gml:coordinates>` carrier makes it GML 2 dialect, and row 5
+  decides it correctly on its own.
 - When evidence contradicts the chosen rule, for example a range check that says
   "swapped" while the srsName heuristic says "as written", `Auto` takes the stronger
   evidence and **always** reports the conflict. `xeibe scan` prints these conflicts
@@ -498,22 +516,46 @@ fallback when no PROJJSON is available.
    (current assumption)?
 2. **AdV mapping and alias table** (`urn:adv:crs:…`, `osgb:BNG`): where they live, in
    what format, and can users extend them like the CRS table?
-3. **Generating the CRS table.** Which script, from which source (the EPSG dataset
-   itself, or PROJ's `proj.db`), which EPSG version, and how the EPSG terms of use
-   (attribution) are met. The source and version should be recorded like any other
-   download (`example_data/SOURCES.md` or next to the generated table), and
-   regenerating it should be a script, not a manual step.
-4. **Where PROJJSON comes from.** Options:
-   - generate PROJJSON for every EPSG CRS at build time (with PROJ, from
-     `proj.db`) and ship it in the built-in table. Size to be measured; compressed;
-   - ship PROJJSON only for a subset (e.g. CRSs seen in the corpus, European CRSs)
-     and fall back for the rest;
-   - optional PROJ dependency behind a feature flag (breaks "pure Rust" and
-     WebAssembly for users who enable it);
-   - user-supplied PROJJSON, alongside the user CRS table.
+3. ~~**Generating the CRS table.**~~ **Resolved.** `scripts/gen_crs_tables.py`
+   generates `crates/xeibe-crs` from the EPSG Dataset's own "PostgreSQL scripts"
+   release, not from PROJ's `proj.db`: it is the authoritative source, it is
+   more current, and unlike the WKT release it includes deprecated CRSs (real
+   data uses them -- `EPSG:27582` appears in the corpus). The scripts load into
+   SQLite unchanged apart from a BOM strip. No PROJ, GDAL or pyproj is involved
+   at any stage. The EPSG version and date are read from `epsg_versionhistory`
+   and written into the generated files; the download is recorded in
+   `example_data/SOURCES.md` and the terms in `crates/xeibe-crs/EPSG-NOTICE.md`.
+4. ~~**Where PROJJSON comes from.**~~ **Resolved.** It is generated for every
+   EPSG CRS by the same script, from the same relational tables, and shipped in
+   `crates/xeibe-crs/data/projjson.bin`: zstd frames of 64 CRSs each, addressed
+   by code, so one lookup decompresses ~115 KiB rather than the 14 MB whole.
+   All 8,299 CRSs cost **424 KiB**, which made the "ship only a subset" and
+   "optional PROJ feature flag" options pointless. The CRS facts table is
+   separate and uncompressed (a sorted `static`), because it is on the
+   axis-decision hot path.
 
-   And when a CRS is known by code but has no PROJJSON: write GeoParquet `null`
-   (losing the CRS, with a warning), or refuse to write GeoParquet?
+   Two traps, both of which silently produce *plausible* numbers rather than
+   errors, so both are asserted on in the generator:
+
+   - EPSG stores many angles in sexagesimal packings (units of measure 9110
+     `DDD.MMSSsss`, 9111 `DDD.MMm`), affecting 2,692 CRSs. `-58.3` means
+     -58°30' = -58.5°. Those units have no conversion factor, so generic unit
+     handling passes the raw value through unchanged; the generator asserts
+     rather than defaulting. The value is decoded *and* relabelled as degrees.
+   - Eight further angular units (9107, 9108, 9115--9120) are *display formats*
+     for degrees rather than packings, and take the degree factor.
+
+   Correctness is gated by a differential check against EPSG's own WKT2
+   release, which is an independent rendering of the same database and is
+   already normalised. It currently agrees on 7,465/7,465 comparable CRSs, and
+   the generator refuses to write if it does not. The WKT release covers
+   non-deprecated CRSs only, which is exactly why it is the oracle and not the
+   source.
+
+   Deprecated codes get full PROJJSON like any other. A code that is not in
+   EPSG at all (`404000`) still falls back to `authority_code`, and GeoParquet
+   gets an explicit `null` plus an `UnknownCrs` report entry.
+
 5. **Compound CRSs** (`CrsRef::Compound`, P2): PROJJSON has `CompoundCRS`, but
    `authority_code` can't express one. Depends on 4.
 6. **`crs_type`**: always write it (`projjson` / `authority_code`), or omit it as

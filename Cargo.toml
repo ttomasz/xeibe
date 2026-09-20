@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/xeibe-core",
+    "crates/xeibe-crs",
     "crates/xeibe-geom",
     "crates/xeibe-schema",
     "crates/xeibe-arrow",
@@ -16,6 +17,7 @@ members = [
 # build them explicitly with `-p` or `--workspace`.
 default-members = [
     "crates/xeibe-core",
+    "crates/xeibe-crs",
     "crates/xeibe-geom",
     "crates/xeibe-schema",
     "crates/xeibe-arrow",
@@ -34,6 +36,7 @@ publish = false
 
 [workspace.dependencies]
 xeibe-core = { path = "crates/xeibe-core" }
+xeibe-crs = { path = "crates/xeibe-crs" }
 xeibe-geom = { path = "crates/xeibe-geom" }
 xeibe-schema = { path = "crates/xeibe-schema" }
 xeibe-arrow = { path = "crates/xeibe-arrow" }
