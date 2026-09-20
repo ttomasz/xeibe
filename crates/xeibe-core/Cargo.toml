@@ -16,3 +16,6 @@ zip.workspace = true
 bytes.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+xeibe-testkit.workspace = true

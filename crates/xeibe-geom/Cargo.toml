@@ -9,9 +9,14 @@ publish.workspace = true
 
 [dependencies]
 xeibe-core.workspace = true
+xeibe-crs.workspace = true
 geo-traits.workspace = true
 wkb.workspace = true
 fast-float2.workspace = true
 globset.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+xeibe-testkit.workspace = true
+serde_json.workspace = true

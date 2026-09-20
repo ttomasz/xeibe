@@ -40,6 +40,8 @@ pub struct AutoAxisOptions {
     pub use_axis_labels: bool,
     pub use_range_check: bool,
     pub use_producer_quirks: bool,
+    /// A GML 2-dialect geometry is x/y whatever the srsName says.
+    pub use_gml2_dialect: bool,
     pub use_wfs_context: bool,
     pub use_envelope_consistency: bool,
     /// Rule applied when no decisive evidence exists.

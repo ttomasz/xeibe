@@ -22,3 +22,6 @@ crossbeam-channel.workspace = true
 reqwest = { workspace = true, optional = true }
 object_store = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+xeibe-testkit.workspace = true

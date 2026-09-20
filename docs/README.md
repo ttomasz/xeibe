@@ -44,6 +44,7 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 | [geometry.md](geometry.md) | GML geometry → GeoArrow/WKB, curves, CRS and axis order |
 | [wfs.md](wfs.md) | WFS bulk-read client: paging, pages streamed into a read |
 | [support-matrix.md](support-matrix.md) | Supported, planned and out-of-scope GML/WFS features (progress tracker) |
+| [testing.md](testing.md) | How the test suites are organized: synthetic tests, the samples, the GDAL reference |
 
 ## Key decisions
 
@@ -106,7 +107,9 @@ Reference material:
   W3C `xlink.xsd`/`xml.xsd` and the extracted OGC xlink 1.0.0 schemas (both folders
   are git-ignored and built by `scripts/fetch_ogc_schemas.py`). Use `--schema ns=path` for
   local application schemas and `--net` for remote ones.
-- Rust test tooling: `cargo nextest run --workspace`, `cargo insta review` (snapshots).
+- Rust test tooling: `cargo nextest run --workspace`. The suites are written
+  against these documents, so most of them fail until the corresponding feature
+  exists: see [testing.md](testing.md).
 
 ## Open questions
 

@@ -10,6 +10,7 @@ members = [
     "crates/xeibe-datafusion",
     "crates/xeibe-cli",
     "crates/xeibe-py",
+    "crates/xeibe-testkit",
 ]
 # xeibe-datafusion and xeibe-py pull in heavy dependencies (DataFusion, pyo3);
 # build them explicitly with `-p` or `--workspace`.
@@ -21,6 +22,7 @@ default-members = [
     "crates/xeibe-io",
     "crates/xeibe-wfs",
     "crates/xeibe-cli",
+    "crates/xeibe-testkit",
 ]
 
 [workspace.package]
@@ -38,6 +40,7 @@ xeibe-arrow = { path = "crates/xeibe-arrow" }
 xeibe-io = { path = "crates/xeibe-io", default-features = false }
 xeibe-wfs = { path = "crates/xeibe-wfs" }
 xeibe-datafusion = { path = "crates/xeibe-datafusion" }
+xeibe-testkit = { path = "crates/xeibe-testkit" }
 
 # Arrow is pinned to 59: geoarrow-array 0.9 and datafusion 55 both depend on arrow ^59.
 arrow-array = "59"

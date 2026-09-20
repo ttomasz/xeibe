@@ -21,3 +21,8 @@ indexmap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+xeibe-testkit.workspace = true
+xeibe-geom.workspace = true
+zip.workspace = true
