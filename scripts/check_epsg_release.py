@@ -26,6 +26,7 @@ import argparse
 import json
 import os
 import re
+import secrets
 import sys
 from pathlib import Path
 
@@ -151,8 +152,11 @@ def main() -> int:
             for key in ("current", "latest", "latest_date", "update_available"):
                 value = result[key]
                 fh.write(f"{key}={str(value).lower() if isinstance(value, bool) else value}\n")
-            # Remarks can contain anything, so use a heredoc-style delimiter.
-            fh.write(f"latest_remarks<<EOF\n{result['latest_remarks']}\nEOF\n")
+            # Remarks are EPSG's free-form prose, so the heredoc delimiter is
+            # randomised: a literal "EOF" line in them would otherwise close
+            # the block early and let the rest be read as further outputs.
+            delim = f"EOF_{secrets.token_hex(16)}"
+            fh.write(f"latest_remarks<<{delim}\n{result['latest_remarks']}\n{delim}\n")
 
     return 1 if update else 0
 

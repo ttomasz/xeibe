@@ -1,0 +1,343 @@
+name: EPSG Dataset
+
+# Watches for new EPSG Dataset releases and, when one appears, regenerates
+# crates/xeibe-crs and opens a pull request.
+#
+# The two jobs are in one workflow on purpose. A workflow cannot reliably
+# dispatch another one using GITHUB_TOKEN -- events raised by that token do not
+# start new workflow runs -- so `needs:` is the dependable way to gate the
+# update on the check.
+#
+# Detection uses the public GeoRepository API, which needs no account. The
+# download page is behind an OpenID Connect login, so `update` signs in with
+# the EPSG_LOGIN_USER / EPSG_LOGIN_PASSWORD secrets. Those credentials do one
+# thing: read the link targets off the gated page. The archives themselves are
+# public CDN URLs, fetched unauthenticated. Without the secrets, dispatch this
+# manually with the two URLs filled in.
+
+on:
+  schedule:
+    # 06:20 UTC daily. EPSG publishes a few releases a year, so this is mostly
+    # a no-op; the odd minute keeps it off the top-of-hour runner rush.
+    - cron: "20 6 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Run the update even if no newer release was detected"
+        required: false
+        default: false
+        type: boolean
+      postgresql_url:
+        description: "Link target for EPSG-v<version>-PostgreSQL.zip (blank: sign in and resolve it)"
+        required: false
+        type: string
+      wkt_url:
+        description: "Link target for EPSG-v<version>-WKT.Zip (blank: sign in and resolve it)"
+        required: false
+        type: string
+      draft:
+        description: "Open the pull request as a draft"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: epsg-dataset
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      update_available: ${{ steps.check.outputs.update_available }}
+      current: ${{ steps.check.outputs.current }}
+      latest: ${{ steps.check.outputs.latest }}
+      latest_date: ${{ steps.check.outputs.latest_date }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        # Pinned by exact tag: this runs unattended on a schedule, and the
+        # shell installer would silently pick up whatever uv ships that day.
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.3"
+          # The PEP 723 blocks in the scripts are the dependency manifest.
+          enable-cache: true
+          cache-dependency-glob: "scripts/**/*.py"
+
+      - name: Check for a newer EPSG release
+        id: check
+        run: |
+          # Exit 1 means "a newer release exists", which is the whole point of
+          # this job. Anything else -- 2 is an unreachable EPSG API -- must
+          # fail loudly, or an outage would read as "up to date" forever.
+          status=0
+          ./scripts/check_epsg_release.py --github || status=$?
+          case $status in
+            0 | 1) ;;
+            *) echo "::error::the EPSG release check failed (exit $status)" >&2; exit "$status" ;;
+          esac
+
+      - name: Summary
+        run: |
+          {
+            echo "### EPSG release check"
+            echo
+            echo "- committed: v${{ steps.check.outputs.current }}"
+            echo "- latest:    v${{ steps.check.outputs.latest }} (${{ steps.check.outputs.latest_date }})"
+            echo "- update available: ${{ steps.check.outputs.update_available }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  update:
+    needs: check
+    if: needs.check.outputs.update_available == 'true' || inputs.force
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        # Pinned by exact tag: this runs unattended on a schedule, and the
+        # shell installer would silently pick up whatever uv ships that day.
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.3"
+          # The PEP 723 blocks in the scripts are the dependency manifest.
+          enable-cache: true
+          cache-dependency-glob: "scripts/**/*.py"
+
+      # Either explicit URLs or a sign-in, never both.
+      - name: Download the EPSG archives (explicit URLs)
+        if: inputs.postgresql_url != '' && inputs.wkt_url != ''
+        env:
+          SQL_URL: ${{ inputs.postgresql_url }}
+          WKT_URL: ${{ inputs.wkt_url }}
+        run: |
+          set -euo pipefail
+          # Only ever fetch from EPSG's own CDN, so a mistyped input cannot
+          # turn this into an arbitrary-URL fetcher.
+          for url in "$SQL_URL" "$WKT_URL"; do
+            case "$url" in
+              https://drive.tiny.cloud/*|https://epsg.org/*) ;;
+              *) echo "::error::refusing to download from $url" >&2; exit 1 ;;
+            esac
+          done
+          mkdir -p example_data
+          curl -fsSL --max-time 300 "$SQL_URL" -o example_data/EPSG-PostgreSQL.zip
+          curl -fsSL --max-time 300 "$WKT_URL" -o example_data/EPSG-WKT.Zip
+
+      - name: Download the EPSG archives (sign in)
+        if: inputs.postgresql_url == '' || inputs.wkt_url == ''
+        env:
+          # Used only to read the link targets off the gated download page.
+          # The archives themselves are public. Never echoed.
+          EPSG_LOGIN_USER: ${{ secrets.EPSG_LOGIN_USER }}
+          EPSG_LOGIN_PASSWORD: ${{ secrets.EPSG_LOGIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${EPSG_LOGIN_USER:-}" ] || [ -z "${EPSG_LOGIN_PASSWORD:-}" ]; then
+            echo "::error::no EPSG_LOGIN_USER/EPSG_LOGIN_PASSWORD secrets, and no URLs given." >&2
+            echo "::error::Either add the secrets, or dispatch again with both URL inputs filled in." >&2
+            exit 1
+          fi
+          ./scripts/fetch_epsg_dataset.py --out example_data --formats PostgreSQL WKT
+          mv example_data/EPSG-*PostgreSQL.zip example_data/EPSG-PostgreSQL.zip
+          mv example_data/EPSG-*WKT.[Zz]ip example_data/EPSG-WKT.Zip
+
+      - name: Check what was downloaded
+        run: |
+          set -euo pipefail
+          # The generator reads the version out of the archive, so the file
+          # names do not matter -- but the contents must be what we expect.
+          #
+          # Everything here greps a captured string rather than a pipe. The WKT
+          # listing is ~10k lines and matches on its first entry, so `unzip -l
+          # ... | grep -q` dies of SIGPIPE (141) under pipefail -- i.e. it fails
+          # precisely when the archive is good.
+          for f in example_data/EPSG-PostgreSQL.zip example_data/EPSG-WKT.Zip; do
+            case "$(file -b "$f")" in
+              *"Zip archive"*) ;;
+              *) echo "::error::$f is not a zip" >&2; exit 1 ;;
+            esac
+          done
+          sql_list=$(unzip -l example_data/EPSG-PostgreSQL.zip)
+          wkt_list=$(unzip -l example_data/EPSG-WKT.Zip)
+          grep -q PostgreSQL_Data_Script.sql <<<"$sql_list" \
+            || { echo "::error::the PostgreSQL archive has no data script" >&2; exit 1; }
+          grep -q "EPSG-CRS-" <<<"$wkt_list" \
+            || { echo "::error::the WKT archive has no CRS files" >&2; exit 1; }
+
+      # Must run BEFORE the generator overwrites table.rs: this compares what is
+      # currently committed against the new release. Afterwards there would be
+      # nothing left to compare with.
+      #
+      # It does not block. EPSG retiring a code is their decision, not a bug on
+      # our side, and failing here would mean no PR and no visible diff at all.
+      # The findings go into the PR body instead, where a human reads them.
+      - name: Regression check against the committed tables
+        id: regression
+        continue-on-error: true
+        run: |
+          ./scripts/verify_crs_tables.py --regression \
+            --sql example_data/EPSG-PostgreSQL.zip \
+            --markdown regression.md | tee regression.log
+
+      - name: Regenerate xeibe-crs
+        id: generate
+        run: |
+          set -euo pipefail
+          # Fails if any CRS does not render, or if EPSG's own WKT disagrees
+          # with the rendered PROJJSON. Also writes CHANGELOG.md, with EPSG's
+          # own release notes and the change requests behind them.
+          ./scripts/gen_crs_tables.py \
+            --sql example_data/EPSG-PostgreSQL.zip \
+            --wkt example_data/EPSG-WKT.Zip | tee generate.log
+          version=$(sed -n 's/.*EPSG_VERSION: &str = "\([^"]*\)".*/\1/p' crates/xeibe-crs/src/table.rs)
+          date=$(sed -n 's/.*EPSG_DATE: &str = "\([^"]*\)".*/\1/p' crates/xeibe-crs/src/table.rs)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "date=$date" >> "$GITHUB_OUTPUT"
+
+      # These do block: a failure here means our generator is wrong, not that
+      # EPSG changed something. The schema and pyproj checks matter most for the
+      # ~836 deprecated CRSs, which EPSG publishes no WKT for, so the
+      # generator's own gate cannot see them.
+      - name: Verify the regenerated tables
+        run: |
+          ./scripts/verify_crs_tables.py --self --schema --pyproj \
+            --markdown verify.md | tee verify.log
+
+      - name: Install Rust
+        # The runner image ships a stable toolchain, but which one drifts with
+        # the image, and this job is the only thing that compiles the
+        # regenerated table. Install stable explicitly and log the version, so
+        # a build failure on the PR can be pinned to a toolchain. The
+        # workspace MSRV (1.85) is a separate concern, checked elsewhere.
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          cargo --version
+
+      - name: Test
+        run: |
+          cargo test -p xeibe-crs
+          # The axis-order facts xeibe-geom reads out of the new table.
+          cargo test -p xeibe-geom --test it epsg::
+          # Default members only: xeibe-py needs a Python toolchain and nothing
+          # here can affect it.
+          cargo check --all-targets
+
+      - name: Open a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.generate.outputs.version }}
+          DATE: ${{ steps.generate.outputs.date }}
+          DRAFT: ${{ inputs.draft }}
+        run: |
+          set -euo pipefail
+          # The archives live in example_data/, which is git-ignored; nothing
+          # to clean up, but be explicit about what gets committed.
+          git add crates/xeibe-crs/src/table.rs \
+                  crates/xeibe-crs/data/projjson.bin \
+                  crates/xeibe-crs/EPSG-NOTICE.md \
+                  crates/xeibe-crs/CHANGELOG.md \
+                  crates/xeibe-crs/Cargo.toml
+          if git diff --cached --quiet; then
+            echo "already at EPSG v${VERSION}; nothing to do"
+            exit 0
+          fi
+
+          branch="epsg/v${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          # printf rather than a heredoc: a heredoc inside this YAML block
+          # would carry the block's indentation into the commit message.
+          printf '%s\n' \
+            "update xeibe-crs to EPSG Dataset v${VERSION}" \
+            "" \
+            "Regenerated by scripts/gen_crs_tables.py from the EPSG v${VERSION}" \
+            "release (${DATE}). CRS names and codes change between releases, so" \
+            "a large table diff is expected; CHANGELOG.md has EPSG's own notes." \
+            "" \
+            "Opened by the EPSG Dataset workflow, run ${GITHUB_RUN_ID}." \
+            | git commit -F -
+          # This job reruns daily for as long as the PR sits unmerged, because
+          # the committed version is still the old one. So the branch may
+          # already be on the remote: overwrite it (nothing else writes here)
+          # and only open a PR if there is not one already.
+          git push --force -u origin "$branch"
+          if [ "$(gh pr view "$branch" --json state --jq .state 2>/dev/null || true)" = "OPEN" ]; then
+            echo "PR for $branch is already open; refreshed the branch in place"
+            exit 0
+          fi
+
+          # The changelog entries added by this run, for the PR description.
+          changelog=$(git show --format= --unified=0 HEAD -- crates/xeibe-crs/CHANGELOG.md \
+                      | sed -n 's/^+//p' | grep -v '^++' || true)
+
+          {
+            echo "Regenerates \`crates/xeibe-crs\` from EPSG Dataset **v${VERSION}** (${DATE})."
+            echo
+            if [ -n "$changelog" ]; then
+              echo "## Release notes"
+              echo
+              echo "EPSG's own notes and the change requests behind them, from the dataset's"
+              echo "\`epsg_versionhistory\` and \`epsg_change\` tables:"
+              echo
+              printf '%s\n' "$changelog"
+              echo
+            fi
+            echo "## Generator"
+            echo
+            echo '```'
+            # Capped: gh rejects a body over 65536 characters, and a bad
+            # release can make these logs long. The tails carry the verdicts.
+            tail -c 8000 generate.log
+            echo '```'
+            echo
+            echo "It refuses to write unless every CRS renders and EPSG's own WKT2 release"
+            echo "agrees with the rendered PROJJSON, so the cross-check line is the one to read."
+            echo
+            echo "## What changed since the committed tables"
+            echo
+            [ -f regression.md ] && cat regression.md || echo "_regression check did not run_"
+            echo
+            echo '```'
+            [ -f regression.log ] && tail -c 8000 regression.log || true
+            echo '```'
+            echo
+            echo "> This check does not block: EPSG retiring a code is their decision."
+            echo "> **Removed codes and changed axis orders need a human call** — data in the"
+            echo "> wild keeps using retired codes, and a flipped axis silently mirrors every"
+            echo "> coordinate read in that CRS."
+            echo
+            echo "## Independent verification"
+            echo
+            [ -f verify.md ] && cat verify.md || echo "_verification did not run_"
+            echo
+            echo "Covers the ~836 deprecated CRSs that EPSG publishes no WKT for, so the"
+            echo "generator's own gate cannot check them."
+            echo
+            echo "## Review notes"
+            echo
+            echo "- CRS *names* change between EPSG releases, so a large \`table.rs\` diff is normal."
+            echo "- \`EPSG-NOTICE.md\` and the crate version metadata are regenerated."
+            echo
+            echo "---"
+            echo
+            echo "Opened by the [\`EPSG Dataset\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) workflow."
+          } > pr-body.md
+
+          gh pr create --title "Update xeibe-crs to EPSG Dataset v${VERSION}" \
+            --body-file pr-body.md \
+            --base "${GITHUB_REF_NAME}" \
+            $([ "$DRAFT" = "true" ] && echo --draft || true)
