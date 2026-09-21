@@ -92,6 +92,22 @@ pub struct GeometryOptions {
 
 impl Default for GeometryOptions {
     fn default() -> Self {
-        todo!()
+        GeometryOptions {
+            encoding: GeomEncoding::Auto,
+            curves: CurveMode::Preserve,
+            primary: None,
+            axis: AxisOrderOptions::default(),
+            crs_override: None,
+            mixed_crs: MixedCrs::Error,
+            dimension: DimMode::Auto,
+            unsupported_geometry: UnsupportedGeometry::Error,
+            raw_xml_for_computed_arcs: false,
+            join_tolerance: 1e-9,
+            close_rings: false,
+            lenient_degenerate: false,
+            // GDAL's default for geodesic arcs.
+            arc_step_degrees: 4.0,
+            interleaved: false,
+        }
     }
 }

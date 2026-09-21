@@ -1,9 +1,11 @@
 //! `geo-traits` implementations for the linear subset of the model.
 //!
-//! Traits are implemented on references (`&'a LineString`, …) so nested types
-//! can be returned without copying. Curve variants of [`Geometry`] are not
-//! representable in `geo-traits`; call [`Geometry::is_simple`] first and use
-//! [`crate::wkb`] for curves.
+//! Traits are implemented on the model types and on references to them
+//! (`LineString` and `&'a LineString`, …), so nested types can be returned
+//! without copying. Curve variants of [`Geometry`] are not representable in
+//! `geo-traits`: call [`Geometry::simplify_types`] and check
+//! [`Geometry::is_simple`] first, and use [`crate::wkb`] for curves.
+//! [`GeometryTrait::as_type`] panics on a curve variant.
 
 use geo_traits::{
     CoordTrait, Dimensions, GeometryCollectionTrait, GeometryTrait, GeometryType, LineStringTrait,
@@ -27,52 +29,93 @@ impl CoordTrait for CoordRef<'_> {
     type T = f64;
 
     fn dim(&self) -> Dimensions {
-        todo!()
+        dimensions(Some(self.dim))
     }
 
     fn x(&self) -> f64 {
-        todo!()
+        self.values[0]
     }
 
     fn y(&self) -> f64 {
-        todo!()
+        self.values[1]
     }
 
     fn nth_or_panic(&self, n: usize) -> f64 {
-        todo!()
+        self.values[n]
     }
 }
 
-/// Shared associated types: every nested geometry is returned by reference.
+fn dimensions(dim: Option<Dim>) -> Dimensions {
+    match dim {
+        Some(Dim::Xyz) => Dimensions::Xyz,
+        Some(Dim::Xy) | None => Dimensions::Xy,
+    }
+}
+
+/// The `geo-traits` view of a geometry, shared by `Geometry` and `&Geometry`.
+type GeometryTypeOf<'a> = GeometryType<
+    'a,
+    Point,
+    LineString,
+    Polygon,
+    MultiPoint,
+    MultiLineString,
+    MultiPolygon,
+    GeometryCollection,
+    UnimplementedRect<f64>,
+    UnimplementedTriangle<f64>,
+    UnimplementedLine<f64>,
+>;
+
+fn geometry_as_type(geometry: &Geometry) -> GeometryTypeOf<'_> {
+    match geometry {
+        Geometry::Point(g) => GeometryType::Point(g),
+        Geometry::LineString(g) => GeometryType::LineString(g),
+        Geometry::Polygon(g) => GeometryType::Polygon(g),
+        Geometry::MultiPoint(g) => GeometryType::MultiPoint(g),
+        Geometry::MultiLineString(g) => GeometryType::MultiLineString(g),
+        Geometry::MultiPolygon(g) => GeometryType::MultiPolygon(g),
+        Geometry::GeometryCollection(g) => GeometryType::GeometryCollection(g),
+        curve => panic!(
+            "{:?} is a curve type, which geo-traits cannot represent; \
+             call Geometry::simplify_types or write it as WKB",
+            curve.kind()
+        ),
+    }
+}
+
+/// Shared associated types: every nested geometry is the model type itself,
+/// borrowed by `as_type`. `$dim` and `$as_type` are evaluated with `$this`
+/// bound to `&Self`.
 macro_rules! geometry_trait_body {
-    () => {
+    (|$this:ident| dim: $dim:expr, as_type: $as_type:expr) => {
         type T = f64;
         type PointType<'b>
-            = &'b Point
+            = Point
         where
             Self: 'b;
         type LineStringType<'b>
-            = &'b LineString
+            = LineString
         where
             Self: 'b;
         type PolygonType<'b>
-            = &'b Polygon
+            = Polygon
         where
             Self: 'b;
         type MultiPointType<'b>
-            = &'b MultiPoint
+            = MultiPoint
         where
             Self: 'b;
         type MultiLineStringType<'b>
-            = &'b MultiLineString
+            = MultiLineString
         where
             Self: 'b;
         type MultiPolygonType<'b>
-            = &'b MultiPolygon
+            = MultiPolygon
         where
             Self: 'b;
         type GeometryCollectionType<'b>
-            = &'b GeometryCollection
+            = GeometryCollection
         where
             Self: 'b;
         type RectType<'b>
@@ -89,7 +132,8 @@ macro_rules! geometry_trait_body {
             Self: 'b;
 
         fn dim(&self) -> Dimensions {
-            todo!()
+            let $this = self;
+            dimensions($dim)
         }
 
         fn as_type(
@@ -107,140 +151,171 @@ macro_rules! geometry_trait_body {
             Self::TriangleType<'_>,
             Self::LineType<'_>,
         > {
-            todo!()
+            let $this = self;
+            $as_type
+        }
+    };
+}
+
+/// `GeometryTrait` for a model type and a reference to it.
+macro_rules! simple_geometry_trait {
+    ($ty:ident, $variant:ident, |$this:ident| $dim:expr) => {
+        impl GeometryTrait for $ty {
+            geometry_trait_body!(|this| dim: {
+                let $this: &$ty = this;
+                $dim
+            }, as_type: GeometryType::$variant(this));
+        }
+        impl GeometryTrait for &$ty {
+            geometry_trait_body!(|this| dim: {
+                let $this: &$ty = this;
+                $dim
+            }, as_type: GeometryType::$variant(*this));
         }
     };
 }
 
 impl GeometryTrait for Geometry {
-    geometry_trait_body!();
+    geometry_trait_body!(|this| dim: Geometry::dim(this), as_type: geometry_as_type(this));
 }
 impl GeometryTrait for &Geometry {
-    geometry_trait_body!();
-}
-impl GeometryTrait for &Point {
-    geometry_trait_body!();
-}
-impl GeometryTrait for &LineString {
-    geometry_trait_body!();
-}
-impl GeometryTrait for &Polygon {
-    geometry_trait_body!();
-}
-impl GeometryTrait for &MultiPoint {
-    geometry_trait_body!();
-}
-impl GeometryTrait for &MultiLineString {
-    geometry_trait_body!();
-}
-impl GeometryTrait for &MultiPolygon {
-    geometry_trait_body!();
-}
-impl GeometryTrait for &GeometryCollection {
-    geometry_trait_body!();
+    geometry_trait_body!(|this| dim: Geometry::dim(this), as_type: geometry_as_type(this));
 }
 
-impl PointTrait for &Point {
+simple_geometry_trait!(Point, Point, |g| Point::dim(g));
+simple_geometry_trait!(LineString, LineString, |g| g.coords.dim);
+simple_geometry_trait!(Polygon, Polygon, |g| Polygon::dim(g));
+simple_geometry_trait!(MultiPoint, MultiPoint, |g| crate::model::max_dim(
+    g.0.iter().map(Point::dim)
+));
+simple_geometry_trait!(MultiLineString, MultiLineString, |g| crate::model::max_dim(
+    g.0.iter().map(|line| line.coords.dim)
+));
+simple_geometry_trait!(MultiPolygon, MultiPolygon, |g| crate::model::max_dim(
+    g.0.iter().map(Polygon::dim)
+));
+simple_geometry_trait!(GeometryCollection, GeometryCollection, |g| crate::model::max_dim(
+    g.0.iter().map(Geometry::dim)
+));
+
+/// Implement a `geo-traits` trait for a model type and a reference to it.
+macro_rules! for_both {
+    ($trait:ident for $ty:ident { $($body:tt)* }) => {
+        impl $trait for $ty {
+            $($body)*
+        }
+        impl $trait for &$ty {
+            $($body)*
+        }
+    };
+}
+
+for_both!(PointTrait for Point {
     type CoordType<'b>
         = CoordRef<'b>
     where
         Self: 'b;
 
     fn coord(&self) -> Option<Self::CoordType<'_>> {
-        todo!()
+        let values = self.coord.as_deref()?;
+        let dim = if values.len() >= 3 { Dim::Xyz } else { Dim::Xy };
+        Some(CoordRef { values, dim })
     }
-}
+});
 
-impl LineStringTrait for &LineString {
+for_both!(LineStringTrait for LineString {
     type CoordType<'b>
         = CoordRef<'b>
     where
         Self: 'b;
 
     fn num_coords(&self) -> usize {
-        todo!()
+        self.coords.len()
     }
 
     unsafe fn coord_unchecked(&self, i: usize) -> Self::CoordType<'_> {
-        todo!()
+        CoordRef {
+            values: self.coords.get(i),
+            dim: self.coords.dim.unwrap_or(Dim::Xy),
+        }
     }
-}
+});
 
-impl PolygonTrait for &Polygon {
+for_both!(PolygonTrait for Polygon {
     type RingType<'b>
         = &'b LineString
     where
         Self: 'b;
 
     fn exterior(&self) -> Option<Self::RingType<'_>> {
-        todo!()
+        self.exterior.as_ref()
     }
 
     fn num_interiors(&self) -> usize {
-        todo!()
+        self.interiors.len()
     }
 
     unsafe fn interior_unchecked(&self, i: usize) -> Self::RingType<'_> {
-        todo!()
+        &self.interiors[i]
     }
-}
+});
 
-impl MultiPointTrait for &MultiPoint {
+for_both!(MultiPointTrait for MultiPoint {
     type InnerPointType<'b>
         = &'b Point
     where
         Self: 'b;
 
     fn num_points(&self) -> usize {
-        todo!()
+        self.0.len()
     }
 
     unsafe fn point_unchecked(&self, i: usize) -> Self::InnerPointType<'_> {
-        todo!()
+        &self.0[i]
     }
-}
+});
 
-impl MultiLineStringTrait for &MultiLineString {
+for_both!(MultiLineStringTrait for MultiLineString {
     type InnerLineStringType<'b>
         = &'b LineString
     where
         Self: 'b;
 
     fn num_line_strings(&self) -> usize {
-        todo!()
+        self.0.len()
     }
 
     unsafe fn line_string_unchecked(&self, i: usize) -> Self::InnerLineStringType<'_> {
-        todo!()
+        &self.0[i]
     }
-}
+});
 
-impl MultiPolygonTrait for &MultiPolygon {
+for_both!(MultiPolygonTrait for MultiPolygon {
     type InnerPolygonType<'b>
         = &'b Polygon
     where
         Self: 'b;
 
     fn num_polygons(&self) -> usize {
-        todo!()
+        self.0.len()
     }
 
     unsafe fn polygon_unchecked(&self, i: usize) -> Self::InnerPolygonType<'_> {
-        todo!()
+        &self.0[i]
     }
-}
+});
 
-impl GeometryCollectionTrait for &GeometryCollection {
+for_both!(GeometryCollectionTrait for GeometryCollection {
     type GeometryType<'b>
         = &'b Geometry
     where
         Self: 'b;
 
     fn num_geometries(&self) -> usize {
-        todo!()
+        self.0.len()
     }
 
     unsafe fn geometry_unchecked(&self, i: usize) -> Self::GeometryType<'_> {
-        todo!()
+        &self.0[i]
     }
-}
+});

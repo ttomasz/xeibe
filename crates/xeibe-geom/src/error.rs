@@ -1,4 +1,4 @@
-use xeibe_core::Location;
+use xeibe_core::{Location, SourceId};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -27,4 +27,31 @@ pub enum Error {
     /// The column's srsNames resolve to more than one CRS (with `MixedCrs::Error`).
     #[error("several CRSs in one column: {0:?}")]
     MixedCrs(Vec<String>),
+}
+
+impl Error {
+    /// An invalid-coordinates error raised by code that works on text alone
+    /// (e.g. [`crate::parse::parse_pos_list`]); its location is a placeholder
+    /// until [`Error::at`] sets the real one.
+    pub(crate) fn invalid_coordinates(message: impl Into<String>) -> Self {
+        Error::InvalidCoordinates { location: unlocated(), message: message.into() }
+    }
+
+    /// Replace the location of a located error (the parser knows where the
+    /// element was; the string-level helpers don't).
+    pub fn at(mut self, at: Location) -> Self {
+        match &mut self {
+            Error::InvalidCoordinates { location, .. }
+            | Error::PositionCount { location, .. }
+            | Error::Unsupported { location, .. }
+            | Error::ByReference { location } => *location = at,
+            Error::Core(_) | Error::MixedCrs(_) => {}
+        }
+        self
+    }
+}
+
+/// Placeholder location for errors raised without access to the reader.
+pub(crate) fn unlocated() -> Location {
+    Location { source: SourceId(0), byte_offset: 0, feature_seq: None, gml_id: None }
 }
