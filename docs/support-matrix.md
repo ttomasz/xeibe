@@ -67,7 +67,7 @@ file. Not listed individually:
 | CDATA sections in text | ✅ Supported | P0 | `crates/xeibe-core/tests/it/reader.rs` |
 | Character and predefined entity references (`&amp;`, `&#x…;`) | ✅ Supported | P0 | `crates/xeibe-core/tests/it/reader.rs` |
 | Comments, processing instructions | ✅ Supported | P0 | Skipped. `crates/xeibe-core/tests/it/splitter.rs` |
-| DTD / custom entity declarations | ❌ Not planned | — | Security (XXE, billion laughs). A DTD is skipped with a warning |
+| DTD / custom entity declarations | ❌ Not planned | — | Security (XXE, billion laughs). A document with a DTD is rejected (`DtdNotSupported`) |
 | External entity resolution | ❌ Not planned | — | Security |
 | `xml:space`, `xml:lang` | 🤔 Considering | P2 | Text is whitespace-trimmed by default. `xml:lang` could become an attribute column |
 | gzip input | ✅ Supported | P0 | Detected from magic bytes. `crates/xeibe-core/tests/it/decode.rs` |
