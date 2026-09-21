@@ -2,9 +2,6 @@
 //!
 //! See `docs/geometry.md`. This crate has no Arrow dependency.
 
-// Skeleton phase: signatures only, bodies are `todo!()`.
-#![allow(dead_code, unused_variables)]
-
 pub mod arcs;
 pub mod axis;
 pub mod crs;

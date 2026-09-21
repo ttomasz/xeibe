@@ -52,7 +52,7 @@ impl<'a> Attributes<'a> {
     /// `(namespace, local name, unescaped value)` without allocating names.
     /// Malformed attributes and attributes with an undeclared prefix are
     /// skipped; values that fail to unescape are returned raw.
-    fn iter_raw(&self) -> impl Iterator<Item = (Option<&'a str>, &'a str, Cow<'a, str>)> + '_ {
+    pub fn iter_raw(&self) -> impl Iterator<Item = (Option<&'a str>, &'a str, Cow<'a, str>)> + '_ {
         let mut raw = self.raw.clone();
         raw.with_checks(false);
         raw.filter_map(move |attr| {
@@ -88,6 +88,9 @@ pub struct GmlReader<'a> {
     pending: Option<(Event<'a>, u64)>,
     /// Buffer position of the last `Start` returned, for [`Self::capture_element`].
     last_start: u64,
+    /// Name, tag text and raw name length of the last `Start` returned, for
+    /// [`Self::current_start`].
+    last_start_tag: Option<(QName, &'a str, usize)>,
     /// Interned names: `"{ns}\0local"` → name, so repeated elements share `Arc`s.
     names: HashMap<String, QName>,
     scratch: String,
@@ -122,6 +125,7 @@ impl<'a> GmlReader<'a> {
             source: SourceId(0),
             pending: None,
             last_start: 0,
+            last_start_tag: None,
             names: HashMap::new(),
             scratch: String::new(),
         }
@@ -144,6 +148,7 @@ impl<'a> GmlReader<'a> {
                     // attributes are read from the buffer.
                     let tag = self.tag_text(start);
                     let name_len = start_tag.name().as_ref().len();
+                    self.last_start_tag = Some((name.clone(), tag, name_len));
                     return Ok(XmlEvent::Start {
                         name,
                         attrs: Attributes {
@@ -211,11 +216,38 @@ impl<'a> GmlReader<'a> {
     /// start tag to the end tag, as written; namespace declarations inherited
     /// from ancestors are not added.
     pub fn capture_element(&mut self) -> crate::Result<String> {
-        let start = self.last_start as usize;
+        let start = self.last_start_position();
         self.skip_element()?;
+        Ok(self.raw_since(start))
+    }
+
+    /// Name and attributes of the last `Start` returned by [`Self::next_event`].
+    ///
+    /// For consumers handed the reader right after a start tag whose event
+    /// the caller has already taken (the geometry parser, for example). Only
+    /// meaningful until the next event is read: the namespace scope is the
+    /// element's own only until then.
+    pub fn current_start(&self) -> Option<(QName, Attributes<'_>)> {
+        let (name, tag, name_len) = self.last_start_tag.as_ref()?;
+        let attrs = Attributes {
+            raw: quick_xml::events::attributes::Attributes::new(tag, *name_len),
+            resolver: self.inner.resolver(),
+        };
+        Some((name.clone(), attrs))
+    }
+
+    /// Buffer position where the last `Start` returned begins; pass it to
+    /// [`Self::raw_since`] later to get the element's raw XML.
+    pub fn last_start_position(&self) -> usize {
+        self.last_start as usize
+    }
+
+    /// The raw XML from `position` (see [`Self::last_start_position`]) to the
+    /// current position, as written.
+    pub fn raw_since(&self, position: usize) -> String {
         let end = self.inner.buffer_position() as usize;
-        let raw = &self.buf[start.min(end)..end];
-        Ok(String::from_utf8_lossy(raw).into_owned())
+        let raw = &self.buf[position.min(end)..end];
+        String::from_utf8_lossy(raw).into_owned()
     }
 
     pub fn location(&self) -> Location {

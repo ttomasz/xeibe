@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::crs::{CrsRef, SrsName, SrsNameForm};
 use crate::epsg::{CrsTable, FirstAxis};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub enum AxisOrderMode {
     /// Coordinates are x/y (easting/longitude first) as written. Never swap.
     XY,
@@ -26,13 +26,8 @@ pub enum AxisOrderMode {
     },
     /// Evidence-based, decided per key from scan or read-sample evidence
     /// (configured by [`AxisOrderOptions::auto`]).
+    #[default]
     Auto,
-}
-
-impl Default for AxisOrderMode {
-    fn default() -> Self {
-        AxisOrderMode::Auto
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

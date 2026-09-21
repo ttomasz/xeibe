@@ -8,8 +8,8 @@ use crate::arcs::circle_closing_midpoint;
 use crate::crs::{CrsRef, SrsName};
 use crate::epsg::CrsTable;
 use crate::model::{
-    CircularString, CompoundCurve, Coords, Curve, CurvePart, Geometry, JoinResult, LineString,
-    MultiPolygon, MultiSurface, Polygon, Surface, distance_xy,
+    CircularString, CompoundCurve, Coords, Curve, CurvePart, Geometry, LineString,
+    MultiSurface, Polygon, Surface, distance_xy,
 };
 
 /// Joins segments (of a `Curve`) or members (of a `CompositeCurve` or
@@ -332,11 +332,6 @@ pub(crate) fn curve_to_geometry(curve: Curve) -> Geometry {
     }
 }
 
-/// An empty multi-polygon (e.g. a `MultiSurface` with no members).
-pub(crate) fn empty_multi_polygon() -> Geometry {
-    Geometry::MultiPolygon(MultiPolygon::default())
-}
-
 /// Inputs to the dimension rule (`docs/geometry.md`, "Dimension").
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct DimensionInputs {
@@ -383,15 +378,4 @@ pub(crate) fn crs_dimension(srs_name: &str, table: &CrsTable) -> Option<u8> {
         }
     }
     of(SrsName::parse(srs_name).crs.as_ref()?, table)
-}
-
-/// Whether `result` needs reporting (anything but an exact join).
-pub(crate) fn join_warning(result: JoinResult) -> Option<String> {
-    match result {
-        JoinResult::Exact => None,
-        JoinResult::WithinTolerance { distance } => {
-            Some(format!("positions {distance} apart joined (within join_tolerance)"))
-        }
-        JoinResult::Gap { distance } => Some(format!("gap of {distance}; both positions kept")),
-    }
 }

@@ -333,7 +333,10 @@ fn a_ring_of_curve_members_closes_the_cycle() {
 #[test]
 fn a_curve_without_segments_is_an_error() {
     assert!(parse("<gml:Curve/>").is_err());
-    assert!(parse("<gml:Curve><gml:segments/></gml:Curve>").is_err());
+    // An empty `segments` is an empty curve, as in GDAL (case
+    // ogr_gml_geom:1528): an empty geometry element is an empty geometry
+    // (`docs/geometry.md`, "Empty, invalid and degenerate geometry").
+    assert_geometry("<gml:Curve><gml:segments/></gml:Curve>", "LINESTRING EMPTY");
 }
 
 #[test]
@@ -345,4 +348,40 @@ fn the_interpolation_attribute_only_warns_when_it_disagrees() {
     ));
     assert_wkt(&g(&snippet), "LINESTRING (0 0,1 1)");
     assert!(!warnings(&snippet).is_empty(), "a mismatch warns");
+}
+
+#[test]
+fn arc_angles_are_measured_in_output_order() {
+    // GDAL case ogr_gml_geom:3050: EPSG:2326 is northing first, so with the
+    // URN form the coordinates are swapped, and the arc (angles
+    // counter-clockwise from +x) is computed after the swap. It then meets
+    // its stored neighbours, as GDAL's arc does (GDAL keeps the written order).
+    let snippet = concat!(
+        r#"<gml:Curve srsName="urn:ogc:def:crs:EPSG::2326"><gml:segments>"#,
+        "<gml:LineStringSegment><gml:posList>821502.753690919 838825.332031005 ",
+        "821194.727830006 839043.611480001</gml:posList></gml:LineStringSegment>",
+        r#"<gml:ArcByCenterPoint numArc="1"><gml:posList>821194.396688321 839052.616490606</gml:posList>"#,
+        r#"<gml:radius uom="EPSG:2326">9.01109709191771</gml:radius>"#,
+        r#"<gml:startAngle uom="degree">177.894008505116</gml:startAngle>"#,
+        r#"<gml:endAngle uom="degree">250.98396509322</gml:endAngle></gml:ArcByCenterPoint>"#,
+        "<gml:LineStringSegment><gml:posList>821185.877350006 839049.680380003 ",
+        "821502.753690919 838825.332031005</gml:posList></gml:LineStringSegment>",
+        "</gml:segments></gml:Curve>"
+    );
+    let parsed = crate::support::parse_with(
+        snippet,
+        &xeibe_geom::GeometryOptions::default(),
+        &crate::support::FixedAxis::swap(),
+    )
+    .expect("a curve");
+    assert_wkt_tol(
+        &crate::support::to_g(&parsed.geometry.expect("a geometry")),
+        concat!(
+            "COMPOUNDCURVE ((838825.332031005 821502.753690919,839043.611480001 821194.727830006),",
+            "CIRCULARSTRING (839043.611480001 821194.727830006,839045.184778624 821189.300657726,",
+            "839049.680380003 821185.877350006),",
+            "(839049.680380003 821185.877350006,838825.332031005 821502.753690919))"
+        ),
+        Tol::abs(1e-6),
+    );
 }
