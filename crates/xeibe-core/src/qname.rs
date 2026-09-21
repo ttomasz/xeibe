@@ -12,22 +12,37 @@ pub struct QName {
 
 impl QName {
     pub fn new(ns: Option<&str>, local: &str) -> Self {
-        todo!()
+        Self {
+            ns: ns.map(Arc::from),
+            local: Arc::from(local),
+        }
     }
 
     /// `true` if this element is in one of the GML namespaces (2/3.1 or 3.2).
     pub fn is_gml(&self) -> bool {
-        todo!()
+        matches!(
+            self.ns.as_deref(),
+            Some(crate::ns::GML) | Some(crate::ns::GML_32)
+        )
+    }
+
+    /// `true` if this is `local` in one of the GML namespaces.
+    pub fn is_gml_named(&self, local: &str) -> bool {
+        self.is_gml() && &*self.local == local
     }
 
     /// Clark notation: `{uri}local`.
     pub fn to_clark(&self) -> String {
-        todo!()
+        self.to_string()
     }
 }
 
+/// Clark notation, like [`QName::to_clark`].
 impl std::fmt::Display for QName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        match &self.ns {
+            Some(ns) => write!(f, "{{{ns}}}{}", self.local),
+            None => f.write_str(&self.local),
+        }
     }
 }

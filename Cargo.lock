@@ -4295,6 +4295,7 @@ dependencies = [
  "bytes",
  "encoding_rs",
  "flate2",
+ "globset",
  "quick-xml 0.42.0",
  "serde",
  "thiserror 2.0.20",

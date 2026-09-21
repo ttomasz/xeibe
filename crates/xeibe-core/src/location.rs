@@ -16,6 +16,13 @@ pub struct Location {
 
 impl std::fmt::Display for Location {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        write!(f, "{}, byte {}", self.source, self.byte_offset)?;
+        if let Some(seq) = self.feature_seq {
+            write!(f, ", feature {seq}")?;
+        }
+        if let Some(id) = &self.gml_id {
+            write!(f, " (gml:id {id})")?;
+        }
+        Ok(())
     }
 }
