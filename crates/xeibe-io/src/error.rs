@@ -16,4 +16,20 @@ pub enum Error {
 
     #[error("invalid URL: {0}")]
     InvalidUrl(String),
+
+    /// A header, credential or other setting that cannot be used as given.
+    #[error("invalid option: {0}")]
+    InvalidOption(String),
+}
+
+/// For [`xeibe_core::ByteSource::open`], which returns core errors: those pass
+/// through, the rest become I/O errors with the same message.
+impl From<Error> for xeibe_core::Error {
+    fn from(error: Error) -> Self {
+        match error {
+            Error::Core(error) => error,
+            Error::Io(error) => xeibe_core::Error::Io(error),
+            other => xeibe_core::Error::Io(std::io::Error::other(other.to_string())),
+        }
+    }
 }

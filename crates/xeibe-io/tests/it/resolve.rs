@@ -32,8 +32,8 @@ fn local_paths_globs_and_directories_become_sources() {
     std::fs::write(dir.join("a.gml"), "<a/>").unwrap();
     std::fs::write(dir.join("b.gml"), "<a/>").unwrap();
 
-    let one = resolve_sources(&[dir.join("a.gml").display().to_string()], &options())
-        .expect("one file");
+    let one =
+        resolve_sources(&[dir.join("a.gml").display().to_string()], &options()).expect("one file");
     assert_eq!(one.len(), 1);
 
     let all = resolve_sources(&[format!("{}/*.gml", dir.display())], &options()).expect("a glob");
@@ -41,12 +41,10 @@ fn local_paths_globs_and_directories_become_sources() {
 }
 
 #[test]
+#[cfg(feature = "http")]
 fn http_urls_become_streaming_sources() {
-    let sources = resolve_sources(
-        &["https://example.com/data/roads.gml".into()],
-        &options(),
-    )
-    .expect("a URL");
+    let sources =
+        resolve_sources(&["https://example.com/data/roads.gml".into()], &options()).expect("a URL");
     assert_eq!(sources.len(), 1);
     assert!(
         sources[0].name().contains("example.com"),
@@ -75,7 +73,5 @@ fn a_remote_zip_asks_the_user_to_download_it_first() {
 #[test]
 fn a_path_that_does_not_exist_is_an_error() {
     let dir = temp_dir("io-missing");
-    assert!(
-        resolve_sources(&[dir.join("nope.gml").display().to_string()], &options()).is_err()
-    );
+    assert!(resolve_sources(&[dir.join("nope.gml").display().to_string()], &options()).is_err());
 }

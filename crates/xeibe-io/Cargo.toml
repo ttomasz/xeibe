@@ -11,17 +11,20 @@ publish.workspace = true
 default = ["http"]
 http = ["dep:reqwest"]
 # S3/GCS/Azure/HTTP via `object_store`; needs a tokio runtime (bridged to sync reads).
-object-store = ["dep:object_store", "object_store/aws", "object_store/gcp", "object_store/azure", "dep:tokio"]
+object-store = ["dep:object_store", "object_store/aws", "object_store/gcp", "object_store/azure", "dep:tokio", "dep:futures-util", "dep:globset"]
 
 [dependencies]
 xeibe-core.workspace = true
 bytes.workspace = true
 url.workspace = true
 thiserror.workspace = true
-crossbeam-channel.workspace = true
 reqwest = { workspace = true, optional = true }
 object_store = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true }
+# `sync` for the bounded channel between the async body and the synchronous reader.
+tokio = { workspace = true, optional = true, features = ["sync"] }
+# Polls `object_store`'s body and listing streams; already a dependency of `object_store`.
+futures-util = { version = "0.3", optional = true, default-features = false }
+globset = { workspace = true, optional = true }
 
 [dev-dependencies]
 xeibe-testkit.workspace = true
