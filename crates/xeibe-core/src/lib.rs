@@ -3,9 +3,6 @@
 //! This crate has no Arrow dependency. See `docs/architecture.md` for the
 //! overall data flow.
 
-// Skeleton phase: signatures only, bodies are `todo!()`.
-#![allow(dead_code, unused_variables)]
-
 pub mod archive;
 pub mod chunk;
 pub mod decode;
