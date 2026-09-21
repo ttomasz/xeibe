@@ -3,9 +3,6 @@
 //!
 //! Nothing here downloads to disk, caches or probes for range support.
 
-// Skeleton phase: signatures only, bodies are `todo!()`.
-#![allow(dead_code, unused_variables)]
-
 pub mod error;
 #[cfg(feature = "http")]
 pub mod http;

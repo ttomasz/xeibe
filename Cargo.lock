@@ -4343,7 +4343,8 @@ name = "xeibe-io"
 version = "0.1.0"
 dependencies = [
  "bytes",
- "crossbeam-channel",
+ "futures-util",
+ "globset",
  "object_store",
  "reqwest 0.13.5",
  "thiserror 2.0.20",
