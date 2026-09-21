@@ -1,6 +1,7 @@
 //! Full geometry parser: GML element subtree → [`Geometry`] in output axis order.
 
 mod aggregates;
+mod assemble;
 mod coords;
 mod curves;
 mod envelope;
@@ -50,7 +51,7 @@ pub struct GeometryParser<'o> {
 
 impl<'o> GeometryParser<'o> {
     pub fn new(options: &'o GeometryOptions) -> Self {
-        todo!()
+        GeometryParser { options }
     }
 
     /// Parse the geometry element the reader is positioned on (inside a
