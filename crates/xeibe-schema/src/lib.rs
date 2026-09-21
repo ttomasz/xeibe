@@ -3,9 +3,6 @@
 //!
 //! See `docs/schema-inference.md` and `docs/type-mapping.md`.
 
-// Skeleton phase: signatures only, bodies are `todo!()`.
-#![allow(dead_code, unused_variables)]
-
 pub mod bind;
 pub mod error;
 pub mod explain;
@@ -27,6 +24,6 @@ pub use bind::bind_schema;
 pub use observation::{DatasetObservation, LayerObservation};
 pub use options::{InferenceOptions, OnSchemaMismatch, SampleOptions};
 pub use pattern::PathPattern;
-pub use rules::{LayerSchema, infer_schema};
+pub use rules::{FieldDecision, FieldRoute, LayerSchema, RouteValue, infer_schema};
 pub use scan::{ScanExtent, ScanOptions, Scanner};
 pub use value::{TypeSet, ValueStats};

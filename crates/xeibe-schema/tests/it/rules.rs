@@ -479,9 +479,9 @@ fn conservative_sampling_keeps_weakly_evidenced_columns_as_text() {
 #[test]
 fn conservative_sampling_writes_geometry_as_wkb() {
     // A Polygon sample says nothing about later MultiPolygons.
-    let document = many(&[concat!(
-        "<app:geom><gml:Point srsName=\"EPSG:2180\"><gml:pos>1 2</gml:pos></gml:Point></app:geom>"
-    )]);
+    let document = many(&[
+        "<app:geom><gml:Point srsName=\"EPSG:2180\"><gml:pos>1 2</gml:pos></gml:Point></app:geom>",
+    ]);
     let sample = SampleOptions {
         min_typed_values: 1,
         conservative: true,
