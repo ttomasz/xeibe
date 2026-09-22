@@ -4319,8 +4319,14 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "datafusion",
+ "object_store",
+ "tokio",
  "xeibe-arrow",
  "xeibe-core",
+ "xeibe-geom",
+ "xeibe-io",
+ "xeibe-schema",
+ "xeibe-testkit",
 ]
 
 [[package]]

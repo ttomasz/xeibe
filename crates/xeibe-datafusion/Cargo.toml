@@ -9,6 +9,16 @@ publish.workspace = true
 
 [dependencies]
 xeibe-core.workspace = true
+xeibe-geom.workspace = true
+xeibe-schema.workspace = true
 xeibe-arrow.workspace = true
+# `object-store`: the adapter from a registered `ObjectStore` to `ByteSource`.
+xeibe-io = { workspace = true, features = ["object-store"] }
 datafusion.workspace = true
+object_store.workspace = true
+tokio.workspace = true
 async-trait = "0.1"
+
+[dev-dependencies]
+xeibe-testkit.workspace = true
+tokio = { workspace = true, features = ["macros"] }
