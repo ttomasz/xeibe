@@ -4366,9 +4366,13 @@ name = "xeibe-py"
 version = "0.1.0"
 dependencies = [
  "arrow-array",
+ "arrow-schema",
  "pyo3",
+ "serde_json",
  "xeibe-arrow",
  "xeibe-core",
+ "xeibe-io",
+ "xeibe-schema",
 ]
 
 [[package]]
