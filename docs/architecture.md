@@ -434,7 +434,9 @@ Spark, Polars) reads zip at all. Only GDAL does.
 - We add no cache. Whatever caching DataFusion or SedonaDB configure applies.
 - Blocking work (parsing, `ByteSource` reads) runs in `spawn_blocking`, never on a
   tokio worker thread.
-- A table function: `read_gml('path/*.gml', layer => 'AD_PunktAdresowy', settings => 'prg.gml.json')`.
+- A table function: `read_gml('path/*.gml', 'AD_PunktAdresowy', 'settings=prg.gml.json')`.
+  Options after the layer are `'key=value'` strings, because DataFusion's SQL
+  planner passes no named arguments (`layer => …`) to table functions.
 - Projection pushdown means columns that aren't selected are skipped without being
   built.
 

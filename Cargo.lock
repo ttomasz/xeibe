@@ -4324,8 +4324,14 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "datafusion",
+ "object_store",
+ "tokio",
  "xeibe-arrow",
  "xeibe-core",
+ "xeibe-geom",
+ "xeibe-io",
+ "xeibe-schema",
+ "xeibe-testkit",
 ]
 
 [[package]]
@@ -4365,9 +4371,13 @@ name = "xeibe-py"
 version = "0.1.0"
 dependencies = [
  "arrow-array",
+ "arrow-schema",
  "pyo3",
+ "serde_json",
  "xeibe-arrow",
  "xeibe-core",
+ "xeibe-io",
+ "xeibe-schema",
 ]
 
 [[package]]
