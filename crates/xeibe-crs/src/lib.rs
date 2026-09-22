@@ -18,6 +18,9 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
+// Generated data: bbox values such as 3.14 are not π, and f32 literals keep
+// the digits EPSG publishes.
+#[allow(clippy::approx_constant, clippy::excessive_precision)]
 mod table;
 
 pub use table::{CRS, EPSG_DATE, EPSG_VERSION, PROJJSON_COUNT};

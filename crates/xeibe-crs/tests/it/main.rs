@@ -135,7 +135,7 @@ fn sphere_ellipsoids_use_the_radius_form() {
 
 #[test]
 fn every_record_has_a_sane_shape() {
-    assert!(CRS_LEN > 8000, "expected the whole EPSG dataset, got {CRS_LEN}");
+    const { assert!(CRS_LEN > 8000, "expected the whole EPSG dataset") };
     let mut previous = 0;
     for record in xeibe_crs::CRS {
         assert!(record.code > previous, "CRS must be sorted by code for binary search");
