@@ -8,8 +8,15 @@ pub enum Error {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
+    /// `body` holds the start of the response body (at most
+    /// [`crate::http::ERROR_BODY_LIMIT`] bytes, lossy UTF-8), where servers put
+    /// their error report, e.g. a WFS `ows:ExceptionReport` sent with a 400.
     #[error("HTTP {status} for {url}")]
-    HttpStatus { url: String, status: u16 },
+    HttpStatus {
+        url: String,
+        status: u16,
+        body: Option<String>,
+    },
 
     #[error("network error for {url}: {message}")]
     Network { url: String, message: String },

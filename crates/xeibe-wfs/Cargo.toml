@@ -10,13 +10,15 @@ publish.workspace = true
 [features]
 default = ["http"]
 # Without `http`, only capabilities/response parsing and request building are available.
-http = ["dep:reqwest", "xeibe-io/http"]
+http = ["xeibe-io/http"]
 
 [dependencies]
 xeibe-core.workspace = true
 xeibe-geom.workspace = true
 xeibe-io = { workspace = true, default-features = false }
-reqwest = { workspace = true, optional = true }
+# Capabilities and exception reports need prefix resolution in text content
+# (`<Name>ms:AD.Address</Name>`), which `xeibe_core::reader` does not expose.
+quick-xml.workspace = true
 url.workspace = true
 bytes.workspace = true
 serde.workspace = true
@@ -24,3 +26,5 @@ thiserror.workspace = true
 
 [dev-dependencies]
 xeibe-testkit.workspace = true
+# gzip response bodies for the HTTP tests.
+flate2.workspace = true

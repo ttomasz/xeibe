@@ -1,8 +1,5 @@
 //! WFS bulk-read client: pages streamed into a read. See `docs/wfs.md`.
 
-// Skeleton phase: signatures only, bodies are `todo!()`.
-#![allow(dead_code, unused_variables)]
-
 pub mod capabilities;
 pub mod error;
 pub mod exception;
@@ -14,6 +11,7 @@ pub mod pages;
 pub mod paging;
 pub mod request;
 pub mod response;
+mod xml;
 
 pub use capabilities::{Capabilities, FeatureTypeInfo, WfsVersion};
 pub use error::{Error, Result};
