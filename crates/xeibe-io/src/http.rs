@@ -19,6 +19,8 @@ const MAX_WAIT: Duration = Duration::from_secs(60);
 /// Read of the body's first bytes before the stream is handed on: a failure in
 /// it can still be retried.
 const FIRST_READ: usize = 64 << 10;
+/// Longest part of an error response's body kept in [`crate::Error::HttpStatus`].
+pub const ERROR_BODY_LIMIT: u64 = 64 << 10;
 
 pub struct HttpClient {
     client: reqwest::blocking::Client,
@@ -109,6 +111,7 @@ impl HttpClient {
                         return Err(crate::Error::HttpStatus {
                             url: url.to_string(),
                             status: status.as_u16(),
+                            body: error_body(response),
                         });
                     }
                     retry_after(&response).unwrap_or_else(|| backoff(attempt))
@@ -149,6 +152,16 @@ fn backoff(attempt: u32) -> Duration {
     FIRST_BACKOFF
         .saturating_mul(1 << attempt.min(16))
         .min(MAX_WAIT)
+}
+
+/// The start of an error response's body; `None` if it is empty or unreadable.
+fn error_body(response: reqwest::blocking::Response) -> Option<String> {
+    let mut body = Vec::new();
+    response
+        .take(ERROR_BODY_LIMIT)
+        .read_to_end(&mut body)
+        .ok()?;
+    (!body.is_empty()).then(|| String::from_utf8_lossy(&body).into_owned())
 }
 
 /// `Retry-After` in seconds. The HTTP-date form falls back to the backoff.

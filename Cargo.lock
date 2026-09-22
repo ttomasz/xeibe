@@ -4392,7 +4392,8 @@ name = "xeibe-wfs"
 version = "0.1.0"
 dependencies = [
  "bytes",
- "reqwest 0.13.5",
+ "flate2",
+ "quick-xml 0.42.0",
  "serde",
  "thiserror 2.0.20",
  "url",

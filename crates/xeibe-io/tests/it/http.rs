@@ -97,6 +97,25 @@ fn retries_run_out() {
 }
 
 #[test]
+fn an_error_response_keeps_the_start_of_its_body() {
+    // WFS servers send their exception report with the error status.
+    let report = "<ows:ExceptionReport/>";
+    let server = Server::start(vec![Reply::Full {
+        status: 400,
+        headers: Vec::new(),
+        body: report.into(),
+    }]);
+    match client(0).get(&server.url("/wfs")) {
+        Err(xeibe_io::Error::HttpStatus {
+            status: 400, body, ..
+        }) => {
+            assert_eq!(body.as_deref(), Some(report));
+        }
+        other => panic!("expected an HTTP 400, got {other:?}"),
+    }
+}
+
+#[test]
 fn a_client_error_is_not_retried() {
     let server = Server::start(vec![Reply::status(404), Reply::ok("<a/>")]);
     let error = client(3)
