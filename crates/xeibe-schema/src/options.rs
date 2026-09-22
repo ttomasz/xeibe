@@ -20,15 +20,71 @@ pub struct InferenceOptions {
 }
 
 impl Default for InferenceOptions {
+    /// Lossless by value, `Struct` nesting, `@` attributes, rich types,
+    /// geometry encoding `Auto` (`docs/schema-inference.md` §3).
     fn default() -> Self {
-        todo!()
+        InferenceOptions {
+            naming: NamingOptions::default(),
+            structure: StructureOptions::default(),
+            types: TypeOptions::default(),
+            gml: GmlOptions::default(),
+            geometry: GeometryOptions::default(),
+            overrides: Vec::new(),
+            layers: Vec::new(),
+            limits: Limits::default(),
+        }
     }
 }
 
 impl InferenceOptions {
     /// Options effective for one layer (global + matching patches).
+    ///
+    /// A patch's selector matches the layer's local name, its prefixed or
+    /// Clark name, and may use `*`/`?` globs (`AD_*`). `layer` may be given
+    /// in any of those forms. Later patches win.
     pub fn for_layer(&self, layer: &str) -> InferenceOptions {
-        todo!()
+        let mut options = self.clone();
+        options.layers.clear();
+        for (selector, patch) in &self.layers {
+            if layer_selector_matches(selector, layer) {
+                patch.apply_to(&mut options);
+            }
+        }
+        options
+    }
+}
+
+/// Match a per-layer selector against a layer name in any notation.
+pub(crate) fn layer_selector_matches(selector: &str, layer: &str) -> bool {
+    let local = |name: &str| -> String {
+        match name.rsplit_once('}') {
+            Some((_, local)) => local.to_string(),
+            None => name.rsplit_once(':').map_or(name, |(_, l)| l).to_string(),
+        }
+    };
+    let glob = |pattern: &str, text: &str| crate::pattern::wildcard(pattern.as_bytes(), text.as_bytes());
+    glob(selector, layer)
+        || (!selector.contains(['{', ':']) && glob(selector, &local(layer)))
+        || (!layer.contains(['{', ':']) && glob(&local(selector), layer))
+}
+
+impl InferenceOptionsPatch {
+    pub fn apply_to(&self, options: &mut InferenceOptions) {
+        if let Some(naming) = &self.naming {
+            options.naming = naming.clone();
+        }
+        if let Some(structure) = &self.structure {
+            options.structure = structure.clone();
+        }
+        if let Some(types) = &self.types {
+            options.types = types.clone();
+        }
+        if let Some(gml) = &self.gml {
+            options.gml = gml.clone();
+        }
+        if let Some(geometry) = &self.geometry {
+            options.geometry = geometry.clone();
+        }
     }
 }
 
@@ -52,6 +108,17 @@ pub struct NamingOptions {
     pub flatten_separator: String,
 }
 
+impl Default for NamingOptions {
+    fn default() -> Self {
+        NamingOptions {
+            namespaces: NsMode::StripUnlessCollision,
+            attribute_prefix: "@".to_string(),
+            text_field: "#text".to_string(),
+            flatten_separator: ".".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NsMode {
     Strip,
@@ -72,6 +139,22 @@ pub struct StructureOptions {
     pub collapse_type_wrappers: bool,
     pub mixed_content: MixedContent,
     pub xml_attributes: AttrSelect,
+}
+
+impl Default for StructureOptions {
+    fn default() -> Self {
+        StructureOptions {
+            nesting: Nesting::Struct,
+            lists: ListRule::Infer,
+            force_list: Vec::new(),
+            force_scalar: Vec::new(),
+            simple_with_attrs: SimpleContent::Struct,
+            constant_attrs: ConstantAttrs::ToFieldMetadata,
+            collapse_type_wrappers: true,
+            mixed_content: MixedContent::RawXml,
+            xml_attributes: AttrSelect::All,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -145,6 +228,20 @@ pub struct TypeOptions {
     pub string_view: bool,
 }
 
+impl Default for TypeOptions {
+    fn default() -> Self {
+        TypeOptions {
+            lossless: Lossless::Value,
+            enabled: TypeSet::all(),
+            integers: IntWidth::Int64,
+            timestamps: TimestampOptions::default(),
+            empty_as_null: true,
+            all_null: AllNull::Utf8View,
+            string_view: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Lossless {
     Text,
@@ -167,6 +264,17 @@ pub struct TimestampOptions {
     pub keep_offset: bool,
 }
 
+impl Default for TimestampOptions {
+    fn default() -> Self {
+        TimestampOptions { unit: TimeUnit::Microsecond, keep_offset: true }
+    }
+}
+
+/// The type an Arrow `DataType` gets for a string column.
+pub(crate) fn string_type(types: &TypeOptions) -> DataType {
+    if types.string_view { DataType::Utf8View } else { DataType::Utf8 }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AllNull {
     #[default]
@@ -184,6 +292,19 @@ pub struct GmlOptions {
     pub bounded_by: BoundedBy,
     /// Drop `owns`, `remoteSchema`, `aggregationType`, `xlink:type/show/actuate`.
     pub drop_control_attributes: bool,
+}
+
+impl Default for GmlOptions {
+    fn default() -> Self {
+        GmlOptions {
+            gml_id: IdMode::Column,
+            xlink: XlinkMode::Href,
+            strip_local_href_hash: true,
+            nil_reason: true,
+            bounded_by: BoundedBy::Drop,
+            drop_control_attributes: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -232,7 +353,11 @@ pub struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
-        todo!()
+        Limits {
+            max_depth: 16,
+            max_children: 512,
+            distinct_values: crate::value::DEFAULT_DISTINCT_VALUES,
+        }
     }
 }
 
@@ -263,6 +388,11 @@ pub struct SampleOptions {
 
 impl Default for SampleOptions {
     fn default() -> Self {
-        todo!()
+        SampleOptions {
+            features_per_layer: 10_000,
+            max_buffer_bytes: 256 << 20,
+            min_typed_values: 100,
+            conservative: true,
+        }
     }
 }
