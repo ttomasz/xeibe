@@ -84,7 +84,12 @@ RECORD = re.compile(
 def parse_optional_float(text: str) -> float | None:
     if text == "None":
         return None
-    return float(text[len("Some(") : -1].rstrip("f32"))
+    return float(strip_suffix(text[len("Some(") : -1]))
+
+
+def strip_suffix(literal: str) -> str:
+    """`0.3048f64` → `0.3048` (a character-set strip would eat trailing 2s and 3s)."""
+    return re.sub(r"f(32|64)$", "", literal)
 
 
 def read_committed_table() -> dict[int, dict]:
@@ -100,7 +105,7 @@ def read_committed_table() -> dict[int, dict]:
             "area_wgs84": (
                 None
                 if m.group("area") == "None"
-                else [float(v.rstrip("f32")) for v in m.group("area")[6:-2].split(", ")]
+                else [float(strip_suffix(v)) for v in m.group("area")[6:-2].split(", ")]
             ),
             "deprecated": m.group("dep") == "true",
         }

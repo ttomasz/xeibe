@@ -746,8 +746,10 @@ def update_crate_version(cargo_toml: Path, epsg: str) -> str:
     return re.search(r'(?m)^version\s*=\s*"([^"]+)"', text).group(1)
 
 
-def opt_f32(v) -> str:
-    return "None" if v is None else f"Some({v!r}f32)"
+def opt_f64(v) -> str:
+    # repr() is the shortest text that reads back as the same double, so
+    # EPSG's factors are kept exactly and no digits go to waste.
+    return "None" if v is None else f"Some({v!r}f64)"
 
 
 def emit_table(records: list[dict], version: str, date: str, counts: dict) -> str:
@@ -783,8 +785,8 @@ def emit_table(records: list[dict], version: str, date: str, counts: dict) -> st
                 kind=r["kind"],
                 axis=("EastOrLon", "NorthOrLat", "Other")[r["first_axis"]],
                 dim=r["dimension"],
-                lin=opt_f32(r["linear_unit_m"]),
-                ang=opt_f32(r["angular_unit_rad"]),
+                lin=opt_f64(r["linear_unit_m"]),
+                ang=opt_f64(r["angular_unit_rad"]),
                 area=area,
                 dep="true" if r["deprecated"] else "false",
             )

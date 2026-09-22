@@ -18,9 +18,8 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-// Generated data: bbox values such as 3.14 are not π, and f32 literals keep
-// the digits EPSG publishes.
-#[allow(clippy::approx_constant, clippy::excessive_precision)]
+// Generated data: bbox longitudes such as 3.14 are not π.
+#[allow(clippy::approx_constant)]
 mod table;
 
 pub use table::{CRS, EPSG_DATE, EPSG_VERSION, PROJJSON_COUNT};
@@ -74,10 +73,10 @@ pub struct CrsRecord {
     pub dimension: u8,
     /// Size of the first axis's unit in metres, for CRSs measured in length
     /// (1.0 for metre, 0.3048… for foot). Used for `ArcByCenterPoint` radii.
-    pub linear_unit_m: Option<f32>,
+    pub linear_unit_m: Option<f64>,
     /// Size of the first axis's unit in radians, for CRSs measured in angle.
     /// Distinguishes a CRS in gradians from one in degrees.
-    pub angular_unit_rad: Option<f32>,
+    pub angular_unit_rad: Option<f64>,
     /// EPSG's published area of use, in WGS 84 degrees, as
     /// `[south, west, north, east]`.
     ///
