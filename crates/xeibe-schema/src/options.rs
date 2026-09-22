@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{PathPattern, TypeSet};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct InferenceOptions {
     pub naming: NamingOptions,
     pub structure: StructureOptions,
@@ -99,6 +100,7 @@ pub struct InferenceOptionsPatch {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct NamingOptions {
     pub namespaces: NsMode,
     /// `@` by decision; configurable for compatibility presets.
@@ -129,6 +131,7 @@ pub enum NsMode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct StructureOptions {
     pub nesting: Nesting,
     pub lists: ListRule,
@@ -217,6 +220,7 @@ pub enum AttrSelect {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct TypeOptions {
     pub lossless: Lossless,
     /// `STRING` only ⇒ GDAL's `ALWAYS_STRING`.
@@ -258,6 +262,7 @@ pub enum IntWidth {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct TimestampOptions {
     pub unit: TimeUnit,
     /// Add `<name>.@offset_min` (Int16) when offsets differ.
@@ -283,6 +288,7 @@ pub enum AllNull {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GmlOptions {
     pub gml_id: IdMode,
     pub xlink: XlinkMode,
@@ -342,6 +348,7 @@ pub enum FieldOverride {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Limits {
     /// Deeper subtrees become Map / raw XML.
     pub max_depth: u16,
@@ -374,6 +381,7 @@ pub enum OnSchemaMismatch {
 /// Reads without a schema (docs/schema-inference.md §6): the schema is inferred
 /// from the first features **of the requested layer**, then frozen.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SampleOptions {
     /// Default 10_000.
     pub features_per_layer: u64,

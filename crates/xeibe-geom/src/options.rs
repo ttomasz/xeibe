@@ -68,6 +68,7 @@ pub enum UnsupportedGeometry {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GeometryOptions {
     pub encoding: GeomEncoding,
     pub curves: CurveMode,

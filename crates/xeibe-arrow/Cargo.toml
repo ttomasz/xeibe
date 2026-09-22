@@ -11,6 +11,7 @@ publish.workspace = true
 xeibe-core.workspace = true
 xeibe-geom.workspace = true
 xeibe-schema.workspace = true
+xeibe-crs.workspace = true
 arrow-array.workspace = true
 arrow-buffer.workspace = true
 arrow-schema.workspace = true

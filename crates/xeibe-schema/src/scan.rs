@@ -131,6 +131,29 @@ impl Scanner {
         Ok(observation)
     }
 
+    /// Like [`Scanner::scan_chunk`], but scan at most `*budget` features and
+    /// count them off (the sample of a read). Also returns whether features
+    /// were left unscanned.
+    pub fn scan_chunk_limited(
+        &self,
+        chunk: &FeatureChunk,
+        budget: &mut u64,
+    ) -> crate::Result<(DatasetObservation, bool)> {
+        let mut remaining = Some(*budget);
+        let scanned = self.scan_chunk_inner(chunk, &mut remaining)?;
+        *budget = remaining.unwrap_or(0);
+        let mut observation = scanned.observation;
+        let mut hints = VersionHints {
+            gml_namespace: namespace_hint(&chunk.namespaces),
+            ..VersionHints::default()
+        };
+        scanned.hints.apply_to(&mut hints);
+        if let Some(version) = hints.detect() {
+            observation.gml_versions.insert(version);
+        }
+        Ok((observation, scanned.stopped))
+    }
+
     /// `budget`: features still to scan (sampled scans); `Some(0)` stops at the
     /// next feature.
     fn scan_chunk_inner(
@@ -326,15 +349,30 @@ fn note_prefixes(observation: &mut DatasetObservation, namespaces: &NamespaceCon
     }
 }
 
-/// Axis-order context from the document header.
-fn source_context(header: &DocumentHeader) -> SourceContext {
+/// Axis-order context from the document header (also used by reads, which
+/// split their sources themselves).
+pub fn source_context(header: &DocumentHeader) -> SourceContext {
     SourceContext {
         fme_produced: header.fme_produced,
-        producer: header.fme_produced.then(|| "FME".to_string()),
+        producer: producer_fingerprint(header),
         wfs_version: wfs_version(header),
         requested_srs: None,
         requested_bbox: None,
     }
+}
+
+/// What the root element tells about the producer, for the axis-order quirk
+/// table: `FME`, the namespace URIs declared on it (MapServer declares
+/// `http://mapserver.gis.umn.edu/mapserver`) and `xsi:schemaLocation` (the
+/// service URL, e.g. ArcGIS's `…/WFSServer`), separated by spaces.
+fn producer_fingerprint(header: &DocumentHeader) -> Option<String> {
+    let mut parts: Vec<&str> = Vec::new();
+    if header.fme_produced {
+        parts.push("FME");
+    }
+    parts.extend(header.namespaces.iter().map(|(_, uri)| uri));
+    parts.extend(header.schema_location.as_deref());
+    (!parts.is_empty()).then(|| parts.join(" "))
 }
 
 /// The WFS version of a saved response: the 2.0 namespace, or the WFS schema

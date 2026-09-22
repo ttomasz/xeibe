@@ -2,9 +2,6 @@
 //!
 //! Entry points: [`scan`] and [`read`]. See `docs/architecture.md`.
 
-// Skeleton phase: signatures only, bodies are `todo!()`.
-#![allow(dead_code, unused_variables)]
-
 pub mod api;
 pub mod axis;
 pub mod builders;
@@ -16,7 +13,9 @@ pub mod overflow;
 pub mod pipeline;
 pub mod reader;
 pub mod report;
+pub mod route;
 pub mod settings;
+pub mod value;
 
 pub use api::{LayerInfo, ScanResult, read, scan};
 pub use error::{Error, Result};

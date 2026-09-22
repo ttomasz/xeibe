@@ -31,6 +31,7 @@ pub enum AxisOrderMode {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AutoAxisOptions {
     pub use_axis_labels: bool,
     pub use_range_check: bool,
