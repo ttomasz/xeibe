@@ -45,6 +45,8 @@ pub enum Command {
     Wfs(WfsCommand),
 }
 
+// Parsed once per run: the size difference between variants doesn't matter.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 pub enum WfsCommand {
     /// List feature types from GetCapabilities.

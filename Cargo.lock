@@ -4291,6 +4291,7 @@ dependencies = [
  "xeibe-io",
  "xeibe-schema",
  "xeibe-wfs",
+ "zip",
 ]
 
 [[package]]

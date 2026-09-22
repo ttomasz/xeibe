@@ -37,3 +37,4 @@ arrow-array.workspace = true
 arrow-ipc.workspace = true
 parquet.workspace = true
 serde_json.workspace = true
+zip.workspace = true

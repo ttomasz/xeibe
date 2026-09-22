@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use xeibe_wfs::pages::Progress;
 use xeibe_wfs::{WfsClient, WfsOptions};
 
@@ -8,9 +10,10 @@ pub fn run(command: WfsCommand) -> super::Result {
         WfsCommand::Layers { url } => layers(&url),
         WfsCommand::Count { url, type_name } => {
             let client = WfsClient::new(&url, WfsOptions::default())?;
+            let mut out = std::io::stdout().lock();
             match client.count(&type_name)? {
-                Some(count) => println!("{count}"),
-                None => println!("unknown"),
+                Some(count) => writeln!(out, "{count}")?,
+                None => writeln!(out, "unknown")?,
             }
             Ok(())
         }
@@ -55,7 +58,8 @@ pub fn run(command: WfsCommand) -> super::Result {
 fn layers(url: &str) -> super::Result {
     let client = WfsClient::new(url, WfsOptions::default())?;
     let capabilities = client.capabilities()?;
-    println!("WFS {}{}", capabilities.version.as_str(), capabilities.service_title.as_deref().map(|t| format!(": {t}")).unwrap_or_default());
+    let mut out = std::io::stdout().lock();
+    writeln!(out, "WFS {}{}", capabilities.version.as_str(), capabilities.service_title.as_deref().map(|t| format!(": {t}")).unwrap_or_default())?;
     for feature_type in &capabilities.feature_types {
         let mut line = feature_type.name.clone();
         if let Some(title) = &feature_type.title {
@@ -70,7 +74,7 @@ fn layers(url: &str) -> super::Result {
         if let Some([x0, y0, x1, y1]) = feature_type.wgs84_bbox {
             line.push_str(&format!("  bbox lon/lat ({x0}, {y0}) - ({x1}, {y1})"));
         }
-        println!("{line}");
+        writeln!(out, "{line}")?;
     }
     Ok(())
 }

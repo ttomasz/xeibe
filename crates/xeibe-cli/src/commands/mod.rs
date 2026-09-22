@@ -80,7 +80,7 @@ fn apply(read: &ReadArgs, options: &mut ReadOptions) -> Result {
         geometry.crs_override = Some(crs.clone());
     }
     if let Some(step) = read.linearize {
-        if !(step > 0.0) {
+        if step.is_nan() || step <= 0.0 {
             return Err(format!("--linearize: the step must be a positive number of degrees, not {step}").into());
         }
         geometry.curves = CurveMode::Linearize(LinearizeOptions {

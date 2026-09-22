@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::PathBuf;
 
 use xeibe_arrow::ColumnSpec;
@@ -38,12 +39,13 @@ pub fn run(
     }
 
     let saved = scan.to_settings()?;
+    let mut out = std::io::stdout().lock();
     let layers = scan.layers();
     if layers.is_empty() {
-        println!("no layers found");
+        writeln!(out, "no layers found")?;
     }
     if !scan.is_complete() {
-        println!("sampled scan: layers starting after the sample are missing; counts are lower bounds");
+        writeln!(out, "sampled scan: layers starting after the sample are missing; counts are lower bounds")?;
     }
     for (info, (name, columns)) in layers.iter().zip(&saved.layers) {
         let mut line = format!("{name}: {} features", info.feature_count);
@@ -56,10 +58,10 @@ pub fn run(
         if let Some([x0, y0, x1, y1]) = info.extent {
             line.push_str(&format!(", extent ({x0}, {y0}) - ({x1}, {y1}) as written"));
         }
-        println!("{line}");
+        writeln!(out, "{line}")?;
         if explain {
             for row in scan.explain(&info.name.to_clark())?.lines() {
-                println!("  {row}");
+                writeln!(out, "  {row}")?;
             }
         } else {
             let width = columns.keys().map(|column| column.chars().count()).max().unwrap_or(0);
@@ -67,7 +69,7 @@ pub fn run(
                 let data_type = match spec {
                     ColumnSpec::Type(data_type) | ColumnSpec::Detailed { data_type, .. } => data_type,
                 };
-                println!("  {column:<width$}  {data_type}");
+                writeln!(out, "  {column:<width$}  {data_type}")?;
             }
         }
     }
