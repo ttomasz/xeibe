@@ -470,6 +470,24 @@ impl ScanResult {
         Ok(xeibe_schema::explain::explain(&self.schema(layer)?))
     }
 
+    /// The axis decision of every geometry key (source, srsName, dialect) per
+    /// layer, with the scan's options. `xeibe scan` prints their conflicts.
+    pub fn axis_decisions(&self) -> Vec<(QName, AxisKey, xeibe_geom::AxisDecision)> {
+        let options = &self.options.inference.geometry.axis;
+        let mut out = Vec::new();
+        for (name, layer) in &self.observation.layers {
+            let mut evidence = Vec::new();
+            collect_geometry(&layer.root, true, &mut evidence);
+            for (key, evidence) in evidence {
+                let axis_key = AxisKey { source: SourceId(key.source), srs_name: key.srs_name.clone(), dialect: key.dialect };
+                let context = axis_context(&self.observation, key.source);
+                let decision = decide(&axis_key, Some(&name.local), None, evidence, &context, options);
+                out.push((name.clone(), axis_key, decision));
+            }
+        }
+        out
+    }
+
     /// Options used, the axis-order decision (one mode; per-srsName overrides only
     /// for keys decided differently) and one `column → type` map per layer.
     pub fn to_settings(&self) -> crate::Result<Settings> {
