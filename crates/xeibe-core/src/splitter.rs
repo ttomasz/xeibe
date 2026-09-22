@@ -48,6 +48,7 @@ impl MemberRule {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SplitterOptions {
     /// Target chunk size; chunks are cut at the next feature boundary.
     pub target_chunk_bytes: usize,
@@ -60,7 +61,9 @@ pub struct SplitterOptions {
     /// held in memory.
     pub allow_single_feature_root: bool,
     /// Only these feature types enter chunks; others are skipped unparsed.
-    /// Set by every read (one layer); `None` for scans.
+    /// Set by every read (one layer); `None` for scans. An entry without a
+    /// namespace matches that local name in any namespace (a read that names
+    /// its layer by local name only).
     #[serde(skip)]
     pub layers: Option<Vec<QName>>,
 }
@@ -75,6 +78,13 @@ impl Default for SplitterOptions {
             layers: None,
         }
     }
+}
+
+/// The layer filter: exact names, or local names for entries without a namespace.
+fn layer_wanted(layers: &[QName], name: &QName) -> bool {
+    layers
+        .iter()
+        .any(|layer| layer == name || (layer.ns.is_none() && layer.local == name.local))
 }
 
 /// Information about the document root, collected before the first chunk.
@@ -397,7 +407,7 @@ impl<R: Read> FeatureSplitter<R> {
                 .options
                 .layers
                 .as_ref()
-                .is_none_or(|layers| layers.contains(&name));
+                .is_none_or(|layers| layer_wanted(layers, &name));
             if emit {
                 self.begin_feature(start);
             }
@@ -486,7 +496,7 @@ impl<R: Read> FeatureSplitter<R> {
         self.root_feature = true;
         let root = self.header.as_ref().map(|header| &header.root);
         let emit = match (&self.options.layers, root) {
-            (Some(layers), Some(root)) => layers.contains(root),
+            (Some(layers), Some(root)) => layer_wanted(layers, root),
             _ => true,
         };
         if emit {

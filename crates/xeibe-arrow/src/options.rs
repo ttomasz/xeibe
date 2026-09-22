@@ -36,7 +36,21 @@ pub struct ReadOptions {
 }
 
 impl Default for ReadOptions {
+    /// Default inference and sampling, `_overflow` for data outside the schema,
+    /// stop at the first feature error, 8192-row batches, one worker per core,
+    /// source order kept.
     fn default() -> Self {
-        todo!()
+        ReadOptions {
+            inference: InferenceOptions::default(),
+            sample: SampleOptions::default(),
+            on_mismatch: OnSchemaMismatch::Overflow,
+            on_feature_error: OnFeatureError::Error,
+            splitter: SplitterOptions::default(),
+            batch_size: 8192,
+            threads: std::thread::available_parallelism().map_or(1, usize::from),
+            preserve_order: true,
+            queue_depth: 8,
+            projection: None,
+        }
     }
 }
