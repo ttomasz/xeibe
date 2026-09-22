@@ -4277,12 +4277,16 @@ name = "xeibe-cli"
 version = "0.1.0"
 dependencies = [
  "arrow-array",
+ "arrow-ipc",
  "arrow-schema",
  "clap",
+ "geoarrow-array",
+ "geoarrow-schema",
  "parquet",
  "serde_json",
  "xeibe-arrow",
  "xeibe-core",
+ "xeibe-crs",
  "xeibe-geom",
  "xeibe-io",
  "xeibe-schema",

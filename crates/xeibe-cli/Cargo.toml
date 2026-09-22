@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 xeibe-core.workspace = true
+xeibe-crs.workspace = true
 xeibe-geom.workspace = true
 xeibe-schema.workspace = true
 xeibe-arrow.workspace = true
@@ -24,6 +25,15 @@ xeibe-io = { workspace = true, features = ["http"] }
 xeibe-wfs.workspace = true
 arrow-array.workspace = true
 arrow-schema.workspace = true
+arrow-ipc.workspace = true
+geoarrow-array.workspace = true
+geoarrow-schema.workspace = true
 parquet.workspace = true
 clap.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+arrow-array.workspace = true
+arrow-ipc.workspace = true
+parquet.workspace = true
 serde_json.workspace = true

@@ -1,8 +1,5 @@
 //! `xeibe` command-line tool. See `docs/architecture.md` "CLI".
 
-// Skeleton phase: signatures only, bodies are `todo!()`.
-#![allow(dead_code, unused_variables)]
-
 mod args;
 mod commands;
 

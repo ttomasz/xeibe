@@ -48,6 +48,7 @@ xeibe-testkit = { path = "crates/xeibe-testkit" }
 # Arrow is pinned to 59: geoarrow-array 0.9 and datafusion 55 both depend on arrow ^59.
 arrow-array = "59"
 arrow-buffer = "59"
+arrow-ipc = "59"
 arrow-schema = { version = "59", features = ["serde"] }
 parquet = { version = "59", default-features = false, features = ["arrow", "zstd", "snap", "geospatial"] }
 geoarrow-array = "0.9"
