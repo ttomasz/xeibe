@@ -13,7 +13,10 @@ use xeibe_geom::sniff::{GeometrySniff, sniff_geometry};
 use xeibe_testkit::gml;
 
 fn sniff(snippet: &str, inherited_srs: Option<&str>) -> GeometrySniff {
-    let document = gml::geometry_document(snippet);
+    sniff_in(&gml::geometry_document(snippet), inherited_srs)
+}
+
+fn sniff_in(document: &str, inherited_srs: Option<&str>) -> GeometrySniff {
     let namespaces = NamespaceContext::new();
     let mut reader = GmlReader::new(document.as_bytes(), &namespaces, 0);
     let mut seen_wrapper = false;
@@ -68,9 +71,7 @@ fn notices_curves_without_building_them() {
 #[test]
 fn notices_unsupported_geometry() {
     let sniffed = sniff(
-        concat!(
-            "<gml:Solid><gml:exterior><gml:CompositeSurface/></gml:exterior></gml:Solid>"
-        ),
+        "<gml:Solid><gml:exterior><gml:CompositeSurface/></gml:exterior></gml:Solid>",
         None,
     );
     assert!(sniffed.has_unsupported);
@@ -79,8 +80,12 @@ fn notices_unsupported_geometry() {
 
 #[test]
 fn reads_the_gml_2_dialect_and_its_carriers() {
-    let sniffed = sniff(
-        r#"<gml:Point srsName="EPSG:4326"><gml:coordinates>1,2</gml:coordinates></gml:Point>"#,
+    // In the shared GML 2/3.1 namespace: anything in the 3.2 namespace is
+    // GML 3 dialect (`docs/geometry.md`, "Modes").
+    let sniffed = sniff_in(
+        &gml::geometry_document_gml31(
+            r#"<gml:Point srsName="EPSG:4326"><gml:coordinates>1,2</gml:coordinates></gml:Point>"#,
+        ),
         None,
     );
     assert_eq!(sniffed.kinds, [GeomKind::Point]);

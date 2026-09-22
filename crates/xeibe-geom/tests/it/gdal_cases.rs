@@ -43,12 +43,43 @@ const OVERRIDES: &[(&str, Expect, &str)] = &[
     ("ogr_gml_geom:1365", Expect::Wkt("POINT EMPTY"), "empty element"),
     ("ogr_gml_geom:1367", Expect::Wkt("LINESTRING EMPTY"), "empty element"),
     // A gap between members is a warning, not an error ("Joining segments and
-    // members"); GDAL says "Non contiguous curves".
+    // members"); GDAL says "Non contiguous curves". Both positions are kept,
+    // joined by a straight line so that every part of the compound curve
+    // starts where the previous one ends, as ISO WKB requires.
     (
         "ogr_gml_geom:1671",
-        Expect::Wkt("COMPOUNDCURVE ((0 0,1 0,0 0),CIRCULARSTRING (-10 0,1 0,0 0),(0 0,-1 0,0 0))"),
+        Expect::Wkt(
+            "COMPOUNDCURVE ((0 0,1 0,0 0,-10 0),CIRCULARSTRING (-10 0,1 0,0 0),(0 0,-1 0,0 0))",
+        ),
         "a gap keeps both positions and warns",
     ),
+    // GDAL reverses a segment whose end (rather than start) meets the previous
+    // one; we keep the order as written and bridge the gap ("Joining segments
+    // and members": otherwise both points are kept and a warning is logged).
+    (
+        "ogr_gml_geom:1664",
+        Expect::Wkt("COMPOUNDCURVE (CIRCULARSTRING (0 0,1 0,0 0),(0 0,-10 0,-1 0,0 0))"),
+        "a gap keeps both positions and warns; segments are not reversed",
+    ),
+    // An empty member is an empty geometry, not a null one, so it is not an
+    // error ("Empty, invalid and degenerate geometry"); GDAL's null member is.
+    ("ogr_gml_geom:1482", Expect::Wkt("MULTIPOINT EMPTY"), "empty element"),
+    ("ogr_gml_geom:1523", Expect::Wkt("MULTILINESTRING EMPTY"), "empty element"),
+    // A patch with only interior rings follows `unsupported_geometry` ("Empty,
+    // invalid and degenerate geometry"); GDAL makes it a hole of the previous
+    // member.
+    ("ogr_gml_geom:2050", Expect::Error, "polygon with no exterior is unsupported"),
+    // Solids are out of scope (support matrix §5.1, "Unsupported geometry");
+    // GDAL reads this one's exterior as a polygon.
+    ("ogr_gml_geom:1591", Expect::Error, "solids are unsupported"),
+    // The root is `gml:Point`: `root_element` stops at the XML declaration.
+    ("ogr_gml_geom:2191", Expect::Gdal, "the XML declaration and a comment precede the root"),
+    // Arc angles are measured in output (x/y) order ("Arcs given by
+    // parameters"). EPSG:2326 is northing first and GDAL measures in that
+    // order, while this harness declares the coordinates x/y (no swap). With a
+    // swap decision we give GDAL's arc: see
+    // `parse_curves::arc_angles_are_measured_in_output_order`.
+    ("ogr_gml_geom:3050", Expect::Skip, "angles in output order; the harness never swaps"),
     // Triangle and Rectangle patches are polygons, so a surface of both is a
     // MultiPolygon, not GDAL's GEOMETRYCOLLECTION of TRIANGLE + POLYGON.
     (

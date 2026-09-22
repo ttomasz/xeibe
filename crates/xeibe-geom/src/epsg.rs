@@ -75,7 +75,14 @@ impl CrsInfo {
             area_of_use: record
                 .area_in_axis_order()
                 .map(|area| area.map(f64::from)),
-            linear_unit_m: record.linear_unit_m.map(f64::from),
+            linear_unit_m: record.linear_unit_m.map(decimal_f64),
         }
     }
+}
+
+/// An `f32` table value as the decimal it was written as (`0.3048_f32` →
+/// `0.3048`, not `0.30480000376…`), so a unit conversion does not pick up the
+/// `f32` rounding error.
+fn decimal_f64(value: f32) -> f64 {
+    value.to_string().parse().unwrap_or(f64::from(value))
 }

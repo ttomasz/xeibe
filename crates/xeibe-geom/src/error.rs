@@ -18,6 +18,11 @@ pub enum Error {
         expected: String,
     },
 
+    /// Structurally wrong geometry: a missing required part, a member of the
+    /// wrong kind, collinear `Circle` points, …
+    #[error("invalid geometry at {location}: {message}")]
+    InvalidGeometry { location: Location, message: String },
+
     #[error("unsupported geometry {element} at {location}")]
     Unsupported { element: String, location: Location },
 
@@ -42,6 +47,7 @@ impl Error {
     pub fn at(mut self, at: Location) -> Self {
         match &mut self {
             Error::InvalidCoordinates { location, .. }
+            | Error::InvalidGeometry { location, .. }
             | Error::PositionCount { location, .. }
             | Error::Unsupported { location, .. }
             | Error::ByReference { location } => *location = at,
