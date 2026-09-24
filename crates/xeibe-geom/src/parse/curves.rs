@@ -34,7 +34,7 @@ impl Parser<'_> {
             local if super::SEGMENTS.contains(&local) => {
                 let mut builder = CurveBuilder::default();
                 self.segment(reader, &elem, scope, &mut builder)?;
-                let joined = builder.finish(self.options.join_tolerance);
+                let joined = builder.finish();
                 self.warnings.extend(joined.warnings);
                 joined.curve.unwrap_or_else(|| Curve::Linear(LineString::default()))
             }
@@ -66,7 +66,7 @@ impl Parser<'_> {
         if !has_segments {
             return Err(self.invalid(reader, "a Curve needs a segments element"));
         }
-        let joined = builder.finish(self.options.join_tolerance);
+        let joined = builder.finish();
         self.warnings.extend(joined.warnings);
         Ok(joined.curve.unwrap_or_else(|| Curve::Linear(LineString::default())))
     }
@@ -230,7 +230,6 @@ impl Parser<'_> {
             coords.values.extend(point);
             coords.values.extend(z);
         }
-        self.computed_arcs = true;
         let computed = (0..coords.len()).collect();
         Ok(CircularString { coords, computed })
     }
@@ -296,7 +295,6 @@ impl Parser<'_> {
             }
             out.push(p1);
         }
-        self.computed_arcs = true;
         Ok(CircularString { coords: out, computed })
     }
 
@@ -330,7 +328,7 @@ impl Parser<'_> {
     /// `CompositeCurve`: its members joined into one curve.
     fn composite_curve(&mut self, reader: &mut GmlReader<'_>, elem: &Elem, scope: Scope) -> crate::Result<Curve> {
         let builder = self.curve_members(reader, elem, scope)?;
-        let joined = builder.finish(self.options.join_tolerance);
+        let joined = builder.finish();
         self.warnings.extend(joined.warnings);
         joined.curve.ok_or_else(|| self.invalid(reader, "a CompositeCurve needs at least one member"))
     }
@@ -339,12 +337,12 @@ impl Parser<'_> {
     /// ring is an empty curve.
     fn ring(&mut self, reader: &mut GmlReader<'_>, elem: &Elem, scope: Scope) -> crate::Result<Curve> {
         let builder = self.curve_members(reader, elem, scope)?;
-        let joined = builder.finish(self.options.join_tolerance);
+        let joined = builder.finish();
         self.warnings.extend(joined.warnings);
         let Some(mut curve) = joined.curve else {
             return Ok(Curve::Linear(LineString::default()));
         };
-        let warnings = check_curve_ring(&mut curve, self.options.close_rings);
+        let warnings = check_curve_ring(&mut curve);
         self.warnings.extend(warnings);
         Ok(curve)
     }

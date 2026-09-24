@@ -22,6 +22,9 @@ pub struct ElementNode {
     pub text: Option<ValueStats>,
     /// Text and child elements in the same instance.
     pub mixed: bool,
+    /// Instances whose content was exactly one child element (type-wrapper
+    /// detection).
+    pub single_child: u64,
     pub empty: u64,
     pub nil: NilStats,
 
@@ -154,12 +157,15 @@ impl ElementNode {
         }
     }
 
-    /// INSPIRE-style type wrapper (see `collapse_type_wrappers`): this property
-    /// holds exactly one UpperCamel child, once per instance, has no text and
-    /// no attributes but `xlink`/`nil` ones, and the child has no attributes
-    /// but `gml:id`.
+    /// INSPIRE-style type wrapper (see `collapse_type_wrappers`): every
+    /// instance of this property that has content holds exactly one child
+    /// element; every child name seen there is UpperCamel, never repeats and
+    /// has no attributes but `gml:id`; the property has no text and no
+    /// attributes but `xlink`/`nil` ones. Several child names (XPlanung's
+    /// `XP_ExterneReferenz` or `XP_SpezExterneReferenz`) are several wrapper
+    /// types, merged by the rule engine.
     pub fn is_type_wrapper(&self) -> bool {
-        if self.children.len() != 1
+        if self.children.is_empty()
             || self.geometry.is_some()
             || self.truncated
             || self.mixed
@@ -168,10 +174,13 @@ impl ElementNode {
         {
             return false;
         }
-        let child = &self.children[0];
-        child.name_shape == NameShape::UpperCamel
-            && child.max_occurs == 1
-            && child.attributes.keys().all(is_gml_id)
+        let with_content = self.instances.saturating_sub(self.empty + self.by_reference);
+        self.single_child == with_content
+            && self.children.values().all(|child| {
+                child.name_shape == NameShape::UpperCamel
+                    && child.max_occurs == 1
+                    && child.attributes.keys().all(is_gml_id)
+            })
     }
 
     pub fn child_mut(&mut self, name: &QName, first_seen: (u32, u64)) -> &mut ElementNode {
@@ -190,6 +199,7 @@ impl Merge for ElementNode {
 
         self.text = merge_option(self.text.take(), other.text);
         self.mixed |= other.mixed;
+        self.single_child += other.single_child;
         self.empty += other.empty;
         self.nil.merge(other.nil);
 

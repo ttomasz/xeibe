@@ -111,8 +111,9 @@ pub struct ReadArgs {
     pub preset: Option<Preset>,
     #[arg(long, value_enum)]
     pub axis_order: Option<AxisMode>,
-    /// `selector:mode`, e.g. `srs=EPSG:4326:yx`, `layer=AD_*:xy` (repeatable). Only needed
-    /// when one input mixes srsNames that must be read differently.
+    /// `srsName=mode`, e.g. `EPSG:4326=yx`, with the srsName exactly as
+    /// written (repeatable). Only needed when one input mixes srsNames that
+    /// must be read differently.
     #[arg(long = "axis-override")]
     pub axis_overrides: Vec<String>,
     #[arg(long)]
@@ -124,11 +125,10 @@ pub struct ReadArgs {
     /// With `--linearize`: largest distance between adjacent vertices (CRS units).
     #[arg(long, value_name = "LEN", requires = "linearize")]
     pub arc_max_gap: Option<f64>,
-    /// Path pattern overrides, e.g. `*/kod=utf8` (repeatable).
+    /// Path pattern overrides for inferred schemas, e.g. `*/kod=text`
+    /// (repeatable).
     #[arg(long = "override")]
     pub overrides: Vec<String>,
-    #[arg(long, value_enum)]
-    pub on_mismatch: Option<Mismatch>,
     /// Features sampled when there is no schema for the layer.
     #[arg(long)]
     pub sample_features: Option<u64>,
@@ -138,10 +138,9 @@ pub struct ReadArgs {
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum Preset {
+    /// Lossless by value, rich types.
     Default,
-    Flat,
-    GdalLike,
-    SparkXmlLike,
+    /// Every scalar as text.
     Strings,
 }
 
@@ -159,13 +158,6 @@ pub enum AxisMode {
     GmlVersion,
     /// Evidence-based (default).
     Auto,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum Mismatch {
-    Overflow,
-    Error,
-    Drop,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

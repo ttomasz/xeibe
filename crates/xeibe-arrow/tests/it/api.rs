@@ -219,7 +219,7 @@ fn several_sources_share_one_schema() {
     let reader = read(sources, "Parcel", None, &ReadOptions::default()).expect("a reader");
     let read = crate::support::collect(reader);
     assert_eq!(read.rows(), 2);
-    assert_eq!(read.f64s("area"), [Some(1.0), Some(2.0)]);
+    assert_eq!(read.i64s("area"), [Some(1), Some(2)]);
 }
 
 #[test]
@@ -257,8 +257,8 @@ fn rows_keep_their_source_order_by_default() {
         ..ReadOptions::default()
     };
     let read = read_with(&gml::gml32_collection(&refs), "Parcel", None, &options);
-    let areas: Vec<f64> = read.f64s("area").into_iter().flatten().collect();
-    assert_eq!(areas, (0..20).map(f64::from).collect::<Vec<_>>());
+    let areas: Vec<i64> = read.i64s("area").into_iter().flatten().collect();
+    assert_eq!(areas, (0..20).collect::<Vec<_>>());
     assert!(ReadOptions::default().preserve_order);
 }
 

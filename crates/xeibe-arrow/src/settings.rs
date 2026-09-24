@@ -1,44 +1,77 @@
 //! The settings file: read options and/or per-layer schemas, as JSON
 //! (see `docs/architecture.md#settings-file`).
+//!
+//! A column is `"name": "type"` or `"name": { "type": …, "path": … }`;
+//! without a path, the name is the path. Types are Arrow `DataType` strings
+//! or PostgreSQL/DuckDB-style aliases (`text`, `bigint`, `timestamptz`,
+//! `text[]`, `geometry(Point)`), which is what the scan writes.
 
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use arrow_schema::{DataType, Field, Schema, SchemaRef};
+use arrow_schema::{DataType, Field, Schema, SchemaRef, TimeUnit};
 use geoarrow_schema::{
-    BoxType, Dimension, GeoArrowType, GeometryType, LineStringType, Metadata, MultiLineStringType,
-    MultiPointType, MultiPolygonType, PointType, PolygonType, WkbType,
+    BoxType, Dimension, GeoArrowType, LineStringType, Metadata, MultiLineStringType, MultiPointType,
+    MultiPolygonType, PointType, PolygonType, WkbType,
 };
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use xeibe_schema::rules::meta;
+use xeibe_schema::bind::schema_namespaces;
+use xeibe_schema::rules::{map_type, meta};
 
 use crate::ReadOptions;
-use crate::overflow::OVERFLOW_COLUMN;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(from = "SettingsFile", into = "SettingsFile")]
 pub struct Settings {
     pub format_version: u32,
-    /// Every key optional; callers' parameters override it.
-    #[serde(default)]
+    /// Every key optional; callers' parameters override it. The file's
+    /// top-level `namespaces` are kept in `options.namespaces`.
     pub options: ReadOptions,
     /// Layer name (prefixed or Clark notation) → columns in order.
-    #[serde(default)]
     pub layers: IndexMap<String, IndexMap<String, ColumnSpec>>,
 }
 
-/// One column: a type string, or an object for the less common cases.
+/// The file as written: `namespaces` at the top level.
+#[derive(Serialize, Deserialize)]
+struct SettingsFile {
+    format_version: u32,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    namespaces: IndexMap<String, String>,
+    #[serde(default)]
+    options: ReadOptions,
+    #[serde(default)]
+    layers: IndexMap<String, IndexMap<String, ColumnSpec>>,
+}
+
+impl From<SettingsFile> for Settings {
+    fn from(file: SettingsFile) -> Self {
+        let mut options = file.options;
+        options.namespaces = file.namespaces;
+        Settings { format_version: file.format_version, options, layers: file.layers }
+    }
+}
+
+impl From<Settings> for SettingsFile {
+    fn from(settings: Settings) -> Self {
+        let mut options = settings.options;
+        let namespaces = std::mem::take(&mut options.namespaces);
+        SettingsFile { format_version: settings.format_version, namespaces, options, layers: settings.layers }
+    }
+}
+
+/// One column: a type, or a type and the path it comes from.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ColumnSpec {
-    /// Arrow `DataType` string (`Utf8View`, `List(Utf8View)`, …), or `Geometry` /
-    /// `Geometry(<kind>[, <dims>])` for geometry columns. Nullable.
+    /// The column's path is its name.
     Type(String),
     Detailed {
         #[serde(rename = "type")]
         data_type: String,
-        /// XML path relative to the feature, for renamed columns (`gml:path`).
+        /// XML path relative to the feature (`idIIP/*/lokalnyId`,
+        /// `adres[]/numer`, `miejscowosc/@href`).
         #[serde(default)]
         path: Option<String>,
     },
@@ -73,7 +106,9 @@ impl Settings {
         std::fs::write(path, text).map_err(|e| error(e.to_string()))
     }
 
-    /// Arrow schema of one layer, with GeoArrow extension types on geometry columns.
+    /// Arrow schema of one layer, with GeoArrow extension types on geometry
+    /// columns, `gml:path` where a column names its path, and the file's
+    /// namespaces in the schema metadata `gml:ns`.
     ///
     /// `layer` is looked up as written, then by local name (`AD_PunktAdresowy`
     /// finds `prgad:AD_PunktAdresowy` and `{uri}AD_PunktAdresowy`).
@@ -83,18 +118,33 @@ impl Settings {
             .iter()
             .map(|(name, spec)| spec.to_field(name))
             .collect::<crate::Result<Vec<_>>>()?;
-        Ok(Arc::new(Schema::new(fields)))
+        let mut metadata = std::collections::HashMap::new();
+        if !self.options.namespaces.is_empty() {
+            let namespaces = serde_json::to_string(&self.options.namespaces).expect("strings serialize");
+            metadata.insert(meta::NS.to_string(), namespaces);
+        }
+        Ok(Arc::new(Schema::new_with_metadata(fields, metadata)))
     }
 
-    /// Store an Arrow schema as `column → type` (the reverse of [`Self::schema`]).
-    ///
-    /// `_overflow` is left out: every read adds it again when it is wanted.
+    /// Store an Arrow schema as `column → type` (the reverse of
+    /// [`Self::schema`]). Its `gml:ns` prefixes join the file's namespaces.
     pub fn set_schema(&mut self, layer: &str, schema: &Schema) -> crate::Result<()> {
+        let error = |message: String| crate::Error::Settings { path: String::new(), message };
+        for (prefix, uri) in schema_namespaces(schema).map_err(error)? {
+            match self.options.namespaces.get(&prefix) {
+                Some(known) if *known != uri => {
+                    return Err(error(format!(
+                        "layer {layer}: prefix {prefix:?} is {uri:?}, but the settings have it as {known:?}"
+                    )));
+                }
+                Some(_) => {}
+                None => {
+                    self.options.namespaces.insert(prefix, uri);
+                }
+            }
+        }
         let mut columns = IndexMap::new();
         for field in schema.fields() {
-            if field.name() == OVERFLOW_COLUMN {
-                continue;
-            }
             columns.insert(field.name().clone(), ColumnSpec::from_field(field)?);
         }
         self.layers.insert(layer.to_string(), columns);
@@ -128,6 +178,7 @@ pub(crate) fn local_name(name: &str) -> &str {
 }
 
 impl ColumnSpec {
+    /// The column as a nullable Arrow field.
     pub fn to_field(&self, name: &str) -> crate::Result<Field> {
         let (type_string, path) = match self {
             ColumnSpec::Type(data_type) => (data_type.as_str(), None),
@@ -138,13 +189,7 @@ impl ColumnSpec {
             type_string: type_string.to_string(),
             message,
         };
-        let field = match parse_geometry(type_string).map_err(error)? {
-            Some(geometry) => geometry.to_field(name, true),
-            None => {
-                let data_type = DataType::from_str(type_string).map_err(|e| error(e.to_string()))?;
-                Field::new(name, data_type, true)
-            }
-        };
+        let field = parse_type(type_string, name).map_err(error)?;
         Ok(match path {
             Some(path) => {
                 let mut metadata = field.metadata().clone();
@@ -155,22 +200,15 @@ impl ColumnSpec {
         })
     }
 
+    /// The settings form of a field: its alias (or Arrow type string), and its
+    /// path only where it isn't the name.
     pub fn from_field(field: &Field) -> crate::Result<Self> {
-        let error = |message: String| crate::Error::ColumnType {
+        let data_type = type_string(field).map_err(|message| crate::Error::ColumnType {
             column: field.name().clone(),
             type_string: field.data_type().to_string(),
             message,
-        };
-        let data_type = match GeoArrowType::from_extension_field(field).map_err(|e| error(e.to_string()))? {
-            Some(geometry) => geometry_string(&geometry).ok_or_else(|| error("no settings form for this GeoArrow type".into()))?,
-            None => without_metadata(field.data_type()).to_string(),
-        };
-        // A path is written only when the name alone would not find the data.
-        let path = field
-            .metadata()
-            .get(meta::PATH)
-            .filter(|path| !path_matches_name(path, field.name()))
-            .cloned();
+        })?;
+        let path = field.metadata().get(meta::PATH).filter(|path| *path != field.name()).cloned();
         Ok(match path {
             Some(path) => ColumnSpec::Detailed { data_type, path: Some(path) },
             None => ColumnSpec::Type(data_type),
@@ -178,47 +216,61 @@ impl ColumnSpec {
     }
 }
 
-/// The type without the metadata of nested fields (`gml:path`, …), which
-/// `arrow-schema` would print and can't parse back, and with every nested
-/// field nullable, as settings-file columns are. A nested geometry field has
-/// no settings form: it is left with its storage type only.
-fn without_metadata(data_type: &DataType) -> DataType {
-    let field = |field: &Field| Arc::new(Field::new(field.name(), without_metadata(field.data_type()), true));
-    match data_type {
-        DataType::Struct(fields) => DataType::Struct(fields.iter().map(|f| field(f)).collect()),
-        DataType::List(item) => DataType::List(field(item)),
-        DataType::LargeList(item) => DataType::LargeList(field(item)),
-        DataType::Map(entries, sorted) => DataType::Map(field(entries), *sorted),
-        other => other.clone(),
+/// A type string (alias or Arrow `DataType`) as a nullable field.
+fn parse_type(text: &str, name: &str) -> Result<Field, String> {
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ").to_ascii_lowercase();
+    if normalized.starts_with("numeric") || normalized.starts_with("decimal") {
+        return Err(
+            "there is no numeric or decimal type: use double (lossless by value) or text (docs/type-mapping.md)".into(),
+        );
     }
+    if let Some(item) = text.trim().strip_suffix("[]") {
+        let item = parse_type(item, "item")?;
+        if matches!(item.data_type(), DataType::List(_) | DataType::LargeList(_) | DataType::Struct(_))
+            && !is_geoarrow(&item)
+        {
+            return Err("a list holds scalars, maps or WKB geometry".into());
+        }
+        if is_geoarrow(&item) && extension_name(&item) != Some("geoarrow.wkb") {
+            return Err("a geometry list is `geometry[]` (WKB)".into());
+        }
+        return Ok(Field::new(name, DataType::List(Arc::new(item)), true));
+    }
+    if let Some(geometry) = parse_geometry(&normalized)? {
+        return Ok(geometry.to_field(name, true));
+    }
+    let data_type = match alias(&normalized) {
+        Some(data_type) => data_type,
+        None => DataType::from_str(text.trim()).map_err(|e| e.to_string())?,
+    };
+    Ok(Field::new(name, data_type, true))
 }
 
-/// `true` if binding by name finds `path` from `name`: the local names of the
-/// steps, type wrappers (UpperCamel steps before the last) left out, joined
-/// with `.` as a flattened name is (`@` for an attribute).
-fn path_matches_name(path: &str, name: &str) -> bool {
-    let steps: Vec<&str> = path.split('/').filter(|step| !step.is_empty()).collect();
-    // A name with a `.` in it (`SHAPE.AREA`) would be read as a flattened one.
-    if steps.iter().any(|step| local_name(step).contains('.')) {
-        return false;
-    }
-    let last = steps.len().saturating_sub(1);
-    let expected: Vec<String> = steps
-        .iter()
-        .enumerate()
-        .filter(|(i, step)| *i == last || !local_name(step).starts_with(char::is_uppercase))
-        .map(|(_, step)| match step.strip_prefix('@') {
-            Some(attribute) => format!("@{}", local_name(attribute)),
-            None => local_name(step).to_string(),
-        })
-        .collect();
-    expected.join(".") == name
+/// The Arrow type of an alias (lower case, single spaces).
+fn alias(text: &str) -> Option<DataType> {
+    let micros = TimeUnit::Microsecond;
+    Some(match text {
+        "text" | "varchar" | "string" => DataType::Utf8View,
+        "boolean" | "bool" => DataType::Boolean,
+        "smallint" | "int2" => DataType::Int16,
+        "integer" | "int" | "int4" => DataType::Int32,
+        "bigint" | "int8" => DataType::Int64,
+        "real" | "float4" => DataType::Float32,
+        "double" | "double precision" | "float8" => DataType::Float64,
+        "date" => DataType::Date32,
+        "timestamp" => DataType::Timestamp(micros, None),
+        "timestamptz" => DataType::Timestamp(micros, Some("UTC".into())),
+        "time" => DataType::Time64(micros),
+        "bytea" | "blob" => DataType::Binary,
+        "map" => map_type(&DataType::Utf8View),
+        _ => return None,
+    })
 }
 
-/// `Geometry` (WKB) or `Geometry(<kind>[, <dims>])`; `Ok(None)` for other types.
+/// `geometry` (WKB) or `geometry(<kind>[, <dims>])`; `Ok(None)` for other
+/// types. `text` is lower case.
 fn parse_geometry(text: &str) -> Result<Option<GeoArrowType>, String> {
-    let text = text.trim();
-    let Some(rest) = text.strip_prefix("Geometry") else {
+    let Some(rest) = text.strip_prefix("geometry") else {
         return Ok(None);
     };
     let rest = rest.trim();
@@ -226,50 +278,89 @@ fn parse_geometry(text: &str) -> Result<Option<GeoArrowType>, String> {
         return Ok(Some(GeoArrowType::Wkb(WkbType::new(Default::default()))));
     }
     let Some(inner) = rest.strip_prefix('(').and_then(|r| r.strip_suffix(')')) else {
-        return Err("expected Geometry or Geometry(<kind>[, <dims>])".into());
+        return Err("expected geometry or geometry(<kind>[, <dims>])".into());
     };
     let mut parts = inner.split(',').map(str::trim);
     let kind = parts.next().unwrap_or_default();
     let dimension = match parts.next() {
-        None | Some("XY") => Dimension::XY,
-        Some("XYZ") => Dimension::XYZ,
+        None | Some("xy") => Dimension::XY,
+        Some("xyz") => Dimension::XYZ,
         Some(other) => return Err(format!("unknown dimensions {other:?} (XY or XYZ)")),
     };
     if parts.next().is_some() {
-        return Err("too many arguments to Geometry(…)".into());
+        return Err("too many arguments to geometry(…)".into());
     }
     let metadata: Arc<Metadata> = Default::default();
     Ok(Some(match kind {
-        "Wkb" | "WKB" => GeoArrowType::Wkb(WkbType::new(metadata)),
-        "Point" => GeoArrowType::Point(PointType::new(dimension, metadata)),
-        "LineString" => GeoArrowType::LineString(LineStringType::new(dimension, metadata)),
-        "Polygon" => GeoArrowType::Polygon(PolygonType::new(dimension, metadata)),
-        "MultiPoint" => GeoArrowType::MultiPoint(MultiPointType::new(dimension, metadata)),
-        "MultiLineString" => GeoArrowType::MultiLineString(MultiLineStringType::new(dimension, metadata)),
-        "MultiPolygon" => GeoArrowType::MultiPolygon(MultiPolygonType::new(dimension, metadata)),
-        "Geometry" => GeoArrowType::Geometry(GeometryType::new(metadata)),
-        "Box" => GeoArrowType::Rect(BoxType::new(dimension, metadata)),
+        "wkb" => GeoArrowType::Wkb(WkbType::new(metadata)),
+        "point" => GeoArrowType::Point(PointType::new(dimension, metadata)),
+        "linestring" => GeoArrowType::LineString(LineStringType::new(dimension, metadata)),
+        "polygon" => GeoArrowType::Polygon(PolygonType::new(dimension, metadata)),
+        "multipoint" => GeoArrowType::MultiPoint(MultiPointType::new(dimension, metadata)),
+        "multilinestring" => GeoArrowType::MultiLineString(MultiLineStringType::new(dimension, metadata)),
+        "multipolygon" => GeoArrowType::MultiPolygon(MultiPolygonType::new(dimension, metadata)),
+        "box" => GeoArrowType::Rect(BoxType::new(dimension, metadata)),
         other => return Err(format!("unknown geometry kind {other:?}")),
     }))
+}
+
+/// The settings form of a field's type: an alias where there is one, else
+/// the Arrow type string.
+fn type_string(field: &Field) -> Result<String, String> {
+    if let Some(geometry) = GeoArrowType::from_extension_field(field).map_err(|e| e.to_string())? {
+        return geometry_string(&geometry).ok_or_else(|| "no settings form for this GeoArrow type".to_string());
+    }
+    Ok(match field.data_type() {
+        DataType::List(item) | DataType::LargeList(item) => format!("{}[]", type_string(item)?),
+        data_type => alias_of(data_type).map_or_else(|| data_type.to_string(), str::to_string),
+    })
+}
+
+/// The alias the scan writes for a type.
+fn alias_of(data_type: &DataType) -> Option<&'static str> {
+    let micros = TimeUnit::Microsecond;
+    Some(match data_type {
+        DataType::Utf8View => "text",
+        DataType::Boolean => "boolean",
+        DataType::Int16 => "smallint",
+        DataType::Int32 => "integer",
+        DataType::Int64 => "bigint",
+        DataType::Float32 => "real",
+        DataType::Float64 => "double",
+        DataType::Date32 => "date",
+        DataType::Timestamp(unit, None) if *unit == micros => "timestamp",
+        DataType::Timestamp(unit, Some(tz)) if *unit == micros && &**tz == "UTC" => "timestamptz",
+        DataType::Time64(unit) if *unit == micros => "time",
+        DataType::Binary => "bytea",
+        data_type if *data_type == map_type(&DataType::Utf8View) => "map",
+        _ => return None,
+    })
 }
 
 /// The settings form of a GeoArrow type (the reverse of [`parse_geometry`]).
 fn geometry_string(geometry: &GeoArrowType) -> Option<String> {
     let with_dims = |kind: &str, dimension: Dimension| match dimension {
-        Dimension::XY => format!("Geometry({kind})"),
-        Dimension::XYZ => format!("Geometry({kind}, XYZ)"),
-        _ => format!("Geometry({kind}, {dimension:?})"),
+        Dimension::XY => format!("geometry({kind})"),
+        Dimension::XYZ => format!("geometry({kind}, XYZ)"),
+        _ => format!("geometry({kind}, {dimension:?})"),
     };
     Some(match geometry {
-        GeoArrowType::Wkb(_) | GeoArrowType::LargeWkb(_) | GeoArrowType::WkbView(_) => "Geometry".to_string(),
+        GeoArrowType::Wkb(_) | GeoArrowType::LargeWkb(_) | GeoArrowType::WkbView(_) => "geometry".to_string(),
         GeoArrowType::Point(t) => with_dims("Point", t.dimension()),
         GeoArrowType::LineString(t) => with_dims("LineString", t.dimension()),
         GeoArrowType::Polygon(t) => with_dims("Polygon", t.dimension()),
         GeoArrowType::MultiPoint(t) => with_dims("MultiPoint", t.dimension()),
         GeoArrowType::MultiLineString(t) => with_dims("MultiLineString", t.dimension()),
         GeoArrowType::MultiPolygon(t) => with_dims("MultiPolygon", t.dimension()),
-        GeoArrowType::Geometry(_) => "Geometry(Geometry)".to_string(),
         GeoArrowType::Rect(t) => with_dims("Box", t.dimension()),
         _ => return None,
     })
+}
+
+fn extension_name(field: &Field) -> Option<&str> {
+    field.metadata().get("ARROW:extension:name").map(String::as_str)
+}
+
+fn is_geoarrow(field: &Field) -> bool {
+    extension_name(field).is_some_and(|name| name.starts_with("geoarrow."))
 }

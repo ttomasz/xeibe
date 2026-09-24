@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use datafusion::arrow::datatypes::{Schema, SchemaRef};
+use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::catalog::{Session, TableProvider};
 use datafusion::error::{DataFusionError, Result};
 use datafusion::execution::runtime_env::RuntimeEnv;
@@ -11,8 +11,6 @@ use datafusion::physical_plan::empty::EmptyExec;
 use datafusion::physical_plan::streaming::{PartitionStream, StreamingTableExec};
 use tokio::runtime::Handle;
 use xeibe_arrow::ReadOptions;
-use xeibe_arrow::overflow::{OVERFLOW_COLUMN, overflow_field};
-use xeibe_schema::OnSchemaMismatch;
 
 use crate::partition::SourcePartition;
 use crate::sources::{external, resolve, resolve_async};
@@ -30,8 +28,8 @@ pub struct GmlTable {
 
 impl GmlTable {
     /// With `schema: None`, samples the layer now (in `spawn_blocking`), like
-    /// DataFusion's CSV/JSON `schema_infer_max_records`. A given schema gets
-    /// the `_overflow` column a read adds (see [`with_overflow`]).
+    /// DataFusion's CSV/JSON `schema_infer_max_records`. A given schema is
+    /// used as it is: it is the projection.
     pub async fn try_new(
         state: &dyn Session,
         sources: Vec<String>,
@@ -40,7 +38,7 @@ impl GmlTable {
         options: ReadOptions,
     ) -> Result<Self> {
         let schema = match schema {
-            Some(schema) => with_overflow(schema, &options),
+            Some(schema) => schema,
             None => {
                 let runtime = state.runtime_env().clone();
                 let handle = Handle::current();
@@ -63,20 +61,8 @@ impl GmlTable {
     }
 }
 
-/// A given schema as a read returns it: with `_overflow` appended when data
-/// outside the schema goes there (`on_mismatch: Overflow`) and the schema has
-/// no `_overflow` of its own.
-pub fn with_overflow(schema: SchemaRef, options: &ReadOptions) -> SchemaRef {
-    if options.on_mismatch != OnSchemaMismatch::Overflow || schema.field_with_name(OVERFLOW_COLUMN).is_ok() {
-        return schema;
-    }
-    let mut fields: Vec<_> = schema.fields().iter().cloned().collect();
-    fields.push(Arc::new(overflow_field()));
-    Arc::new(Schema::new_with_metadata(fields, schema.metadata().clone()))
-}
-
-/// The schema of a read without one: the layer's sample, `_overflow` included
-/// when the sample was not the whole layer. Blocking.
+/// The schema of a read without one: inferred from the layer's sample.
+/// Blocking.
 pub(crate) fn sample_schema(
     runtime: &RuntimeEnv,
     inputs: &[String],

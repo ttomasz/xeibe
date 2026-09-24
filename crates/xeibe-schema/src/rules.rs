@@ -1,34 +1,40 @@
-//! Rule engine: one recursive walk over a layer's tree → Arrow schema.
+//! Rule engine: one walk over a layer's tree → a flat Arrow schema
+//! (`docs/schema-inference.md` §3–§4).
 //!
-//! The walk first builds a tree of [`Col`]s (name, source, type, list flag,
-//! metadata, reasons), then emits it as Arrow fields and routes, flattening
-//! single structs when the nesting mode asks for it.
+//! The walk emits one [`Col`] per leaf (an element's text, an attribute, a
+//! geometry property) with its path in the settings-file syntax: local names,
+//! `*` for a type wrapper, `[]` on the anchor of a list, a prefix only where
+//! siblings differ only by namespace. Names are chosen afterwards, shortest
+//! unique first (§3.1). The routes a read follows come from binding the
+//! finished schema, exactly as for a schema given by the user.
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use arrow_schema::{DataType, Field, Fields, Schema, TimeUnit};
 use geoarrow_schema::{
-    BoxType, CoordType, Crs, Dimension, GeometryType, LineStringType, Metadata,
-    MultiLineStringType, MultiPointType, MultiPolygonType, PointType, PolygonType, WkbType,
+    BoxType, CoordType, Crs, Dimension, LineStringType, Metadata, MultiLineStringType,
+    MultiPointType, MultiPolygonType, PointType, PolygonType, WkbType,
 };
 use indexmap::IndexMap;
 use xeibe_core::{QName, SourceId, ns};
-use xeibe_geom::options::{CurveMode, DimMode, GeomEncoding};
+use xeibe_geom::options::{CurveMode, GeomEncoding};
 use xeibe_geom::{AxisKey, CrsRef, GeomKind, SrsName};
 
 use crate::geometry_stats::GeometryStats;
 use crate::node::{Shape, is_gml_id};
 use crate::options::{
     AllNull, AttrSelect, BoundedBy, ConstantAttrs, FieldOverride, IdMode, IntWidth, ListRule,
-    Lossless, MixedContent, Nesting, NsMode, OnRepeat, SimpleContent, XlinkMode, string_type,
+    Lossless, MixedContent, XlinkMode, string_type,
 };
 use crate::value::{TzShape, ValueStats};
-use crate::{DatasetObservation, ElementNode, InferenceOptions, SampleOptions, TypeSet};
+use crate::{DatasetObservation, ElementNode, InferenceOptions, Merge, SampleOptions, TypeSet};
 
-/// Metadata keys written on fields (see `docs/type-mapping.md`).
+/// Metadata keys written on fields and schemas (see `docs/type-mapping.md`).
 pub mod meta {
+    /// The column's path, in the settings-file syntax.
     pub const PATH: &str = "gml:path";
+    /// Schema-level: JSON object prefix → URI for prefixed path steps.
     pub const NS: &str = "gml:ns";
     pub const MAX_SCALE: &str = "gml:max_scale";
     pub const ATTR_PREFIX: &str = "gml:attr:";
@@ -36,6 +42,9 @@ pub mod meta {
     pub const SRS_NAME: &str = "gml:srs_name";
     pub const AXIS_SWAPPED: &str = "gml:axis_swapped";
     pub const AXIS_DECISION: &str = "gml:axis_decision";
+    /// `text`: a `text` column that takes an element's text with the markup
+    /// removed (`MixedContent::TextOnly`) instead of its raw XML.
+    pub const CONTENT: &str = "gml:content";
     /// Schema-level: the settings a read used (optional).
     pub const SETTINGS: &str = "gml:settings";
     /// Schema-level: the GML versions seen, e.g. `3.2` or `2,3.1`.
@@ -48,60 +57,44 @@ pub mod meta {
 pub struct LayerSchema {
     pub layer: QName,
     pub schema: Schema,
-    /// Source path → field index path (for routing values to builders).
+    /// One per column, in schema order.
     pub routes: Vec<FieldRoute>,
-    /// One entry per field, for `--explain`. Empty for a given schema.
+    /// One entry per column, for `--explain`. Empty for a given schema.
     pub decisions: Vec<FieldDecision>,
-    /// The routes of a given schema were matched by name, not observed: a
-    /// name without a namespace (`ns: None`) matches an element or attribute
-    /// of that local name in any namespace, and a type wrapper (one
-    /// UpperCamel child) that has no field of its own is looked through.
-    /// `false` for inferred schemas, whose routes are exact.
-    pub match_by_name: bool,
 }
 
-/// Where one Arrow field (at any nesting level) gets its values.
+/// Where one column gets its values: its path, parsed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldRoute {
     /// Element path from the feature element (which is not included). Empty
-    /// for the feature's own attributes, and for `_overflow`.
+    /// for the feature's own attributes. A step without a namespace matches
+    /// that local name in any namespace; `*` matches any element.
     pub source_path: Vec<QName>,
     /// The value is this attribute of the last element of `source_path`.
     pub attribute: Option<QName>,
     pub value: RouteValue,
-    /// Index path into nested struct fields. A `List` level adds no index:
-    /// the children of a `List(Struct(…))` field `i` are `[i, j]`.
+    /// `[column]`: the column's index in the schema (schemas are flat).
     pub field_path: Vec<usize>,
+    /// List columns: the index in `source_path` of the anchor, the element
+    /// whose occurrences the list follows.
+    pub anchor: Option<usize>,
 }
 
 /// What a route takes from its element.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RouteValue {
-    /// The element's text (or the attribute's value), parsed as the field's type.
-    /// With a given schema (`match_by_name`), an element that has no text but
-    /// an `xlink:href` gives its href.
+    /// The element's text (or the attribute's value), parsed as the column's
+    /// type. A `text` column at an element with child elements gets its raw
+    /// XML.
     Text,
-    /// The element's `xlink:href`; a leading `#` is stripped when
-    /// `GmlOptions::strip_local_href_hash` is set.
-    Href,
-    /// A `Struct` (or `List(Struct)`): its children have routes of their own.
-    Struct,
+    /// The element's text with the markup removed (`gml:content = text`).
+    InnerText,
     /// A geometry property: the geometry element inside it.
     Geometry,
-    /// The element's subtree as raw XML (mixed content, `AsRawXml`, lists
-    /// and subtrees that a `Flatten` nesting can't hold).
-    RawXml,
-    /// The element's text with the markup removed (`MixedContent::TextOnly`).
-    InnerText,
-    /// The subtree as `Map(path → text)` (width/depth limits, `AsMap`).
+    /// The subtree as `Map(path → text)`.
     Map,
-    /// The time-zone offset in minutes of the element's timestamp
-    /// (`<name>.@offset_min`, mixed offsets).
-    OffsetMinutes,
     /// The `gml:Envelope` inside the element, as a box.
     BoundingBox,
-    /// `_overflow`: everything no other route takes.
-    Overflow,
 }
 
 #[derive(Debug, Clone)]
@@ -132,30 +125,38 @@ pub fn infer_schema(
         prefixes: Prefixes::for_layer(observation, &layer_observation.root),
     };
     let root = &layer_observation.root;
-    let mut cols = engine.attribute_cols(root, &[], true).0;
-    cols.extend(engine.children_cols(root, &[], 0));
+    let mut cols = Vec::new();
+    let attributes = engine.attributes(root, &[], None);
+    cols.extend(attributes.cols);
+    cols.extend(attributes.constants.into_iter().map(|(_, _, col)| col));
+    engine.children(root, &[], None, &mut cols);
 
-    let mut emitter = Emitter {
-        nesting: options.structure.nesting,
-        separator: &options.naming.flatten_separator,
-        routes: Vec::new(),
-        decisions: Vec::new(),
-    };
+    let names = column_names(&cols, &engine.prefixes);
+    let mut namespaces = serde_json::Map::new();
     let mut fields = Vec::new();
-    emitter.emit(cols, "", &[], &mut fields);
+    let mut decisions = Vec::new();
+    for (col, name) in cols.into_iter().zip(names) {
+        for (prefix, uri) in engine.prefixes_used(&col) {
+            namespaces.insert(prefix, uri.into());
+        }
+        let path = engine.path_string(&col);
+        let (field, reasons) = col.into_field(&name, path);
+        fields.push(field);
+        decisions.push(FieldDecision { field: name, reasons });
+    }
 
     let mut metadata = HashMap::new();
     if !observation.gml_versions.is_empty() {
         let versions: Vec<&str> = observation.gml_versions.iter().map(version_name).collect();
         metadata.insert(meta::VERSIONS.to_string(), versions.join(","));
     }
-    Ok(LayerSchema {
-        layer: layer.clone(),
-        schema: Schema::new_with_metadata(fields, metadata),
-        routes: emitter.routes,
-        decisions: emitter.decisions,
-        match_by_name: false,
-    })
+    if !namespaces.is_empty() {
+        metadata.insert(meta::NS.to_string(), serde_json::Value::Object(namespaces).to_string());
+    }
+    let schema = Schema::new_with_metadata(fields, metadata);
+    let mut bound = crate::bind_schema(layer, &schema, &options)?;
+    bound.decisions = decisions;
+    Ok(bound)
 }
 
 fn version_name(version: &xeibe_core::GmlVersion) -> &'static str {
@@ -167,36 +168,129 @@ fn version_name(version: &xeibe_core::GmlVersion) -> &'static str {
     }
 }
 
-/// A column before emission.
+/// One element step of a column's path.
+#[derive(Debug, Clone)]
+struct Step {
+    name: QName,
+    /// A type wrapper: `*` in the path, left out of the name.
+    wrapper: bool,
+    /// A sibling has the same local name in another namespace: the step keeps
+    /// its prefix, in the path and in the name.
+    prefixed: bool,
+}
+
+/// A column before naming.
 struct Col {
-    name: String,
-    path: Vec<QName>,
-    attribute: Option<QName>,
-    value: RouteValue,
+    steps: Vec<Step>,
+    /// A last `@name` step, and whether it keeps its prefix.
+    attribute: Option<(QName, bool)>,
+    /// The index in `steps` of the list anchor; `Some` makes the column a list.
+    anchor: Option<usize>,
+    /// The property holds only an `xlink:href`: the name leaves out `@href`.
+    by_reference: bool,
     kind: ColKind,
-    list: bool,
     metadata: HashMap<String, String>,
     reasons: Vec<String>,
 }
 
 enum ColKind {
-    Leaf(DataType),
+    Scalar(DataType),
     /// A ready-made field (GeoArrow extension types); its name is replaced.
     Field(Field),
-    Struct(Vec<Col>),
 }
 
 impl Col {
-    fn leaf(name: String, path: &[QName], value: RouteValue, data_type: DataType) -> Self {
+    fn new(steps: &[Step], anchor: Option<usize>, data_type: DataType) -> Self {
         Col {
-            name,
-            path: path.to_vec(),
+            steps: steps.to_vec(),
             attribute: None,
-            value,
-            kind: ColKind::Leaf(data_type),
-            list: false,
+            anchor,
+            by_reference: false,
+            kind: ColKind::Scalar(data_type),
             metadata: HashMap::new(),
             reasons: Vec::new(),
+        }
+    }
+
+    /// The Arrow field: a list of the value type under an anchor.
+    fn into_field(self, name: &str, path: String) -> (Field, Vec<String>) {
+        let item = match self.kind {
+            ColKind::Scalar(data_type) => Field::new(name, data_type, true),
+            ColKind::Field(field) => field.with_name(name),
+        };
+        let mut metadata = self.metadata;
+        metadata.insert(meta::PATH.to_string(), path);
+        let field = if self.anchor.is_some() {
+            Field::new(name, DataType::List(Arc::new(item.with_name("item"))), true)
+        } else {
+            metadata.extend(item.metadata().clone());
+            item
+        };
+        (field.with_metadata(metadata), self.reasons)
+    }
+
+    /// The steps a name is made of: wrappers and namespace prefixes left out
+    /// (unless a sibling differs only by namespace), and `@href` of a
+    /// property given only by reference.
+    fn name_steps(&self, prefixes: &Prefixes) -> Vec<String> {
+        let display = |name: &QName, prefixed: bool| {
+            if prefixed { prefixes.prefixed(name) } else { name.local.to_string() }
+        };
+        let mut steps: Vec<String> = self
+            .steps
+            .iter()
+            .filter(|step| !step.wrapper)
+            .map(|step| display(&step.name, step.prefixed))
+            .collect();
+        if let Some((attribute, prefixed)) = &self.attribute {
+            if !self.by_reference || steps.is_empty() {
+                steps.push(format!("@{}", display(attribute, *prefixed)));
+            }
+        }
+        if steps.is_empty() {
+            // A path of wrappers only; name it by its path.
+            steps.push("*".to_string());
+        }
+        steps
+    }
+}
+
+/// Shortest unique names (`docs/schema-inference.md` §3.1): start with the
+/// last step; while two columns share a name, each of them that has steps
+/// left takes one more from the front. Columns that are still alike (their
+/// steps are the same) are told apart by a number.
+fn column_names(cols: &[Col], prefixes: &Prefixes) -> Vec<String> {
+    column_names_of(&cols.iter().map(|col| col.name_steps(prefixes)).collect::<Vec<_>>())
+}
+
+fn column_names_of(steps: &[Vec<String>]) -> Vec<String> {
+    let mut taken: Vec<usize> = vec![1; steps.len()];
+    let name = |i: usize, taken: &[usize]| steps[i][steps[i].len() - taken[i]..].join(".");
+    loop {
+        let names: Vec<String> = (0..steps.len()).map(|i| name(i, &taken)).collect();
+        let mut groups: HashMap<&str, Vec<usize>> = HashMap::new();
+        for (i, name) in names.iter().enumerate() {
+            groups.entry(name).or_default().push(i);
+        }
+        let mut grew = false;
+        for members in groups.values().filter(|members| members.len() > 1) {
+            for &i in members {
+                if taken[i] < steps[i].len() {
+                    taken[i] += 1;
+                    grew = true;
+                }
+            }
+        }
+        if !grew {
+            let mut seen: HashMap<String, usize> = HashMap::new();
+            return names
+                .into_iter()
+                .map(|name| {
+                    let count = seen.entry(name.clone()).or_default();
+                    *count += 1;
+                    if *count == 1 { name } else { format!("{name}#{count}") }
+                })
+                .collect();
         }
     }
 }
@@ -205,7 +299,6 @@ impl Col {
 #[derive(Default)]
 struct Plan {
     drop: bool,
-    rename: Option<String>,
     data_type: Option<DataType>,
     raw_xml: bool,
     map: bool,
@@ -218,8 +311,15 @@ struct Scalar {
     data_type: DataType,
     metadata: Vec<(String, String)>,
     reasons: Vec<String>,
-    /// Mixed time-zone offsets: add `<name>.@offset_min`.
-    offset_column: bool,
+}
+
+/// The attribute columns of one element.
+struct AttributeCols {
+    cols: Vec<Col>,
+    /// Attributes with one value throughout: `(metadata key, value, column)`.
+    /// They go into the metadata of the element's own column if it has one,
+    /// else they stay columns.
+    constants: Vec<(String, String, Col)>,
 }
 
 struct Engine<'a> {
@@ -244,10 +344,59 @@ impl Engine<'_> {
         }
     }
 
+    // ---- paths --------------------------------------------------------------
+
+    /// The path in the settings-file syntax: `idIIP/*/lokalnyId`,
+    /// `adres[]/numer`, `miejscowosc/@href`, `app:code`.
+    fn path_string(&self, col: &Col) -> String {
+        let mut parts: Vec<String> = col
+            .steps
+            .iter()
+            .enumerate()
+            .map(|(index, step)| {
+                let mut part = if step.wrapper {
+                    "*".to_string()
+                } else if step.prefixed {
+                    self.prefixes.prefixed(&step.name)
+                } else {
+                    step.name.local.to_string()
+                };
+                if col.anchor == Some(index) {
+                    part.push_str("[]");
+                }
+                part
+            })
+            .collect();
+        if let Some((attribute, prefixed)) = &col.attribute {
+            let name = if *prefixed { self.prefixes.prefixed(attribute) } else { attribute.local.to_string() };
+            parts.push(format!("@{name}"));
+        }
+        parts.join("/")
+    }
+
+    /// `(prefix, uri)` of the prefixed steps of a column's path.
+    fn prefixes_used(&self, col: &Col) -> Vec<(String, String)> {
+        let steps = col.steps.iter().filter(|step| step.prefixed && !step.wrapper).map(|step| &step.name);
+        let attribute = col.attribute.iter().filter(|(_, prefixed)| *prefixed).map(|(name, _)| name);
+        steps
+            .chain(attribute)
+            .filter_map(|name| {
+                let uri = name.ns.as_ref()?;
+                Some((self.prefixes.prefix(uri).to_string(), uri.to_string()))
+            })
+            .collect()
+    }
+
+    fn with_step(steps: &[Step], step: Step) -> Vec<Step> {
+        let mut steps = steps.to_vec();
+        steps.push(step);
+        steps
+    }
+
     // ---- overrides ----------------------------------------------------------
 
-    fn plan(&self, path: &[QName], attribute: Option<&QName>) -> Plan {
-        let mut names: Vec<String> = path.iter().map(QName::to_clark).collect();
+    fn plan(&self, steps: &[Step], attribute: Option<&QName>) -> Plan {
+        let mut names: Vec<String> = steps.iter().map(|step| step.name.to_clark()).collect();
         if let Some(attribute) = attribute {
             names.push(format!("@{}", attribute.to_clark()));
         }
@@ -275,7 +424,6 @@ impl Engine<'_> {
             plan.reasons.push(format!("override {}: {action:?}", pattern.raw));
             match action {
                 FieldOverride::Type(data_type) => plan.data_type = Some(data_type.clone()),
-                FieldOverride::Rename(name) => plan.rename = Some(name.clone()),
                 FieldOverride::Drop => plan.drop = true,
                 FieldOverride::AsRawXml => plan.raw_xml = true,
                 FieldOverride::AsMap => plan.map = true,
@@ -286,58 +434,11 @@ impl Engine<'_> {
         plan
     }
 
-    // ---- naming -------------------------------------------------------------
-
-    /// Column names of the element children, with `StripUnlessCollision`
-    /// keeping the prefix of siblings that share a local name.
-    fn child_names(&self, node: &ElementNode) -> Vec<String> {
-        let names: Vec<&QName> = node.children.keys().collect();
-        self.sibling_names(&names)
-    }
-
-    fn sibling_names(&self, names: &[&QName]) -> Vec<String> {
-        let mut counts: HashMap<&str, usize> = HashMap::new();
-        for name in names {
-            *counts.entry(&name.local).or_default() += 1;
-        }
-        names
-            .iter()
-            .map(|name| match self.options.naming.namespaces {
-                NsMode::Strip => name.local.to_string(),
-                NsMode::StripUnlessCollision if counts[&*name.local] <= 1 => name.local.to_string(),
-                NsMode::StripUnlessCollision | NsMode::Prefix => self.prefixes.prefixed(name),
-                NsMode::Clark => name.to_clark(),
-            })
-            .collect()
-    }
-
-    /// `gml:path` and `gml:ns` for a column.
-    fn path_metadata(&self, path: &[QName], attribute: Option<&QName>) -> HashMap<String, String> {
-        let mut steps: Vec<String> = path.iter().map(|name| self.prefixes.prefixed(name)).collect();
-        if let Some(attribute) = attribute {
-            steps.push(format!("@{}", self.prefixes.prefixed(attribute)));
-        }
-        let mut used = serde_json::Map::new();
-        for name in path.iter().chain(attribute) {
-            if let Some(uri) = &name.ns {
-                used.insert(self.prefixes.prefix(uri).to_string(), uri.to_string().into());
-            }
-        }
-        HashMap::from([
-            (meta::PATH.to_string(), steps.join("/")),
-            (meta::NS.to_string(), serde_json::Value::Object(used).to_string()),
-        ])
-    }
-
-    fn separator(&self) -> &str {
-        &self.options.naming.flatten_separator
-    }
-
     // ---- attributes ---------------------------------------------------------
 
     fn keep_attribute(&self, name: &QName) -> bool {
         let gml = &self.options.gml;
-        if name.ns.as_deref() == Some(ns::XSI) {
+        if name.ns.as_deref() == Some(ns::XSI) || (name.ns.is_none() && &*name.local == "nilReason") {
             return false;
         }
         if is_gml_id(name) {
@@ -369,394 +470,253 @@ impl Engine<'_> {
         }
     }
 
-    /// Columns for the attributes of `node` (at `path`), and the metadata
-    /// entries of the constant attributes moved out of the data.
-    fn attribute_cols(
-        &self,
-        node: &ElementNode,
-        path: &[QName],
-        include_href: bool,
-    ) -> (Vec<Col>, Vec<(String, String)>) {
-        let kept: Vec<(&QName, &ValueStats)> = node
-            .attributes
-            .iter()
-            .filter(|(name, _)| self.keep_attribute(name))
-            .filter(|(name, _)| include_href || !is_href(name))
-            .collect();
-        let names: Vec<&QName> = kept.iter().map(|(name, _)| *name).collect();
-        let column_names = self.sibling_names(&names);
-
-        let mut cols = Vec::new();
-        let mut constants = Vec::new();
-        for ((name, stats), column_name) in kept.into_iter().zip(column_names) {
-            let plan = self.plan(path, Some(name));
+    /// Columns for the attributes of `node` (at `steps`), and the constant
+    /// attributes that can move into the element's own column's metadata.
+    fn attributes(&self, node: &ElementNode, steps: &[Step], anchor: Option<usize>) -> AttributeCols {
+        let kept: Vec<(&QName, &ValueStats)> =
+            node.attributes.iter().filter(|(name, _)| self.keep_attribute(name)).collect();
+        let shared = shared_locals(kept.iter().map(|(name, _)| *name));
+        let mut out = AttributeCols { cols: Vec::new(), constants: Vec::new() };
+        for (name, stats) in kept {
+            let plan = self.plan(steps, Some(name));
             if plan.drop {
                 continue;
+            }
+            let prefixed = shared.contains(&*name.local);
+            let scalar = self.scalar(Some(stats));
+            let mut col = Col::new(steps, anchor, plan.data_type.clone().unwrap_or(scalar.data_type));
+            col.attribute = Some((name.clone(), prefixed));
+            col.by_reference = is_href(name) && node.shape() == Shape::ByReferenceOnly;
+            col.metadata.extend(scalar.metadata);
+            col.reasons = plan.reasons;
+            col.reasons.extend(scalar.reasons);
+            if col.by_reference {
+                let strip = if self.options.gml.strip_local_href_hash { ", '#' stripped" } else { "" };
+                col.reasons.insert(0, format!("by-reference only (xlink:href){strip}"));
             }
             let constant = self.options.structure.constant_attrs == ConstantAttrs::ToFieldMetadata
                 && !is_gml_id(name)
                 && !is_href(name)
                 && stats.count == node.instances
                 && plan.data_type.is_none();
-            if let Some(value) = stats.distinct.single().filter(|_| constant) {
-                constants.push((format!("{}{column_name}", meta::ATTR_PREFIX), value.to_string()));
-                continue;
+            match stats.distinct.single().filter(|_| constant) {
+                Some(value) => {
+                    let key = if prefixed { self.prefixes.prefixed(name) } else { name.local.to_string() };
+                    out.constants.push((format!("{}{key}", meta::ATTR_PREFIX), value.to_string(), col));
+                }
+                None => out.cols.push(col),
             }
-            let column = plan
-                .rename
-                .clone()
-                .unwrap_or_else(|| format!("{}{column_name}", self.options.naming.attribute_prefix));
-            let scalar = self.scalar(Some(stats));
-            let data_type = plan.data_type.clone().unwrap_or(scalar.data_type);
-            let mut col = Col::leaf(column, path, RouteValue::Text, data_type);
-            col.attribute = Some(name.clone());
-            col.metadata = self.path_metadata(path, Some(name));
-            col.metadata.extend(scalar.metadata);
-            col.reasons = plan.reasons;
-            col.reasons.extend(scalar.reasons);
-            cols.push(col);
         }
-        (cols, constants)
+        out
+    }
+
+    /// `<path>/@nilReason`, when nil values had a reason (or the attribute
+    /// was seen) and `nil_reason` is on.
+    fn nil_reason(&self, node: &ElementNode, steps: &[Step], anchor: Option<usize>, out: &mut Vec<Col>) {
+        let attribute = QName::new(None, "nilReason");
+        let seen = node.attributes.contains_key(&attribute);
+        if !self.options.gml.nil_reason || (node.nil.reasons.is_empty() && !seen) {
+            return;
+        }
+        let mut col = Col::new(steps, anchor, self.string());
+        col.attribute = Some((attribute, false));
+        col.reasons.push(format!("nilReason of {} nil values", node.nil.count));
+        out.push(col);
     }
 
     // ---- elements -----------------------------------------------------------
 
-    /// Columns for the element children of `node` (at `path`, `depth`).
-    fn children_cols(&self, node: &ElementNode, path: &[QName], depth: usize) -> Vec<Col> {
-        let mut cols = Vec::new();
-        for ((name, child), column_name) in node.children.iter().zip(self.child_names(node)) {
-            let mut child_path = path.to_vec();
-            child_path.push(name.clone());
-            if depth == 0 && name.is_gml_named("boundedBy") {
-                cols.extend(self.bounded_by(column_name, child, &child_path));
+    /// Columns for the element children of `node` (at `steps`).
+    fn children(&self, node: &ElementNode, steps: &[Step], anchor: Option<usize>, out: &mut Vec<Col>) {
+        let shared = shared_locals(node.children.keys());
+        for (name, child) in &node.children {
+            let step = Step { name: name.clone(), wrapper: false, prefixed: shared.contains(&*name.local) };
+            let child_steps = Self::with_step(steps, step);
+            if steps.is_empty() && name.is_gml_named("boundedBy") {
+                self.bounded_by(child, &child_steps, out);
                 continue;
             }
-            cols.extend(self.element_cols(name, column_name, child, child_path, node.instances));
+            self.element(child, &child_steps, anchor, node.instances, out);
         }
-        cols
     }
 
-    fn element_cols(
+    /// The columns of one element (the last of `steps`) and everything below it.
+    fn element(
         &self,
-        name: &QName,
-        column_name: String,
         node: &ElementNode,
-        path: Vec<QName>,
+        steps: &[Step],
+        anchor: Option<usize>,
         parent_instances: u64,
-    ) -> Vec<Col> {
-        let plan = self.plan(&path, None);
+        out: &mut Vec<Col>,
+    ) {
+        let plan = self.plan(steps, None);
         if plan.drop {
-            return Vec::new();
+            return;
         }
-        let column_name = plan.rename.clone().unwrap_or(column_name);
         let mut reasons = plan.reasons.clone();
         if node.parents_with < parent_instances {
-            reasons.push(format!(
-                "present in {} of {} parents",
-                node.parents_with, parent_instances
-            ));
+            reasons.push(format!("present in {} of {} parents", node.parents_with, parent_instances));
         }
-
         let repeated = node.max_occurs > 1;
-        let lists = self.options.structure.lists;
-        let list = plan.list.unwrap_or(repeated && lists == ListRule::Infer);
-        if repeated && list {
+        let list = plan.list.unwrap_or(repeated && self.options.structure.lists == ListRule::Infer);
+        let anchor = if list {
             let at = node
                 .first_multi
                 .as_ref()
                 .map(|location| format!(" (first at {location})"))
                 .unwrap_or_default();
-            reasons.push(format!("list: max_occurs={}{at}", node.max_occurs));
-        } else if repeated {
-            reasons.push(match lists {
-                ListRule::Never(OnRepeat::Error) => {
-                    format!("repeated (max_occurs={}); a repetition is an error", node.max_occurs)
-                }
-                _ => format!("repeated (max_occurs={}); the first value is kept", node.max_occurs),
-            });
-        }
-
-        let mut cols = self.content(name, &column_name, node, &path, list, &plan);
-        let Some(main) = cols.first_mut() else {
-            return cols;
-        };
-        // `Flatten` keeps lists of scalars only; a list of structs is raw XML.
-        if list
-            && matches!(self.options.structure.nesting, Nesting::Flatten { .. })
-            && matches!(main.kind, ColKind::Struct(_))
-        {
-            *main = self.raw_xml_col(&column_name, &path, "list of structs under Flatten nesting: raw XML");
-            cols.truncate(1);
-        }
-        for col in &mut cols {
-            col.list = list;
-        }
-        cols[0].reasons.splice(0..0, reasons);
-        cols
-    }
-
-    fn raw_xml_col(&self, column_name: &str, path: &[QName], reason: &str) -> Col {
-        let mut col = Col::leaf(column_name.to_string(), path, RouteValue::RawXml, self.string());
-        col.metadata = self.path_metadata(path, None);
-        col.reasons.push(reason.to_string());
-        col
-    }
-
-    /// The column(s) of one element: the main column first, then siblings
-    /// (`.@offset_min`, `.@nilReason`, split attributes).
-    fn content(
-        &self,
-        name: &QName,
-        column_name: &str,
-        node: &ElementNode,
-        path: &[QName],
-        list: bool,
-        plan: &Plan,
-    ) -> Vec<Col> {
-        let string = self.string();
-        let leaf = |value: RouteValue, data_type: DataType, reason: &str| {
-            let mut col = Col::leaf(column_name.to_string(), path, value, data_type);
-            col.metadata = self.path_metadata(path, None);
-            if !reason.is_empty() {
-                col.reasons.push(reason.to_string());
+            let name = &steps.last().expect("an element step").name.local;
+            reasons.push(format!("list anchored on {name}: max_occurs={}{at}", node.max_occurs));
+            Some(steps.len() - 1)
+        } else {
+            if repeated {
+                reasons.push(format!("repeated (max_occurs={}), but not a list: a repetition is a feature error", node.max_occurs));
             }
+            anchor
+        };
+        let first = out.len();
+        self.content(node, steps, anchor, &plan, out);
+        if let Some(col) = out.get_mut(first) {
+            col.reasons.splice(0..0, reasons);
+        }
+    }
+
+    /// The columns of an element's content.
+    fn content(&self, node: &ElementNode, steps: &[Step], anchor: Option<usize>, plan: &Plan, out: &mut Vec<Col>) {
+        let string = self.string();
+        let leaf = |data_type: DataType, reason: &str| {
+            let mut col = Col::new(steps, anchor, data_type);
+            col.reasons.push(reason.to_string());
             col
         };
-
         if plan.raw_xml {
-            return vec![leaf(RouteValue::RawXml, string, "raw XML (override)")];
+            out.push(leaf(string, "raw XML (override)"));
+            return;
         }
         if plan.map {
-            return vec![leaf(RouteValue::Map, map_type(&string), "map (override)")];
+            out.push(leaf(map_type(&string), "map (override)"));
+            return;
         }
         if let Some(stats) = &node.geometry {
-            if let Some(data_type) = &plan.data_type {
-                return vec![leaf(RouteValue::Geometry, data_type.clone(), "geometry, type given by override")];
+            match &plan.data_type {
+                Some(data_type) => out.push(leaf(data_type.clone(), "geometry, type given by override")),
+                None => out.push(self.geometry_col(stats, steps, anchor)),
             }
-            return vec![self.geometry_col(column_name, stats, path)];
+            return;
         }
         if node.truncated {
-            return vec![leaf(
-                RouteValue::Map,
-                map_type(&string),
-                "too deep or too many distinct child names: map of path → text",
-            )];
+            out.push(leaf(map_type(&string), "too deep or too many distinct child names: map of path → text"));
+            return;
         }
-        if let Nesting::Flatten { max_depth } = self.options.structure.nesting {
-            if path.len() > max_depth as usize && !node.children.is_empty() {
-                return vec![leaf(RouteValue::RawXml, string, "beyond the Flatten depth: raw XML")];
-            }
-        }
+        let name = &steps.last().expect("an element step").name;
         if name.is_gml_named("metaDataProperty") {
-            return vec![leaf(RouteValue::RawXml, string, "gml:metaDataProperty: raw XML")];
+            out.push(leaf(string, "gml:metaDataProperty: raw XML"));
+            return;
         }
         if self.options.structure.collapse_type_wrappers && node.is_type_wrapper() {
-            let (wrapper_name, wrapper) = node.children.get_index(0).expect("a wrapper has one child");
-            let mut wrapper_path = path.to_vec();
-            wrapper_path.push(wrapper_name.clone());
-            let mut col = self.struct_col(column_name, wrapper, &wrapper_path, path);
-            col.reasons.insert(0, format!("type wrapper {} collapsed", wrapper_name.local));
-            return vec![col];
+            self.wrapper(node, steps, anchor, out);
+            return;
         }
+        self.own_content(node, steps, anchor, plan, out);
+    }
 
-        let mut cols = match node.shape() {
-            Shape::TextOnly => self.text_cols(column_name, node, path, plan, Vec::new()),
-            Shape::TextAndAttributes => self.simple_content_cols(column_name, node, path, list, plan),
-            Shape::ElementsOnly => vec![self.struct_col(column_name, node, path, path)],
-            Shape::ByReferenceOnly => {
-                if self.options.gml.xlink == XlinkMode::Drop {
-                    return Vec::new();
-                }
-                let (attributes, _) = self.attribute_cols(node, path, true);
-                if attributes.len() > 1 {
-                    vec![self.struct_col(column_name, node, path, path)]
-                } else {
-                    let strip = if self.options.gml.strip_local_href_hash { ", '#' stripped" } else { "" };
-                    let reason = format!("by-reference only (xlink:href){strip}");
-                    vec![leaf(RouteValue::Href, plan.data_type.clone().unwrap_or(string), &reason)]
-                }
+    /// A type wrapper: the property's attributes (`xlink:href`, `nilReason`),
+    /// then the content of its child, `*` in the path. Several wrapper types
+    /// are merged first.
+    fn wrapper(&self, node: &ElementNode, steps: &[Step], anchor: Option<usize>, out: &mut Vec<Col>) {
+        let attributes = self.attributes(node, steps, anchor);
+        out.extend(attributes.cols);
+        out.extend(attributes.constants.into_iter().map(|(_, _, col)| col));
+        self.nil_reason(node, steps, anchor, out);
+
+        let mut wrappers = node.children.iter();
+        let (first_name, first) = wrappers.next().expect("a wrapper has a child");
+        let mut merged = first.clone();
+        let mut names = vec![first_name.local.to_string()];
+        for (name, other) in wrappers {
+            merged.merge(other.clone());
+            names.push(name.local.to_string());
+        }
+        let step = Step { name: first_name.clone(), wrapper: true, prefixed: false };
+        let wrapper_steps = Self::with_step(steps, step);
+        let first = out.len();
+        self.own_content(&merged, &wrapper_steps, anchor, &Plan::default(), out);
+        if let Some(col) = out.get_mut(first) {
+            let reason = match names.as_slice() {
+                [one] => format!("type wrapper {one} collapsed"),
+                many => format!("type wrappers {} merged and collapsed", many.join(", ")),
+            };
+            col.reasons.insert(0, reason);
+        }
+    }
+
+    /// An element's own text and attributes, then its children.
+    fn own_content(&self, node: &ElementNode, steps: &[Step], anchor: Option<usize>, plan: &Plan, out: &mut Vec<Col>) {
+        let attributes = self.attributes(node, steps, anchor);
+        // The element's own column, if it has one.
+        let own = match node.shape() {
+            Shape::TextOnly | Shape::TextAndAttributes => {
+                let scalar = self.scalar(node.text.as_ref());
+                let mut col = Col::new(steps, anchor, plan.data_type.clone().unwrap_or(scalar.data_type));
+                col.metadata.extend(scalar.metadata);
+                col.reasons = scalar.reasons;
+                Some(col)
             }
             Shape::Mixed => match self.options.structure.mixed_content {
-                MixedContent::RawXml => vec![leaf(RouteValue::RawXml, string, "mixed content: raw XML")],
+                MixedContent::RawXml => {
+                    let mut col = Col::new(steps, anchor, self.string());
+                    col.reasons.push("mixed content: raw XML".to_string());
+                    Some(col)
+                }
                 MixedContent::TextOnly => {
-                    vec![leaf(RouteValue::InnerText, string, "mixed content: text only")]
+                    let mut col = Col::new(steps, anchor, self.string());
+                    col.metadata.insert(meta::CONTENT.to_string(), "text".to_string());
+                    col.reasons.push("mixed content: text only".to_string());
+                    Some(col)
                 }
-                MixedContent::Drop => return Vec::new(),
+                MixedContent::Drop => None,
             },
-            Shape::Empty => {
-                let (attributes, constants) = self.attribute_cols(node, path, true);
-                if attributes.is_empty() {
-                    let mut col = leaf(
-                        RouteValue::Text,
-                        plan.data_type.clone().unwrap_or_else(|| self.all_null()),
-                        "never had a value",
-                    );
-                    col.metadata.extend(constants);
-                    vec![col]
-                } else {
-                    vec![self.struct_col(column_name, node, path, path)]
-                }
+            // An element that never had a value is a column only if nothing
+            // else is: no attribute columns and no children.
+            Shape::Empty if attributes.cols.is_empty() => {
+                let mut col = Col::new(steps, anchor, plan.data_type.clone().unwrap_or_else(|| self.all_null()));
+                col.reasons.push("never had a value".to_string());
+                Some(col)
             }
-            Shape::Geometry => unreachable!("handled above"),
+            Shape::Empty | Shape::ElementsOnly | Shape::ByReferenceOnly | Shape::Geometry => None,
         };
-
-        if node.nil.count > 0 && !node.nil.reasons.is_empty() && self.options.gml.nil_reason {
-            let nil_reason = QName::new(None, "nilReason");
-            let mut col = Col::leaf(
-                format!("{column_name}{}{}nilReason", self.separator(), self.options.naming.attribute_prefix),
-                path,
-                RouteValue::Text,
-                self.string(),
-            );
-            col.metadata = self.path_metadata(path, Some(&nil_reason));
-            col.attribute = Some(nil_reason);
-            col.reasons.push(format!("nilReason of {} nil values", node.nil.count));
-            cols.push(col);
-        }
-        cols
-    }
-
-    /// A scalar column from the node's text, plus an offset column if needed.
-    fn text_cols(
-        &self,
-        column_name: &str,
-        node: &ElementNode,
-        path: &[QName],
-        plan: &Plan,
-        constants: Vec<(String, String)>,
-    ) -> Vec<Col> {
-        let scalar = self.scalar(node.text.as_ref());
-        let data_type = plan.data_type.clone().unwrap_or(scalar.data_type);
-        let mut col = Col::leaf(column_name.to_string(), path, RouteValue::Text, data_type);
-        col.metadata = self.path_metadata(path, None);
-        col.metadata.extend(scalar.metadata);
-        col.metadata.extend(constants);
-        col.reasons = scalar.reasons;
-        let mut cols = vec![col];
-        if scalar.offset_column && plan.data_type.is_none() {
-            cols.push(self.offset_col(column_name, path));
-        }
-        cols
-    }
-
-    fn offset_col(&self, column_name: &str, path: &[QName]) -> Col {
-        let mut col = Col::leaf(
-            format!("{column_name}{}{}offset_min", self.separator(), self.options.naming.attribute_prefix),
-            path,
-            RouteValue::OffsetMinutes,
-            DataType::Int16,
-        );
-        col.metadata = self.path_metadata(path, None);
-        col.reasons.push("time-zone offsets differ: original offset in minutes".to_string());
-        col
-    }
-
-    /// `<area uom="m2">1523.40</area>` by `simple_with_attrs`.
-    fn simple_content_cols(
-        &self,
-        column_name: &str,
-        node: &ElementNode,
-        path: &[QName],
-        list: bool,
-        plan: &Plan,
-    ) -> Vec<Col> {
-        let (attributes, constants) = self.attribute_cols(node, path, true);
-        if attributes.is_empty() {
-            let mut cols = self.text_cols(column_name, node, path, plan, constants);
-            cols[0].reasons.push("attributes are constant: moved to field metadata".to_string());
-            return cols;
-        }
-        match self.options.structure.simple_with_attrs {
-            SimpleContent::ValueOnly => {
-                let mut cols = self.text_cols(column_name, node, path, plan, constants);
-                cols[0].reasons.push("attributes dropped (ValueOnly)".to_string());
-                cols
-            }
-            SimpleContent::Split if !list => {
-                let mut cols = self.text_cols(column_name, node, path, plan, constants);
-                for mut attribute in attributes {
-                    attribute.name = format!("{column_name}{}{}", self.separator(), attribute.name);
-                    cols.push(attribute);
+        match own {
+            Some(mut col) => {
+                for (key, value, _) in attributes.constants {
+                    col.reasons.push(format!("constant attribute moved to field metadata: {key} = {value:?}"));
+                    col.metadata.insert(key, value);
                 }
-                cols
+                out.push(col);
+                out.extend(attributes.cols);
             }
-            SimpleContent::Struct | SimpleContent::Split => {
-                let text = self.text_cols(&self.options.naming.text_field, node, path, plan, Vec::new());
-                let mut children = text;
-                children.extend(attributes);
-                let mut col = Col {
-                    name: column_name.to_string(),
-                    path: path.to_vec(),
-                    attribute: None,
-                    value: RouteValue::Struct,
-                    kind: ColKind::Struct(children),
-                    list: false,
-                    metadata: self.path_metadata(path, None),
-                    reasons: vec!["text and attributes".to_string()],
-                };
-                col.metadata.extend(constants);
-                vec![col]
+            None => {
+                out.extend(attributes.cols);
+                out.extend(attributes.constants.into_iter().map(|(_, _, col)| col));
             }
         }
+        self.nil_reason(node, steps, anchor, out);
+        self.children(node, steps, anchor, out);
     }
 
-    /// A struct of `node`'s attributes, text and children. `node_path` is the
-    /// path of `node` (inside a collapsed wrapper), `column_path` the path the
-    /// column is routed from (the property).
-    fn struct_col(
-        &self,
-        column_name: &str,
-        node: &ElementNode,
-        node_path: &[QName],
-        column_path: &[QName],
-    ) -> Col {
-        let (mut children, constants) = self.attribute_cols(node, node_path, true);
-        if node.text_count() > 0 {
-            children.extend(self.text_cols(&self.options.naming.text_field, node, node_path, &Plan::default(), Vec::new()));
-        }
-        children.extend(self.children_cols(node, node_path, node_path.len()));
-        let mut metadata = self.path_metadata(column_path, None);
-        metadata.extend(constants);
-        if children.is_empty() {
-            let mut col = Col::leaf(column_name.to_string(), column_path, RouteValue::Text, self.all_null());
-            col.metadata = metadata;
-            col.reasons.push("every child was dropped".to_string());
-            return col;
-        }
-        let mut reasons = Vec::new();
-        if node.href_and_content > 0 {
-            reasons.push("xlink:href and inline content: the content is used, the href kept".to_string());
-        }
-        if node.has_gml_id > 0 && node_path.len() == column_path.len() {
-            reasons.push("nested object with its own gml:id".to_string());
-        }
-        Col {
-            name: column_name.to_string(),
-            path: column_path.to_vec(),
-            attribute: None,
-            value: RouteValue::Struct,
-            kind: ColKind::Struct(children),
-            list: false,
-            metadata,
-            reasons,
-        }
-    }
-
-    fn bounded_by(&self, column_name: String, node: &ElementNode, path: &[QName]) -> Vec<Col> {
+    fn bounded_by(&self, node: &ElementNode, steps: &[Step], out: &mut Vec<Col>) {
         let Some(stats) = &node.geometry else {
-            return Vec::new();
+            return;
         };
         match self.options.gml.bounded_by {
-            BoundedBy::Drop => Vec::new(),
-            BoundedBy::Geometry => vec![self.geometry_col(&column_name, stats, path)],
+            BoundedBy::Drop => {}
+            BoundedBy::Geometry => out.push(self.geometry_col(stats, steps, None)),
             BoundedBy::BoxStruct => {
-                let dimension = self.dimension(stats);
-                let field = BoxType::new(dimension, Arc::new(self.crs_metadata(stats))).to_field(&column_name, true);
-                let mut col = Col::leaf(column_name, path, RouteValue::BoundingBox, DataType::Null);
+                let dimension = dimension(stats);
+                let field = BoxType::new(dimension, Arc::new(self.crs_metadata(stats))).to_field("boundedBy", true);
+                let mut col = Col::new(steps, None, DataType::Null);
                 col.kind = ColKind::Field(field);
-                col.metadata = self.path_metadata(path, None);
                 col.reasons.push("gml:boundedBy as a box (BoxStruct)".to_string());
-                vec![col]
+                out.push(col);
             }
         }
     }
@@ -769,7 +729,6 @@ impl Engine<'_> {
             data_type: self.string(),
             metadata: Vec::new(),
             reasons: Vec::new(),
-            offset_column: false,
         };
         let Some(stats) = stats.filter(|stats| stats.count > 0) else {
             scalar.data_type = self.all_null();
@@ -853,8 +812,9 @@ impl Engine<'_> {
                                 Some(DataType::Timestamp(unit, Some("UTC".into())))
                             }
                             TzShape::Mixed => {
-                                scalar.offset_column = types.timestamps.keep_offset;
-                                scalar.reasons.push("time-zone offsets differ: normalized to UTC".to_string());
+                                scalar.reasons.push(
+                                    "time-zone offsets differ: normalized to UTC, the offsets are not kept".to_string(),
+                                );
                                 Some(DataType::Timestamp(unit, Some("UTC".into())))
                             }
                             TzShape::Inconsistent => {
@@ -899,15 +859,6 @@ impl Engine<'_> {
 
     // ---- geometry -----------------------------------------------------------
 
-    fn dimension(&self, stats: &GeometryStats) -> Dimension {
-        match self.options.geometry.dimension {
-            DimMode::Force2D => Dimension::XY,
-            DimMode::ForceZ => Dimension::XYZ,
-            DimMode::Auto if stats.dims.iter().any(|&d| d >= 3) => Dimension::XYZ,
-            DimMode::Auto => Dimension::XY,
-        }
-    }
-
     /// GeoArrow CRS metadata: PROJJSON for EPSG codes, else `authority:code`,
     /// else the srsName as an opaque string.
     fn crs_metadata(&self, stats: &GeometryStats) -> Metadata {
@@ -935,7 +886,9 @@ impl Engine<'_> {
         Metadata::new(crs, None)
     }
 
-    fn geometry_col(&self, column_name: &str, stats: &GeometryStats, path: &[QName]) -> Col {
+    /// A geometry property's column: a native GeoArrow type or WKB, or a list
+    /// of WKB below a repeated element (`docs/geometry.md`, "Column encoding").
+    fn geometry_col(&self, stats: &GeometryStats, steps: &[Step], anchor: Option<usize>) -> Col {
         let geometry = &self.options.geometry;
         let mut reasons = vec![format!(
             "geometry: {} values, kinds={{{}}}, dims={:?}",
@@ -944,57 +897,64 @@ impl Engine<'_> {
             stats.dims,
         )];
         let linearize = matches!(geometry.curves, CurveMode::Linearize(_));
-        let native = native_kind(&stats.kinds);
-        let encoding = match self.options.geometry_encoding {
-            GeomEncoding::Wkb => {
-                reasons.push("encoding Wkb".to_string());
-                None
-            }
-            GeomEncoding::Auto if self.sampled.is_some() => {
-                reasons.push("encoding Auto, sampled: WKB (later features may have other kinds)".to_string());
-                None
-            }
-            GeomEncoding::Auto if stats.has_curves && !linearize => {
-                reasons.push("encoding Auto: curves → WKB".to_string());
-                None
-            }
-            _ if stats.has_unsupported => {
-                reasons.push("unsupported geometry kinds → WKB".to_string());
-                None
-            }
-            _ if stats.kinds.is_empty() => {
-                reasons.push("no geometry kind seen → WKB".to_string());
-                None
-            }
-            _ => {
-                let label = match native {
-                    Some(kind) => format!("native {}", kind.name()),
-                    None => "geoarrow.geometry (several kinds)".to_string(),
-                };
-                reasons.push(format!("encoding {:?} → {label}", self.options.geometry_encoding));
-                Some(native)
+        let native = if anchor.is_some() {
+            reasons.push("below a repeated element: a list of WKB (geometry[])".to_string());
+            None
+        } else {
+            match self.options.geometry_encoding {
+                GeomEncoding::Wkb => {
+                    reasons.push("encoding Wkb".to_string());
+                    None
+                }
+                GeomEncoding::Auto if self.sampled.is_some() => {
+                    reasons.push("encoding Auto, sampled: WKB (later features may have other kinds)".to_string());
+                    None
+                }
+                GeomEncoding::Auto if stats.has_curves && !linearize => {
+                    reasons.push("encoding Auto: curves → WKB".to_string());
+                    None
+                }
+                GeomEncoding::Auto if stats.has_unsupported => {
+                    reasons.push("unsupported geometry kinds → WKB".to_string());
+                    None
+                }
+                GeomEncoding::Auto if stats.kinds.is_empty() => {
+                    reasons.push("no geometry kind seen → WKB".to_string());
+                    None
+                }
+                GeomEncoding::Auto => match native_kind(&stats.kinds) {
+                    Some(kind) => {
+                        reasons.push(format!("encoding Auto → native {}", kind.name()));
+                        Some(kind)
+                    }
+                    None => {
+                        reasons.push("encoding Auto: no native type holds every kind → WKB".to_string());
+                        None
+                    }
+                },
             }
         };
 
         let metadata = Arc::new(self.crs_metadata(stats));
-        let dimension = self.dimension(stats);
-        let coord_type = if geometry.interleaved { CoordType::Interleaved } else { CoordType::Separated };
-        let field = match encoding {
-            None => Field::new(column_name, DataType::Binary, true).with_extension_type(WkbType::new(metadata)),
-            Some(None) => GeometryType::new(metadata).with_coord_type(coord_type).to_field(column_name, true),
-            Some(Some(kind)) => match kind {
-                NativeKind::Point => PointType::new(dimension, metadata).with_coord_type(coord_type).to_field(column_name, true),
-                NativeKind::LineString => LineStringType::new(dimension, metadata).with_coord_type(coord_type).to_field(column_name, true),
-                NativeKind::Polygon => PolygonType::new(dimension, metadata).with_coord_type(coord_type).to_field(column_name, true),
-                NativeKind::MultiPoint => MultiPointType::new(dimension, metadata).with_coord_type(coord_type).to_field(column_name, true),
-                NativeKind::MultiLineString => MultiLineStringType::new(dimension, metadata).with_coord_type(coord_type).to_field(column_name, true),
-                NativeKind::MultiPolygon => MultiPolygonType::new(dimension, metadata).with_coord_type(coord_type).to_field(column_name, true),
-            },
+        let dimension = dimension(stats);
+        let coord_type = CoordType::Separated;
+        let name = "geometry";
+        let field = match native {
+            None => Field::new(name, DataType::Binary, true).with_extension_type(WkbType::new(metadata)),
+            Some(NativeKind::Point) => PointType::new(dimension, metadata).with_coord_type(coord_type).to_field(name, true),
+            Some(NativeKind::LineString) => LineStringType::new(dimension, metadata).with_coord_type(coord_type).to_field(name, true),
+            Some(NativeKind::Polygon) => PolygonType::new(dimension, metadata).with_coord_type(coord_type).to_field(name, true),
+            Some(NativeKind::MultiPoint) => MultiPointType::new(dimension, metadata).with_coord_type(coord_type).to_field(name, true),
+            Some(NativeKind::MultiLineString) => {
+                MultiLineStringType::new(dimension, metadata).with_coord_type(coord_type).to_field(name, true)
+            }
+            Some(NativeKind::MultiPolygon) => {
+                MultiPolygonType::new(dimension, metadata).with_coord_type(coord_type).to_field(name, true)
+            }
         };
 
-        let mut col = Col::leaf(column_name.to_string(), path, RouteValue::Geometry, DataType::Null);
+        let mut col = Col::new(steps, anchor, DataType::Null);
         col.kind = ColKind::Field(field);
-        col.metadata = self.path_metadata(path, None);
         if let Some(srs) = geometry.crs_override.as_deref().or_else(|| stats.main_srs()) {
             col.metadata.insert(meta::SRS_NAME.to_string(), srs.to_string());
             let spellings = stats.srs.len();
@@ -1002,7 +962,8 @@ impl Engine<'_> {
                 reasons.push(format!("{spellings} srsNames; column CRS from {srs:?}"));
             }
         }
-        let (swapped, decision) = self.axis(column_name, stats);
+        let column = steps.last().map_or("", |step| &*step.name.local);
+        let (swapped, decision) = self.axis(column, stats);
         col.metadata.insert(meta::AXIS_SWAPPED.to_string(), swapped);
         col.metadata.insert(meta::AXIS_DECISION.to_string(), decision.clone());
         reasons.push(format!("axis: {decision}"));
@@ -1011,7 +972,7 @@ impl Engine<'_> {
     }
 
     /// Apply the axis-order options to each decision key of the column.
-    fn axis(&self, column_name: &str, stats: &GeometryStats) -> (String, String) {
+    fn axis(&self, column: &str, stats: &GeometryStats) -> (String, String) {
         let mut swaps = BTreeSet::new();
         let mut reasons = Vec::new();
         for (key, evidence) in &stats.axis_evidence {
@@ -1024,7 +985,7 @@ impl Engine<'_> {
             let decision = xeibe_geom::axis::decide(
                 &axis_key,
                 Some(&self.layer.local),
-                Some(column_name),
+                Some(column),
                 evidence,
                 &context,
                 &self.options.geometry.axis,
@@ -1061,12 +1022,26 @@ impl Engine<'_> {
     }
 }
 
+/// Local names that more than one of `names` has: those keep their prefix.
+fn shared_locals<'n>(names: impl Iterator<Item = &'n QName>) -> BTreeSet<String> {
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for name in names {
+        *counts.entry(&name.local).or_default() += 1;
+    }
+    counts.into_iter().filter(|(_, count)| *count > 1).map(|(local, _)| local.to_string()).collect()
+}
+
 fn is_href(name: &QName) -> bool {
     name.ns.as_deref() == Some(ns::XLINK) && &*name.local == "href"
 }
 
+/// `xyz` if any geometry had three dimensions (2D values then get a NaN Z).
+fn dimension(stats: &GeometryStats) -> Dimension {
+    if stats.dims.iter().any(|&d| d >= 3) { Dimension::XYZ } else { Dimension::XY }
+}
+
 /// `Map(Utf8View → Utf8View)`, with Arrow's required non-null entries and keys.
-pub(crate) fn map_type(string: &DataType) -> DataType {
+pub fn map_type(string: &DataType) -> DataType {
     let entries = Field::new(
         "entries",
         DataType::Struct(Fields::from(vec![
@@ -1234,63 +1209,3 @@ fn collect_namespaces(node: &ElementNode, uris: &mut IndexMap<Arc<str>, ()>) {
     }
 }
 
-/// Turns [`Col`]s into Arrow fields, routes and decisions.
-struct Emitter<'a> {
-    nesting: Nesting,
-    separator: &'a str,
-    routes: Vec<FieldRoute>,
-    decisions: Vec<FieldDecision>,
-}
-
-impl Emitter<'_> {
-    /// Emit `cols` into `fields`, the fields of the struct at `field_path`.
-    /// `prefix` is prepended to names when single structs are flattened.
-    fn emit(&mut self, cols: Vec<Col>, prefix: &str, field_path: &[usize], fields: &mut Vec<Field>) {
-        for col in cols {
-            let flatten = self.nesting != Nesting::Struct && !col.list;
-            match col.kind {
-                ColKind::Struct(children) if flatten => {
-                    let prefix = format!("{prefix}{}{}", col.name, self.separator);
-                    self.emit(children, &prefix, field_path, fields);
-                }
-                kind => {
-                    let name = format!("{prefix}{}", col.name);
-                    let mut path = field_path.to_vec();
-                    path.push(fields.len());
-                    self.routes.push(FieldRoute {
-                        source_path: col.path,
-                        attribute: col.attribute,
-                        value: col.value,
-                        field_path: path.clone(),
-                    });
-                    self.decisions.push(FieldDecision { field: name.clone(), reasons: col.reasons });
-                    let item = match kind {
-                        ColKind::Leaf(data_type) => Field::new(&name, data_type, true),
-                        ColKind::Field(field) => field.with_name(&name),
-                        ColKind::Struct(children) => {
-                            let mut child_fields = Vec::new();
-                            // Nested names are relative to the struct; decisions
-                            // show them with the parent's name in front.
-                            let before = self.decisions.len();
-                            self.emit(children, "", &path, &mut child_fields);
-                            for decision in &mut self.decisions[before..] {
-                                decision.field = format!("{name}{}{}", self.separator, decision.field);
-                            }
-                            Field::new(&name, DataType::Struct(Fields::from(child_fields)), true)
-                        }
-                    };
-                    let mut metadata = item.metadata().clone();
-                    let field = if col.list {
-                        let item = item.with_name("item");
-                        metadata = col.metadata;
-                        Field::new(&name, DataType::List(Arc::new(item)), true)
-                    } else {
-                        metadata.extend(col.metadata);
-                        item
-                    };
-                    fields.push(field.with_metadata(metadata));
-                }
-            }
-        }
-    }
-}

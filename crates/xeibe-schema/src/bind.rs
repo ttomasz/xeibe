@@ -1,193 +1,164 @@
-//! Binding a given schema (settings file or Arrow schema) to XML paths.
+//! Binding a schema (settings file, Arrow schema, or an inferred one) to XML
+//! paths (`docs/architecture.md`, "Settings file", "Paths").
 //!
-//! Columns are matched by name, the way spark-xml applies a user schema (see
-//! `docs/architecture.md#settings-file`): XML names are mapped to column names
-//! with `NamingOptions`; type-wrapper elements without a column of their own are
-//! looked through; a `gml:path` field-metadata entry wins over the name. Anything
-//! unmatched is routed to `_overflow` (or dropped / an error) at read time.
+//! A read only matches paths. A column's path is its `gml:path` field
+//! metadata; without one, the name is the path. No naming rule is applied and
+//! nothing is looked through: a type wrapper is `*` in the path.
 //!
-//! Nothing of the data is known here, so the routes name elements by local
-//! name only unless the column says otherwise (Clark notation, or a prefix
-//! declared in `gml:ns`); see [`LayerSchema::match_by_name`].
+//! A step without a prefix matches an element (or attribute) of that local
+//! name in any namespace. A prefixed step matches its namespace only; its
+//! prefix is declared in the schema metadata `gml:ns` (the settings file's
+//! top-level `namespaces`), never taken from the document.
 
-use arrow_schema::{DataType, Field, Schema};
+use std::collections::HashMap;
+
+use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use xeibe_core::QName;
 
 use crate::rules::{FieldRoute, RouteValue, meta};
 use crate::{InferenceOptions, LayerSchema};
 
-/// The column that collects data outside the schema (`OnSchemaMismatch::Overflow`).
-pub const OVERFLOW_COLUMN: &str = "_overflow";
+/// A parsed path: `idIIP/*/lokalnyId`, `adres[]/numer`, `miejscowosc/@href`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ColumnPath {
+    /// Element steps from the feature. `*` (any element) is a name with the
+    /// local name `*`; a step without a namespace matches any namespace.
+    pub steps: Vec<QName>,
+    /// A last `@name` step.
+    pub attribute: Option<QName>,
+    /// The step marked `[]`: the anchor of a list column.
+    pub anchor: Option<usize>,
+}
 
-pub fn bind_schema(layer: &QName, schema: &Schema, options: &InferenceOptions) -> crate::Result<LayerSchema> {
-    let options = options.for_layer(&layer.to_clark());
-    let binder = Binder { layer, options: &options };
-    let mut routes = Vec::new();
-    for (index, field) in schema.fields().iter().enumerate() {
-        if field.name() == OVERFLOW_COLUMN {
-            if !matches!(field.data_type(), DataType::Map(..)) {
-                return Err(binder.error(field, "`_overflow` must be a Map(Utf8View → Utf8View)"));
+impl ColumnPath {
+    /// Parse a path. `namespaces` maps the prefixes of prefixed steps to URIs.
+    pub fn parse(path: &str, namespaces: &HashMap<String, String>) -> Result<Self, String> {
+        if path.is_empty() {
+            return Err("the path is empty".into());
+        }
+        let parts: Vec<&str> = path.split('/').collect();
+        let mut parsed = ColumnPath { steps: Vec::new(), attribute: None, anchor: None };
+        for (index, part) in parts.iter().enumerate() {
+            if part.is_empty() {
+                return Err(format!("empty step in {path:?}"));
             }
-            routes.push(FieldRoute {
-                source_path: Vec::new(),
-                attribute: None,
-                value: RouteValue::Overflow,
-                field_path: vec![index],
-            });
-            continue;
-        }
-        binder.bind(field, &[], vec![index], &mut routes)?;
-    }
-    Ok(LayerSchema {
-        layer: layer.clone(),
-        schema: schema.clone(),
-        routes,
-        decisions: Vec::new(),
-        match_by_name: true,
-    })
-}
-
-struct Binder<'a> {
-    layer: &'a QName,
-    options: &'a InferenceOptions,
-}
-
-/// Where a column's values are in the XML.
-struct Source {
-    elements: Vec<QName>,
-    attribute: Option<QName>,
-    offset: bool,
-}
-
-impl Binder<'_> {
-    fn error(&self, field: &Field, message: &str) -> crate::Error {
-        crate::Error::Bind {
-            layer: self.layer.to_string(),
-            message: format!("column {:?}: {message}", field.name()),
-        }
-    }
-
-    /// Bind `field`, whose parent element is at `parent` (feature = empty).
-    fn bind(
-        &self,
-        field: &Field,
-        parent: &[QName],
-        field_path: Vec<usize>,
-        routes: &mut Vec<FieldRoute>,
-    ) -> crate::Result<()> {
-        let source = match field.metadata().get(meta::PATH) {
-            Some(path) => self.parse_path(path, field.metadata().get(meta::NS).map(String::as_str)),
-            None => self.parse_name(field.name(), parent),
-        };
-        let mut data_type = field.data_type();
-        let mut item = field;
-        if let DataType::List(inner) | DataType::LargeList(inner) | DataType::ListView(inner)
-        | DataType::LargeListView(inner) | DataType::FixedSizeList(inner, _) = data_type
-        {
-            item = inner.as_ref();
-            data_type = inner.data_type();
-        }
-
-        let value = if is_geoarrow(field) || is_geoarrow(item) {
-            let name = extension_name(field).or_else(|| extension_name(item)).unwrap_or_default();
-            if name == "geoarrow.box" { RouteValue::BoundingBox } else { RouteValue::Geometry }
-        } else if source.offset {
-            if !is_integer(data_type) {
-                return Err(self.error(field, "an offset column must be an integer"));
-            }
-            RouteValue::OffsetMinutes
-        } else {
-            match data_type {
-                DataType::Struct(_) => RouteValue::Struct,
-                DataType::Map(..) => RouteValue::Map,
-                data_type if is_scalar(data_type) => RouteValue::Text,
-                DataType::Decimal32(..) | DataType::Decimal64(..) | DataType::Decimal128(..)
-                | DataType::Decimal256(..) => {
-                    return Err(self.error(
-                        field,
-                        "decimal types are not supported (docs/type-mapping.md); use Float64 or Utf8View",
-                    ));
+            if let Some(attribute) = part.strip_prefix('@') {
+                if index + 1 != parts.len() {
+                    return Err(format!("an attribute must be the last step of {path:?}"));
                 }
-                other => {
-                    return Err(self.error(field, &format!("{other} can't be filled from XML")));
-                }
-            }
-        };
-        // The container's route comes before its children's.
-        routes.push(FieldRoute {
-            source_path: source.elements.clone(),
-            attribute: source.attribute,
-            value,
-            field_path: field_path.clone(),
-        });
-        if let (RouteValue::Struct, DataType::Struct(children)) = (value, data_type) {
-            for (index, child) in children.iter().enumerate() {
-                let mut child_path = field_path.clone();
-                child_path.push(index);
-                self.bind(child, &source.elements, child_path, routes)?;
-            }
-        }
-        Ok(())
-    }
-
-    /// A column name relative to its parent element: `area`, `@id`,
-    /// `idIIP.lokalnyId` (flattened), `area.@uom`, `#text`, `t.@offset_min`.
-    fn parse_name(&self, name: &str, parent: &[QName]) -> Source {
-        let naming = &self.options.naming;
-        let mut source = Source { elements: parent.to_vec(), attribute: None, offset: false };
-        let separator = naming.flatten_separator.as_str();
-        let steps: Vec<&str> = if separator.is_empty() || !name.contains(separator) || name.starts_with('{') {
-            vec![name]
-        } else {
-            name.split(separator).collect()
-        };
-        for step in steps {
-            if step == naming.text_field {
+                parsed.attribute = Some(step_name(attribute, namespaces)?);
                 continue;
             }
-            if let Some(attribute) = step.strip_prefix(naming.attribute_prefix.as_str()).filter(|_| !naming.attribute_prefix.is_empty()) {
-                if attribute == "offset_min" {
-                    source.offset = true;
-                } else {
-                    source.attribute = Some(name_of(attribute, None));
+            let (step, anchor) = match part.strip_suffix("[]") {
+                Some(step) => (step, true),
+                None => (*part, false),
+            };
+            if anchor {
+                if parsed.anchor.is_some() {
+                    return Err(format!("{path:?} has more than one `[]`: there are no lists of lists"));
                 }
-                continue;
+                parsed.anchor = Some(parsed.steps.len());
             }
-            source.elements.push(name_of(step, None));
+            parsed.steps.push(if step == "*" { QName::new(None, "*") } else { step_name(step, namespaces)? });
         }
-        source
-    }
-
-    /// A `gml:path` (`prgad:idIIP/prgad:lokalnyId`, `…/@uom`), from the feature.
-    fn parse_path(&self, path: &str, namespaces: Option<&str>) -> Source {
-        let namespaces: serde_json::Map<String, serde_json::Value> = namespaces
-            .and_then(|json| serde_json::from_str(json).ok())
-            .unwrap_or_default();
-        let mut source = Source { elements: Vec::new(), attribute: None, offset: false };
-        for step in path.split('/').filter(|step| !step.is_empty()) {
-            match step.strip_prefix('@') {
-                Some(attribute) => source.attribute = Some(name_of(attribute, Some(&namespaces))),
-                None => source.elements.push(name_of(step, Some(&namespaces))),
-            }
-        }
-        source
+        Ok(parsed)
     }
 }
 
-/// `{uri}local` → exact; `prefix:local` → the prefix's URI from `gml:ns` if
-/// known, else any namespace; `local` → any namespace.
-fn name_of(step: &str, namespaces: Option<&serde_json::Map<String, serde_json::Value>>) -> QName {
+/// `{uri}local`, `prefix:local` (declared prefix) or `local` (any namespace).
+fn step_name(step: &str, namespaces: &HashMap<String, String>) -> Result<QName, String> {
+    if step.is_empty() || step.contains(['[', ']', '@', '*']) {
+        return Err(format!("{step:?} is not a valid step"));
+    }
     if let Some((uri, local)) = step.strip_prefix('{').and_then(|rest| rest.split_once('}')) {
-        return QName::new(Some(uri), local);
+        return Ok(QName::new(Some(uri), local));
     }
     match step.split_once(':') {
-        Some((prefix, local)) => {
-            let uri = namespaces
-                .and_then(|namespaces| namespaces.get(prefix))
-                .and_then(|uri| uri.as_str());
-            QName::new(uri, local)
+        Some((prefix, local)) => match namespaces.get(prefix) {
+            Some(uri) => Ok(QName::new(Some(uri), local)),
+            None => Err(format!(
+                "the prefix {prefix:?} is not declared (settings file `namespaces`, or schema metadata `{}`)",
+                meta::NS
+            )),
+        },
+        None => Ok(QName::new(None, step)),
+    }
+}
+
+/// The prefixes a schema declares in its `gml:ns` metadata.
+pub fn schema_namespaces(schema: &Schema) -> Result<HashMap<String, String>, String> {
+    match schema.metadata().get(meta::NS) {
+        None => Ok(HashMap::new()),
+        Some(json) => serde_json::from_str(json).map_err(|e| format!("invalid `{}` metadata: {e}", meta::NS)),
+    }
+}
+
+/// Bind `schema` to the layer's XML: one route per column. The schema is used
+/// as it is; its columns are the only data the read takes.
+///
+/// `options` is taken for symmetry with [`crate::infer_schema`]: binding
+/// applies no inference rule.
+pub fn bind_schema(layer: &QName, schema: &Schema, _options: &InferenceOptions) -> crate::Result<LayerSchema> {
+    let error = |field: Option<&Field>, message: String| crate::Error::Bind {
+        layer: layer.to_string(),
+        message: match field {
+            Some(field) => format!("column {:?}: {message}", field.name()),
+            None => message,
+        },
+    };
+    let namespaces = schema_namespaces(schema).map_err(|message| error(None, message))?;
+    let mut routes = Vec::new();
+    for (index, field) in schema.fields().iter().enumerate() {
+        let text = field.metadata().get(meta::PATH).map_or(field.name().as_str(), String::as_str);
+        let path = ColumnPath::parse(text, &namespaces).map_err(|message| error(Some(field), message))?;
+        let (list, item) = match field.data_type() {
+            DataType::List(item) | DataType::LargeList(item) if !is_geoarrow(field) => (true, item.as_ref()),
+            _ => (false, field.as_ref()),
+        };
+        let value = route_value(field, item, list).map_err(|message| error(Some(field), message))?;
+        let anchor = match (list, path.anchor) {
+            (false, Some(_)) => {
+                return Err(error(Some(field), format!("`[]` in {text:?} marks the anchor of a list, but the column is not a list")));
+            }
+            (true, _) if path.steps.is_empty() => {
+                return Err(error(Some(field), "a list column follows an element; its path has none".into()));
+            }
+            // Without a marker, a list is anchored on its first step.
+            (true, anchor) => Some(anchor.unwrap_or(0)),
+            (false, None) => None,
+        };
+        routes.push(FieldRoute {
+            source_path: path.steps,
+            attribute: path.attribute,
+            value,
+            field_path: vec![index],
+            anchor,
+        });
+    }
+    Ok(LayerSchema { layer: layer.clone(), schema: schema.clone(), routes, decisions: Vec::new() })
+}
+
+/// What a column (or a list column's `item`) takes from its element.
+fn route_value(field: &Field, item: &Field, list: bool) -> Result<RouteValue, String> {
+    if let Some(name) = extension_name(item).filter(|name| name.starts_with("geoarrow.")) {
+        return match (name, list) {
+            ("geoarrow.box", false) => Ok(RouteValue::BoundingBox),
+            ("geoarrow.wkb", _) | (_, false) => Ok(RouteValue::Geometry),
+            _ => Err("a geometry list holds WKB (`geometry[]`, List(geoarrow.wkb))".into()),
+        };
+    }
+    match item.data_type() {
+        DataType::Map(..) => Ok(RouteValue::Map),
+        data_type if is_scalar(data_type) => {
+            let text_only = field.metadata().get(meta::CONTENT).is_some_and(|content| content == "text");
+            Ok(if text_only { RouteValue::InnerText } else { RouteValue::Text })
         }
-        None => QName::new(None, step),
+        DataType::Struct(_) => Err("schemas are flat: a Struct column can't be filled from XML (use one column per leaf path)".into()),
+        DataType::List(_) | DataType::LargeList(_) => Err("a list of lists can't be filled from XML: a path has one anchor".into()),
+        DataType::Decimal32(..) | DataType::Decimal64(..) | DataType::Decimal128(..) | DataType::Decimal256(..) => {
+            Err("decimal types are not supported (docs/type-mapping.md); use double or text".into())
+        }
+        other => Err(format!("{other} can't be filled from XML")),
     }
 }
 
@@ -199,31 +170,31 @@ fn is_geoarrow(field: &Field) -> bool {
     extension_name(field).is_some_and(|name| name.starts_with("geoarrow."))
 }
 
-fn is_integer(data_type: &DataType) -> bool {
+/// Types a text value can be parsed into.
+pub fn is_scalar(data_type: &DataType) -> bool {
     matches!(
         data_type,
-        DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64
-            | DataType::UInt8 | DataType::UInt16 | DataType::UInt32 | DataType::UInt64
+        DataType::Null
+            | DataType::Boolean
+            | DataType::Int8
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Int64
+            | DataType::UInt8
+            | DataType::UInt16
+            | DataType::UInt32
+            | DataType::UInt64
+            | DataType::Float32
+            | DataType::Float64
+            | DataType::Utf8
+            | DataType::LargeUtf8
+            | DataType::Utf8View
+            | DataType::Binary
+            | DataType::LargeBinary
+            | DataType::Date32
+            | DataType::Date64
+            | DataType::Timestamp(..)
+            | DataType::Time32(TimeUnit::Second | TimeUnit::Millisecond)
+            | DataType::Time64(TimeUnit::Microsecond | TimeUnit::Nanosecond)
     )
-}
-
-/// Types a text value can be parsed into.
-fn is_scalar(data_type: &DataType) -> bool {
-    is_integer(data_type)
-        || matches!(
-            data_type,
-            DataType::Null
-                | DataType::Boolean
-                | DataType::Float16
-                | DataType::Float32
-                | DataType::Float64
-                | DataType::Utf8
-                | DataType::LargeUtf8
-                | DataType::Utf8View
-                | DataType::Date32
-                | DataType::Date64
-                | DataType::Timestamp(..)
-                | DataType::Time32(..)
-                | DataType::Time64(..)
-        )
 }

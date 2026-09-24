@@ -209,7 +209,9 @@ fn the_geneva_arcs_keep_the_stored_positions() {
     let sample = sample("ch-geneva-arcbycenterpoint-fme");
     let read = read_layer(&sample, "AGR_SPB", &options(AxisOrderMode::Auto));
     assert_eq!(read.rows(), 3);
-    let geometries = read.geometries("SHAPE");
+    // `fme:SHAPE` holds AREA and LEN; the geometry is in `gml:surfaceProperty`
+    // (GDAL's geometry column too, see the sample's `.gdal.txt`).
+    let geometries = read.geometries("surfaceProperty");
     let third = geometries[2].as_ref().expect("a geometry");
     let vertices = third.vertices();
     assert!(

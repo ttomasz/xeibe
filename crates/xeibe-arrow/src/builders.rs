@@ -6,8 +6,9 @@
 use std::sync::Arc;
 
 use arrow_array::builder::{
-    ArrayBuilder, BooleanBuilder, Date32Builder, Date64Builder, Float32Builder, Float64Builder,
-    Int8Builder, Int16Builder, Int32Builder, Int64Builder, LargeStringBuilder, NullBuilder,
+    ArrayBuilder, BinaryBuilder, BooleanBuilder, Date32Builder, Date64Builder, Float32Builder, Float64Builder,
+    Int8Builder, Int16Builder, Int32Builder, Int64Builder, LargeBinaryBuilder, LargeStringBuilder,
+    NullBuilder,
     StringBuilder, StringViewBuilder, Time32MillisecondBuilder, Time32SecondBuilder,
     Time64MicrosecondBuilder, Time64NanosecondBuilder, TimestampMicrosecondBuilder,
     TimestampMillisecondBuilder, TimestampNanosecondBuilder, TimestampSecondBuilder,
@@ -18,7 +19,7 @@ use arrow_array::{
     RecordBatchOptions, StringArray, StringViewArray, StructArray,
 };
 use arrow_buffer::{NullBuffer, OffsetBuffer, ScalarBuffer};
-use arrow_schema::{ArrowError, DataType, FieldRef, Fields, SchemaRef, TimeUnit};
+use arrow_schema::{ArrowError, DataType, FieldRef, SchemaRef, TimeUnit};
 use xeibe_geom::Geometry;
 use xeibe_geom::model::Envelope;
 
@@ -33,7 +34,6 @@ pub enum Value {
     /// Already in the column's form (`GeometrySpec::prepare`).
     Geometry(Geometry),
     Box(Envelope),
-    Struct(Vec<Value>),
     List(Vec<Value>),
     Map(Vec<(String, String)>),
 }
@@ -45,14 +45,9 @@ pub struct LayerBatchBuilder {
     rows: usize,
 }
 
-/// A builder for one (possibly nested) column.
+/// A builder for one column (or a list column's items).
 pub enum ColumnBuilder {
     Scalar(ScalarBuilder),
-    Struct {
-        fields: Fields,
-        children: Vec<ColumnBuilder>,
-        validity: Vec<bool>,
-    },
     List {
         /// The item field.
         item_field: FieldRef,
@@ -96,6 +91,8 @@ enum Inner {
     Utf8(StringBuilder),
     LargeUtf8(LargeStringBuilder),
     Utf8View(StringViewBuilder),
+    Binary(BinaryBuilder),
+    LargeBinary(LargeBinaryBuilder),
     Date32(Date32Builder),
     Date64(Date64Builder),
     TimestampSecond(TimestampSecondBuilder),
@@ -127,6 +124,8 @@ macro_rules! each_builder {
             Inner::Utf8($b) => $body,
             Inner::LargeUtf8($b) => $body,
             Inner::Utf8View($b) => $body,
+            Inner::Binary($b) => $body,
+            Inner::LargeBinary($b) => $body,
             Inner::Date32($b) => $body,
             Inner::Date64($b) => $body,
             Inner::TimestampSecond($b) => $body,
@@ -164,6 +163,8 @@ impl ScalarBuilder {
             DataType::Utf8 => Inner::Utf8(StringBuilder::with_capacity(capacity, capacity * 8)),
             DataType::LargeUtf8 => Inner::LargeUtf8(LargeStringBuilder::with_capacity(capacity, capacity * 8)),
             DataType::Utf8View => Inner::Utf8View(StringViewBuilder::with_capacity(capacity)),
+            DataType::Binary => Inner::Binary(BinaryBuilder::with_capacity(capacity, capacity * 8)),
+            DataType::LargeBinary => Inner::LargeBinary(LargeBinaryBuilder::with_capacity(capacity, capacity * 8)),
             DataType::Date32 => Inner::Date32(Date32Builder::with_capacity(capacity)),
             DataType::Date64 => Inner::Date64(Date64Builder::with_capacity(capacity)),
             DataType::Timestamp(TimeUnit::Second, _) => Inner::TimestampSecond(
@@ -205,8 +206,7 @@ impl ScalarBuilder {
         self.len() == 0
     }
 
-    /// Parse and append; returns `Err(text)` if the value doesn't fit the type
-    /// (caller routes it to `_overflow` or errors).
+    /// Parse and append; returns `Err(text)` if the value doesn't fit the type.
     pub fn append_text(&mut self, text: &str) -> Result<(), String> {
         match parse_scalar(&self.data_type, text) {
             Some(scalar) => {
@@ -235,6 +235,8 @@ impl ScalarBuilder {
             (Inner::Utf8(b), Scalar::Str(v)) => b.append_value(v),
             (Inner::LargeUtf8(b), Scalar::Str(v)) => b.append_value(v),
             (Inner::Utf8View(b), Scalar::Str(v)) => b.append_value(v),
+            (Inner::Binary(b), Scalar::Str(v)) => b.append_value(v),
+            (Inner::LargeBinary(b), Scalar::Str(v)) => b.append_value(v),
             (Inner::Date32(b), Scalar::Int32(v)) => b.append_value(v),
             (Inner::Date64(b), Scalar::Int(v)) => b.append_value(v),
             (Inner::TimestampSecond(b), Scalar::Int(v)) => b.append_value(v),
@@ -266,6 +268,8 @@ impl ScalarBuilder {
             Inner::Utf8(b) => b.append_null(),
             Inner::LargeUtf8(b) => b.append_null(),
             Inner::Utf8View(b) => b.append_null(),
+            Inner::Binary(b) => b.append_null(),
+            Inner::LargeBinary(b) => b.append_null(),
             Inner::Date32(b) => b.append_null(),
             Inner::Date64(b) => b.append_null(),
             Inner::TimestampSecond(b) => b.append_null(),
@@ -303,6 +307,8 @@ pub fn is_scalar_type(data_type: &DataType) -> bool {
             | DataType::Utf8
             | DataType::LargeUtf8
             | DataType::Utf8View
+            | DataType::Binary
+            | DataType::LargeBinary
             | DataType::Date32
             | DataType::Date64
             | DataType::Timestamp(..)
@@ -322,14 +328,6 @@ impl ColumnBuilder {
             _ => {}
         }
         Ok(match field.data_type() {
-            DataType::Struct(fields) => ColumnBuilder::Struct {
-                fields: fields.clone(),
-                children: fields
-                    .iter()
-                    .map(|child| ColumnBuilder::for_field(child, capacity))
-                    .collect::<crate::Result<_>>()?,
-                validity: Vec::with_capacity(capacity),
-            },
             DataType::List(item) | DataType::LargeList(item) => ColumnBuilder::List {
                 item_field: item.clone(),
                 large: matches!(field.data_type(), DataType::LargeList(_)),
@@ -362,8 +360,7 @@ impl ColumnBuilder {
     pub fn len(&self) -> usize {
         match self {
             ColumnBuilder::Scalar(b) => b.len(),
-            ColumnBuilder::Struct { validity, .. }
-            | ColumnBuilder::List { validity, .. }
+            ColumnBuilder::List { validity, .. }
             | ColumnBuilder::Map { validity, .. } => validity.len(),
             ColumnBuilder::Geometry(b) => b.len(),
             ColumnBuilder::Box(b) => b.len(),
@@ -379,19 +376,6 @@ impl ColumnBuilder {
         match (self, value) {
             (ColumnBuilder::Scalar(b), Value::Scalar(scalar)) => b.append(scalar),
             (ColumnBuilder::Scalar(b), _) => b.append_null(),
-            (ColumnBuilder::Struct { children, validity, .. }, Value::Struct(values)) => {
-                let mut values = values.into_iter();
-                for child in children {
-                    child.append(values.next().unwrap_or(Value::Null))?;
-                }
-                validity.push(true);
-            }
-            (ColumnBuilder::Struct { children, validity, .. }, _) => {
-                for child in children {
-                    child.append(Value::Null)?;
-                }
-                validity.push(false);
-            }
             (ColumnBuilder::List { item, offsets, validity, .. }, Value::List(items)) => {
                 let count = items.len() as i64;
                 for value in items {
@@ -429,19 +413,6 @@ impl ColumnBuilder {
     pub fn finish(&mut self) -> crate::Result<ArrayRef> {
         Ok(match self {
             ColumnBuilder::Scalar(b) => b.finish(),
-            ColumnBuilder::Struct { fields, children, validity } => {
-                let arrays = children
-                    .iter_mut()
-                    .map(ColumnBuilder::finish)
-                    .collect::<crate::Result<Vec<_>>>()?;
-                let nulls = nulls(std::mem::take(validity));
-                if fields.is_empty() {
-                    let len = nulls.as_ref().map_or(0, NullBuffer::len);
-                    Arc::new(StructArray::new_empty_fields(len, nulls))
-                } else {
-                    Arc::new(StructArray::try_new(fields.clone(), arrays, nulls)?)
-                }
-            }
             ColumnBuilder::List { item_field, large, item, offsets, validity } => {
                 let values = item.finish()?;
                 let nulls = nulls(std::mem::take(validity));
@@ -515,23 +486,6 @@ impl LayerBatchBuilder {
         self.rows == 0
     }
 
-    /// The builder of a (nested) field: a `List` level is passed through to
-    /// its item, as in `FieldRoute::field_path`.
-    pub fn column_mut(&mut self, field_path: &[usize]) -> &mut ColumnBuilder {
-        let (first, rest) = field_path.split_first().expect("a field path");
-        let mut column = &mut self.columns[*first];
-        for index in rest {
-            if let ColumnBuilder::List { item, .. } = column {
-                column = item.as_mut();
-            }
-            column = match column {
-                ColumnBuilder::Struct { children, .. } => &mut children[*index],
-                _ => panic!("field path {field_path:?} goes through a column without children"),
-            };
-        }
-        column
-    }
-
     /// Append one row, one value per top-level column.
     pub fn append_row(&mut self, row: Vec<Value>) -> crate::Result<()> {
         let mut values = row.into_iter();
@@ -540,17 +494,6 @@ impl LayerBatchBuilder {
         }
         self.rows += 1;
         Ok(())
-    }
-
-    /// Close the current row: missing fields become null.
-    pub fn end_row(&mut self) {
-        self.rows += 1;
-        for column in &mut self.columns {
-            while column.len() < self.rows {
-                // Appending a null can't fail.
-                let _ = column.append(Value::Null);
-            }
-        }
     }
 
     pub fn finish(&mut self) -> crate::Result<RecordBatch> {

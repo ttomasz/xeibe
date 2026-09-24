@@ -29,7 +29,7 @@ use crate::epsg::{CrsInfo, CrsTable};
 use crate::error::Error;
 use crate::linearize::linearize;
 use crate::model::{Envelope, GeomKind, Geometry, Surface};
-use crate::options::{CurveMode, GeometryOptions, UnsupportedGeometry};
+use crate::options::{CurveMode, GeometryOptions};
 use crate::crs::SrsName;
 
 /// Values inherited from enclosing elements.
@@ -45,7 +45,7 @@ pub struct ParseContext {
 
 #[derive(Debug, Clone)]
 pub struct ParsedGeometry {
-    /// `None` for an unsupported geometry under the `Null`/`RawXml` policies.
+    /// Always `Some` from [`GeometryParser::parse`].
     pub geometry: Option<Geometry>,
     /// Kind of the outermost source element.
     pub source_kind: GeomKind,
@@ -53,8 +53,6 @@ pub struct ParsedGeometry {
     /// first one declared inside it.
     pub srs_name: Option<String>,
     pub dialect: Dialect,
-    /// Raw XML, when requested (`RawXml` policies).
-    pub raw_xml: Option<String>,
     pub warnings: Vec<String>,
 }
 
@@ -79,9 +77,9 @@ impl<'o> GeometryParser<'o> {
     /// fails: the reader is then after the element's end tag if the XML
     /// allows it, so the caller can go on with the next property.
     ///
-    /// Unsupported geometry (and geometry given by `xlink:href`) follows
-    /// [`GeometryOptions::unsupported_geometry`]: an error, or `Ok` with no
-    /// geometry. `curves = Linearize` is applied here.
+    /// Unsupported geometry (and geometry given by `xlink:href`) is an error
+    /// ([`Error::Unsupported`], [`Error::ByReference`]); the caller applies
+    /// `OnFeatureError`. `curves = Linearize` is applied here.
     pub fn parse(
         &self,
         reader: &mut GmlReader<'_>,
@@ -89,7 +87,6 @@ impl<'o> GeometryParser<'o> {
         axis: &dyn AxisResolver,
     ) -> crate::Result<ParsedGeometry> {
         let root = current_element(reader)?;
-        let start = reader.last_start_position();
         let source_kind = geom_kind(&root.name);
         let mut parser = Parser::new(self.options, Some(axis), context);
         parser.srs_name = root.attrs.srs_name.clone().or_else(|| context.srs_name.clone());
@@ -104,33 +101,12 @@ impl<'o> GeometryParser<'o> {
                 if let CurveMode::Linearize(linearize_options) = &self.options.curves {
                     geometry = linearize(geometry, linearize_options);
                 }
-                let keep_raw = parser.computed_arcs
-                    && self.options.raw_xml_for_computed_arcs
-                    && self.options.unsupported_geometry == UnsupportedGeometry::RawXml;
                 Ok(ParsedGeometry {
                     geometry: Some(geometry),
                     source_kind,
-                    raw_xml: keep_raw.then(|| reader.raw_since(start)),
                     dialect: parser.dialect.result(),
                     srs_name: parser.srs_name,
                     warnings: parser.warnings,
-                })
-            }
-            Err(error @ (Error::Unsupported { .. } | Error::ByReference { .. }))
-                if self.options.unsupported_geometry != UnsupportedGeometry::Error =>
-            {
-                parser.recover(reader)?;
-                let raw_xml = (self.options.unsupported_geometry == UnsupportedGeometry::RawXml)
-                    .then(|| reader.raw_since(start));
-                let mut warnings = parser.warnings;
-                warnings.push(error.to_string());
-                Ok(ParsedGeometry {
-                    geometry: None,
-                    source_kind,
-                    srs_name: parser.srs_name,
-                    dialect: parser.dialect.result(),
-                    raw_xml,
-                    warnings,
                 })
             }
             Err(error) => {
@@ -248,7 +224,7 @@ pub(crate) const SEGMENTS: &[&str] = &[
 ];
 
 /// Geometry, segment and patch elements that are out of scope (support
-/// matrix §5): they go through the `unsupported_geometry` policy.
+/// matrix §5): they are geometry errors.
 pub(crate) const UNSUPPORTED: &[&str] = &[
     "Solid",
     "Shell",
@@ -359,7 +335,6 @@ pub(crate) struct Scope {
 
 /// State of one geometry parse.
 pub(crate) struct Parser<'p> {
-    pub options: &'p GeometryOptions,
     pub table: Cow<'p, CrsTable>,
     axis: Option<&'p dyn AxisResolver>,
     fixed: Option<bool>,
@@ -370,8 +345,6 @@ pub(crate) struct Parser<'p> {
     pub warnings: Vec<String>,
     /// Elements opened below (and including) the root and not yet closed.
     depth: usize,
-    /// A parameter-defined arc was computed (`raw_xml_for_computed_arcs`).
-    pub computed_arcs: bool,
     warned_srs: bool,
 }
 
@@ -386,7 +359,6 @@ impl<'p> Parser<'p> {
             None => Cow::Owned(CrsTable::builtin()),
         };
         Parser {
-            options,
             table,
             axis,
             fixed: context.axis.as_ref().map(|decision| decision.swap),
@@ -395,7 +367,6 @@ impl<'p> Parser<'p> {
             dialect: DialectTracker::default(),
             warnings: Vec::new(),
             depth: 1,
-            computed_arcs: false,
             warned_srs: false,
         }
     }

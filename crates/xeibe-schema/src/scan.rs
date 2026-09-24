@@ -443,6 +443,9 @@ struct WalkState {
     source: u32,
     hints: ElementHints,
     feature: FeatureState,
+    /// Namespaces declared inside features (`xmlns:x` on a property), for
+    /// readable prefixes in paths: `(uri, prefix)`, first declaration wins.
+    prefixes: Vec<(String, String)>,
 }
 
 /// The feature being walked.
@@ -481,12 +484,16 @@ impl<'o> TreeBuilder<'o> {
                 source,
                 hints: ElementHints::default(),
                 feature: FeatureState::default(),
+                prefixes: Vec::new(),
             },
             layers,
         }
     }
 
-    pub fn finish(self) -> DatasetObservation {
+    pub fn finish(mut self) -> DatasetObservation {
+        for (uri, prefix) in std::mem::take(&mut self.state.prefixes) {
+            self.observation.note_prefix(&uri, &prefix);
+        }
         self.observation
     }
 
@@ -544,6 +551,14 @@ impl<'o> TreeBuilder<'o> {
 impl WalkState {
     /// Record the attributes of an element's start tag in its node.
     fn start(&mut self, node: &mut ElementNode, attrs: &Attributes<'_>) -> Instance {
+        for (prefix, uri) in attrs.namespace_declarations() {
+            let Some(prefix) = prefix else { continue };
+            if self.prefixes.len() < crate::observation::MAX_PREFIXES
+                && !self.prefixes.iter().any(|(known, _)| known == uri)
+            {
+                self.prefixes.push((uri.to_string(), prefix.to_string()));
+            }
+        }
         let mut instance = Instance::default();
         let mut nil = false;
         let mut nil_reason = None;
@@ -661,6 +676,9 @@ impl WalkState {
             }
         }
 
+        if !frame.had_text && matches!(frame.child_counts.as_slice(), [(_, 1, _)]) {
+            node.single_child += 1;
+        }
         for (index, count, second) in frame.child_counts {
             let child = &mut node.children[index];
             child.parents_with += 1;

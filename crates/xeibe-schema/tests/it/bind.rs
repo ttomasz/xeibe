@@ -61,7 +61,7 @@ fn without_a_path_the_name_is_the_path() {
     assert_eq!(route(&bound, "area"), ["area"]);
     assert_eq!(route(&bound, "@id"), ["@id"], "the feature's gml:id");
     assert_eq!(route(&bound, "owner/name"), ["owner", "name"]);
-    assert_eq!(bound.schema.fields().len(), 2);
+    assert_eq!(bound.schema.fields().len(), 3, "the schema is used as it is");
     assert_eq!(
         bound.layer.ns.as_deref(),
         Some(APP),

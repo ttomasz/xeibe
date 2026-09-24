@@ -49,6 +49,22 @@ impl<'a> Attributes<'a> {
             .map(|(ns, local, value)| (QName::new(ns, local), value))
     }
 
+    /// The namespace declarations of the tag: `(prefix, uri)`, `None` for the
+    /// default namespace.
+    pub fn namespace_declarations(&self) -> impl Iterator<Item = (Option<&'a str>, &'a str)> + '_ {
+        let mut raw = self.raw.clone();
+        raw.with_checks(false);
+        raw.filter_map(|attr| {
+            let attr = attr.ok()?;
+            let prefix = match attr.key.as_namespace_binding()? {
+                PrefixDeclaration::Default => None,
+                PrefixDeclaration::Named(prefix) => Some(prefix),
+            };
+            let Cow::Borrowed(uri) = attr.value else { return None };
+            Some((prefix, uri))
+        })
+    }
+
     /// `(namespace, local name, unescaped value)` without allocating names.
     /// Malformed attributes and attributes with an undeclared prefix are
     /// skipped; values that fail to unescape are returned raw.
@@ -242,8 +258,14 @@ impl<'a> GmlReader<'a> {
         self.last_start as usize
     }
 
-    /// The raw XML from `position` (see [`Self::last_start_position`]) to the
-    /// current position, as written.
+    /// The current buffer position: after the last event returned. Right
+    /// after a `Start`, where the element's content begins.
+    pub fn position(&self) -> usize {
+        self.inner.buffer_position() as usize
+    }
+
+    /// The raw XML from `position` (see [`Self::last_start_position`] and
+    /// [`Self::position`]) to the current position, as written.
     pub fn raw_since(&self, position: usize) -> String {
         let end = self.inner.buffer_position() as usize;
         let raw = &self.buf[position.min(end)..end];

@@ -7,20 +7,19 @@ use std::sync::{Arc, Mutex};
 use arrow_schema::{Field, Schema, SchemaRef};
 use geoarrow_schema::{Crs, GeoArrowType, Metadata};
 use xeibe_core::{FeatureChunk, QName, SourceId, Sources};
-use xeibe_geom::axis::{AxisContext, AxisSelector, decide};
+use indexmap::IndexMap;
+use xeibe_geom::axis::{AxisContext, decide};
 use xeibe_geom::{AxisKey, AxisOrderMode, AxisOrderOptions, CrsRef, SrsName};
 use xeibe_schema::rules::meta;
 use xeibe_schema::{
-    DatasetObservation, ElementNode, FieldRoute, InferenceOptions, LayerSchema, Merge,
-    OnSchemaMismatch, RouteValue, SampleOptions, ScanExtent, ScanOptions, Scanner, bind_schema,
-    infer_schema,
+    DatasetObservation, ElementNode, InferenceOptions, LayerSchema, Merge, SampleOptions, ScanExtent,
+    ScanOptions, Scanner, bind_schema, infer_schema,
 };
 
 use crate::axis::{AxisDecisions, SharedContexts};
 use crate::geometry_column::geoarrow_type;
-use crate::overflow::overflow_field;
 use crate::pipeline::{ChunkStream, LayerSelector, Pipeline, ReadPlan, lock};
-use crate::route::{FieldShape, RouteTree};
+use crate::route::RouteTree;
 use crate::{LayerReader, ReadOptions, ReadReport, Settings};
 
 /// List every layer with its inferred schema. Full, or the first N features of
@@ -41,14 +40,17 @@ pub fn scan(sources: impl Into<Sources>, extent: ScanExtent, options: &ReadOptio
 /// Read one layer. With `schema: None` the schema is inferred from the first
 /// `options.sample.features_per_layer` features of that layer (conservative
 /// types), then frozen; the reader's schema is known once the sample is complete.
-/// Data outside the schema is handled by `options.on_mismatch`.
+///
+/// The schema is the projection: only the paths of its columns are read.
+/// A value that doesn't fit its column is a feature error
+/// (`options.on_feature_error`).
 ///
 /// `layer` is a local name (`AD_PunktAdresowy`), a prefixed name
 /// (`prgad:AD_PunktAdresowy`) or Clark notation (`{uri}AD_PunktAdresowy`).
 ///
 /// When the sample holds the whole layer (the input ended before the sample
 /// was full), the schema describes all the data: `min_typed_values` does not
-/// apply and no `_overflow` column is added, since nothing can overflow.
+/// apply.
 pub fn read(
     sources: impl Into<Sources>,
     layer: &str,
@@ -67,10 +69,10 @@ pub fn read(
     // A given schema's geometry columns need one too when their CRS is to
     // come from the data.
     let has_geometry = schema.as_ref().is_none_or(|schema| schema.fields().iter().any(|f| is_geometry(f)));
-    let crs_from_data = options.inference.geometry.crs_override.is_none()
+    let crs_from_data = options.geometry.crs_override.is_none()
         && schema.as_ref().is_some_and(|schema| schema.fields().iter().any(|f| is_geometry(f) && !has_crs(f)));
     let needs_sample = schema.is_none()
-        || (has_geometry && (crs_from_data || needs_axis_evidence(&options.inference.geometry.axis)));
+        || (has_geometry && (crs_from_data || needs_axis_evidence(&options.geometry.axis)));
     let sample = if needs_sample { Some(take_sample(&mut stream, &contexts, options)?) } else { None };
 
     let layer_name = match &sample {
@@ -87,22 +89,21 @@ pub fn read(
     let qname = layer_name.clone().unwrap_or_else(|| selector.filter());
     let inference = options.inference.for_layer(&qname.to_clark());
 
-    let complete_sample = schema.is_none() && sample.as_ref().is_some_and(|s| s.complete);
-    let mut layer_schema = match &schema {
+    let layer_schema = match &schema {
         None => {
             let sample = sample.as_ref().expect("a read without a schema samples");
             let sample_options = sample_options(&options.sample, sample.complete);
             infer_schema(&sample.observation, &qname, &options.inference, Some(&sample_options))?
         }
-        Some(schema) => bind_schema(&qname, schema, &options.inference)?,
+        Some(schema) => bind_schema(&qname, &with_namespaces(schema, &options.namespaces), &options.inference)?,
     };
 
-    // Output columns: the projection, then `_overflow`.
+    // Output columns: the projection.
     let base = layer_schema.schema.clone();
     let wanted = |name: &str| options.projection.as_ref().is_none_or(|names| names.iter().any(|n| n == name));
     let mut fields: Vec<Field> = Vec::new();
     let mut columns: Vec<Option<usize>> = Vec::new();
-    let srs = inference.geometry.crs_override.clone().or_else(|| {
+    let srs = options.geometry.crs_override.clone().or_else(|| {
         let layer = sample.as_ref()?.observation.layers.get(&qname)?;
         let mut srs = BTreeMap::new();
         collect_srs(&layer.root, true, &mut srs);
@@ -121,40 +122,15 @@ pub fn read(
             columns.push(None);
         }
     }
-    let has_overflow = layer_schema.routes.iter().any(|route| route.value == RouteValue::Overflow);
-    if options.on_mismatch == OnSchemaMismatch::Overflow
-        && !has_overflow
-        && !complete_sample
-        && wanted(crate::overflow::OVERFLOW_COLUMN)
-    {
-        layer_schema.routes.push(FieldRoute {
-            source_path: Vec::new(),
-            attribute: None,
-            value: RouteValue::Overflow,
-            field_path: vec![columns.len()],
-        });
-        columns.push(Some(fields.len()));
-        fields.push(overflow_field());
-    }
     let output = Arc::new(Schema::new_with_metadata(fields, base.metadata().clone()));
-    let shapes = output
-        .fields()
-        .iter()
-        .map(|field| FieldShape::of(field, inference.geometry.dimension))
-        .collect::<crate::Result<Vec<_>>>()?;
-
-    let observed = match (&schema, &sample) {
-        (None, Some(sample)) => sample.observation.layers.get(&qname).map(|layer| &layer.root),
-        _ => None,
-    };
-    let routes = RouteTree::new(&layer_schema, &columns, observed);
+    let routes = RouteTree::new(&layer_schema, &columns, output.fields())?;
     let empty = DatasetObservation::default();
     let observation = sample.as_ref().map_or(&empty, |sample| &sample.observation);
     let axis = routes
         .geometry_columns
         .iter()
-        .map(|(_, column)| {
-            AxisDecisions::from_observation(observation, &qname.to_clark(), column, &inference.geometry.axis)
+        .map(|column| {
+            AxisDecisions::from_observation(observation, &qname.to_clark(), column, &options.geometry.axis)
                 .with_contexts(contexts.clone())
         })
         .collect();
@@ -172,12 +148,10 @@ pub fn read(
         layer_name: layer.to_string(),
         selector,
         schema: output,
-        shapes,
         has_geometry: !routes.geometry_columns.is_empty(),
         routes,
         axis,
-        geometry: inference.geometry.clone(),
-        on_mismatch: options.on_mismatch,
+        geometry: options.geometry.clone(),
         on_feature_error: options.on_feature_error,
         strip_local_href_hash: inference.gml.strip_local_href_hash,
         empty_as_null: inference.types.empty_as_null,
@@ -259,7 +233,17 @@ fn needs_axis_evidence(options: &AxisOrderOptions) -> bool {
             _ => false,
         }
     }
-    auto(&options.mode) || options.overrides.iter().any(|(_, mode)| auto(mode))
+    auto(&options.mode) || options.overrides.values().any(auto)
+}
+
+/// A given schema with the options' namespaces, unless it declares its own.
+fn with_namespaces(schema: &SchemaRef, namespaces: &IndexMap<String, String>) -> Schema {
+    let mut schema = schema.as_ref().clone();
+    if !namespaces.is_empty() && !schema.metadata().contains_key(meta::NS) {
+        let json = serde_json::to_string(namespaces).expect("strings serialize");
+        schema.metadata.insert(meta::NS.to_string(), json);
+    }
+    schema
 }
 
 /// The field has GeoArrow CRS metadata.
@@ -325,8 +309,8 @@ fn display_name(observation: &DatasetObservation, name: &QName) -> String {
 /// the srsNames decided the other way (`docs/geometry.md`, "Decision key and
 /// scope"). Without geometry, the options are kept as they are.
 fn plain_axis(observation: &DatasetObservation, options: &AxisOrderOptions) -> AxisOrderOptions {
-    // (srsName, dialect) → swaps decided for it.
-    let mut decided: BTreeMap<(Option<String>, xeibe_core::Dialect), Vec<bool>> = BTreeMap::new();
+    // srsName → swaps decided for it (per source and dialect).
+    let mut decided: BTreeMap<Option<String>, Vec<bool>> = BTreeMap::new();
     for (name, layer) in &observation.layers {
         let mut evidence = Vec::new();
         collect_geometry(&layer.root, true, &mut evidence);
@@ -334,33 +318,25 @@ fn plain_axis(observation: &DatasetObservation, options: &AxisOrderOptions) -> A
             let axis_key = AxisKey { source: SourceId(key.source), srs_name: key.srs_name.clone(), dialect: key.dialect };
             let context = axis_context(observation, key.source);
             let decision = decide(&axis_key, Some(&name.local), None, evidence, &context, options);
-            decided.entry((key.srs_name.clone(), key.dialect)).or_default().push(decision.swap);
+            decided.entry(key.srs_name.clone()).or_default().push(decision.swap);
         }
     }
     let all: Vec<bool> = decided.values().flatten().copied().collect();
     if all.is_empty() {
         return options.clone();
     }
-    let swapped = all.iter().filter(|swap| **swap).count();
-    let majority = swapped * 2 > all.len();
+    let majority = |swaps: &[bool]| swaps.iter().filter(|swap| **swap).count() * 2 > swaps.len();
     let mode = |swap: bool| if swap { AxisOrderMode::YX } else { AxisOrderMode::XY };
-    let mut overrides = Vec::new();
-    for ((srs_name, dialect), swaps) in decided {
+    let overall = majority(&all);
+    let mut overrides = IndexMap::new();
+    for (srs_name, swaps) in decided {
         let Some(srs_name) = srs_name else { continue };
-        let swap = swaps.iter().filter(|s| **s).count() * 2 > swaps.len();
-        if swap != majority {
-            overrides.push((
-                AxisSelector { srs_name: Some(srs_name), dialect: Some(dialect), ..AxisSelector::default() },
-                mode(swap),
-            ));
+        let swap = majority(&swaps);
+        if swap != overall {
+            overrides.insert(srs_name, mode(swap));
         }
     }
-    AxisOrderOptions {
-        mode: mode(majority),
-        overrides,
-        auto: options.auto.clone(),
-        crs_table: options.crs_table.clone(),
-    }
+    AxisOrderOptions { mode: mode(overall), overrides, crs_table: options.crs_table.clone() }
 }
 
 fn axis_context(observation: &DatasetObservation, source: u32) -> AxisContext {
@@ -476,7 +452,7 @@ impl ScanResult {
     /// The axis decision of every geometry key (source, srsName, dialect) per
     /// layer, with the scan's options. `xeibe scan` prints their conflicts.
     pub fn axis_decisions(&self) -> Vec<(QName, AxisKey, xeibe_geom::AxisDecision)> {
-        let options = &self.options.inference.geometry.axis;
+        let options = &self.options.geometry.axis;
         let mut out = Vec::new();
         for (name, layer) in &self.observation.layers {
             let mut evidence = Vec::new();

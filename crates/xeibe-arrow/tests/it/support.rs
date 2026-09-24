@@ -232,6 +232,25 @@ impl Read {
         })
     }
 
+    /// Values of a list-of-`Int64` column: `None` for a null list.
+    #[track_caller]
+    pub fn i64_lists(&self, name: &str) -> Vec<Option<Vec<Option<i64>>>> {
+        self.map_column(name, |array| {
+            let lists = array.as_list::<i32>();
+            (0..lists.len())
+                .map(|i| {
+                    (!lists.is_null(i)).then(|| {
+                        let items = lists.value(i);
+                        let items = items.as_primitive::<Int64Type>();
+                        (0..items.len())
+                            .map(|j| (!items.is_null(j)).then(|| items.value(j)))
+                            .collect()
+                    })
+                })
+                .collect()
+        })
+    }
+
     /// Values of a `geometry[]` column (a list of WKB), decoded.
     #[track_caller]
     pub fn geometry_lists(&self, name: &str) -> Vec<Option<Vec<Option<G>>>> {

@@ -10,14 +10,14 @@ use crate::{PathPattern, TypeSet};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct InferenceOptions {
-    pub naming: NamingOptions,
     pub structure: StructureOptions,
     pub types: TypeOptions,
     pub gml: GmlOptions,
     /// Geometry column encoding chosen by the scan and read samples.
     pub geometry_encoding: GeomEncoding,
     /// The read's geometry options (`ReadOptions.geometry`: axis order, CRS
-    /// override, curves), copied in by the reader. Not part of the settings
+    /// override, curves), copied in by the reader: the rule engine decides
+    /// axis order and CRS metadata with them. Not part of the settings
     /// file's `inference` section.
     #[serde(skip)]
     pub geometry: GeometryOptions,
@@ -28,11 +28,10 @@ pub struct InferenceOptions {
 }
 
 impl Default for InferenceOptions {
-    /// Lossless by value, `Struct` nesting, `@` attributes, rich types,
-    /// geometry encoding `Auto` (`docs/schema-inference.md` §3).
+    /// Lossless by value, `@` attributes, rich types, geometry encoding `Auto`
+    /// (`docs/schema-inference.md` §3).
     fn default() -> Self {
         InferenceOptions {
-            naming: NamingOptions::default(),
             structure: StructureOptions::default(),
             types: TypeOptions::default(),
             gml: GmlOptions::default(),
@@ -79,9 +78,6 @@ pub(crate) fn layer_selector_matches(selector: &str, layer: &str) -> bool {
 
 impl InferenceOptionsPatch {
     pub fn apply_to(&self, options: &mut InferenceOptions) {
-        if let Some(naming) = &self.naming {
-            options.naming = naming.clone();
-        }
         if let Some(structure) = &self.structure {
             options.structure = structure.clone();
         }
@@ -91,8 +87,8 @@ impl InferenceOptionsPatch {
         if let Some(gml) = &self.gml {
             options.gml = gml.clone();
         }
-        if let Some(geometry) = &self.geometry {
-            options.geometry = geometry.clone();
+        if let Some(encoding) = self.geometry_encoding {
+            options.geometry_encoding = encoding;
         }
     }
 }
@@ -100,52 +96,20 @@ impl InferenceOptionsPatch {
 /// Partial options applied on top of the global ones.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct InferenceOptionsPatch {
-    pub naming: Option<NamingOptions>,
     pub structure: Option<StructureOptions>,
     pub types: Option<TypeOptions>,
     pub gml: Option<GmlOptions>,
-    pub geometry: Option<GeometryOptions>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct NamingOptions {
-    pub namespaces: NsMode,
-    /// `@` by decision; configurable for compatibility presets.
-    pub attribute_prefix: String,
-    /// Text of an element that also has attributes: `#text`.
-    pub text_field: String,
-    pub flatten_separator: String,
-}
-
-impl Default for NamingOptions {
-    fn default() -> Self {
-        NamingOptions {
-            namespaces: NsMode::StripUnlessCollision,
-            attribute_prefix: "@".to_string(),
-            text_field: "#text".to_string(),
-            flatten_separator: ".".to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum NsMode {
-    Strip,
-    #[default]
-    StripUnlessCollision,
-    Prefix,
-    Clark,
+    pub geometry_encoding: Option<GeomEncoding>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct StructureOptions {
-    pub nesting: Nesting,
     pub lists: ListRule,
+    /// xmltodict-style: these elements are list anchors even if they never
+    /// repeated.
     pub force_list: Vec<PathPattern>,
     pub force_scalar: Vec<PathPattern>,
-    pub simple_with_attrs: SimpleContent,
     pub constant_attrs: ConstantAttrs,
     pub collapse_type_wrappers: bool,
     pub mixed_content: MixedContent,
@@ -155,11 +119,9 @@ pub struct StructureOptions {
 impl Default for StructureOptions {
     fn default() -> Self {
         StructureOptions {
-            nesting: Nesting::Struct,
             lists: ListRule::Infer,
             force_list: Vec::new(),
             force_scalar: Vec::new(),
-            simple_with_attrs: SimpleContent::Struct,
             constant_attrs: ConstantAttrs::ToFieldMetadata,
             collapse_type_wrappers: true,
             mixed_content: MixedContent::RawXml,
@@ -169,38 +131,13 @@ impl Default for StructureOptions {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Nesting {
-    #[default]
-    Struct,
-    FlattenSingleOnly,
-    Flatten {
-        max_depth: u16,
-    },
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ListRule {
-    /// `max_occurs > 1` → List.
+    /// An element that repeats within its parent (`max_occurs > 1`) is the
+    /// anchor of a list.
     #[default]
     Infer,
-    Never(OnRepeat),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum OnRepeat {
-    TakeFirst,
-    Error,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SimpleContent {
-    /// `area: Struct("#text": …, "@uom": Utf8View)`
-    #[default]
-    Struct,
-    /// `area`, `area.@uom`
-    Split,
-    /// `area` (attributes dropped)
-    ValueOnly,
+    /// No lists: a repetition in the data is a feature error when read.
+    Never,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -212,8 +149,11 @@ pub enum ConstantAttrs {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MixedContent {
+    /// A `text` column; an element with child elements gives its raw XML.
     #[default]
     RawXml,
+    /// A `text` column with the markup removed (field metadata
+    /// `gml:content = text`; a settings file doesn't keep it).
     TextOnly,
     Drop,
 }
@@ -272,14 +212,14 @@ pub enum IntWidth {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TimestampOptions {
+    /// Microseconds by default. Values with more fractional digits than the
+    /// unit holds stay text.
     pub unit: TimeUnit,
-    /// Add `<name>.@offset_min` (Int16) when offsets differ.
-    pub keep_offset: bool,
 }
 
 impl Default for TimestampOptions {
     fn default() -> Self {
-        TimestampOptions { unit: TimeUnit::Microsecond, keep_offset: true }
+        TimestampOptions { unit: TimeUnit::Microsecond }
     }
 }
 
@@ -344,12 +284,15 @@ pub enum BoundedBy {
     Geometry,
 }
 
+/// What an override does to the columns at a path. Names are not overridden
+/// here: they are edited in the settings file.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FieldOverride {
     Type(DataType),
-    Rename(String),
     Drop,
+    /// One `text` column with the element's raw XML.
     AsRawXml,
+    /// One `map` column (relative path → text).
     AsMap,
     List,
     Scalar,
@@ -374,16 +317,6 @@ impl Default for Limits {
             distinct_values: crate::value::DEFAULT_DISTINCT_VALUES,
         }
     }
-}
-
-/// Data that doesn't fit the schema used by a read (docs/schema-inference.md §6.3).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum OnSchemaMismatch {
-    /// `_overflow: Map(Utf8View → Utf8View)`.
-    #[default]
-    Overflow,
-    Error,
-    Drop,
 }
 
 /// Reads without a schema (docs/schema-inference.md §6): the schema is inferred

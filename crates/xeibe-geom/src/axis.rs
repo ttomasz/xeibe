@@ -4,6 +4,7 @@
 //! never per feature.
 
 use xeibe_core::{Dialect, SourceId};
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::crs::{CrsRef, SrsName, SrsNameForm};
@@ -24,62 +25,23 @@ pub enum AxisOrderMode {
         gml2: Box<AxisOrderMode>,
         gml3: Box<AxisOrderMode>,
     },
-    /// Evidence-based, decided per key from scan or read-sample evidence
-    /// (configured by [`AxisOrderOptions::auto`]).
+    /// Evidence-based, decided per key from scan or read-sample evidence. Uses
+    /// all of the evidence; [`AxisOrderMode::CrsHeuristic`] is the fallback.
     #[default]
     Auto,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct AutoAxisOptions {
-    pub use_axis_labels: bool,
-    pub use_range_check: bool,
-    pub use_producer_quirks: bool,
-    /// A GML 2-dialect geometry is x/y whatever the srsName says.
-    pub use_gml2_dialect: bool,
-    pub use_wfs_context: bool,
-    pub use_envelope_consistency: bool,
-    /// Rule applied when no decisive evidence exists.
-    pub fallback: Box<AxisOrderMode>,
-}
-
-impl Default for AutoAxisOptions {
-    fn default() -> Self {
-        AutoAxisOptions {
-            use_axis_labels: true,
-            use_range_check: true,
-            use_producer_quirks: true,
-            use_gml2_dialect: true,
-            use_wfs_context: true,
-            use_envelope_consistency: true,
-            fallback: Box::new(AxisOrderMode::CrsHeuristic),
-        }
-    }
-}
-
-/// Selects where an override applies. Every given field must match.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct AxisSelector {
-    pub source: Option<String>,
-    pub layer: Option<String>,
-    pub column: Option<String>,
-    pub srs_name: Option<String>,
-    pub dialect: Option<Dialect>,
-}
-
 /// In the settings file, a bare mode (`"axis": "YX"`) stands for that mode with
-/// default `auto` settings and no overrides.
+/// no overrides.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(from = "AxisOrderOptionsRepr", into = "AxisOrderOptionsRepr")]
 pub struct AxisOrderOptions {
     pub mode: AxisOrderMode,
-    /// Most specific match wins. Only needed when one input mixes srsNames that
-    /// must be read differently.
-    pub overrides: Vec<(AxisSelector, AxisOrderMode)>,
-    /// Evidence used by [`AxisOrderMode::Auto`].
-    pub auto: AutoAxisOptions,
-    /// Extra CRS facts (codes missing from the built-in table, other authorities).
+    /// srsName exactly as written → mode. Only needed when one input mixes
+    /// srsNames that must be read differently.
+    pub overrides: IndexMap<String, AxisOrderMode>,
+    /// Extra CRS facts (codes missing from the built-in table, other
+    /// authorities). Set from code; not part of the settings file.
     pub crs_table: Option<CrsTable>,
 }
 
@@ -87,21 +49,23 @@ pub struct AxisOrderOptions {
 #[serde(untagged)]
 enum AxisOrderOptionsRepr {
     Mode(AxisOrderMode),
-    Full {
-        mode: AxisOrderMode,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        overrides: Vec<(AxisSelector, AxisOrderMode)>,
-        #[serde(default)]
-        auto: AutoAxisOptions,
-    },
+    Full(AxisOrderOptionsFull),
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AxisOrderOptionsFull {
+    mode: AxisOrderMode,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    overrides: IndexMap<String, AxisOrderMode>,
 }
 
 impl From<AxisOrderOptionsRepr> for AxisOrderOptions {
     fn from(repr: AxisOrderOptionsRepr) -> Self {
         match repr {
             AxisOrderOptionsRepr::Mode(mode) => AxisOrderOptions { mode, ..Default::default() },
-            AxisOrderOptionsRepr::Full { mode, overrides, auto } => {
-                AxisOrderOptions { mode, overrides, auto, crs_table: None }
+            AxisOrderOptionsRepr::Full(AxisOrderOptionsFull { mode, overrides }) => {
+                AxisOrderOptions { mode, overrides, crs_table: None }
             }
         }
     }
@@ -109,10 +73,10 @@ impl From<AxisOrderOptionsRepr> for AxisOrderOptions {
 
 impl From<AxisOrderOptions> for AxisOrderOptionsRepr {
     fn from(options: AxisOrderOptions) -> Self {
-        if options.overrides.is_empty() && options.auto == AutoAxisOptions::default() {
+        if options.overrides.is_empty() {
             AxisOrderOptionsRepr::Mode(options.mode)
         } else {
-            AxisOrderOptionsRepr::Full { mode: options.mode, overrides: options.overrides, auto: options.auto }
+            AxisOrderOptionsRepr::Full(AxisOrderOptionsFull { mode: options.mode, overrides: options.overrides })
         }
     }
 }
@@ -164,7 +128,7 @@ pub struct AxisContext {
     pub requested_srs: Option<SrsName>,
     /// The `BBOX` we sent (for consistency checks), in output (x/y) order.
     pub requested_bbox: Option<[f64; 4]>,
-    /// File path or URL of the source, matched by [`AxisSelector::source`].
+    /// File path or URL of the source, for messages.
     pub source: Option<String>,
 }
 
@@ -177,7 +141,9 @@ pub struct AxisDecision {
     pub conflicts: Vec<String>,
 }
 
-/// Decide the axis order for one key.
+/// Decide the axis order for one key. An override for the key's srsName (as
+/// written) wins over the mode. `layer` and `column` only name the decision's
+/// place in its reason.
 pub fn decide(
     key: &AxisKey,
     layer: Option<&str>,
@@ -195,22 +161,22 @@ pub fn decide(
         }
     };
     let srs = key.srs_name.as_deref().map(SrsName::parse);
-    let decider = Decider { key, srs: srs.as_ref(), evidence, context, options, table };
+    let decider = Decider { key, srs: srs.as_ref(), evidence, context, table };
 
-    // The most specific matching override wins; among equals, the later one.
-    let chosen = options
-        .overrides
-        .iter()
-        .filter(|(selector, _)| selector.matches(key, layer, column, context))
-        .max_by_key(|(selector, _)| selector.specificity());
-    match chosen {
-        Some((selector, mode)) => {
+    let overridden = key.srs_name.as_deref().and_then(|srs| Some((srs, options.overrides.get(srs)?)));
+    let mut decision = match overridden {
+        Some((srs, mode)) => {
             let mut decision = decider.apply(mode);
-            decision.reason = format!("override {}: {}", selector.describe(), decision.reason);
+            decision.reason = format!("override for {srs:?}: {}", decision.reason);
             decision
         }
         None => decider.apply(&options.mode),
+    };
+    let place: Vec<&str> = [layer, column].into_iter().flatten().collect();
+    if !place.is_empty() {
+        decision.reason = format!("{}: {}", place.join("."), decision.reason);
     }
+    decision
 }
 
 /// Map `axisLabels` (e.g. `"Lat Long"`, `"x y"`) to a first-axis direction.
@@ -230,66 +196,6 @@ pub fn first_axis_from_labels(labels: &str) -> Option<crate::epsg::FirstAxis> {
         }
         "w" | "west" | "westing" | "s" | "south" | "southing" => Some(FirstAxis::Other),
         _ => None,
-    }
-}
-
-impl AxisSelector {
-    fn matches(
-        &self,
-        key: &AxisKey,
-        layer: Option<&str>,
-        column: Option<&str>,
-        context: &AxisContext,
-    ) -> bool {
-        let pattern = |pattern: &Option<String>, value: Option<&str>| match pattern {
-            None => true,
-            Some(pattern) => value.is_some_and(|value| glob_match(pattern, value)),
-        };
-        pattern(&self.source, context.source.as_deref())
-            && pattern(&self.layer, layer)
-            && pattern(&self.column, column)
-            && self
-                .srs_name
-                .as_ref()
-                .is_none_or(|srs| key.srs_name.as_deref() == Some(srs.as_str()))
-            && self.dialect.is_none_or(|dialect| dialect == key.dialect)
-    }
-
-    /// Number of fields given: more fields, more specific.
-    fn specificity(&self) -> usize {
-        usize::from(self.source.is_some())
-            + usize::from(self.layer.is_some())
-            + usize::from(self.column.is_some())
-            + usize::from(self.srs_name.is_some())
-            + usize::from(self.dialect.is_some())
-    }
-
-    fn describe(&self) -> String {
-        let mut parts = Vec::new();
-        if let Some(source) = &self.source {
-            parts.push(format!("source={source}"));
-        }
-        if let Some(layer) = &self.layer {
-            parts.push(format!("layer={layer}"));
-        }
-        if let Some(column) = &self.column {
-            parts.push(format!("column={column}"));
-        }
-        if let Some(srs) = &self.srs_name {
-            parts.push(format!("srs={srs}"));
-        }
-        if let Some(dialect) = &self.dialect {
-            parts.push(format!("dialect={dialect:?}"));
-        }
-        parts.join(",")
-    }
-}
-
-/// Glob match (`AD_*`); an invalid pattern only matches itself.
-fn glob_match(pattern: &str, value: &str) -> bool {
-    match globset::Glob::new(pattern) {
-        Ok(glob) => glob.compile_matcher().is_match(value),
-        Err(_) => pattern == value,
     }
 }
 
@@ -321,7 +227,6 @@ struct Decider<'a> {
     srs: Option<&'a SrsName>,
     evidence: &'a AxisEvidence,
     context: &'a AxisContext,
-    options: &'a AxisOrderOptions,
     table: &'a CrsTable,
 }
 
@@ -401,34 +306,21 @@ impl Decider<'_> {
     }
 
     fn auto(&self) -> AxisDecision {
-        let auto = &self.options.auto;
         let mut conflicts = Vec::new();
         let mut votes: Vec<Vote> = Vec::new();
 
-        if auto.use_axis_labels {
-            votes.extend(self.labels_vote(&mut conflicts));
-        }
-        if auto.use_range_check {
-            votes.extend(self.range_vote());
-        }
-        if auto.use_producer_quirks {
-            votes.extend(self.quirk_vote());
-        }
-        if auto.use_gml2_dialect && self.key.dialect == Dialect::Gml2 {
+        votes.extend(self.labels_vote(&mut conflicts));
+        votes.extend(self.range_vote());
+        votes.extend(self.quirk_vote());
+        if self.key.dialect == Dialect::Gml2 {
             votes.push(Vote {
                 swap: false,
                 reason: "GML 2 geometry, which predates authority axis order: read as written".into(),
             });
         }
-        if auto.use_wfs_context {
-            votes.extend(self.wfs_vote());
-        }
+        votes.extend(self.wfs_vote());
         // The fallback always answers, so there is always a decision.
-        let fallback = match auto.fallback.as_ref() {
-            AxisOrderMode::Auto => &AxisOrderMode::CrsHeuristic,
-            mode => mode,
-        };
-        let fallback = self.apply(fallback);
+        let fallback = self.apply(&AxisOrderMode::CrsHeuristic);
         votes.push(Vote { swap: fallback.swap, reason: format!("fallback, {}", fallback.reason) });
 
         let mut votes = votes.into_iter();
@@ -437,9 +329,7 @@ impl Decider<'_> {
             let verb = if vote.swap { "swap" } else { "no swap" };
             conflicts.push(format!("{} (would mean {verb})", vote.reason));
         }
-        if auto.use_envelope_consistency {
-            self.envelope_warnings(chosen.swap, &mut conflicts);
-        }
+        self.envelope_warnings(chosen.swap, &mut conflicts);
         AxisDecision { swap: chosen.swap, reason: format!("Auto: {}", chosen.reason), conflicts }
     }
 

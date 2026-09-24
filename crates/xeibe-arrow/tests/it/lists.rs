@@ -40,7 +40,9 @@ fn columns_under_one_anchor_stay_aligned() {
     )]);
     let read = read_document(&document, "Parcel");
     assert_eq!(read.string_lists("ulica"), [Some(vec![s("Polna"), None])]);
-    assert_eq!(read.string_lists("numer"), [Some(vec![s("1"), s("2")])]);
+    // A sample that holds the whole layer types like a full scan: `Int64[]`
+    // (`rules::every_column_below_a_repeated_element_is_a_list_anchored_on_it`).
+    assert_eq!(read.i64_lists("numer"), [Some(vec![Some(1), Some(2)])]);
 }
 
 #[test]

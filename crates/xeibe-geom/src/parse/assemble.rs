@@ -12,12 +12,16 @@ use crate::model::{
     MultiSurface, Polygon, Surface, distance_xy,
 };
 
+/// Largest gap between a segment's start and the previous end that is joined,
+/// relative to the geometry's extent.
+pub(crate) const JOIN_TOLERANCE: f64 = 1e-9;
+
 /// Joins segments (of a `Curve`) or members (of a `CompositeCurve` or
 /// `Ring`) into one curve: consecutive linear pieces become one LineString
 /// part, consecutive arcs one CircularString part.
 ///
 /// Pieces are collected first, so the tolerance can be relative to the
-/// extent of the whole curve (`join_tolerance`).
+/// extent of the whole curve ([`JOIN_TOLERANCE`]).
 #[derive(Debug, Default)]
 pub(crate) struct CurveBuilder {
     pieces: Vec<CurvePart>,
@@ -48,10 +52,9 @@ impl CurveBuilder {
         }
     }
 
-    /// Join everything pushed. `relative_tolerance` is `join_tolerance`
-    /// (relative to the curve's extent).
-    pub fn finish(self, relative_tolerance: f64) -> JoinedCurve {
-        let tolerance = relative_tolerance * extent(self.pieces.iter().map(CurvePart::coords));
+    /// Join everything pushed, with [`JOIN_TOLERANCE`].
+    pub fn finish(self) -> JoinedCurve {
+        let tolerance = JOIN_TOLERANCE * extent(self.pieces.iter().map(CurvePart::coords));
         let mut parts: Vec<CurvePart> = Vec::new();
         let mut warnings = Vec::new();
         for piece in self.pieces {
@@ -107,7 +110,7 @@ fn join_piece(parts: &mut Vec<CurvePart>, mut piece: CurvePart, tolerance: f64, 
     }
     if distance > 0.0 {
         warnings.push(format!(
-            "segment start differs from the previous end by {distance} (within join_tolerance); joined"
+            "segment start differs from the previous end by {distance} (within the join tolerance); joined"
         ));
     }
 
@@ -203,44 +206,29 @@ pub(crate) fn check_line_string(coords: &Coords) -> Result<(), String> {
 }
 
 /// Check a linear ring (§10.5.8): closed, at least 4 positions. An unclosed
-/// ring is a warning, and is closed only with `close_rings`. Too few
-/// positions is an error unless `lenient_degenerate`. Returns the warnings.
-pub(crate) fn check_linear_ring(
-    coords: &mut Coords,
-    close_rings: bool,
-    lenient_degenerate: bool,
-) -> Result<Vec<String>, String> {
+/// ring is closed, with a warning. Too few positions is an error. Returns the
+/// warnings.
+pub(crate) fn check_linear_ring(coords: &mut Coords) -> Result<Vec<String>, String> {
     let mut warnings = Vec::new();
     if coords.is_empty() {
         return Ok(warnings);
     }
     if !coords.is_closed() {
-        if close_rings {
-            let first = coords.get(0).to_vec();
-            coords.push(&first);
-            warnings.push("unclosed ring closed (close_rings)".into());
-        } else {
-            warnings.push("ring is not closed; kept as written".into());
-        }
+        let first = coords.get(0).to_vec();
+        coords.push(&first);
+        warnings.push("unclosed ring closed".into());
     }
     if coords.len() < 4 {
-        let message = format!("a LinearRing needs at least 4 positions, found {}", coords.len());
-        if !lenient_degenerate {
-            return Err(message);
-        }
-        warnings.push(format!("{message}; kept as a degenerate ring (lenient_degenerate)"));
+        return Err(format!("a LinearRing needs at least 4 positions, found {}", coords.len()));
     }
     Ok(warnings)
 }
 
-/// Check a `Ring` made of curve members: it must be closed. Closed with a
-/// straight segment only with `close_rings`. Returns the warnings.
-pub(crate) fn check_curve_ring(curve: &mut Curve, close_rings: bool) -> Vec<String> {
+/// Check a `Ring` made of curve members: it must be closed. An unclosed one
+/// is closed with a straight segment, with a warning. Returns the warnings.
+pub(crate) fn check_curve_ring(curve: &mut Curve) -> Vec<String> {
     if curve.is_empty() || curve.is_closed() {
         return Vec::new();
-    }
-    if !close_rings {
-        return vec!["ring is not closed; kept as written".into()];
     }
     let start = curve.start().expect("not empty").to_vec();
     match curve {
@@ -269,7 +257,7 @@ pub(crate) fn check_curve_ring(curve: &mut Curve, close_rings: bool) -> Vec<Stri
             None => {}
         },
     }
-    vec!["unclosed ring closed (close_rings)".into()]
+    vec!["unclosed ring closed".into()]
 }
 
 /// `ArcString`/`Arc`: `2 × numArc + 1` positions (§10.4.7.5). **[GDAL]** any

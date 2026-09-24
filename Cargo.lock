@@ -4340,7 +4340,7 @@ version = "0.1.0"
 dependencies = [
  "fast-float2",
  "geo-traits",
- "globset",
+ "indexmap",
  "serde",
  "serde_json",
  "thiserror 2.0.20",

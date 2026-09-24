@@ -13,8 +13,8 @@ xeibe-crs.workspace = true
 geo-traits.workspace = true
 wkb.workspace = true
 fast-float2.workspace = true
-globset.workspace = true
 serde.workspace = true
+indexmap.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

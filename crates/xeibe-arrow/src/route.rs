@@ -1,257 +1,228 @@
-//! The read's view of a [`LayerSchema`]: a tree of XML element names with the
-//! targets (fields) each element and attribute fills, and the shape of every
-//! output field.
+//! The read's view of a [`LayerSchema`]: a tree of path steps with the columns
+//! each element and attribute fills, and how every output column is built.
+//!
+//! The tree only holds what the schema's paths lead to. An element without a
+//! node is skipped unparsed (`docs/schema-inference.md` §6.3).
 
-use arrow_schema::{DataType, Field, Schema};
+use std::sync::Arc;
+
+use arrow_schema::{DataType, Field};
 use xeibe_core::QName;
-use xeibe_geom::options::DimMode;
-use xeibe_schema::{ElementNode, LayerSchema, RouteValue};
+use xeibe_schema::{LayerSchema, RouteValue};
 
 use crate::geometry_column::{GeometrySpec, geoarrow_type};
 
-/// How one output field is built; mirrors the Arrow field.
+/// How one output column is filled.
 #[derive(Debug, Clone)]
-pub struct FieldShape {
+pub struct ColumnPlan {
     pub name: String,
     pub nullable: bool,
-    pub shape: Shape,
+    /// A list column, aligned with the occurrences of its anchor.
+    pub list: bool,
+    /// The anchor's counter (list columns).
+    pub anchor: usize,
+    /// Whether list items may be null (always true for inferred schemas).
+    pub item_nullable: bool,
+    pub item: Item,
+    /// Geometry columns: the srsName the column's CRS comes from
+    /// (`gml:srs_name`), if known.
+    pub srs_name: Option<String>,
 }
 
+/// One value of a column (the column itself, or a list column's item).
 #[derive(Debug, Clone)]
-pub enum Shape {
+pub enum Item {
     Scalar(DataType),
-    Struct(Vec<FieldShape>),
-    List(Box<FieldShape>),
+    /// With the index of the column's axis resolver.
+    Geometry(GeometrySpec, usize),
     Map,
-    Geometry(GeometrySpec),
-    Box,
+    /// `geoarrow.box`, with the index of the column's axis resolver.
+    Box(usize),
 }
 
-impl FieldShape {
-    pub fn of(field: &Field, dimension: DimMode) -> crate::Result<Self> {
-        let extension = field.metadata().get("ARROW:extension:name").map(String::as_str);
-        let shape = match extension {
-            Some("geoarrow.box") => Shape::Box,
+impl ColumnPlan {
+    fn of(field: &Field, geometry_index: &mut Vec<String>) -> crate::Result<Self> {
+        let (list, item) = match field.data_type() {
+            DataType::List(item) | DataType::LargeList(item) if !is_geoarrow(field) => (true, item.as_ref()),
+            _ => (false, field),
+        };
+        let mut axis = || {
+            geometry_index.push(field.name().clone());
+            geometry_index.len() - 1
+        };
+        let value = match item.metadata().get("ARROW:extension:name").map(String::as_str) {
+            Some("geoarrow.box") => Item::Box(axis()),
             Some(name) if name.starts_with("geoarrow.") => {
-                Shape::Geometry(GeometrySpec::for_type(&geoarrow_type(field)?, dimension)?)
+                Item::Geometry(GeometrySpec::for_type(&geoarrow_type(item)?)?, axis())
             }
-            _ => match field.data_type() {
-                DataType::Struct(children) => Shape::Struct(
-                    children
-                        .iter()
-                        .map(|child| FieldShape::of(child, dimension))
-                        .collect::<crate::Result<_>>()?,
-                ),
-                DataType::List(item) | DataType::LargeList(item) => {
-                    Shape::List(Box::new(FieldShape::of(item, dimension)?))
-                }
-                DataType::Map(..) => Shape::Map,
-                data_type => Shape::Scalar(data_type.clone()),
+            _ => match item.data_type() {
+                DataType::Map(..) => Item::Map,
+                data_type => Item::Scalar(data_type.clone()),
             },
         };
-        Ok(FieldShape { name: field.name().clone(), nullable: field.is_nullable(), shape })
+        Ok(ColumnPlan {
+            name: field.name().clone(),
+            nullable: field.is_nullable(),
+            list,
+            anchor: 0,
+            item_nullable: item.is_nullable(),
+            item: value,
+            srs_name: field.metadata().get(xeibe_schema::rules::meta::SRS_NAME).cloned(),
+        })
     }
+}
 
-    /// The shape of one value: a list's item, else the field itself.
-    pub fn item(&self) -> &FieldShape {
-        match &self.shape {
-            Shape::List(item) => item,
-            _ => self,
+/// What a node fills.
+#[derive(Debug, Clone, Copy)]
+pub struct Target {
+    /// The output column.
+    pub column: usize,
+    pub value: RouteValue,
+}
+
+/// One step of the tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Step {
+    /// `*`: any element.
+    Any,
+    /// A local name; `ns: None` matches it in any namespace.
+    Name { ns: Option<Arc<str>>, local: Arc<str> },
+}
+
+impl Step {
+    fn of(name: &QName) -> Self {
+        if name.ns.is_none() && &*name.local == "*" {
+            Step::Any
+        } else {
+            Step::Name { ns: name.ns.clone(), local: name.local.clone() }
         }
     }
+
+    /// Exactly this namespace and local name.
+    fn is_exact(&self, ns: Option<&str>, local: &str) -> bool {
+        matches!(self, Step::Name { ns: Some(uri), local: l } if Some(&**uri) == ns && &**l == local)
+    }
+
+    /// The local name in any namespace.
+    fn is_any_namespace(&self, local: &str) -> bool {
+        matches!(self, Step::Name { ns: None, local: l } if &**l == local)
+    }
 }
 
-/// What a route fills.
-#[derive(Debug, Clone)]
-pub struct Target {
-    pub value: RouteValue,
-    /// Into the row; `None` when the column is not built (projection).
-    pub field_path: Option<Vec<usize>>,
-    /// Path for `_overflow` and messages: local names from the feature.
-    pub key: String,
-    /// Index of the geometry column's axis resolver (geometry and box targets).
-    pub axis: Option<usize>,
-}
-
-/// One element name in the tree.
-#[derive(Debug, Default)]
+/// One node of the tree: an element some path leads to or through.
+#[derive(Debug)]
 pub struct RouteNode {
-    pub children: Vec<(QName, RouteNode)>,
-    pub attributes: Vec<(QName, Target)>,
-    /// Routes that take the element itself (text, struct, geometry, …).
+    pub step: Step,
+    pub children: Vec<RouteNode>,
+    pub attributes: Vec<(Step, Target)>,
+    /// Columns that take the element itself (text, geometry, map, box).
     pub targets: Vec<Target>,
-    /// Attributes seen in the sample that have no column on purpose (constant
-    /// attributes moved to field metadata, dropped by the options).
-    pub known_attributes: Vec<QName>,
-    /// Some route starts here or below; a node without one is skipped whole.
-    pub routed: bool,
-    pub key: String,
+    /// The counter of the lists anchored on this element.
+    pub anchor: Option<usize>,
 }
 
 impl RouteNode {
-    /// The child for element `name`: exact, or by local name for routes
-    /// without a namespace (`by_name`, a given schema).
-    pub fn child(&self, name: &QName, by_name: bool) -> Option<&RouteNode> {
-        self.children
-            .iter()
-            .find(|(qname, _)| qname == name)
-            .or_else(|| {
-                by_name
-                    .then(|| {
-                        self.children
-                            .iter()
-                            .find(|(qname, _)| qname.ns.is_none() && qname.local == name.local)
-                    })
-                    .flatten()
-            })
-            .map(|(_, node)| node)
+    fn new(step: Step) -> Self {
+        RouteNode { step, children: Vec::new(), attributes: Vec::new(), targets: Vec::new(), anchor: None }
     }
 
-    /// The target of an attribute, matched like [`Self::child`].
-    pub fn attribute(&self, ns: Option<&str>, local: &str, by_name: bool) -> Option<&Target> {
-        self.attributes
-            .iter()
-            .find(|(qname, _)| &*qname.local == local && qname.ns.as_deref() == ns)
-            .or_else(|| {
-                by_name
-                    .then(|| {
-                        self.attributes
-                            .iter()
-                            .find(|(qname, _)| qname.ns.is_none() && &*qname.local == local)
-                    })
-                    .flatten()
-            })
-            .map(|(_, target)| target)
-    }
-
-    pub fn is_known_attribute(&self, ns: Option<&str>, local: &str) -> bool {
-        self.known_attributes
-            .iter()
-            .any(|qname| &*qname.local == local && qname.ns.as_deref() == ns)
-    }
-
-    fn child_mut(&mut self, name: &QName) -> &mut RouteNode {
-        let index = match self.children.iter().position(|(qname, _)| qname == name) {
+    fn child_mut(&mut self, step: Step) -> &mut RouteNode {
+        let index = match self.children.iter().position(|child| child.step == step) {
             Some(index) => index,
             None => {
-                let key = join_key(&self.key, &name.local);
-                self.children.push((name.clone(), RouteNode { key, ..RouteNode::default() }));
+                self.children.push(RouteNode::new(step));
                 self.children.len() - 1
             }
         };
-        &mut self.children[index].1
+        &mut self.children[index]
     }
 
-    /// Mark the nodes that have a route at or below them.
-    fn mark_routed(&mut self) -> bool {
-        let built = |target: &Target| target.field_path.is_some();
-        let mut routed =
-            self.targets.iter().any(built) || self.attributes.iter().any(|(_, target)| built(target));
-        for (_, child) in &mut self.children {
-            routed |= child.mark_routed();
-        }
-        self.routed = routed;
-        routed
-    }
-
-    /// Add the elements and attributes of an observed tree as known.
-    fn add_known(&mut self, node: &ElementNode) {
-        for name in node.attributes.keys() {
-            if !self.known_attributes.contains(name) {
-                self.known_attributes.push(name.clone());
+    /// Add the children that match element `name` to `out`: `*`, the exact
+    /// namespace, and an unprefixed step unless a sibling names this exact
+    /// namespace (the more specific step wins).
+    pub fn matching_children<'n>(&'n self, name: &QName, out: &mut Vec<&'n RouteNode>) {
+        let ns = name.ns.as_deref();
+        let exact = self.children.iter().any(|child| child.step.is_exact(ns, &name.local));
+        for child in &self.children {
+            let matches = match &child.step {
+                Step::Any => true,
+                step => step.is_exact(ns, &name.local) || (!exact && step.is_any_namespace(&name.local)),
+            };
+            if matches {
+                out.push(child);
             }
         }
-        for (name, child) in &node.children {
-            self.child_mut(name).add_known(child);
+    }
+
+    /// Add the targets of attribute `(ns, local)` to `out`, matched like
+    /// elements.
+    pub fn attribute_targets(&self, ns: Option<&str>, local: &str, out: &mut Vec<Target>) {
+        let exact = self.attributes.iter().any(|(step, _)| step.is_exact(ns, local));
+        for (step, target) in &self.attributes {
+            if step.is_exact(ns, local) || (!exact && step.is_any_namespace(local)) {
+                out.push(*target);
+            }
         }
+    }
+
+    /// Nothing below this node needs the element's content.
+    pub fn is_leaf(&self) -> bool {
+        self.children.is_empty()
     }
 }
 
-/// `parent/child`, or `child` at the feature.
-pub fn join_key(parent: &str, child: &str) -> String {
-    if parent.is_empty() { child.to_string() } else { format!("{parent}/{child}") }
-}
-
-/// The feature's route tree and where `_overflow` goes.
+/// The feature's route tree and the output columns.
 #[derive(Debug)]
 pub struct RouteTree {
     pub root: RouteNode,
-    /// Routes of a given schema are matched by local name and look through
-    /// type wrappers (`LayerSchema::match_by_name`).
-    pub by_name: bool,
-    /// Top-level index of `_overflow` in the output, if it is built.
-    pub overflow: Option<usize>,
-    /// The field path of each geometry column (the index of its axis resolver).
-    pub geometry_columns: Vec<(Vec<usize>, String)>,
+    /// One per output column.
+    pub columns: Vec<ColumnPlan>,
+    /// Anchor counters (one per anchoring node).
+    pub anchors: usize,
+    /// Names of the geometry and box columns, by axis-resolver index.
+    pub geometry_columns: Vec<String>,
 }
 
 impl RouteTree {
-    /// `columns[i]`: the output index of the schema's top-level field `i`, or
-    /// `None` if the projection leaves it out. `observed`: the sample's tree
-    /// of the layer, whose elements are known even without a column.
-    pub fn new(
-        layer: &LayerSchema,
-        columns: &[Option<usize>],
-        observed: Option<&ElementNode>,
-    ) -> Self {
-        let mut root = RouteNode::default();
-        let mut overflow = None;
+    /// `columns[i]`: the output index of the schema's column `i`, or `None`
+    /// if the projection leaves it out. `output`: the output fields.
+    pub fn new(layer: &LayerSchema, columns: &[Option<usize>], output: &[Arc<Field>]) -> crate::Result<Self> {
         let mut geometry_columns = Vec::new();
+        let mut plans = output
+            .iter()
+            .map(|field| ColumnPlan::of(field, &mut geometry_columns))
+            .collect::<crate::Result<Vec<_>>>()?;
+        let mut root = RouteNode::new(Step::Any);
+        let mut anchors = 0;
         for route in &layer.routes {
-            let field_path = route.field_path.split_first().and_then(|(first, rest)| {
-                let mut path = vec![columns.get(*first).copied().flatten()?];
-                path.extend_from_slice(rest);
-                Some(path)
-            });
-            if route.value == RouteValue::Overflow {
-                overflow = field_path.map(|path| path[0]);
+            let Some(column) = route.field_path.first().and_then(|index| columns.get(*index).copied().flatten())
+            else {
                 continue;
-            }
-            let mut node = &mut root;
-            for name in &route.source_path {
-                node = node.child_mut(name);
-            }
-            let axis = match (&field_path, route.value) {
-                (Some(path), RouteValue::Geometry | RouteValue::BoundingBox) => {
-                    geometry_columns.push((path.clone(), field_name(&layer.schema, &route.field_path)));
-                    Some(geometry_columns.len() - 1)
-                }
-                _ => None,
             };
-            match &route.attribute {
-                Some(attribute) => {
-                    let key = join_key(&node.key, &format!("@{}", attribute.local));
-                    node.attributes.push((attribute.clone(), Target { value: route.value, field_path, key, axis }));
-                }
-                None => {
-                    let key = node.key.clone();
-                    node.targets.push(Target { value: route.value, field_path, key, axis });
+            let mut node = &mut root;
+            for (index, name) in route.source_path.iter().enumerate() {
+                node = node.child_mut(Step::of(name));
+                if route.anchor == Some(index) {
+                    let counter = *node.anchor.get_or_insert_with(|| {
+                        anchors += 1;
+                        anchors - 1
+                    });
+                    plans[column].anchor = counter;
                 }
             }
+            let target = Target { column, value: route.value };
+            match &route.attribute {
+                Some(attribute) => node.attributes.push((Step::of(attribute), target)),
+                None => node.targets.push(target),
+            }
         }
-        if let Some(observed) = observed {
-            root.add_known(observed);
-        }
-        root.mark_routed();
-        RouteTree { root, by_name: layer.match_by_name, overflow, geometry_columns }
+        Ok(RouteTree { root, columns: plans, anchors, geometry_columns })
     }
 }
 
-/// The dotted name of a (nested) field, for messages and axis overrides.
-fn field_name(schema: &Schema, field_path: &[usize]) -> String {
-    let mut names = Vec::new();
-    let mut fields = schema.fields();
-    for index in field_path {
-        let Some(field) = fields.get(*index) else { break };
-        names.push(field.name().clone());
-        let mut data_type = field.data_type();
-        if let DataType::List(item) | DataType::LargeList(item) = data_type {
-            data_type = item.data_type();
-        }
-        match data_type {
-            DataType::Struct(children) => fields = children,
-            _ => break,
-        }
-    }
-    names.join(".")
+fn is_geoarrow(field: &Field) -> bool {
+    field
+        .metadata()
+        .get("ARROW:extension:name")
+        .is_some_and(|name| name.starts_with("geoarrow."))
 }

@@ -55,7 +55,7 @@ impl Parser<'_> {
     ) -> crate::Result<LineString> {
         let scope = self.enter(elem, scope);
         let mut coords = self.positions(reader, scope, true)?;
-        match check_linear_ring(&mut coords, self.options.close_rings, self.options.lenient_degenerate) {
+        match check_linear_ring(&mut coords) {
             Ok(warnings) => self.warnings.extend(warnings),
             Err(_) => return Err(self.position_count(reader, "LinearRing", coords.len(), "at least 4")),
         }

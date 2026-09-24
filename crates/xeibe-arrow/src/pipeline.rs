@@ -18,13 +18,12 @@ use xeibe_core::reader::{GmlReader, XmlEvent};
 use xeibe_core::{FeatureChunk, FeatureSplitter, Location, NamespaceContext, QName, SourceId, Sources, ns};
 use xeibe_geom::GeometryParser;
 use xeibe_geom::options::GeometryOptions;
-use xeibe_schema::OnSchemaMismatch;
 
 use crate::axis::{AxisDecisions, SharedContexts};
 use crate::builders::LayerBatchBuilder;
 use crate::feature::{FeatureOutcome, FeatureReader};
 use crate::report::{ReadReport, Warning, WarningKind};
-use crate::route::{FieldShape, RouteTree};
+use crate::route::RouteTree;
 use crate::{OnFeatureError, ReadOptions};
 
 /// Everything a worker needs to turn chunks of one layer into batches.
@@ -32,15 +31,13 @@ pub struct ReadPlan {
     /// The layer name as the caller gave it (report key).
     pub layer_name: String,
     pub selector: LayerSelector,
-    /// The output schema: projection applied, `_overflow` appended.
+    /// The output schema: the projection of the read's schema.
     pub schema: SchemaRef,
-    pub shapes: Vec<FieldShape>,
     pub routes: RouteTree,
     /// One per geometry column, in `routes.geometry_columns` order.
     pub axis: Vec<AxisDecisions>,
     pub has_geometry: bool,
     pub geometry: GeometryOptions,
-    pub on_mismatch: OnSchemaMismatch,
     pub on_feature_error: OnFeatureError,
     pub strip_local_href_hash: bool,
     pub empty_as_null: bool,

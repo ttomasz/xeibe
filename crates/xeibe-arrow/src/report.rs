@@ -7,8 +7,6 @@ use xeibe_core::Location;
 pub struct ReadReport {
     pub features_per_layer: BTreeMap<String, u64>,
     pub skipped: Vec<(Location, String)>,
-    /// Overflow entries per source path.
-    pub overflow_per_path: BTreeMap<String, u64>,
     pub warnings: Vec<Warning>,
     /// Applied axis decisions, one per (source, srsName, dialect).
     pub axis_decisions: Vec<(xeibe_geom::AxisKey, xeibe_geom::AxisDecision)>,
@@ -49,9 +47,6 @@ impl ReadReport {
             *self.features_per_layer.entry(layer).or_default() += count;
         }
         self.skipped.extend(other.skipped);
-        for (path, count) in other.overflow_per_path {
-            *self.overflow_per_path.entry(path).or_default() += count;
-        }
         for warning in other.warnings {
             self.warn(warning);
         }

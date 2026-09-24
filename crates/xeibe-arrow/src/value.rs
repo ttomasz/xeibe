@@ -1,7 +1,7 @@
 //! Text → typed values for the column builders (XML Schema lexical forms).
 //!
-//! A value that doesn't fit its column's type gives `None`; the caller routes
-//! the text to `_overflow` (or errors, or drops it) per `OnSchemaMismatch`.
+//! A value that doesn't fit its column's type gives `None`: a feature error
+//! (`docs/schema-inference.md` §6.3).
 
 use arrow_schema::{DataType, TimeUnit};
 
@@ -21,7 +21,10 @@ pub enum Scalar {
 /// Parse `text` (already trimmed) as a value of `data_type`.
 pub fn parse_scalar(data_type: &DataType, text: &str) -> Option<Scalar> {
     Some(match data_type {
-        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => Scalar::Str(text.to_string()),
+        // Binary columns take the text's bytes as written.
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View | DataType::Binary | DataType::LargeBinary => {
+            Scalar::Str(text.to_string())
+        }
         DataType::Boolean => Scalar::Bool(match text {
             "true" | "1" => true,
             "false" | "0" => false,
@@ -54,14 +57,6 @@ pub fn parse_scalar(data_type: &DataType, text: &str) -> Option<Scalar> {
         DataType::Time64(unit) => Scalar::Int(parse_time_of_day(text, *unit)?.0),
         _ => return None,
     })
-}
-
-/// Offset in minutes of a date-time with a time zone (`<name>.@offset_min`).
-pub fn parse_offset_minutes(text: &str) -> Option<i16> {
-    let (_, rest) = parse_date(text)?;
-    let time = rest.strip_prefix('T')?;
-    let (_, _, rest) = parse_time(time)?;
-    parse_tz(rest)?
 }
 
 fn int_in(text: &str, min: i64, max: i64) -> Option<i64> {
@@ -252,7 +247,6 @@ mod tests {
         assert_eq!(parse_scalar(&utc, "1970-01-01T01:00:00.5+01:00"), Some(Scalar::Int(500_000)));
         assert_eq!(parse_scalar(&utc, "1970-01-01T00:00:01"), None);
         assert_eq!(parse_scalar(&utc, "1970-01-01T00:00:00.0000001Z"), None);
-        assert_eq!(parse_offset_minutes("2020-01-01T00:00:00-05:30"), Some(-330));
     }
 
     #[test]

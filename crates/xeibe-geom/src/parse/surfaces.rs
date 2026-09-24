@@ -58,7 +58,7 @@ impl Parser<'_> {
         let checked = elem.is("LinearRing") || elem.is("Ring");
         let mut curve = self.curve(reader, elem, scope)?;
         if !checked {
-            let warnings = check_curve_ring(&mut curve, self.options.close_rings);
+            let warnings = check_curve_ring(&mut curve);
             self.warnings.extend(warnings);
         }
         Ok(curve)

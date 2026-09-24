@@ -1,7 +1,8 @@
+use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 use xeibe_core::SplitterOptions;
 use xeibe_geom::GeometryOptions;
-use xeibe_schema::{InferenceOptions, OnSchemaMismatch, SampleOptions};
-use serde::{Deserialize, Serialize};
+use xeibe_schema::{InferenceOptions, SampleOptions};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum OnFeatureError {
@@ -24,7 +25,8 @@ pub struct ReadOptions {
     pub inference: InferenceOptions,
     /// Reads without a schema.
     pub sample: SampleOptions,
-    pub on_mismatch: OnSchemaMismatch,
+    /// A value that doesn't fit its column, a missing value in a non-null
+    /// column, a geometry that can't be read or held.
     pub on_feature_error: OnFeatureError,
     pub splitter: SplitterOptions,
     pub batch_size: usize,
@@ -36,18 +38,22 @@ pub struct ReadOptions {
     /// Only build these columns (projection pushdown); `None` = all.
     #[serde(skip)]
     pub projection: Option<Vec<String>>,
+    /// Prefix → URI for prefixed path steps (`gml:name`). A settings file
+    /// keeps them at its top level (`"namespaces"`), and a schema from
+    /// [`crate::Settings::schema`] carries them in its `gml:ns` metadata,
+    /// which wins; these apply to a schema without one.
+    #[serde(skip)]
+    pub namespaces: IndexMap<String, String>,
 }
 
 impl Default for ReadOptions {
-    /// Default inference and sampling, `_overflow` for data outside the schema,
-    /// stop at the first feature error, 8192-row batches, one worker per core,
-    /// source order kept.
+    /// Default inference and sampling, stop at the first feature error,
+    /// 8192-row batches, one worker per core, source order kept.
     fn default() -> Self {
         ReadOptions {
             geometry: GeometryOptions::default(),
             inference: InferenceOptions::default(),
             sample: SampleOptions::default(),
-            on_mismatch: OnSchemaMismatch::Overflow,
             on_feature_error: OnFeatureError::Error,
             splitter: SplitterOptions::default(),
             batch_size: 8192,
@@ -55,6 +61,7 @@ impl Default for ReadOptions {
             preserve_order: true,
             queue_depth: 8,
             projection: None,
+            namespaces: IndexMap::new(),
         }
     }
 }

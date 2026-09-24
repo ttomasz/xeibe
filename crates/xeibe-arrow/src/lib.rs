@@ -9,7 +9,6 @@ pub mod error;
 pub mod feature;
 pub mod geometry_column;
 pub mod options;
-pub mod overflow;
 pub mod pipeline;
 pub mod reader;
 pub mod report;

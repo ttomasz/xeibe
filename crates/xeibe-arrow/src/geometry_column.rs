@@ -13,7 +13,6 @@ use geoarrow_array::builder::{
 };
 use geoarrow_schema::{Dimension, GeoArrowType};
 use xeibe_geom::model::{Coords, Curve, CurvePart, Point, Polygon, Surface};
-use xeibe_geom::options::DimMode;
 use xeibe_geom::wkb::{Endianness, write_wkb};
 use xeibe_geom::model::Envelope;
 use xeibe_geom::{Dim, Geometry};
@@ -42,14 +41,9 @@ pub struct GeometrySpec {
 }
 
 impl GeometrySpec {
-    /// `DimMode::Force2D`/`ForceZ` apply to WKB and `geoarrow.geometry`
-    /// columns; a native column has the dimension of its type.
-    pub fn for_type(geometry: &GeoArrowType, dimension: DimMode) -> crate::Result<Self> {
-        let forced = match dimension {
-            DimMode::Auto => None,
-            DimMode::Force2D => Some(Dim::Xy),
-            DimMode::ForceZ => Some(Dim::Xyz),
-        };
+    /// A native column has the dimension of its type; WKB and
+    /// `geoarrow.geometry` columns keep what is written.
+    pub fn for_type(geometry: &GeoArrowType) -> crate::Result<Self> {
         let native = |kind: GeometryKind, dimension: Dimension| -> crate::Result<Self> {
             let dim = match dimension {
                 Dimension::XY => Dim::Xy,
@@ -70,8 +64,8 @@ impl GeometrySpec {
             GeoArrowType::MultiPoint(t) => native(GeometryKind::MultiPoint, t.dimension()),
             GeoArrowType::MultiLineString(t) => native(GeometryKind::MultiLineString, t.dimension()),
             GeoArrowType::MultiPolygon(t) => native(GeometryKind::MultiPolygon, t.dimension()),
-            GeoArrowType::Geometry(_) => Ok(GeometrySpec { kind: GeometryKind::Mixed, dim: forced }),
-            GeoArrowType::Wkb(_) => Ok(GeometrySpec { kind: GeometryKind::Wkb, dim: forced }),
+            GeoArrowType::Geometry(_) => Ok(GeometrySpec { kind: GeometryKind::Mixed, dim: None }),
+            GeoArrowType::Wkb(_) => Ok(GeometrySpec { kind: GeometryKind::Wkb, dim: None }),
             other => Err(ArrowError::InvalidArgumentError(format!(
                 "geometry columns of type {other:?} are not supported"
             ))
@@ -80,8 +74,9 @@ impl GeometrySpec {
     }
 
     /// Bring a parsed geometry into the column's form: simple types for native
-    /// columns, the column's dimension. `Err` gives the geometry back when the
-    /// column can't hold it (a curve or another kind in a native column).
+    /// columns, the column's dimension (a 2D value in an XYZ column gets a NaN
+    /// Z). `Err` gives the geometry back when the column can't hold it: a
+    /// curve or another kind in a native column, or a Z value in an XY one.
     pub fn prepare(&self, geometry: Geometry) -> Result<Geometry, Geometry> {
         let mut geometry = match self.kind {
             GeometryKind::Wkb => geometry,
@@ -93,23 +88,32 @@ impl GeometrySpec {
                 geometry
             }
         };
-        if let Some(dim) = self.dim {
+        match self.dim {
+            Some(Dim::Xy) if geometry.dim().is_some_and(|dim| dim != Dim::Xy) => return Err(geometry),
             // A no-op for parts that already have it; mixed 2D/3D parts differ.
-            force_dim(&mut geometry, dim);
+            Some(dim) => force_dim(&mut geometry, dim),
+            None => {}
         }
         Ok(geometry)
+    }
+
+    /// The column's type, for messages: `Polygon`, `MultiPolygon XYZ`, `WKB`.
+    pub fn describe(&self) -> String {
+        let dim = match self.dim {
+            Some(Dim::Xyz) => " XYZ",
+            _ => "",
+        };
+        format!("a {:?}{dim} column", self.kind)
     }
 
     fn accepts_kind(&self, geometry: &Geometry) -> bool {
         use Geometry as G;
         match (self.kind, geometry) {
             (GeometryKind::Wkb | GeometryKind::Mixed, _) => true,
+            // A single column holds its kind only, not a one-part Multi form.
             (GeometryKind::Point, G::Point(_)) => true,
-            (GeometryKind::Point, G::MultiPoint(points)) => points.0.len() <= 1,
             (GeometryKind::LineString, G::LineString(_)) => true,
-            (GeometryKind::LineString, G::MultiLineString(lines)) => lines.0.len() <= 1,
             (GeometryKind::Polygon, G::Polygon(_)) => true,
-            (GeometryKind::Polygon, G::MultiPolygon(polygons)) => polygons.0.len() <= 1,
             (GeometryKind::MultiPoint, G::Point(_) | G::MultiPoint(_)) => true,
             (GeometryKind::MultiLineString, G::LineString(_) | G::MultiLineString(_)) => true,
             (GeometryKind::MultiPolygon, G::Polygon(_) | G::MultiPolygon(_)) => true,

@@ -10,21 +10,21 @@ use datafusion::error::Result;
 use datafusion::logical_expr::Expr;
 use xeibe_arrow::{ReadOptions, Settings};
 use xeibe_geom::AxisOrderMode;
-use xeibe_schema::{InferenceOptions, OnSchemaMismatch};
+use xeibe_schema::InferenceOptions;
 
 use crate::sources::{blocking, external};
-use crate::table::{GmlTable, sample_schema, with_overflow};
+use crate::table::{GmlTable, sample_schema};
 
-/// `read_gml('path/*.gml', 'Name' [, 'settings=file.json'] [, 'preset=flat'] [, 'axis_order=auto'])`.
-/// Without a schema for the layer in `settings`, the schema is sampled.
+/// `read_gml('path/*.gml', 'Name' [, 'settings=file.json'] [, 'preset=strings'] [, 'axis_order=auto'])`.
+/// Without a schema for the layer in `settings`, the schema is sampled. The
+/// schema is the projection: only its columns' paths are read.
 ///
 /// DataFusion's SQL planner does not pass named arguments (`layer => 'Name'`)
 /// to table functions, so the path and the layer are positional and options
-/// are `'key=value'` strings: `settings`, `preset` (`default`, `flat`,
-/// `gdal_like`, `spark_xml_like`, `strings`), `axis_order` (`xy`, `yx`, `crs`,
-/// `crs_heuristic`, `gml_version`, `auto`), `crs`, `on_mismatch` (`overflow`,
-/// `error`, `drop`), `sample_features` and `threads`. A third argument without
-/// `=` is the settings file. The path may also be an array of paths.
+/// are `'key=value'` strings: `settings`, `preset` (`default`, `strings`),
+/// `axis_order` (`xy`, `yx`, `crs`, `crs_heuristic`, `gml_version`, `auto`),
+/// `crs`, `sample_features` and `threads`. A third argument without `=` is
+/// the settings file. The path may also be an array of paths.
 #[derive(Debug, Default)]
 pub struct ReadGmlFunction;
 
@@ -49,7 +49,7 @@ impl TableFunctionImpl for ReadGmlFunction {
         let (schema, options) = read_options(&layer, &pairs)?;
 
         let table = match schema {
-            Some(schema) => GmlTable::with_schema(paths, &layer, with_overflow(schema, &options), options),
+            Some(schema) => GmlTable::with_schema(paths, &layer, schema, options),
             None => {
                 let runtime = args.session().runtime_env().clone();
                 let schema = blocking(&paths, |handle| sample_schema(&runtime, &paths, &layer, &options, handle))?;
@@ -79,11 +79,8 @@ fn read_options(layer: &str, pairs: &[(String, String)]) -> Result<(Option<Schem
         match key.as_str() {
             "settings" => {}
             "preset" => {
-                options.inference = match value.replace('-', "_").as_str() {
+                options.inference = match value.as_str() {
                     "default" => InferenceOptions::default(),
-                    "flat" => InferenceOptions::flat(),
-                    "gdal_like" => InferenceOptions::gdal_like(),
-                    "spark_xml_like" => InferenceOptions::spark_xml_like(),
                     "strings" => InferenceOptions::strings(),
                     _ => return Err(bad()),
                 };
@@ -103,14 +100,6 @@ fn read_options(layer: &str, pairs: &[(String, String)]) -> Result<(Option<Schem
                 }
             }
             "crs" => options.geometry.crs_override = Some(value.clone()),
-            "on_mismatch" => {
-                options.on_mismatch = match value.as_str() {
-                    "overflow" => OnSchemaMismatch::Overflow,
-                    "error" => OnSchemaMismatch::Error,
-                    "drop" => OnSchemaMismatch::Drop,
-                    _ => return Err(bad()),
-                }
-            }
             "sample_features" => options.sample.features_per_layer = value.parse().map_err(|_| bad())?,
             "threads" => options.threads = value.parse().map_err(|_| bad())?,
             _ => return plan_err!("read_gml: unknown option {key:?}"),

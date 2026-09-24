@@ -181,3 +181,46 @@ fn a_text_column_at_an_element_with_children_gets_its_raw_xml() {
     let xml = read.strings("geom_gml")[0].clone().expect("the raw XML");
     assert!(xml.contains("Point") && xml.contains("1 2"), "{xml}");
 }
+
+#[test]
+fn a_second_crs_in_one_column_is_a_geometry_error() {
+    // A column has one CRS (`docs/geometry.md`, "CRS metadata"); two spellings
+    // of the same CRS are not two.
+    let point = |id: &str, srs: &str| {
+        parcel(
+            id,
+            &format!(
+                "<app:area>1</app:area><app:geom><gml:Point srsName=\"{srs}\"><gml:pos>1 2</gml:pos></gml:Point></app:geom>"
+            ),
+        )
+    };
+    let schema = schema_of(vec![
+        Field::new("area", DataType::Int64, true),
+        Field::new("geom", DataType::Binary, true).with_metadata(HashMap::from([(
+            "ARROW:extension:name".to_string(),
+            "geoarrow.wkb".to_string(),
+        )])),
+    ]);
+    let options = ReadOptions {
+        geometry: xeibe_geom::GeometryOptions {
+            axis: serde_json::from_str("\"XY\"").unwrap(),
+            ..Default::default()
+        },
+        ..ReadOptions::default()
+    };
+
+    let same = gml::gml32_collection(&[
+        &point("p1", "EPSG:2180"),
+        &point("p2", "urn:ogc:def:crs:EPSG::2180"),
+    ]);
+    let read = read_with(&same, "Parcel", Some(schema.clone()), &options);
+    assert_eq!(read.rows(), 2, "one CRS, two spellings");
+
+    let mixed = gml::gml32_collection(&[&point("p1", "EPSG:2180"), &point("p2", "EPSG:4326")]);
+    assert!(fails(&mixed, schema.clone(), &options));
+    let null_geometry = ReadOptions { on_feature_error: OnFeatureError::NullGeometry, ..options };
+    let read = read_with(&mixed, "Parcel", Some(schema), &null_geometry);
+    assert_eq!(read.i64s("area"), [Some(1), Some(1)]);
+    assert!(read.geometries("geom")[0].is_some());
+    assert_eq!(read.geometries("geom")[1], None, "the second CRS is nulled");
+}

@@ -4,19 +4,17 @@ mod scan;
 mod wfs;
 
 use std::path::Path;
-use std::str::FromStr;
 
 use arrow_schema::DataType;
 use clap::ValueEnum;
 use xeibe_arrow::{ReadOptions, ReadReport, Settings};
-use xeibe_core::{Dialect, Source};
-use xeibe_geom::axis::AxisSelector;
+use xeibe_core::Source;
 use xeibe_geom::AxisOrderMode;
 use xeibe_geom::options::{CurveMode, LinearizeOptions};
 use xeibe_schema::options::FieldOverride;
-use xeibe_schema::{InferenceOptions, OnSchemaMismatch, PathPattern};
+use xeibe_schema::{InferenceOptions, PathPattern};
 
-use crate::args::{AxisMode, Cli, Command, InputArgs, Mismatch, Preset, ReadArgs};
+use crate::args::{AxisMode, Cli, Command, InputArgs, Preset, ReadArgs};
 
 pub type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -39,16 +37,10 @@ pub fn run(cli: Cli) -> Result {
 }
 
 /// Load the settings file (if any) and apply CLI overrides to its options.
-///
-/// Without a settings file the CLI starts from the `flat` preset, not the
-/// library's `Struct` default (`docs/README.md`, open questions).
 pub(crate) fn settings(read: &ReadArgs) -> Result<Settings> {
     let mut settings = match &read.settings {
         Some(path) => Settings::load(path)?,
-        None => Settings::new(ReadOptions {
-            inference: InferenceOptions::flat(),
-            ..ReadOptions::default()
-        }),
+        None => Settings::new(ReadOptions::default()),
     };
     apply(read, &mut settings.options)?;
     Ok(settings)
@@ -61,9 +53,6 @@ fn apply(read: &ReadArgs, options: &mut ReadOptions) -> Result {
         // order, CRS, curves) are read options and stay as they are.
         options.inference = match preset {
             Preset::Default => InferenceOptions::default(),
-            Preset::Flat => InferenceOptions::flat(),
-            Preset::GdalLike => InferenceOptions::gdal_like(),
-            Preset::SparkXmlLike => InferenceOptions::spark_xml_like(),
             Preset::Strings => InferenceOptions::strings(),
         };
     }
@@ -72,7 +61,8 @@ fn apply(read: &ReadArgs, options: &mut ReadOptions) -> Result {
         geometry.axis.mode = axis_mode(mode);
     }
     for text in &read.axis_overrides {
-        geometry.axis.overrides.push(axis_override(text)?);
+        let (srs_name, mode) = axis_override(text)?;
+        geometry.axis.overrides.insert(srs_name, mode);
     }
     if let Some(crs) = &read.crs {
         geometry.crs_override = Some(crs.clone());
@@ -88,13 +78,6 @@ fn apply(read: &ReadArgs, options: &mut ReadOptions) -> Result {
     }
     for text in &read.overrides {
         options.inference.overrides.push(field_override(text)?);
-    }
-    if let Some(mismatch) = read.on_mismatch {
-        options.on_mismatch = match mismatch {
-            Mismatch::Overflow => OnSchemaMismatch::Overflow,
-            Mismatch::Error => OnSchemaMismatch::Error,
-            Mismatch::Drop => OnSchemaMismatch::Drop,
-        };
     }
     if let Some(features) = read.sample_features {
         options.sample.features_per_layer = features;
@@ -119,39 +102,22 @@ fn axis_mode(mode: AxisMode) -> AxisOrderMode {
     }
 }
 
-/// `selector:mode`, the selector being `key=value` pairs joined by `,`:
-/// `srs=EPSG:4326:yx`, `layer=AD_*,dialect=gml2:xy`. The mode follows the
-/// last `:`, so srsNames may contain colons.
-fn axis_override(text: &str) -> Result<(AxisSelector, AxisOrderMode)> {
+/// `srsName=mode` (`EPSG:4326=yx`): the srsName exactly as written. The mode
+/// follows the last `=`, so srsNames (URLs) may contain `=`.
+fn axis_override(text: &str) -> Result<(String, AxisOrderMode)> {
     let error = |message: &str| format!("--axis-override {text:?}: {message}");
-    let (selector, mode) = text.rsplit_once(':').ok_or_else(|| error("expected selector:mode"))?;
-    let mode = AxisMode::from_str(mode, true)
+    let (srs_name, mode) = text.rsplit_once('=').ok_or_else(|| error("expected srsName=mode, e.g. EPSG:4326=yx"))?;
+    if srs_name.is_empty() {
+        return Err(error("the srsName is empty").into());
+    }
+    let mode = AxisMode::from_str(mode.trim(), true)
         .map(axis_mode)
         .map_err(|_| error("the mode must be xy, yx, crs, crs-heuristic, gml-version or auto"))?;
-    let mut parsed = AxisSelector::default();
-    for pair in selector.split(',') {
-        let (key, value) = pair.split_once('=').ok_or_else(|| error("expected key=value"))?;
-        let value = value.to_string();
-        match key.trim() {
-            "srs" | "srs_name" => parsed.srs_name = Some(value),
-            "layer" => parsed.layer = Some(value),
-            "column" => parsed.column = Some(value),
-            "source" => parsed.source = Some(value),
-            "dialect" => {
-                parsed.dialect = Some(match value.to_ascii_lowercase().as_str() {
-                    "gml2" => Dialect::Gml2,
-                    "gml3" => Dialect::Gml3,
-                    _ => return Err(error("dialect must be gml2 or gml3").into()),
-                })
-            }
-            other => return Err(error(&format!("unknown selector key {other:?} (srs, layer, column, source, dialect)")).into()),
-        }
-    }
-    Ok((parsed, mode))
+    Ok((srs_name.to_string(), mode))
 }
 
-/// `pattern=action`: an Arrow type (`utf8`, `Int64`, `List(Utf8View)`), or
-/// `drop`, `raw-xml`, `map`, `list`, `scalar`, `rename:<name>`.
+/// `pattern=action`: a type (`text`, `bigint`, `Int64`, `List(Utf8View)`), or
+/// `drop`, `raw-xml`, `map`, `list`, `scalar`.
 /// The action follows the last `=` outside braces, so patterns may hold `{uri}`.
 fn field_override(text: &str) -> Result<(PathPattern, FieldOverride)> {
     let error = |message: String| format!("--override {text:?}: {message}");
@@ -177,29 +143,24 @@ fn field_override(text: &str) -> Result<(PathPattern, FieldOverride)> {
         "map" => FieldOverride::AsMap,
         "list" => FieldOverride::List,
         "scalar" => FieldOverride::Scalar,
-        lower => match lower.strip_prefix("rename:") {
-            Some(_) => FieldOverride::Rename(action["rename:".len()..].to_string()),
-            None => FieldOverride::Type(data_type(action).map_err(error)?),
-        },
+        _ => FieldOverride::Type(data_type(action).map_err(error)?),
     };
     Ok((pattern, action))
 }
 
-/// An Arrow type string as `arrow-schema` parses it, plus lower-case
-/// spellings of the common scalar types.
+/// A type as the settings file writes it (`text`, `bigint`, `Int64`, …).
 fn data_type(text: &str) -> std::result::Result<DataType, String> {
-    if let Ok(data_type) = DataType::from_str(text) {
-        return Ok(data_type);
-    }
-    Ok(match text.to_ascii_lowercase().as_str() {
-        "utf8" | "string" | "str" | "text" => DataType::Utf8View,
-        "int" | "int64" | "integer" | "long" => DataType::Int64,
-        "int32" => DataType::Int32,
-        "float" | "float64" | "double" => DataType::Float64,
-        "bool" | "boolean" => DataType::Boolean,
-        "date" | "date32" => DataType::Date32,
-        _ => return Err(format!("{text:?} is not an Arrow type or override action")),
-    })
+    // `utf8` and `int64` have been accepted before the aliases existed.
+    let text = match text.to_ascii_lowercase().as_str() {
+        "utf8" | "str" => "text".to_string(),
+        "int64" | "long" => "bigint".to_string(),
+        "float64" | "float" => "double".to_string(),
+        _ => text.to_string(),
+    };
+    xeibe_arrow::ColumnSpec::Type(text.clone())
+        .to_field("override")
+        .map(|field| field.data_type().clone())
+        .map_err(|e| e.to_string())
 }
 
 /// Resolve the inputs. Local zip archives are filtered by `--member`; the
@@ -222,7 +183,7 @@ pub(crate) fn sources(input: &InputArgs) -> Result<Vec<Source>> {
     Ok(sources)
 }
 
-/// Warnings, skipped features and overflow of a finished read, on stderr.
+/// Warnings and skipped features of a finished read, on stderr.
 pub(crate) fn print_report(report: &ReadReport) {
     for warning in &report.warnings {
         match &warning.location {
@@ -232,12 +193,5 @@ pub(crate) fn print_report(report: &ReadReport) {
     }
     for (location, reason) in &report.skipped {
         eprintln!("skipped: {location}: {reason}");
-    }
-    let overflow: u64 = report.overflow_per_path.values().sum();
-    if overflow > 0 {
-        eprintln!("{overflow} values outside the schema went to _overflow:");
-        for (path, count) in &report.overflow_per_path {
-            eprintln!("  {path}: {count}");
-        }
     }
 }

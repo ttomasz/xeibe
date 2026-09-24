@@ -238,7 +238,7 @@ Where each design topic lives in the code (`crates/<crate>/src/…`):
 | Geometry sampling during scans (schema-inference.md) | `xeibe-geom`: `sniff` |
 | Path tree, value stats, merge, scan (schema-inference.md) | `xeibe-schema`: `observation`, `node`, `value`, `geometry_stats`, `merge`, `scan` |
 | `InferenceOptions`, presets, rule engine, binding, `--explain` (schema-inference.md, type-mapping.md) | `xeibe-schema`: `options`, `presets`, `pattern`, `rules`, `bind`, `explain` |
-| `scan()`, `read()`, settings file, builders, overflow, pipeline, read report | `xeibe-arrow`: `api`, `settings`, `reader`, `builders`, `geometry_column`, `feature`, `overflow`, `pipeline`, `report`, `options` |
+| `scan()`, `read()`, settings file, path routes and list alignment, builders, pipeline, read report | `xeibe-arrow`: `api`, `settings`, `reader`, `route`, `feature`, `builders`, `geometry_column`, `value`, `pipeline`, `report`, `options` |
 | WFS (wfs.md) | `xeibe-wfs`: `capabilities`, `request`, `response`, `paging`, `pages`, `http`, `exception`, `options` |
 | DataFusion / SedonaDB | `xeibe-datafusion`: `table`, `partition`, `function` |
 | CLI | `xeibe-cli`: `args`, `commands/*` (binary `xeibe`) |

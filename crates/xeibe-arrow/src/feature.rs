@@ -1,22 +1,26 @@
-//! Parses one feature element and routes its values into the layer builder.
+//! Parses one feature element and puts its values into the layer builder.
 //!
 //! The feature is read into a row of [`Value`]s first and appended only when
 //! it is complete: a feature error can then skip the feature, or null its
 //! geometry, without leaving half a row in the builders.
+//!
+//! Only what the schema's paths lead to is read; any other element is skipped
+//! unparsed. List columns follow their anchor: a counter per anchor goes up
+//! when an anchor element starts, and a list is padded with nulls to one
+//! entry per occurrence (`docs/schema-inference.md`, "Lists and alignment").
 
 use xeibe_core::reader::{Attributes, GmlReader, XmlEvent};
 use xeibe_core::{Dialect, Location, QName, ns};
-use xeibe_geom::{AxisResolver, GeometryParser, ParseContext};
-use xeibe_schema::{OnSchemaMismatch, RouteValue};
+use xeibe_geom::{AxisResolver, GeometryParser, ParseContext, SrsName};
+use xeibe_schema::RouteValue;
 
 use crate::OnFeatureError;
 use crate::axis::AxisDecisions;
 use crate::builders::{LayerBatchBuilder, Value};
-use crate::overflow::OverflowCollector;
 use crate::pipeline::ReadPlan;
 use crate::report::{ReadReport, Warning};
-use crate::route::{FieldShape, RouteNode, Shape, Target, join_key};
-use crate::value::{Scalar, parse_offset_minutes, parse_scalar};
+use crate::route::{Item, RouteNode, Target};
+use crate::value::parse_scalar;
 
 pub struct FeatureReader<'a> {
     plan: &'a ReadPlan,
@@ -36,34 +40,25 @@ pub enum FeatureOutcome {
 /// The row being read.
 struct RowState {
     row: Vec<Value>,
-    overflow: OverflowCollector,
-    /// The first geometry error; the rest of the feature is still read.
-    geometry_error: Option<xeibe_geom::Error>,
+    /// Occurrences of each anchor so far.
+    counts: Vec<u32>,
+    /// The first value that doesn't fit its column; the rest of the feature
+    /// is still read, so the next one starts in the right place.
+    error: Option<String>,
+    /// The first geometry error.
+    geometry_error: Option<String>,
     /// srsName of the feature's `boundedBy`, inherited by its geometries.
     srs_name: Option<String>,
     location: Location,
     warnings: Vec<Warning>,
+    /// Scratch space for attribute targets.
+    targets: Vec<Target>,
 }
 
-/// What an element's start tag said.
-#[derive(Debug, Default)]
-struct StartInfo {
-    nil: bool,
-    /// `xlink:href`, with a local reference's `#` stripped if so configured.
-    href: Option<String>,
-    /// A struct target was filled already (an unexpected repetition).
-    occupied: bool,
-}
-
-/// Where a value went.
-enum Put {
-    Done,
-    /// The slot has a value already (an unexpected repetition).
-    Occupied,
-    /// The value doesn't fit the field's type.
-    Mismatch,
-    /// The column is not built (projection).
-    NotBuilt,
+impl RowState {
+    fn fail(&mut self, message: String) {
+        self.error.get_or_insert(message);
+    }
 }
 
 impl<'a> FeatureReader<'a> {
@@ -80,65 +75,81 @@ impl<'a> FeatureReader<'a> {
         out: &mut LayerBatchBuilder,
         report: &mut ReadReport,
     ) -> crate::Result<FeatureOutcome> {
-        let plan = self.plan;
-        let root = &plan.routes.root;
+        let routes = &self.plan.routes;
         let mut state = RowState {
-            row: vec![Value::Null; plan.shapes.len()],
-            overflow: OverflowCollector::default(),
+            row: vec![Value::Null; routes.columns.len()],
+            counts: vec![0; routes.anchors],
+            error: None,
             geometry_error: None,
             srs_name: None,
             location,
             warnings: Vec::new(),
+            targets: Vec::new(),
         };
-        {
-            let (_, attrs) = reader.current_start().ok_or_else(|| {
-                xeibe_core::Error::Xml { location: reader.location(), message: "no feature start".into() }
+        let nodes = [&routes.root];
+        let nil = {
+            let (_, attrs) = reader.current_start().ok_or_else(|| xeibe_core::Error::Xml {
+                location: reader.location(),
+                message: "no feature start".into(),
             })?;
-            self.start_element(root, &attrs, false, &mut state)?;
-        }
-        let mut text = String::new();
-        self.children(reader, root, 0, &mut state, &mut text)?;
+            self.start(&nodes, &attrs, &mut state)
+        };
+        let content_start = reader.position();
+        self.content(reader, &nodes, 0, nil, content_start, &mut state)?;
         self.commit(state, out, report)
     }
 
-    fn commit(
-        &self,
-        mut state: RowState,
-        out: &mut LayerBatchBuilder,
-        report: &mut ReadReport,
-    ) -> crate::Result<FeatureOutcome> {
+    fn commit(&self, mut state: RowState, out: &mut LayerBatchBuilder, report: &mut ReadReport) -> crate::Result<FeatureOutcome> {
         let plan = self.plan;
         for warning in state.warnings.drain(..) {
             report.warn(warning);
         }
-        if let Some(error) = state.geometry_error.take() {
+        let location = state.location.clone();
+        let skip = |report: &mut ReadReport, error: crate::Error| {
+            report.skipped.push((location.clone(), error.to_string()));
+            Ok(FeatureOutcome::Skipped)
+        };
+        if let Some(message) = state.error.take() {
+            let error = crate::Error::Feature { location: location.clone(), message };
+            // `NullGeometry` only helps with geometry errors.
+            return match plan.on_feature_error {
+                OnFeatureError::Skip => skip(report, error),
+                OnFeatureError::Error | OnFeatureError::NullGeometry => Err(error),
+            };
+        }
+        if let Some(message) = state.geometry_error.take() {
+            let error = crate::Error::Feature { location: location.clone(), message };
             match plan.on_feature_error {
-                OnFeatureError::Error => return Err(error.into()),
-                OnFeatureError::Skip => {
-                    report.skipped.push((state.location, error.to_string()));
-                    return Ok(FeatureOutcome::Skipped);
-                }
+                OnFeatureError::Error => return Err(error),
+                OnFeatureError::Skip => return skip(report, error),
                 // The geometry was never put, so it is null.
                 OnFeatureError::NullGeometry => {}
             }
         }
-        if let Err(column) = check_non_null(&state.row, &plan.shapes, "") {
-            let error = crate::Error::MissingValue { location: state.location.clone(), column };
-            return match plan.on_feature_error {
-                OnFeatureError::Skip => {
-                    report.skipped.push((state.location, error.to_string()));
-                    Ok(FeatureOutcome::Skipped)
-                }
-                OnFeatureError::Error | OnFeatureError::NullGeometry => Err(error),
-            };
-        }
-        if let Some(index) = plan.routes.overflow {
-            let entries = state.overflow.take_row();
-            for (path, _) in &entries {
-                *report.overflow_per_path.entry(path.clone()).or_default() += 1;
+        for (column, value) in plan.routes.columns.iter().zip(state.row.iter_mut()) {
+            if !column.list {
+                continue;
             }
-            if !entries.is_empty() {
-                state.row[index] = Value::Map(entries);
+            // One entry per occurrence of the anchor; null if it never occurred.
+            let count = state.counts[column.anchor] as usize;
+            match value {
+                Value::List(items) => items.resize(count.max(items.len()), Value::Null),
+                Value::Null if count > 0 => *value = Value::List(vec![Value::Null; count]),
+                _ => {}
+            }
+        }
+        for (column, value) in plan.routes.columns.iter().zip(&state.row) {
+            let missing = match value {
+                Value::Null => !column.nullable,
+                Value::List(items) => !column.item_nullable && items.iter().any(|item| matches!(item, Value::Null)),
+                _ => false,
+            };
+            if missing {
+                let error = crate::Error::MissingValue { location: location.clone(), column: column.name.clone() };
+                return match plan.on_feature_error {
+                    OnFeatureError::Skip => skip(report, error),
+                    OnFeatureError::Error | OnFeatureError::NullGeometry => Err(error),
+                };
             }
         }
         out.append_row(state.row)?;
@@ -147,183 +158,154 @@ impl<'a> FeatureReader<'a> {
 
     // ---- elements -----------------------------------------------------------
 
-    /// The start tag of an element with a node in the route tree: begin its
-    /// structs, route its attributes. `consumed`: the element's content goes
-    /// to one value whole (raw XML, map, geometry), attributes included.
-    fn start_element(
-        &self,
-        node: &RouteNode,
-        attrs: &Attributes<'_>,
-        consumed: bool,
-        state: &mut RowState,
-    ) -> crate::Result<StartInfo> {
-        let mut info = StartInfo::default();
+    /// The start tag of an element that `nodes` match: count the anchors
+    /// among them, then put the attributes. Returns whether it is `xsi:nil`.
+    fn start(&self, nodes: &[&RouteNode], attrs: &Attributes<'_>, state: &mut RowState) -> bool {
+        for node in nodes {
+            if let Some(anchor) = node.anchor {
+                state.counts[anchor] += 1;
+            }
+        }
+        let mut nil = false;
+        let mut targets = std::mem::take(&mut state.targets);
         for (namespace, local, value) in attrs.iter_raw() {
-            match namespace {
-                Some(ns::XSI) if local == "nil" => info.nil = matches!(value.trim(), "true" | "1"),
-                Some(ns::XLINK) if local == "href" => {
-                    let href = value.trim();
-                    let href = match href.strip_prefix('#') {
-                        Some(local) if self.plan.strip_local_href_hash => local,
-                        _ => href,
-                    };
-                    info.href = Some(href.to_string());
+            if namespace == Some(ns::XSI) {
+                if local == "nil" {
+                    nil = matches!(value.trim(), "true" | "1");
                 }
-                _ => {}
+                continue;
+            }
+            targets.clear();
+            for node in nodes {
+                node.attribute_targets(namespace, local, &mut targets);
+            }
+            if targets.is_empty() {
+                continue;
+            }
+            let mut value = value.trim();
+            if namespace == Some(ns::XLINK) && local == "href" && self.plan.strip_local_href_hash {
+                value = value.strip_prefix('#').unwrap_or(value);
+            }
+            for target in &targets {
+                self.put_text(*target, value, state);
             }
         }
-        if !info.nil {
-            for target in node.targets.iter().filter(|t| t.value == RouteValue::Struct) {
-                if !self.begin_struct(target, state) {
-                    info.occupied = true;
-                }
-            }
-        }
-        if info.occupied || consumed {
-            return Ok(info);
-        }
-        for (namespace, local, value) in attrs.iter_raw() {
-            if let Some(target) = node.attribute(namespace, local, self.plan.routes.by_name) {
-                self.put_text(target, value.trim(), state)?;
-            } else if !ignorable_attribute(namespace, local) && !node.is_known_attribute(namespace, local) {
-                let key = join_key(&node.key, &format!("@{local}"));
-                self.mismatch(state, &key, &value)?;
-            }
-        }
-        Ok(info)
+        state.targets = targets;
+        nil
     }
 
-    /// The child elements of `node` (at `depth`, the feature being 0), up to
-    /// and including its end tag. Direct text goes to `text`.
-    fn children(
-        &self,
-        reader: &mut GmlReader<'_>,
-        node: &RouteNode,
-        depth: usize,
-        state: &mut RowState,
-        text: &mut String,
-    ) -> crate::Result<()> {
-        loop {
-            match reader.next_event()? {
-                XmlEvent::Start { name, attrs } => match node.child(&name, self.plan.routes.by_name) {
-                    Some(child) => {
-                        let consumed = consuming_target(child).is_some();
-                        let info = self.start_element(child, &attrs, consumed, state)?;
-                        self.content(reader, child, &name, depth + 1, info, state)?;
-                    }
-                    None => self.unknown(reader, node, &name, depth + 1, state, text)?,
-                },
-                XmlEvent::Text(t) => text.push_str(&t),
-                XmlEvent::End { .. } => return Ok(()),
-                XmlEvent::Eof => return Err(unexpected_eof(reader).into()),
-            }
-        }
-    }
-
-    /// The content of an element whose start tag was handled.
+    /// The content of an element that `nodes` match (at `depth`, the feature
+    /// being 0), up to and including its end tag. `content_start`: where its
+    /// content begins in the buffer, for raw XML.
     fn content(
         &self,
         reader: &mut GmlReader<'_>,
-        node: &RouteNode,
-        name: &QName,
+        nodes: &[&RouteNode],
         depth: usize,
-        info: StartInfo,
+        nil: bool,
+        content_start: usize,
         state: &mut RowState,
     ) -> crate::Result<()> {
-        if info.occupied {
-            let raw = reader.capture_element()?;
-            return self.mismatch(state, &node.key, &raw);
-        }
-        if !node.routed {
-            // Known, but nothing of it is built: skip it whole. A feature's
-            // `boundedBy` still gives its geometries their srsName.
-            if depth == 1 && name.is_gml_named("boundedBy") && self.plan.has_geometry {
-                return self.bounded_by_srs(reader, state);
-            }
+        let targets = || nodes.iter().flat_map(|node| node.targets.iter().copied());
+        if nil {
+            // Null: whatever it holds is not read.
             return reader.skip_element().map_err(Into::into);
         }
-        if let Some(target) = consuming_target(node) {
-            return match target.value {
-                RouteValue::Geometry => self.geometry(reader, target, state),
-                RouteValue::BoundingBox => self.bounding_box(reader, target, depth, state),
-                RouteValue::RawXml => {
-                    let raw = reader.capture_element()?;
-                    self.put_value(target, Value::Scalar(Scalar::Str(raw.clone())), &raw, state)
-                }
-                RouteValue::Map => {
-                    let pairs = subtree_map(reader)?;
-                    let value = if pairs.is_empty() { Value::Null } else { Value::Map(pairs) };
-                    self.put_value(target, value, "", state)
-                }
-                _ => {
-                    let text = inner_text(reader)?;
-                    self.put_text(target, text.trim(), state)
-                }
-            };
+        let whole = targets().find(|target| {
+            matches!(target.value, RouteValue::Map | RouteValue::InnerText | RouteValue::BoundingBox)
+        });
+        if let Some(target) = whole {
+            return self.whole(reader, target, depth, state);
+        }
+        let wants_text = targets().any(|target| target.value == RouteValue::Text);
+        let wants_geometry = targets().any(|target| target.value == RouteValue::Geometry);
+        let has_children = nodes.iter().any(|node| !node.is_leaf());
+        if !wants_text && !wants_geometry && !has_children {
+            return reader.skip_element().map_err(Into::into);
         }
 
         let mut text = String::new();
-        self.children(reader, node, depth, state, &mut text)?;
-        for target in &node.targets {
-            match target.value {
-                RouteValue::Text if !info.nil => {
-                    let value = text.trim();
-                    match (&info.href, value.is_empty()) {
-                        (Some(href), true) if self.plan.routes.by_name => self.put_text(target, href, state)?,
-                        (_, true) if self.plan.empty_as_null => {}
-                        _ => self.put_text(target, value, state)?,
+        let mut had_children = false;
+        let mut geometry_done = false;
+        loop {
+            match reader.next_event()? {
+                XmlEvent::Start { name, attrs } => {
+                    had_children = true;
+                    if wants_geometry && !geometry_done && name.is_gml() {
+                        geometry_done = true;
+                        drop(attrs);
+                        self.geometry(reader, nodes, state)?;
+                        continue;
+                    }
+                    let mut matched = Vec::new();
+                    for node in nodes {
+                        node.matching_children(&name, &mut matched);
+                    }
+                    if matched.is_empty() {
+                        drop(attrs);
+                        if depth == 0 && name.is_gml_named("boundedBy") && self.plan.has_geometry {
+                            // The feature's envelope gives its geometries their srsName.
+                            self.bounded_by_srs(reader, state)?;
+                        } else {
+                            reader.skip_element()?;
+                        }
+                        continue;
+                    }
+                    let nil = self.start(&matched, &attrs, state);
+                    drop(attrs);
+                    let child_start = reader.position();
+                    self.content(reader, &matched, depth + 1, nil, child_start, state)?;
+                }
+                XmlEvent::Text(t) => {
+                    if wants_text {
+                        text.push_str(&t);
                     }
                 }
-                RouteValue::Href => {
-                    if let Some(href) = &info.href {
-                        self.put_text(target, href, state)?;
-                    }
-                }
-                RouteValue::OffsetMinutes if !info.nil => {
-                    if let Some(offset) = parse_offset_minutes(text.trim()) {
-                        self.put_text(target, &offset.to_string(), state)?;
-                    }
-                }
-                _ => {}
+                XmlEvent::End { .. } => break,
+                XmlEvent::Eof => return Err(unexpected_eof(reader).into()),
+            }
+        }
+        if wants_text {
+            let raw = if had_children { Some(inner_raw(&reader.raw_since(content_start))) } else { None };
+            for target in targets().filter(|target| target.value == RouteValue::Text) {
+                self.text(target, &text, raw.as_deref(), state);
             }
         }
         Ok(())
     }
 
-    /// An element without a node: a type wrapper to look through (given
-    /// schemas; its text counts as the parent's), or data outside the schema.
-    fn unknown(
-        &self,
-        reader: &mut GmlReader<'_>,
-        parent: &RouteNode,
-        name: &QName,
-        depth: usize,
-        state: &mut RowState,
-        parent_text: &mut String,
-    ) -> crate::Result<()> {
-        if depth == 1 && name.is_gml_named("boundedBy") {
-            if self.plan.has_geometry {
-                return self.bounded_by_srs(reader, state);
-            }
-            return reader.skip_element().map_err(Into::into);
+    /// An element's text into a `Text` target. A string column at an element
+    /// with child elements takes its raw XML (`raw`).
+    fn text(&self, target: Target, text: &str, raw: Option<&str>, state: &mut RowState) {
+        let Item::Scalar(data_type) = &self.plan.routes.columns[target.column].item else {
+            return;
+        };
+        let string = is_string(data_type);
+        let value = match raw {
+            Some(raw) if string => raw.trim(),
+            _ => text.trim(),
+        };
+        if value.is_empty() && (self.plan.empty_as_null || !string) {
+            return;
         }
-        let wrapper = self.plan.routes.by_name && depth > 1 && name.local.starts_with(char::is_uppercase);
-        if wrapper {
-            return self.children(reader, parent, depth - 1, state, parent_text);
-        }
-        let key = join_key(&parent.key, &name.local);
-        match self.plan.on_mismatch {
-            OnSchemaMismatch::Drop => reader.skip_element().map_err(Into::into),
-            OnSchemaMismatch::Error => Err(crate::Error::SchemaMismatch {
-                location: state.location.clone(),
-                message: format!("element {key} is not in the schema"),
-            }),
-            OnSchemaMismatch::Overflow => {
-                if self.plan.routes.overflow.is_none() {
-                    return reader.skip_element().map_err(Into::into);
+        self.put_text(target, value, state);
+    }
+
+    /// A target that takes the element whole: a map, the text without its
+    /// markup, or a box.
+    fn whole(&self, reader: &mut GmlReader<'_>, target: Target, depth: usize, state: &mut RowState) -> crate::Result<()> {
+        match target.value {
+            RouteValue::Map => {
+                let pairs = subtree_map(reader)?;
+                if !pairs.is_empty() {
+                    self.put(target.column, Value::Map(pairs), state);
                 }
-                let value = element_value(reader)?;
-                state.overflow.push(&key, &value);
+                Ok(())
+            }
+            RouteValue::BoundingBox => self.bounding_box(reader, target, depth, state),
+            _ => {
+                let text = inner_text(reader)?;
+                self.text(target, &text, None, state);
                 Ok(())
             }
         }
@@ -331,92 +313,105 @@ impl<'a> FeatureReader<'a> {
 
     // ---- geometry -----------------------------------------------------------
 
-    /// A geometry property: the first GML element inside it is the geometry.
-    fn geometry(&self, reader: &mut GmlReader<'_>, target: &Target, state: &mut RowState) -> crate::Result<()> {
-        let spec = match self.shape(target).map(|shape| &shape.item().shape) {
-            Some(Shape::Geometry(spec)) => *spec,
-            _ => return reader.skip_element().map_err(Into::into),
+    /// The geometry element whose start the reader has just returned, inside
+    /// a property that `nodes` match: into each of their geometry targets.
+    fn geometry(&self, reader: &mut GmlReader<'_>, nodes: &[&RouteNode], state: &mut RowState) -> crate::Result<()> {
+        let columns = &self.plan.routes.columns;
+        let targets: Vec<Target> = nodes
+            .iter()
+            .flat_map(|node| node.targets.iter().copied())
+            .filter(|target| target.value == RouteValue::Geometry)
+            .collect();
+        let Some(Item::Geometry(_, axis)) = targets.first().map(|target| &columns[target.column].item) else {
+            return reader.skip_element().map_err(Into::into);
         };
-        let resolver = target.axis.and_then(|index| self.axis.get(index));
-        let mut seen = false;
-        loop {
-            match reader.next_event()? {
-                XmlEvent::Start { name, .. } => {
-                    if seen || !name.is_gml() {
-                        reader.skip_element()?;
+        let context = ParseContext { srs_name: state.srs_name.clone(), srs_dimension: None, axis: None };
+        match self.geometry.parse(reader, &context, &self.axis[*axis]) {
+            Ok(parsed) => {
+                for warning in parsed.warnings {
+                    state.warnings.push(Warning::from_geometry(warning, Some(state.location.clone())));
+                }
+                let Some(geometry) = parsed.geometry else { return Ok(()) };
+                for target in targets {
+                    let column = &columns[target.column];
+                    let Item::Geometry(spec, _) = &column.item else { continue };
+                    if let Some(message) = self.other_crs(column, parsed.srs_name.as_deref()) {
+                        state.geometry_error.get_or_insert(message);
                         continue;
                     }
-                    seen = true;
-                    let start = reader.last_start_position();
-                    let context = ParseContext { srs_name: state.srs_name.clone(), srs_dimension: None, axis: None };
-                    let parsed = match resolver {
-                        Some(resolver) => self.geometry.parse(reader, &context, resolver),
-                        None => self.geometry.parse(reader, &context, &AsWritten),
-                    };
-                    match parsed {
-                        Ok(parsed) => {
-                            for warning in parsed.warnings {
-                                state.warnings.push(Warning::from_geometry(warning, Some(state.location.clone())));
-                            }
-                            let Some(geometry) = parsed.geometry else { continue };
-                            match spec.prepare(geometry) {
-                                Ok(geometry) => {
-                                    if let Put::Occupied = self.put(target, Value::Geometry(geometry), state) {
-                                        let raw = reader.raw_since(start);
-                                        self.mismatch(state, &target.key, &raw)?;
-                                    }
-                                }
-                                Err(_) => {
-                                    let raw = reader.raw_since(start);
-                                    self.mismatch(state, &target.key, &raw)?;
-                                }
-                            }
-                        }
-                        Err(xeibe_geom::Error::Core(error)) => return Err(error.into()),
-                        Err(error) => {
-                            state.geometry_error.get_or_insert(error);
+                    match spec.prepare(geometry.clone()) {
+                        Ok(geometry) => self.put(target.column, Value::Geometry(geometry), state),
+                        Err(geometry) => {
+                            state.geometry_error.get_or_insert(format!(
+                                "column {}: a {:?}{} doesn't fit {}",
+                                column.name,
+                                geometry.kind(),
+                                if geometry.dim() == Some(xeibe_geom::Dim::Xyz) { " with Z" } else { "" },
+                                spec.describe()
+                            ));
                         }
                     }
                 }
-                XmlEvent::Text(_) => {}
-                XmlEvent::End { .. } => return Ok(()),
-                XmlEvent::Eof => return Err(unexpected_eof(reader).into()),
+                Ok(())
+            }
+            Err(xeibe_geom::Error::Core(error)) => Err(error.into()),
+            Err(error) => {
+                state.geometry_error.get_or_insert(error.to_string());
+                Ok(())
             }
         }
     }
 
+    /// A column has one CRS: a geometry whose srsName resolves to another one
+    /// is a geometry error (`docs/geometry.md`, "CRS metadata"). Spellings of
+    /// one CRS are the same; unknown srsNames are compared as written. With
+    /// `crs_override`, the CRS doesn't come from the data.
+    fn other_crs(&self, column: &crate::route::ColumnPlan, srs_name: Option<&str>) -> Option<String> {
+        if self.plan.geometry.crs_override.is_some() {
+            return None;
+        }
+        let (Some(column_srs), Some(srs_name)) = (column.srs_name.as_deref(), srs_name) else {
+            return None;
+        };
+        if column_srs == srs_name {
+            return None;
+        }
+        let crs = |srs: &str| match SrsName::parse(srs).crs {
+            Some(crs) => crs.authority_code(),
+            None => srs.to_string(),
+        };
+        (crs(column_srs) != crs(srs_name)).then(|| {
+            format!(
+                "column {}: srsName {srs_name:?} is another CRS than the column's ({column_srs:?})",
+                column.name
+            )
+        })
+    }
+
     /// A `boundedBy` routed to a box column.
-    fn bounding_box(
-        &self,
-        reader: &mut GmlReader<'_>,
-        target: &Target,
-        depth: usize,
-        state: &mut RowState,
-    ) -> crate::Result<()> {
+    fn bounding_box(&self, reader: &mut GmlReader<'_>, target: Target, depth: usize, state: &mut RowState) -> crate::Result<()> {
         let context = ParseContext { srs_name: state.srs_name.clone(), ..ParseContext::default() };
         match self.geometry.parse_bounded_by(reader, &context) {
             Ok(Some(mut envelope)) => {
-                if depth == 1 && state.srs_name.is_none() {
+                if depth == 0 && state.srs_name.is_none() {
                     state.srs_name = envelope.srs_name.clone();
                 }
-                let resolver = target.axis.and_then(|index| self.axis.get(index));
-                let swap = resolver.is_some_and(|r| r.resolve(envelope.srs_name.as_deref(), Dialect::Gml3).swap);
-                if swap {
-                    for corner in [&mut envelope.lower, &mut envelope.upper] {
-                        if corner.len() >= 2 {
-                            corner.swap(0, 1);
+                if let Item::Box(axis) = &self.plan.routes.columns[target.column].item {
+                    if self.axis[*axis].resolve(envelope.srs_name.as_deref(), Dialect::Gml3).swap {
+                        for corner in [&mut envelope.lower, &mut envelope.upper] {
+                            if corner.len() >= 2 {
+                                corner.swap(0, 1);
+                            }
                         }
                     }
                 }
-                if let Put::Occupied = self.put(target, Value::Box(envelope), state) {
-                    self.mismatch(state, &target.key, "a second envelope")?;
-                }
+                self.put(target.column, Value::Box(envelope), state);
                 Ok(())
             }
             Ok(None) => Ok(()),
             Err(xeibe_geom::Error::Core(error)) => Err(error.into()),
             Err(error) => {
-                state.geometry_error.get_or_insert(error);
+                state.geometry_error.get_or_insert(error.to_string());
                 Ok(())
             }
         }
@@ -440,233 +435,63 @@ impl<'a> FeatureReader<'a> {
 
     // ---- values -------------------------------------------------------------
 
-    fn shape(&self, target: &Target) -> Option<&'a FieldShape> {
-        let path = target.field_path.as_ref()?;
-        let (first, rest) = path.split_first()?;
-        let mut shape = self.plan.shapes.get(*first)?;
-        for index in rest {
-            shape = match &shape.item().shape {
-                Shape::Struct(children) => children.get(*index)?,
-                _ => return None,
-            };
-        }
-        Some(shape)
-    }
-
-    /// Parse `text` as the target field's type and put it.
-    fn put_text(&self, target: &Target, text: &str, state: &mut RowState) -> crate::Result<()> {
-        let Some(shape) = self.shape(target) else {
-            return Ok(());
+    /// Parse `text` as the column's type and put it.
+    fn put_text(&self, target: Target, text: &str, state: &mut RowState) {
+        let column = &self.plan.routes.columns[target.column];
+        let Item::Scalar(data_type) = &column.item else {
+            return;
         };
-        let Shape::Scalar(data_type) = &shape.item().shape else {
-            return self.mismatch(state, &target.key, text);
-        };
-        if text.is_empty() && self.plan.empty_as_null {
-            return Ok(());
+        if text.is_empty() && (self.plan.empty_as_null || !is_string(data_type)) {
+            return;
         }
         match parse_scalar(data_type, text) {
-            Some(scalar) => self.put_value(target, Value::Scalar(scalar), text, state),
-            None => self.mismatch(state, &target.key, text),
+            Some(scalar) => self.put(target.column, Value::Scalar(scalar), state),
+            None => state.fail(format!("column {}: {text:?} is not a valid {data_type}", column.name)),
         }
     }
 
-    /// Put a value; a repetition or a misfit goes by `on_mismatch` with `raw`.
-    fn put_value(&self, target: &Target, value: Value, raw: &str, state: &mut RowState) -> crate::Result<()> {
-        match self.put(target, value, state) {
-            Put::Done | Put::NotBuilt => Ok(()),
-            Put::Occupied | Put::Mismatch => self.mismatch(state, &target.key, raw),
-        }
-    }
-
-    fn put(&self, target: &Target, value: Value, state: &mut RowState) -> Put {
-        let Some(path) = &target.field_path else {
-            return Put::NotBuilt;
-        };
-        let Some((slot, shape)) = slot(&mut state.row, &self.plan.shapes, path) else {
-            return Put::Mismatch;
-        };
-        match &shape.shape {
-            Shape::List(_) => {
-                match slot {
-                    Value::List(items) => items.push(value),
-                    _ => *slot = Value::List(vec![value]),
-                }
-                Put::Done
-            }
-            _ if matches!(slot, Value::Null) => {
+    /// Put a value into its column: a scalar column takes one value per
+    /// feature, a list column one per occurrence of its anchor.
+    fn put(&self, column: usize, value: Value, state: &mut RowState) {
+        let plan = &self.plan.routes.columns[column];
+        let slot = &mut state.row[column];
+        if !plan.list {
+            if matches!(slot, Value::Null) {
                 *slot = value;
-                Put::Done
+            } else {
+                state.fail(format!("column {}: a second value, but the column holds one per feature", plan.name));
             }
-            _ => Put::Occupied,
+            return;
         }
-    }
-
-    /// Start a struct value (a new item of a list of structs). `false` if a
-    /// (non-list) struct has a value already.
-    fn begin_struct(&self, target: &Target, state: &mut RowState) -> bool {
-        let Some(path) = &target.field_path else {
-            return true;
-        };
-        let Some((slot, shape)) = slot(&mut state.row, &self.plan.shapes, path) else {
-            return true;
-        };
-        match &shape.shape {
-            Shape::List(item) => {
-                let value = empty_value(item);
-                match slot {
-                    Value::List(items) => items.push(value),
-                    _ => *slot = Value::List(vec![value]),
-                }
-                true
-            }
-            Shape::Struct(children) if matches!(slot, Value::Null) => {
-                *slot = Value::Struct(vec![Value::Null; children.len()]);
-                true
-            }
-            Shape::Struct(_) => false,
-            _ => true,
+        // The anchor is on the value's path, so it has occurred at least once.
+        let count = (state.counts[plan.anchor] as usize).max(1);
+        if !matches!(slot, Value::List(_)) {
+            *slot = Value::List(Vec::new());
         }
-    }
-
-    /// Data outside the schema, per `on_mismatch`.
-    fn mismatch(&self, state: &mut RowState, key: &str, value: &str) -> crate::Result<()> {
-        match self.plan.on_mismatch {
-            OnSchemaMismatch::Overflow => {
-                if self.plan.routes.overflow.is_some() {
-                    state.overflow.push(key, value);
-                }
-                Ok(())
-            }
-            OnSchemaMismatch::Drop => Ok(()),
-            OnSchemaMismatch::Error => Err(crate::Error::SchemaMismatch {
-                location: state.location.clone(),
-                message: format!("{key}: {value:?} does not fit the schema"),
-            }),
+        let Value::List(items) = slot else { unreachable!("just made a list") };
+        if items.len() >= count {
+            state.fail(format!(
+                "column {}: a second value within one occurrence of the list's anchor",
+                plan.name
+            ));
+            return;
         }
+        items.resize(count - 1, Value::Null);
+        items.push(value);
     }
 }
 
-/// Resolver for geometry outside any geometry column (never asked in practice).
-struct AsWritten;
-
-impl AxisResolver for AsWritten {
-    fn resolve(&self, _: Option<&str>, _: Dialect) -> xeibe_geom::AxisDecision {
-        xeibe_geom::AxisDecision { swap: false, reason: "as written".into(), conflicts: Vec::new() }
-    }
+fn is_string(data_type: &arrow_schema::DataType) -> bool {
+    use arrow_schema::DataType;
+    matches!(data_type, DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View)
 }
 
-/// The target that takes the element's content whole, if any.
-fn consuming_target(node: &RouteNode) -> Option<&Target> {
-    node.targets.iter().find(|target| {
-        target.field_path.is_some()
-            && matches!(
-                target.value,
-                RouteValue::Geometry
-                    | RouteValue::BoundingBox
-                    | RouteValue::RawXml
-                    | RouteValue::Map
-                    | RouteValue::InnerText
-            )
-    })
-}
-
-/// Attributes that are GML/XLink machinery, not data: never `_overflow`.
-fn ignorable_attribute(namespace: Option<&str>, local: &str) -> bool {
-    match namespace {
-        Some(ns::XSI | ns::XLINK) => true,
-        Some(ns::GML | ns::GML_32) => matches!(local, "id" | "remoteSchema" | "owns"),
-        None => matches!(local, "nilReason" | "owns" | "remoteSchema" | "aggregationType"),
-        _ => false,
+/// An element's raw XML (from its content to its end tag) without the end tag.
+fn inner_raw(raw: &str) -> String {
+    match raw.rfind("</") {
+        Some(end) => raw[..end].to_string(),
+        None => raw.to_string(),
     }
-}
-
-/// The value slot at `path` and its field's shape. Structs and list items on
-/// the way are created as needed; a list level goes to its last item.
-fn slot<'r>(row: &'r mut [Value], shapes: &'r [FieldShape], path: &[usize]) -> Option<(&'r mut Value, &'r FieldShape)> {
-    let (first, rest) = path.split_first()?;
-    let mut value = row.get_mut(*first)?;
-    let mut shape = shapes.get(*first)?;
-    for index in rest {
-        if let Shape::List(item) = &shape.shape {
-            match value {
-                Value::List(items) if !items.is_empty() => {}
-                _ => *value = Value::List(vec![empty_value(item)]),
-            }
-            let Value::List(items) = value else { return None };
-            value = items.last_mut()?;
-            shape = item;
-        }
-        let Shape::Struct(children) = &shape.shape else {
-            return None;
-        };
-        if !matches!(value, Value::Struct(_)) {
-            *value = Value::Struct(vec![Value::Null; children.len()]);
-        }
-        let Value::Struct(values) = value else { return None };
-        value = values.get_mut(*index)?;
-        shape = children.get(*index)?;
-    }
-    Some((value, shape))
-}
-
-fn empty_value(shape: &FieldShape) -> Value {
-    match &shape.shape {
-        Shape::Struct(children) => Value::Struct(vec![Value::Null; children.len()]),
-        _ => Value::Null,
-    }
-}
-
-/// `Err(column)` for the first non-null field without a value.
-fn check_non_null(values: &[Value], shapes: &[FieldShape], prefix: &str) -> Result<(), String> {
-    for (value, shape) in values.iter().zip(shapes) {
-        let name = format!("{prefix}{}", shape.name);
-        if matches!(value, Value::Null) {
-            if !shape.nullable {
-                return Err(name);
-            }
-            continue;
-        }
-        check_value(value, shape, &name)?;
-    }
-    Ok(())
-}
-
-fn check_value(value: &Value, shape: &FieldShape, name: &str) -> Result<(), String> {
-    match (value, &shape.shape) {
-        (Value::Struct(values), Shape::Struct(children)) => check_non_null(values, children, &format!("{name}.")),
-        (Value::List(items), Shape::List(item)) => {
-            for value in items {
-                if matches!(value, Value::Null) {
-                    if !item.nullable {
-                        return Err(name.to_string());
-                    }
-                } else {
-                    check_value(value, item, name)?;
-                }
-            }
-            Ok(())
-        }
-        _ => Ok(()),
-    }
-}
-
-/// An unknown element's value: its text, or its raw XML if it has children.
-fn element_value(reader: &mut GmlReader<'_>) -> crate::Result<String> {
-    let start = reader.last_start_position();
-    let mut text = String::new();
-    let mut nested = false;
-    loop {
-        match reader.next_event()? {
-            XmlEvent::Start { .. } => {
-                nested = true;
-                reader.skip_element()?;
-            }
-            XmlEvent::Text(t) => text.push_str(&t),
-            XmlEvent::End { .. } => break,
-            XmlEvent::Eof => return Err(unexpected_eof(reader).into()),
-        }
-    }
-    Ok(if nested { reader.raw_since(start) } else { text.trim().to_string() })
 }
 
 /// All text of a subtree, markup removed.
@@ -696,7 +521,7 @@ fn subtree_map(reader: &mut GmlReader<'_>) -> crate::Result<Vec<(String, String)
     loop {
         match reader.next_event()? {
             XmlEvent::Start { name, attrs } => {
-                let path = join_key(&stack.last().expect("inside the element").0, &name.local);
+                let path = join_path(&stack.last().expect("inside the element").0, &name);
                 for (_, local, value) in attrs.iter_raw() {
                     pairs.push((format!("{path}/@{local}"), value.into_owned()));
                 }
@@ -717,6 +542,11 @@ fn subtree_map(reader: &mut GmlReader<'_>) -> crate::Result<Vec<(String, String)
             XmlEvent::Eof => return Err(unexpected_eof(reader).into()),
         }
     }
+}
+
+/// `parent/child`, or `child` at the top.
+fn join_path(parent: &str, child: &QName) -> String {
+    if parent.is_empty() { child.local.to_string() } else { format!("{parent}/{}", child.local) }
 }
 
 fn unexpected_eof(reader: &GmlReader<'_>) -> xeibe_core::Error {
