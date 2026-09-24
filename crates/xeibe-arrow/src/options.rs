@@ -1,4 +1,5 @@
 use xeibe_core::SplitterOptions;
+use xeibe_geom::GeometryOptions;
 use xeibe_schema::{InferenceOptions, OnSchemaMismatch, SampleOptions};
 use serde::{Deserialize, Serialize};
 
@@ -16,8 +17,10 @@ pub enum OnFeatureError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ReadOptions {
-    /// Sampled schemas; `naming` also maps XML names to a given schema's columns;
-    /// `geometry` (axis order, CRS override, curves) applies to every read.
+    /// Axis order, CRS override, curves and the primary geometry column; they
+    /// apply to every read (`docs/geometry.md`, "Options").
+    pub geometry: GeometryOptions,
+    /// Reads without a schema, and scans.
     pub inference: InferenceOptions,
     /// Reads without a schema.
     pub sample: SampleOptions,
@@ -41,6 +44,7 @@ impl Default for ReadOptions {
     /// source order kept.
     fn default() -> Self {
         ReadOptions {
+            geometry: GeometryOptions::default(),
             inference: InferenceOptions::default(),
             sample: SampleOptions::default(),
             on_mismatch: OnSchemaMismatch::Overflow,
@@ -52,5 +56,15 @@ impl Default for ReadOptions {
             queue_depth: 8,
             projection: None,
         }
+    }
+}
+
+impl ReadOptions {
+    /// These options with the geometry options also where inference looks for
+    /// them.
+    pub(crate) fn effective(&self) -> ReadOptions {
+        let mut options = self.clone();
+        options.inference.geometry = self.geometry.clone();
+        options
     }
 }

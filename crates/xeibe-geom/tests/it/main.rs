@@ -14,6 +14,7 @@ mod epsg;
 mod gdal_cases;
 mod linearize;
 mod model;
+mod options;
 mod parse_aggregates;
 mod parse_curves;
 mod parse_primitives;

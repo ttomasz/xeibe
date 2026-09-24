@@ -213,37 +213,45 @@ impl Read {
         })
     }
 
-    /// The `_overflow` map, as key/value pairs per row.
-    pub fn overflow(&self) -> Vec<Vec<(String, String)>> {
-        let mut rows = Vec::new();
-        for batch in &self.batches {
-            let Some(column) = batch.column_by_name(xeibe_arrow::overflow::OVERFLOW_COLUMN) else {
-                return Vec::new();
-            };
-            let map = column.as_map();
-            for i in 0..map.len() {
-                if map.is_null(i) {
-                    rows.push(Vec::new());
-                    continue;
-                }
-                let entries = map.value(i);
-                let keys = entries.column(0);
-                let values = entries.column(1);
-                let read = |array: &Arc<dyn Array>, index: usize| -> String {
-                    match array.data_type() {
-                        DataType::Utf8View => array.as_string_view().value(index).to_string(),
-                        DataType::Utf8 => array.as_string::<i32>().value(index).to_string(),
-                        other => panic!("_overflow entries are {other}"),
-                    }
-                };
-                rows.push(
-                    (0..entries.len())
-                        .map(|j| (read(keys, j), read(values, j)))
-                        .collect(),
-                );
-            }
-        }
-        rows
+    /// Values of a list-of-strings column: `None` for a null list.
+    #[track_caller]
+    pub fn string_lists(&self, name: &str) -> Vec<Option<Vec<Option<String>>>> {
+        self.map_column(name, |array| {
+            let lists = array.as_list::<i32>();
+            (0..lists.len())
+                .map(|i| {
+                    (!lists.is_null(i)).then(|| {
+                        let items = lists.value(i);
+                        let items = items.as_string_view();
+                        (0..items.len())
+                            .map(|j| (!items.is_null(j)).then(|| items.value(j).to_string()))
+                            .collect()
+                    })
+                })
+                .collect()
+        })
+    }
+
+    /// Values of a `geometry[]` column (a list of WKB), decoded.
+    #[track_caller]
+    pub fn geometry_lists(&self, name: &str) -> Vec<Option<Vec<Option<G>>>> {
+        self.map_column(name, |array| {
+            let lists = array.as_list::<i32>();
+            (0..lists.len())
+                .map(|i| {
+                    (!lists.is_null(i)).then(|| {
+                        let items = lists.value(i);
+                        let items = items.as_binary::<i32>();
+                        (0..items.len())
+                            .map(|j| {
+                                (!items.is_null(j))
+                                    .then(|| wkb::decode(items.value(j)).expect("valid WKB"))
+                            })
+                            .collect()
+                    })
+                })
+                .collect()
+        })
     }
 
     #[track_caller]

@@ -58,8 +58,7 @@ pub(crate) fn settings(read: &ReadArgs) -> Result<Settings> {
 fn apply(read: &ReadArgs, options: &mut ReadOptions) -> Result {
     if let Some(preset) = read.preset {
         // A preset is a starting point for inference; geometry settings (axis
-        // order, CRS, curves) from the file are kept.
-        let geometry = options.inference.geometry.clone();
+        // order, CRS, curves) are read options and stay as they are.
         options.inference = match preset {
             Preset::Default => InferenceOptions::default(),
             Preset::Flat => InferenceOptions::flat(),
@@ -67,9 +66,8 @@ fn apply(read: &ReadArgs, options: &mut ReadOptions) -> Result {
             Preset::SparkXmlLike => InferenceOptions::spark_xml_like(),
             Preset::Strings => InferenceOptions::strings(),
         };
-        options.inference.geometry = geometry;
     }
-    let geometry = &mut options.inference.geometry;
+    let geometry = &mut options.geometry;
     if let Some(mode) = read.axis_order {
         geometry.axis.mode = axis_mode(mode);
     }

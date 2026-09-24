@@ -65,9 +65,9 @@ const OVERRIDES: &[(&str, Expect, &str)] = &[
     // error ("Empty, invalid and degenerate geometry"); GDAL's null member is.
     ("ogr_gml_geom:1482", Expect::Wkt("MULTIPOINT EMPTY"), "empty element"),
     ("ogr_gml_geom:1523", Expect::Wkt("MULTILINESTRING EMPTY"), "empty element"),
-    // A patch with only interior rings follows `unsupported_geometry` ("Empty,
-    // invalid and degenerate geometry"); GDAL makes it a hole of the previous
-    // member.
+    // A patch with only interior rings is an unsupported geometry, so a
+    // geometry error ("Empty, invalid and degenerate geometry"); GDAL makes it
+    // a hole of the previous member.
     ("ogr_gml_geom:2050", Expect::Error, "polygon with no exterior is unsupported"),
     // Solids are out of scope (support matrix §5.1, "Unsupported geometry");
     // GDAL reads this one's exterior as a polygon.

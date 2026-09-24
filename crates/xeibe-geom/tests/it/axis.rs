@@ -5,7 +5,7 @@
 //! wrote y/x".
 
 use xeibe_core::{Dialect, SourceId};
-use xeibe_geom::axis::{AutoAxisOptions, AxisContext, AxisEvidence, AxisSelector, decide, first_axis_from_labels};
+use xeibe_geom::axis::{AxisContext, AxisEvidence, decide, first_axis_from_labels};
 use xeibe_geom::epsg::FirstAxis;
 use xeibe_geom::{AxisKey, AxisOrderMode, AxisOrderOptions};
 
@@ -131,32 +131,17 @@ fn gml_version_mode_uses_the_dialect_of_the_geometry() {
 }
 
 #[test]
-fn overrides_win_and_the_most_specific_one_wins() {
-    let options = AxisOrderOptions {
-        mode: AxisOrderMode::XY,
-        overrides: vec![
-            (
-                AxisSelector {
-                    srs_name: Some("EPSG:4326".into()),
-                    ..AxisSelector::default()
-                },
-                AxisOrderMode::YX,
-            ),
-            (
-                AxisSelector {
-                    srs_name: Some("EPSG:4326".into()),
-                    layer: Some("AD_Address".into()),
-                    ..AxisSelector::default()
-                },
-                AxisOrderMode::XY,
-            ),
-        ],
-        ..AxisOrderOptions::default()
-    };
-    let swap_for = |layer: Option<&str>, srs: &str| {
+fn overrides_are_keyed_by_the_srs_name_as_written() {
+    // The only selector is the srsName: a read has one layer, and a
+    // dialect-dependent rule is the `GmlVersion` mode (`docs/geometry.md`,
+    // "Decision key and scope").
+    let options: AxisOrderOptions =
+        serde_json::from_str(r#"{"mode":"XY","overrides":{"EPSG:4326":"YX"}}"#)
+            .expect("mode with an srsName override");
+    let swap_for = |srs: &str| {
         decide(
             &key(srs, Dialect::Gml3),
-            layer,
+            None,
             None,
             &AxisEvidence::default(),
             &AxisContext::default(),
@@ -164,12 +149,12 @@ fn overrides_win_and_the_most_specific_one_wins() {
         )
         .swap
     };
-    assert!(swap_for(Some("Other"), "EPSG:4326"), "the srsName override");
+    assert!(swap_for("EPSG:4326"), "the override for this srsName");
+    assert!(!swap_for("EPSG:2180"), "no override: the mode");
     assert!(
-        !swap_for(Some("AD_Address"), "EPSG:4326"),
-        "the layer + srsName override is more specific"
+        !swap_for("urn:ogc:def:crs:EPSG::4326"),
+        "matched on the srsName exactly as written, not on the CRS"
     );
-    assert!(!swap_for(Some("Other"), "EPSG:2180"), "no override matches");
 }
 
 #[test]
@@ -377,43 +362,14 @@ fn auto_uses_the_wfs_version_we_requested() {
 }
 
 #[test]
-fn evidence_can_be_switched_off() {
-    let evidence = AxisEvidence {
-        axis_labels: vec!["Lat Long".into()],
-        samples: 10,
-        ..AxisEvidence::default()
-    };
-    let without_labels = AxisOrderOptions {
-        mode: AxisOrderMode::Auto,
-        auto: AutoAxisOptions {
-            use_axis_labels: false,
-            ..AutoAxisOptions::default()
-        },
-        ..AxisOrderOptions::default()
-    };
-    assert!(
-        !decide(
-            &key("EPSG:4326", Dialect::Gml3),
-            None,
-            None,
-            &evidence,
-            &AxisContext::default(),
-            &without_labels,
-        )
-        .swap,
-        "with labels ignored, the fallback reads the short form as written"
+fn auto_has_no_evidence_switches() {
+    // `Auto` always uses all of the evidence and falls back to `CrsHeuristic`;
+    // to decide differently, use a fixed mode. An `auto` key in the settings
+    // file is not part of the format.
+    let with_switches = serde_json::from_str::<AxisOrderOptions>(
+        r#"{"mode":"Auto","auto":{"use_axis_labels":false}}"#,
     );
-}
-
-#[test]
-fn the_auto_defaults_use_every_kind_of_evidence() {
-    let auto = AutoAxisOptions::default();
-    assert!(auto.use_axis_labels);
-    assert!(auto.use_range_check);
-    assert!(auto.use_producer_quirks);
-    assert!(auto.use_gml2_dialect);
-    assert!(auto.use_wfs_context);
-    assert_eq!(*auto.fallback, AxisOrderMode::CrsHeuristic);
+    assert!(with_switches.is_err(), "unknown key accepted: {with_switches:?}");
 }
 
 #[test]
@@ -468,11 +424,14 @@ fn a_bare_mode_is_enough_in_the_settings_file() {
         serde_json::from_str(r#"{"GmlVersion":{"gml2":"XY","gml3":"Crs"}}"#).expect("a mode");
     assert!(matches!(nested.mode, AxisOrderMode::GmlVersion { .. }));
 
-    let full: AxisOrderOptions = serde_json::from_str(
-        r#"{"mode":"Auto","overrides":[[{"srs_name":"EPSG:4326"},"YX"]]}"#,
-    )
-    .expect("mode with overrides");
+    let full: AxisOrderOptions =
+        serde_json::from_str(r#"{"mode":"Auto","overrides":{"EPSG:4326":"YX"}}"#)
+            .expect("mode with overrides");
     assert_eq!(full.mode, AxisOrderMode::Auto);
     assert_eq!(full.overrides.len(), 1);
-    assert_eq!(full.overrides[0].1, AxisOrderMode::YX);
+    assert_eq!(
+        serde_json::to_value(&full).unwrap(),
+        serde_json::json!({"mode": "Auto", "overrides": {"EPSG:4326": "YX"}}),
+        "written back in the same form"
+    );
 }

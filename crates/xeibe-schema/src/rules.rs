@@ -945,7 +945,7 @@ impl Engine<'_> {
         )];
         let linearize = matches!(geometry.curves, CurveMode::Linearize(_));
         let native = native_kind(&stats.kinds);
-        let encoding = match geometry.encoding {
+        let encoding = match self.options.geometry_encoding {
             GeomEncoding::Wkb => {
                 reasons.push("encoding Wkb".to_string());
                 None
@@ -971,7 +971,7 @@ impl Engine<'_> {
                     Some(kind) => format!("native {}", kind.name()),
                     None => "geoarrow.geometry (several kinds)".to_string(),
                 };
-                reasons.push(format!("encoding {:?} → {label}", geometry.encoding));
+                reasons.push(format!("encoding {:?} → {label}", self.options.geometry_encoding));
                 Some(native)
             }
         };

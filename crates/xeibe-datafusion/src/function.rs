@@ -79,7 +79,6 @@ fn read_options(layer: &str, pairs: &[(String, String)]) -> Result<(Option<Schem
         match key.as_str() {
             "settings" => {}
             "preset" => {
-                let geometry = options.inference.geometry.clone();
                 options.inference = match value.replace('-', "_").as_str() {
                     "default" => InferenceOptions::default(),
                     "flat" => InferenceOptions::flat(),
@@ -88,11 +87,9 @@ fn read_options(layer: &str, pairs: &[(String, String)]) -> Result<(Option<Schem
                     "strings" => InferenceOptions::strings(),
                     _ => return Err(bad()),
                 };
-                // Axis order and CRS are read options, not part of a preset.
-                options.inference.geometry = geometry;
             }
             "axis_order" => {
-                options.inference.geometry.axis.mode = match value.replace('-', "_").as_str() {
+                options.geometry.axis.mode = match value.replace('-', "_").as_str() {
                     "xy" => AxisOrderMode::XY,
                     "yx" => AxisOrderMode::YX,
                     "crs" => AxisOrderMode::Crs,
@@ -105,7 +102,7 @@ fn read_options(layer: &str, pairs: &[(String, String)]) -> Result<(Option<Schem
                     _ => return Err(bad()),
                 }
             }
-            "crs" => options.inference.geometry.crs_override = Some(value.clone()),
+            "crs" => options.geometry.crs_override = Some(value.clone()),
             "on_mismatch" => {
                 options.on_mismatch = match value.as_str() {
                     "overflow" => OnSchemaMismatch::Overflow,

@@ -60,7 +60,7 @@ def main() -> None:
     # A pyarrow.Schema as the schema, options as a dict.
     table = pa.table(xeibe.read([PRG], LAYER, schema=schema, options={"batch_size": 1}))
     assert table.num_rows == 2
-    assert table.column_names == schema.names + ["_overflow"]
+    assert table.column_names == schema.names, "a given schema is used as it is"
 
     # A settings file as the schema; RecordBatchReader interop.
     reader = pa.RecordBatchReader.from_stream(xeibe.read([PRG], LAYER, schema=settings))

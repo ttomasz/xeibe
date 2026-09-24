@@ -1,12 +1,14 @@
 //! `Polygon`, `Surface` and its patches, `OrientableSurface`,
-//! `CompositeSurface`, and the `unsupported_geometry` policy
-//! (`docs/geometry.md`, "Mapping table", "Unsupported geometry").
+//! `CompositeSurface`, and unsupported geometry, which is always a geometry
+//! error (`docs/geometry.md`, "Mapping table", "Unsupported geometry").
+//! Whether that stops the read, skips the feature or nulls the geometry is
+//! `OnFeatureError`'s job, tested in `xeibe-arrow`.
 
 use xeibe_geom::model::GeomKind;
-use xeibe_geom::{Error, GeometryOptions, options::UnsupportedGeometry};
+use xeibe_geom::Error;
 use xeibe_testkit::wkt::assert_wkt;
 
-use crate::support::{FixedAxis, assert_geometry, g31, parse, parse_with, to_g};
+use crate::support::{assert_geometry, g31, parse, to_g};
 
 const RING: &str = "<gml:LinearRing><gml:posList>0 0 4 0 4 4 0 4 0 0</gml:posList></gml:LinearRing>";
 const HOLE: &str = "<gml:LinearRing><gml:posList>1 1 2 1 2 2 1 2 1 1</gml:posList></gml:LinearRing>";
@@ -140,18 +142,11 @@ fn an_empty_polygon_is_an_empty_geometry() {
 }
 
 #[test]
-fn a_polygon_with_only_interior_rings_follows_the_unsupported_policy() {
+fn a_polygon_with_only_interior_rings_is_unsupported() {
     // Allowed by the standard (§10.5.5), not representable in WKB.
     let snippet = format!("<gml:Polygon><gml:interior>{HOLE}</gml:interior></gml:Polygon>");
-    let error = parse(&snippet).expect_err("the default policy is Error");
+    let error = parse(&snippet).expect_err("a geometry error");
     assert!(matches!(error, Error::Unsupported { .. }), "got {error:?}");
-
-    let null = GeometryOptions {
-        unsupported_geometry: UnsupportedGeometry::Null,
-        ..GeometryOptions::default()
-    };
-    let parsed = parse_with(&snippet, &null, &FixedAxis::no_swap()).expect("null geometry");
-    assert!(parsed.geometry.is_none());
 }
 
 #[test]
@@ -181,23 +176,6 @@ fn solids_and_triangulated_surfaces_are_unsupported() {
     }
 }
 
-#[test]
-fn the_raw_xml_policy_keeps_the_source_of_unsupported_geometry() {
-    let snippet = concat!(
-        "<gml:Tin><gml:patches><gml:Triangle><gml:exterior><gml:LinearRing>",
-        "<gml:posList srsDimension=\"3\">0 0 1 0 1 1 1 1 1 0 0 1</gml:posList>",
-        "</gml:LinearRing></gml:exterior></gml:Triangle></gml:patches></gml:Tin>"
-    );
-    let options = GeometryOptions {
-        unsupported_geometry: UnsupportedGeometry::RawXml,
-        ..GeometryOptions::default()
-    };
-    let parsed = parse_with(snippet, &options, &FixedAxis::no_swap()).expect("raw XML");
-    assert!(parsed.geometry.is_none());
-    assert_eq!(parsed.source_kind, GeomKind::Unsupported);
-    let raw = parsed.raw_xml.expect("the source XML is kept");
-    assert!(raw.contains("Triangle"), "{raw:?}");
-}
 
 #[test]
 fn a_3d_polygon_keeps_its_z_ordinates() {

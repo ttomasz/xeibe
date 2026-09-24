@@ -120,26 +120,17 @@ fn a_ring_with_fewer_than_four_positions_is_an_error() {
 }
 
 #[test]
-fn an_unclosed_ring_is_a_warning_and_is_kept_as_written() {
-    // GDAL refuses this; we warn and keep the ring
-    // (`docs/geometry.md`, "Empty, invalid and degenerate geometry").
+fn an_unclosed_ring_is_closed_with_a_warning() {
+    // GDAL refuses this. An unclosed ring isn't valid in WKB or GeoParquet, and
+    // repeating the first position loses nothing, so it is always closed; there
+    // is no option (`docs/geometry.md`, "Empty, invalid and degenerate geometry").
     let snippet = concat!(
         "<gml:Polygon><gml:exterior><gml:LinearRing>",
         "<gml:posList>0 0 1 0 1 1 0 1</gml:posList>",
         "</gml:LinearRing></gml:exterior></gml:Polygon>"
     );
-    assert_geometry(snippet, "POLYGON ((0 0,1 0,1 1,0 1))");
+    assert_geometry(snippet, "POLYGON ((0 0,1 0,1 1,0 1,0 0))");
     assert!(!warnings(snippet).is_empty(), "an unclosed ring warns");
-
-    let closing = GeometryOptions {
-        close_rings: true,
-        ..GeometryOptions::default()
-    };
-    let parsed = parse_with(snippet, &closing, &FixedAxis::no_swap()).expect("a polygon");
-    assert_wkt(
-        &crate::support::to_g(&parsed.geometry.unwrap()),
-        "POLYGON ((0 0,1 0,1 1,0 1,0 0))",
-    );
 }
 
 #[test]

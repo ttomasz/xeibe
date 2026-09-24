@@ -96,9 +96,8 @@ async fn a_given_schema_is_used_as_it_is() {
 
     let df = ctx.table("points").await.unwrap();
     let names: Vec<_> = df.schema().fields().iter().map(|f| f.name().clone()).collect();
-    let mut expected: Vec<_> = schema.fields().iter().map(|f| f.name().clone()).collect();
-    expected.push("_overflow".into());
-    assert_eq!(names, expected, "the read adds `_overflow` to a given schema");
+    let expected: Vec<_> = schema.fields().iter().map(|f| f.name().clone()).collect();
+    assert_eq!(names, expected, "a given schema is used as it is");
     assert_eq!(rows(&df.collect().await.unwrap()), 2);
 }
 

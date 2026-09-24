@@ -4,7 +4,7 @@
 use arrow_array::RecordBatchReader;
 use arrow_schema::{DataType, Field, TimeUnit};
 use xeibe_arrow::{OnFeatureError, ReadOptions, read, scan};
-use xeibe_schema::{OnSchemaMismatch, SampleOptions, ScanExtent};
+use xeibe_schema::{SampleOptions, ScanExtent};
 use xeibe_testkit::gml;
 use xeibe_testkit::wkt::assert_wkt;
 
@@ -137,10 +137,47 @@ fn a_given_schema_is_used_as_it_is() {
     let read = read_with(&document(), "Parcel", Some(schema.clone()), &ReadOptions::default());
     assert_eq!(
         read.column_names(),
-        ["@id", "area", "_overflow"],
-        "the overflow column is appended"
+        ["@id", "area"],
+        "the schema is the projection: nothing is appended"
     );
     assert_eq!(read.f64s("area"), [Some(12.5), Some(3.0)]);
+}
+
+#[test]
+fn nested_elements_are_read_into_flat_columns() {
+    let document = gml::gml32_collection(&[&parcel(
+        "p1",
+        concat!(
+            "<app:idIIP><app:AD_IdentyfikatorIIP>",
+            "<app:lokalnyId>a339e481</app:lokalnyId><app:przestrzenNazw>PL.PZGIK.200</app:przestrzenNazw>",
+            "</app:AD_IdentyfikatorIIP></app:idIIP>",
+            r##"<app:miejscowosc xlink:href="#PL.X.1"/>"##
+        ),
+    )]);
+    let read = read_document(&document, "Parcel");
+    assert_eq!(
+        read.column_names(),
+        ["@id", "lokalnyId", "przestrzenNazw", "miejscowosc"]
+    );
+    assert_eq!(read.strings("lokalnyId"), [Some("a339e481".to_string())]);
+    assert_eq!(
+        read.strings("miejscowosc"),
+        [Some("PL.X.1".to_string())],
+        "the href, '#' stripped"
+    );
+}
+
+#[test]
+fn a_scan_writes_geometry_options_under_options_geometry() {
+    // Axis order, CRS and curves are read parameters, not inference.
+    let settings = scan_document(&document()).to_settings().expect("settings");
+    let json = serde_json::to_value(&settings).expect("JSON");
+    assert!(json["options"]["geometry"]["axis"].is_string(), "{json}");
+    assert!(
+        json["options"]["inference"].get("geometry").is_none(),
+        "{}",
+        json["options"]["inference"]
+    );
 }
 
 #[test]
@@ -287,20 +324,25 @@ fn the_sample_size_can_be_changed() {
         &parcel("p1", "<app:n>1</app:n>"),
         &parcel("p2", "<app:n>abc</app:n>"),
     ]);
-    let read = read_with(&document, "Parcel", None, &options);
-    // Only the first feature was sampled, so the column is typed as an integer
-    // and the second value goes to _overflow.
+    // Only the first feature was sampled, so the column is typed as an
+    // integer, and the second value doesn't fit it: a feature error.
+    let skipping = ReadOptions {
+        on_feature_error: OnFeatureError::Skip,
+        ..options
+    };
+    let read = read_with(&document, "Parcel", None, &skipping);
     assert_eq!(read.data_type("n"), DataType::Int64);
-    assert_eq!(read.i64s("n"), [Some(1), None]);
-    assert_eq!(read.overflow()[1].len(), 1);
-    assert_eq!(read.report.overflow_per_path.values().sum::<u64>(), 1);
+    assert_eq!(read.i64s("n"), [Some(1)]);
+    assert_eq!(read.report.skipped.len(), 1);
 }
 
 #[test]
 fn the_defaults_match_the_documented_ones() {
     let options = ReadOptions::default();
-    assert_eq!(options.on_mismatch, OnSchemaMismatch::Overflow);
     assert_eq!(options.on_feature_error, OnFeatureError::Error);
+    assert_eq!(options.geometry.axis.mode, xeibe_geom::AxisOrderMode::Auto);
+    assert!(options.geometry.crs_override.is_none());
+    assert!(options.geometry.primary.is_none());
     assert!(options.batch_size > 0);
     assert!(options.threads > 0);
     assert!(options.queue_depth > 0);

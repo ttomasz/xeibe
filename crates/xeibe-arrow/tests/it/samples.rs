@@ -16,8 +16,8 @@ use crate::support::{Read, collect, extension_name, file_sources};
 /// Read geometry as WKB so every sample can be compared the same way.
 fn options(axis: AxisOrderMode) -> ReadOptions {
     let mut options = ReadOptions::default();
-    options.inference.geometry.encoding = GeomEncoding::Wkb;
-    options.inference.geometry.axis.mode = axis;
+    options.inference.geometry_encoding = GeomEncoding::Wkb;
+    options.geometry.axis.mode = axis;
     options
 }
 

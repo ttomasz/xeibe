@@ -4,11 +4,11 @@ use crate::axis::AxisOrderOptions;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum GeomEncoding {
-    /// Native GeoArrow when lossless (no curves), otherwise WKB.
+    /// Native GeoArrow for one simple kind (or a kind and its Multi form),
+    /// otherwise WKB.
     #[default]
     Auto,
     Wkb,
-    Native,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
@@ -70,7 +70,6 @@ pub enum UnsupportedGeometry {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GeometryOptions {
-    pub encoding: GeomEncoding,
     pub curves: CurveMode,
     /// Path pattern of the primary geometry column (GeoParquet `primary_column`).
     pub primary: Option<String>,
@@ -94,7 +93,6 @@ pub struct GeometryOptions {
 impl Default for GeometryOptions {
     fn default() -> Self {
         GeometryOptions {
-            encoding: GeomEncoding::Auto,
             curves: CurveMode::Preserve,
             primary: None,
             axis: AxisOrderOptions::default(),

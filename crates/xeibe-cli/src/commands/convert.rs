@@ -18,7 +18,7 @@ pub fn run(input: InputArgs, output: OutputArgs, read: ReadArgs) -> super::Resul
     let schema = layer_schema(&settings, &layer)?;
     let sources = super::sources(&input)?;
     let mut reader = xeibe_arrow::read(sources, &layer, schema, &settings.options)?;
-    let rows = write(&mut reader, &output, &layer, settings.options.inference.geometry.primary.as_deref())?;
+    let rows = write(&mut reader, &output, &layer, settings.options.geometry.primary.as_deref())?;
     super::print_report(&reader.report());
     eprintln!("{rows} rows written to {}", output.output.display());
     Ok(())

@@ -1,33 +1,16 @@
 //! Presets and per-layer option patches (`docs/schema-inference.md` §3.6).
+//!
+//! Only two presets are left: schemas are always flat, so there is nothing
+//! for `flat`, `gdal_like` or `spark_xml_like` to choose.
 
-use xeibe_schema::options::{Lossless, Nesting, SimpleContent};
+use xeibe_schema::options::Lossless;
 use xeibe_schema::{InferenceOptions, TypeSet};
 
 #[test]
-fn flat_is_flat_wherever_flattening_loses_nothing() {
-    let flat = InferenceOptions::flat();
-    assert_eq!(flat.structure.nesting, Nesting::FlattenSingleOnly);
-    assert_eq!(flat.structure.simple_with_attrs, SimpleContent::Split);
-}
-
-#[test]
-fn gdal_like_is_lossy_and_drops_attributes() {
-    let gdal = InferenceOptions::gdal_like();
-    assert!(matches!(gdal.structure.nesting, Nesting::Flatten { .. }));
-    assert_eq!(gdal.structure.simple_with_attrs, SimpleContent::Split);
-    assert_eq!(gdal.types.lossless, Lossless::Lossy);
-    assert_eq!(
-        gdal.structure.xml_attributes,
-        xeibe_schema::options::AttrSelect::None
-    );
-}
-
-#[test]
-fn spark_xml_like_uses_sparks_names() {
-    let spark = InferenceOptions::spark_xml_like();
-    assert_eq!(spark.naming.attribute_prefix, "_");
-    assert_eq!(spark.naming.text_field, "_VALUE");
-    assert_eq!(spark.structure.nesting, Nesting::Struct);
+fn default_is_lossless_by_value() {
+    let default = InferenceOptions::default();
+    assert_eq!(default.types.lossless, Lossless::Value);
+    assert!(default.structure.collapse_type_wrappers);
 }
 
 #[test]
@@ -42,36 +25,36 @@ fn per_layer_patches_are_applied_on_top_of_the_global_options() {
     options.layers.push((
         "AD_PunktAdresowy".to_string(),
         xeibe_schema::options::InferenceOptionsPatch {
-            structure: Some(xeibe_schema::options::StructureOptions {
-                nesting: Nesting::FlattenSingleOnly,
-                ..InferenceOptions::default().structure
+            types: Some(xeibe_schema::options::TypeOptions {
+                enabled: TypeSet::STRING,
+                ..InferenceOptions::default().types
             }),
             ..Default::default()
         },
     ));
 
     assert_eq!(
-        options.for_layer("AD_PunktAdresowy").structure.nesting,
-        Nesting::FlattenSingleOnly
+        options.for_layer("AD_PunktAdresowy").types.enabled,
+        TypeSet::STRING
     );
     assert_eq!(
-        options.for_layer("AD_Miejscowosc").structure.nesting,
-        Nesting::Struct,
+        options.for_layer("AD_Miejscowosc").types.enabled,
+        InferenceOptions::default().types.enabled,
         "other layers keep the global options"
     );
 }
 
 #[test]
 fn later_patches_win() {
-    let patch = |nesting| xeibe_schema::options::InferenceOptionsPatch {
-        structure: Some(xeibe_schema::options::StructureOptions {
-            nesting,
-            ..InferenceOptions::default().structure
+    let patch = |lossless| xeibe_schema::options::InferenceOptionsPatch {
+        types: Some(xeibe_schema::options::TypeOptions {
+            lossless,
+            ..InferenceOptions::default().types
         }),
         ..Default::default()
     };
     let mut options = InferenceOptions::default();
-    options.layers.push(("Parcel".into(), patch(Nesting::FlattenSingleOnly)));
-    options.layers.push(("Parcel".into(), patch(Nesting::Struct)));
-    assert_eq!(options.for_layer("Parcel").structure.nesting, Nesting::Struct);
+    options.layers.push(("Parcel".into(), patch(Lossless::Lossy)));
+    options.layers.push(("Parcel".into(), patch(Lossless::Text)));
+    assert_eq!(options.for_layer("Parcel").types.lossless, Lossless::Text);
 }

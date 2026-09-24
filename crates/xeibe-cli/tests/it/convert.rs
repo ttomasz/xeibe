@@ -84,12 +84,12 @@ fn convert_with_a_settings_file_uses_its_schema() {
     // Only the columns in the file are read, in its order.
     let text = r#"{
   "format_version": 1,
-  "options": { "inference": { "geometry": { "axis": "XY" } } },
+  "options": { "geometry": { "axis": "XY" } },
   "layers": {
     "prgad:AD_PunktAdresowy": {
-      "kodPocztowy": "Utf8View",
-      "numerPorzadkowy": "Utf8View",
-      "georeferencja": "Geometry(Point)"
+      "kodPocztowy": "text",
+      "numerPorzadkowy": "text",
+      "georeferencja": "geometry(Point)"
     }
   }
 }"#;
@@ -103,8 +103,6 @@ fn convert_with_a_settings_file_uses_its_schema() {
         "AD_PunktAdresowy",
         "--settings",
         path_str(&settings),
-        "--on-mismatch",
-        "drop",
         "-o",
         path_str(&out),
     ]);
@@ -213,6 +211,56 @@ fn convert_of_an_unknown_layer_fails() {
     let run = xeibe(&["convert", &sample(PRG), "--layer", "NoSuchLayer", "-o", path_str(&out)]);
     assert!(!run.success);
     assert!(run.stderr.contains("NoSuchLayer"), "{}", run.stderr);
+}
+
+#[test]
+fn an_axis_override_is_keyed_by_the_srs_name() {
+    // `--axis-override 'EPSG:2180=yx'` (`docs/geometry.md`, "Decision key and
+    // scope"): PRG's points are then read swapped.
+    let dir = out_dir("convert_axis_override");
+    let out = dir.join("points.parquet");
+    xeibe_ok(&[
+        "convert",
+        &sample(PRG),
+        "--layer",
+        "AD_PunktAdresowy",
+        "--axis-order",
+        "xy",
+        "--axis-override",
+        "EPSG:2180=yx",
+        "-o",
+        path_str(&out),
+    ]);
+    let batches: Vec<_> = ParquetRecordBatchReaderBuilder::try_new(File::open(&out).unwrap())
+        .unwrap()
+        .build()
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    let column = batches[0].column_by_name("georeferencja").unwrap();
+    let wkb = column.as_binary::<i32>().value(0);
+    let x = f64::from_le_bytes(wkb[5..13].try_into().unwrap());
+    assert!(
+        (PRG_POINTS_EXTENT[1]..=PRG_POINTS_EXTENT[3]).contains(&x),
+        "x {x} is the northing: the override swapped the axes"
+    );
+}
+
+#[test]
+fn the_on_mismatch_flag_is_gone() {
+    // Content outside the schema is simply not read.
+    let dir = out_dir("convert_on_mismatch");
+    let run = xeibe(&[
+        "convert",
+        &sample(PRG),
+        "--layer",
+        "AD_PunktAdresowy",
+        "--on-mismatch",
+        "drop",
+        "-o",
+        path_str(&dir.join("x.parquet")),
+    ]);
+    assert!(!run.success);
 }
 
 #[test]

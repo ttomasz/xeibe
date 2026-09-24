@@ -2,6 +2,7 @@
 
 use arrow_schema::{DataType, TimeUnit};
 use xeibe_geom::GeometryOptions;
+use xeibe_geom::options::GeomEncoding;
 use serde::{Deserialize, Serialize};
 
 use crate::{PathPattern, TypeSet};
@@ -13,6 +14,12 @@ pub struct InferenceOptions {
     pub structure: StructureOptions,
     pub types: TypeOptions,
     pub gml: GmlOptions,
+    /// Geometry column encoding chosen by the scan and read samples.
+    pub geometry_encoding: GeomEncoding,
+    /// The read's geometry options (`ReadOptions.geometry`: axis order, CRS
+    /// override, curves), copied in by the reader. Not part of the settings
+    /// file's `inference` section.
+    #[serde(skip)]
     pub geometry: GeometryOptions,
     pub overrides: Vec<(PathPattern, FieldOverride)>,
     /// Per-layer adjustments; later entries win.
@@ -29,6 +36,7 @@ impl Default for InferenceOptions {
             structure: StructureOptions::default(),
             types: TypeOptions::default(),
             gml: GmlOptions::default(),
+            geometry_encoding: GeomEncoding::Auto,
             geometry: GeometryOptions::default(),
             overrides: Vec::new(),
             layers: Vec::new(),

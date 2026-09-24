@@ -96,34 +96,15 @@ pub fn column_names(schema: &Schema) -> Vec<String> {
     schema.fields().iter().map(|f| f.name().clone()).collect()
 }
 
-/// A nested field of a struct column, by dotted path (`idIIP.lokalnyId`).
+/// The source path a column records in its metadata (`gml:path`), in the
+/// settings-file syntax: `idIIP/*/lokalnyId`, `adres2[]/@href`.
 #[track_caller]
-pub fn nested(schema: &Schema, path: &str) -> Field {
-    let mut parts = path.split('.');
-    let first = parts.next().expect("a path");
-    let mut current = field(schema, first).clone();
-    for part in parts {
-        let children = match current.data_type() {
-            DataType::Struct(fields) => fields.clone(),
-            DataType::List(inner) | DataType::LargeList(inner) => match inner.data_type() {
-                DataType::Struct(fields) => fields.clone(),
-                other => panic!("{path}: list items are {other}"),
-            },
-            other => panic!("{path}: {} is {other}, not a struct", current.name()),
-        };
-        current = children
-            .iter()
-            .find(|f| f.name() == part)
-            .unwrap_or_else(|| {
-                panic!(
-                    "{path}: no child {part:?} in {:?}",
-                    children.iter().map(|f| f.name()).collect::<Vec<_>>()
-                )
-            })
-            .as_ref()
-            .clone();
-    }
-    current
+pub fn path(schema: &Schema, name: &str) -> String {
+    field(schema, name)
+        .metadata()
+        .get(xeibe_schema::rules::meta::PATH)
+        .cloned()
+        .unwrap_or_else(|| panic!("{name} records no gml:path"))
 }
 
 /// The GeoArrow extension type of a geometry column, from its field metadata.

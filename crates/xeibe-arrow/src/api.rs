@@ -26,6 +26,7 @@ use crate::{LayerReader, ReadOptions, ReadReport, Settings};
 /// List every layer with its inferred schema. Full, or the first N features of
 /// the input (late layers may then be missing).
 pub fn scan(sources: impl Into<Sources>, extent: ScanExtent, options: &ReadOptions) -> crate::Result<ScanResult> {
+    let options = &options.effective();
     let scanner = Scanner::new(ScanOptions {
         extent,
         limits: options.inference.limits,
@@ -54,6 +55,7 @@ pub fn read(
     schema: Option<SchemaRef>,
     options: &ReadOptions,
 ) -> crate::Result<LayerReader> {
+    let options = &options.effective();
     let mut selector = LayerSelector::parse(layer);
     let mut splitter = options.splitter.clone();
     splitter.layers = Some(vec![selector.filter()]);
@@ -160,7 +162,7 @@ pub fn read(
     let mut report = ReadReport::default();
     if schema.is_none() {
         let mut settings = Settings::new(options.clone());
-        settings.options.inference.geometry.axis = plain_axis(observation, &options.inference.geometry.axis);
+        settings.options.geometry.axis = plain_axis(observation, &options.geometry.axis);
         settings.set_schema(&display_name(observation, &qname), &layer_schema.schema)?;
         report.inferred = Some(settings);
     }
@@ -458,7 +460,8 @@ impl ScanResult {
     /// Schema of one layer with other options, without another pass.
     pub fn schema_with(&self, layer: &str, options: &InferenceOptions) -> crate::Result<LayerSchema> {
         let (name, _) = self.observation.layer(layer)?;
-        Ok(infer_schema(&self.observation, name, options, self.sampled())?)
+        let options = InferenceOptions { geometry: self.options.geometry.clone(), ..options.clone() };
+        Ok(infer_schema(&self.observation, name, &options, self.sampled())?)
     }
 
     pub fn arrow_schema(&self, layer: &str) -> crate::Result<SchemaRef> {
@@ -492,8 +495,7 @@ impl ScanResult {
     /// for keys decided differently) and one `column → type` map per layer.
     pub fn to_settings(&self) -> crate::Result<Settings> {
         let mut settings = Settings::new(self.options.clone());
-        settings.options.inference.geometry.axis =
-            plain_axis(&self.observation, &self.options.inference.geometry.axis);
+        settings.options.geometry.axis = plain_axis(&self.observation, &self.options.geometry.axis);
         for name in self.observation.layers.keys() {
             let schema = infer_schema(&self.observation, name, &self.options.inference, self.sampled())?;
             settings.set_schema(&display_name(&self.observation, name), &schema.schema)?;

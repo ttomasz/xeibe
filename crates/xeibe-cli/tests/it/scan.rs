@@ -16,10 +16,12 @@ fn scan_lists_layers_with_counts_geometry_crs_and_columns() {
         assert!(line.contains("crs EPSG:2180"), "{line}");
     }
     assert!(run.stdout.contains("geometry georeferencja"), "{}", run.stdout);
-    assert!(run.stdout.contains("Geometry(Point)"), "{}", run.stdout);
-    assert!(run.stdout.contains("Geometry(Polygon)"), "{}", run.stdout);
-    // The CLI default is `flat`: the type wrapper is flattened into dotted columns.
-    assert!(run.stdout.contains("idIIP.lokalnyId"), "{}", run.stdout);
+    assert!(run.stdout.contains("geometry(Point)"), "{}", run.stdout);
+    assert!(run.stdout.contains("geometry(Polygon)"), "{}", run.stdout);
+    // Schemas are flat, with the shortest unique names: the type wrapper is
+    // left out and `lokalnyId` is unique.
+    assert!(run.stdout.contains("lokalnyId"), "{}", run.stdout);
+    assert!(!run.stdout.contains("idIIP.lokalnyId"), "{}", run.stdout);
 }
 
 #[test]
@@ -38,24 +40,36 @@ fn scan_writes_a_settings_file_with_options_and_one_schema_per_layer() {
     assert!(position("prgad:AD_Miejscowosc") < position("prgad:AD_UlicaPlac"));
     assert!(position("prgad:AD_UlicaPlac") < position("prgad:AD_PunktAdresowy"));
     let points = &layers["prgad:AD_PunktAdresowy"];
-    assert_eq!(points["georeferencja"], "Geometry(Point)");
-    assert_eq!(points["dataNadania"], "Date32");
+    // Types are written as aliases; a path only where the name isn't the path.
+    assert_eq!(points["georeferencja"], "geometry(Point)");
+    assert_eq!(points["dataNadania"], "date");
+    assert_eq!(points["lokalnyId"]["type"], "text");
+    assert_eq!(points["lokalnyId"]["path"], "idIIP/*/lokalnyId");
+    assert_eq!(points["miejscowosc"]["path"], "miejscowosc/@href");
     // The axis decision is written as a plain mode, so reads with the file
-    // gather no evidence.
-    assert_eq!(settings["options"]["inference"]["geometry"]["axis"], "XY");
-    assert_eq!(settings["options"]["inference"]["structure"]["nesting"], "FlattenSingleOnly");
+    // gather no evidence. Geometry options are read options, not inference.
+    assert_eq!(settings["options"]["geometry"]["axis"], "XY");
+    assert!(settings["options"]["inference"].get("geometry").is_none(), "{}", settings["options"]);
 }
 
 #[test]
 fn scan_preset_and_axis_order_go_into_the_settings_file() {
+    // The presets are `default` and `strings` (`docs/schema-inference.md` §3.6).
     let dir = out_dir("scan_preset");
     let path = dir.join("prg.json");
-    xeibe_ok(&["scan", &sample(PRG), "--preset", "default", "--axis-order", "yx", "-o", path_str(&path)]);
+    xeibe_ok(&["scan", &sample(PRG), "--preset", "strings", "--axis-order", "yx", "-o", path_str(&path)]);
     let settings: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-    assert_eq!(settings["options"]["inference"]["structure"]["nesting"], "Struct");
-    assert_eq!(settings["options"]["inference"]["geometry"]["axis"], "YX");
-    let id = settings["layers"]["prgad:AD_PunktAdresowy"]["idIIP"].as_str().expect("idIIP");
-    assert!(id.starts_with("Struct("), "{id}");
+    assert_eq!(settings["options"]["geometry"]["axis"], "YX");
+    let points = &settings["layers"]["prgad:AD_PunktAdresowy"];
+    assert_eq!(points["dataNadania"], "text", "every scalar as text");
+}
+
+#[test]
+fn only_the_documented_presets_exist() {
+    for gone in ["flat", "gdal-like", "spark-xml-like"] {
+        let run = xeibe(&["scan", &sample(PRG), "--preset", gone]);
+        assert!(!run.success, "--preset {gone} is still accepted");
+    }
 }
 
 #[test]

@@ -1,9 +1,9 @@
 //! Binding a given schema to XML paths (`docs/architecture.md`,
-//! "How columns are matched to XML").
+//! "Settings file", "Paths").
 //!
-//! Columns are matched by name, the way spark-xml applies a user schema:
-//! naming options turn XML names into column names, type wrappers are looked
-//! through, and a `gml:path` in the field metadata wins over the name.
+//! A read only matches paths. A column's path is its `gml:path` metadata;
+//! without one, the name is the path. The read applies no naming rules and
+//! looks through nothing: a type wrapper is `*` in the path.
 
 use std::collections::HashMap;
 
@@ -22,7 +22,12 @@ fn bind(schema: Schema) -> xeibe_schema::Result<xeibe_schema::LayerSchema> {
     bind_schema(&layer("Parcel"), &schema, &InferenceOptions::default())
 }
 
-/// The source path a column is bound to, as local names.
+fn with_path(name: &str, data_type: DataType, path: &str) -> Field {
+    field(name, data_type).with_metadata(HashMap::from([(meta::PATH.to_string(), path.to_string())]))
+}
+
+/// The source path a column is bound to, as local names (`*` for a wildcard
+/// step), with the attribute as a last `@name` step.
 fn route(bound: &xeibe_schema::LayerSchema, column: &str) -> Vec<String> {
     let index = bound
         .schema
@@ -39,19 +44,23 @@ fn route(bound: &xeibe_schema::LayerSchema, column: &str) -> Vec<String> {
                 .source_path
                 .iter()
                 .map(|name| name.local.to_string())
+                .chain(route.attribute.iter().map(|a| format!("@{}", a.local)))
                 .collect()
         })
         .unwrap_or_else(|| panic!("no route to {column:?}"))
 }
 
 #[test]
-fn columns_are_matched_to_elements_by_name() {
+fn without_a_path_the_name_is_the_path() {
     let bound = bind(Schema::new(vec![
         field("area", DataType::Float64),
         field("@id", DataType::Utf8View),
+        field("owner/name", DataType::Utf8View),
     ]))
     .expect("the schema binds");
     assert_eq!(route(&bound, "area"), ["area"]);
+    assert_eq!(route(&bound, "@id"), ["@id"], "the feature's gml:id");
+    assert_eq!(route(&bound, "owner/name"), ["owner", "name"]);
     assert_eq!(bound.schema.fields().len(), 2);
     assert_eq!(
         bound.layer.ns.as_deref(),
@@ -65,20 +74,78 @@ fn columns_are_matched_to_elements_by_name() {
 }
 
 #[test]
-fn a_type_wrapper_is_looked_through() {
-    // `idIIP/AD_IdentyfikatorIIP/lokalnyId` fills `idIIP.lokalnyId`.
-    let inner = Field::new("lokalnyId", DataType::Utf8View, true);
-    let bound = bind(Schema::new(vec![field(
-        "idIIP",
-        DataType::Struct(vec![inner].into()),
+fn a_type_wrapper_is_a_wildcard_step() {
+    let bound = bind(Schema::new(vec![with_path(
+        "lokalnyId",
+        DataType::Utf8View,
+        "idIIP/*/lokalnyId",
     )]))
     .expect("the schema binds");
-    let path = route(&bound, "idIIP");
-    assert_eq!(path, ["idIIP"], "the column is the property, got {path:?}");
+    assert_eq!(route(&bound, "lokalnyId"), ["idIIP", "*", "lokalnyId"]);
 }
 
 #[test]
-fn a_path_in_the_metadata_wins_over_the_name() {
+fn a_dotted_name_is_not_a_path() {
+    // Names are free; only `/` separates steps, and nothing is looked through.
+    let bound = bind(Schema::new(vec![field("idIIP.lokalnyId", DataType::Utf8View)]))
+        .expect("the schema binds");
+    assert_eq!(route(&bound, "idIIP.lokalnyId"), ["idIIP.lokalnyId"]);
+}
+
+#[test]
+fn an_attribute_is_the_last_step() {
+    let bound = bind(Schema::new(vec![with_path(
+        "miejscowosc",
+        DataType::Utf8View,
+        "miejscowosc/@href",
+    )]))
+    .expect("the schema binds");
+    assert_eq!(route(&bound, "miejscowosc"), ["miejscowosc", "@href"]);
+}
+
+#[test]
+fn the_anchor_marker_is_not_a_step() {
+    let bound = bind(Schema::new(vec![with_path(
+        "datum",
+        DataType::List(std::sync::Arc::new(Field::new("item", DataType::Date32, true))),
+        "externeReferenz[]/*/datum",
+    )]))
+    .expect("the schema binds");
+    assert_eq!(route(&bound, "datum"), ["externeReferenz", "*", "datum"]);
+}
+
+#[test]
+fn a_path_may_have_one_anchor_only() {
+    let bad = Schema::new(vec![with_path(
+        "text",
+        DataType::List(std::sync::Arc::new(Field::new("item", DataType::Utf8View, true))),
+        "name[]/spelling[]/text",
+    )]);
+    assert!(bind(bad).is_err(), "no lists of lists");
+}
+
+#[test]
+fn a_prefixed_step_needs_a_declared_namespace() {
+    let schema = Schema::new(vec![with_path("x:code", DataType::Utf8View, "x:code")]);
+    assert!(bind(schema.clone()).is_err(), "`x` is not declared");
+
+    let declared = schema.with_metadata(HashMap::from([(
+        meta::NS.to_string(),
+        r#"{"x": "http://example.com/x"}"#.to_string(),
+    )]));
+    let bound = bind(declared).expect("the prefix is declared in gml:ns");
+    let index = 0;
+    let step = &bound
+        .routes
+        .iter()
+        .find(|r| r.field_path.first() == Some(&index))
+        .expect("a route")
+        .source_path[0];
+    assert_eq!(step.ns.as_deref(), Some("http://example.com/x"));
+}
+
+#[test]
+fn a_path_in_the_metadata_renames_a_column() {
     let renamed = field("postcode", DataType::Utf8View).with_metadata(HashMap::from([(
         meta::PATH.to_string(),
         "kodPocztowy".to_string(),
@@ -114,6 +181,16 @@ fn a_geometry_column_keeps_its_extension_type() {
         bound.schema.field(0).metadata().get("ARROW:extension:name").map(String::as_str),
         Some("geoarrow.wkb")
     );
+}
+
+#[test]
+fn a_struct_column_is_an_error() {
+    // Schemas are flat; only GeoArrow types are structs inside.
+    let nested = Schema::new(vec![field(
+        "idIIP",
+        DataType::Struct(vec![Field::new("lokalnyId", DataType::Utf8View, true)].into()),
+    )]);
+    assert!(bind(nested).is_err());
 }
 
 #[test]

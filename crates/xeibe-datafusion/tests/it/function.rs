@@ -56,7 +56,8 @@ async fn read_gml_uses_the_schema_of_a_settings_file() {
         .unwrap()
         .to_settings()
         .unwrap();
-    // Keep only two columns of the layer: the rest goes to `_overflow`.
+    // Keep only two columns of the layer: the schema is the projection, so the
+    // rest is not read.
     let columns = settings.layers.values_mut().find(|columns| columns.contains_key("kodPocztowy")).unwrap();
     columns.retain(|name, _| name == "kodPocztowy" || name == "georeferencja");
     let file = temp_dir("settings").join("prg.gml.json");
@@ -70,7 +71,7 @@ async fn read_gml_uses_the_schema_of_a_settings_file() {
         assert_eq!(rows(&batches), 2);
         let schema = batches[0].schema();
         let names: Vec<_> = schema.fields().iter().map(|f| f.name().as_str()).collect();
-        assert_eq!(names, ["georeferencja", "kodPocztowy", "_overflow"]);
+        assert_eq!(names, ["georeferencja", "kodPocztowy"]);
     }
 }
 
@@ -90,6 +91,10 @@ async fn read_gml_rejects_bad_arguments() {
         (format!("select * from read_gml('{}')", path(PRG)), "needs a path and a layer"),
         (format!("select * from read_gml('{}', '{POINTS}', 'colour=red')", path(PRG)), "unknown option"),
         (format!("select * from read_gml('{}', '{POINTS}', 'preset=fancy')", path(PRG)), "invalid preset"),
+        // Only `default` and `strings` are presets (`docs/schema-inference.md` §3.6).
+        (format!("select * from read_gml('{}', '{POINTS}', 'preset=flat')", path(PRG)), "invalid preset"),
+        // Content outside the schema is not read; there is no mismatch option.
+        (format!("select * from read_gml('{}', '{POINTS}', 'on_mismatch=drop')", path(PRG)), "unknown option"),
         (format!("select * from read_gml('{}', 'NoSuchLayer')", path(PRG)), "NoSuchLayer"),
     ] {
         let error = match ctx.sql(&sql).await {

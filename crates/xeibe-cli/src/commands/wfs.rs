@@ -45,7 +45,7 @@ pub fn run(command: WfsCommand) -> super::Result {
             let schema = super::convert::layer_schema(&settings, &layer)?;
             let sources = client.pages(&type_name, Box::new(progress))?;
             let mut reader = xeibe_arrow::read(sources, &type_name, schema, &settings.options)?;
-            let primary = settings.options.inference.geometry.primary.clone();
+            let primary = settings.options.geometry.primary.clone();
             let rows = super::convert::write(&mut reader, &output, &type_name, primary.as_deref())?;
             super::print_report(&reader.report());
             eprintln!("{rows} rows written to {}", output.output.display());

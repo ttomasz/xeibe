@@ -4,7 +4,7 @@ use arrow_schema::{DataType, TimeUnit};
 use xeibe_schema::{InferenceOptions, ScanOptions, Scanner};
 use xeibe_testkit::samples::{sample, samples};
 
-use crate::support::{column_names, data_type, extension_name, field, nested, scan_file};
+use crate::support::{column_names, data_type, extension_name, field, path, scan_file};
 
 #[test]
 fn every_sample_scans_into_the_layers_gdal_found() {
@@ -70,7 +70,9 @@ fn the_prg_worked_example_from_the_docs() {
         column_names(&schema),
         [
             "@id",
-            "idIIP",
+            "lokalnyId",
+            "przestrzenNazw",
+            "wersjaId",
             "poczatekWersjiObiektu",
             "numerPorzadkowy",
             "georeferencja",
@@ -81,17 +83,20 @@ fn the_prg_worked_example_from_the_docs() {
     );
     assert_eq!(data_type(&schema, "@id"), DataType::Utf8View);
 
-    // The INSPIRE type wrapper AD_IdentyfikatorIIP is collapsed away.
-    assert_eq!(nested(&schema, "idIIP.lokalnyId").data_type(), &DataType::Utf8View);
+    // One flat column per leaf. The INSPIRE type wrapper AD_IdentyfikatorIIP
+    // is `*` in the paths and left out of the names.
+    assert_eq!(data_type(&schema, "lokalnyId"), DataType::Utf8View);
+    assert_eq!(path(&schema, "lokalnyId"), "idIIP/*/lokalnyId");
     assert_eq!(
-        nested(&schema, "idIIP.przestrzenNazw").data_type(),
-        &DataType::Utf8View,
+        data_type(&schema, "przestrzenNazw"),
+        DataType::Utf8View,
         "a constant text element is still data, unlike a constant attribute"
     );
     assert_eq!(
-        nested(&schema, "idIIP.wersjaId").data_type(),
-        &DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into()))
+        data_type(&schema, "wersjaId"),
+        DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into()))
     );
+    assert_eq!(path(&schema, "wersjaId"), "idIIP/*/wersjaId");
 
     assert_eq!(
         data_type(&schema, "poczatekWersjiObiektu"),
@@ -109,6 +114,7 @@ fn the_prg_worked_example_from_the_docs() {
         DataType::Utf8View,
         "an xlink:href foreign key to AD_Miejscowosc.@id"
     );
+    assert_eq!(path(&schema, "miejscowosc"), "miejscowosc/@href");
     // In the full file this column holds "27a" as well and stays text; the two
     // sampled features only have plain numbers.
     assert_eq!(data_type(&schema, "numerPorzadkowy"), DataType::Int64);
@@ -136,6 +142,7 @@ fn repeated_references_become_a_list() {
         DataType::List(item) => assert_eq!(item.data_type(), &DataType::Utf8View),
         other => panic!("expected a list of hrefs, got {other}"),
     }
+    assert_eq!(path(&schema, "adres2"), "adres2[]/@href");
 }
 
 #[test]
