@@ -16,12 +16,12 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
   not all of GML.
 - **Streaming.** Memory stays bounded no matter how large the input is.
 - **Lossless where possible.** Curves are kept as curves. Identifiers such as `0012`
-  stay strings. Values that don't fit the schema go into an overflow column instead
-  of being dropped.
+  stay strings. Repeated elements become lists that stay aligned with each other.
 - **Schema inference first.** Real datasets rarely come with a usable XSD.
   The schema is inferred from the data using explicit, configurable rules.
-- **Rich Arrow types.** `Utf8View`, `Date32`, `Timestamp`, `List`,
-  `Struct`, `Map` and GeoArrow extension types.
+- **Flat schemas with rich Arrow types.** One column per leaf path, no nested
+  structs. `Utf8View`, `Date32`, `Timestamp`, `List`, `Map` and GeoArrow extension
+  types.
 - **Pure Rust.** No GDAL or other C dependencies. Can run on WebAssembly.
 
 ## Non-goals
@@ -55,9 +55,11 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 | `geo-traits` as the geometry interface | One GML geometry model can feed GeoArrow builders, WKB writers and `geo`. |
 | Schema inference = **observation** (path tree) + **policy** (`InferenceOptions`) | Different rules can be applied to one scan. Decisions can be explained. |
 | XML attributes always prefixed with `@` | Predictable, never collides with element names. |
+| **Flat schemas**: one column per leaf path. A column is a list when an element on its path repeats; lists under the same repeated element are padded with nulls so that they stay aligned | Geometry is always a top-level column, as GeoParquet requires. GDAL/QGIS, pandas and CSV/GPKG exports handle flat columns and lists of scalars much better than nested structs. Schemas merge across files by column. Much simpler builders. Aligned lists can be zipped back into records. In the corpus, 97% of feature types have no repeated element with several leaves. |
 | No `Decimal128` | Poor support in downstream tools. Uses a "value-lossless" float rule instead. See type-mapping. |
 | Two operations: **scan** (layers + schemas, full or sampled) and **read** (one layer, given or sampled schema) | Same model as DataFusion/Spark/Polars: pass a schema or infer it from a sample. Scan once, keep the schema, read many times. |
-| Read parameters and schemas are kept apart; both fit in one JSON **settings file**. Schemas are `column → Arrow type string` maps | Editable by hand, reusable across inputs of the same kind. CRS and axis order are parameters, not schema. No custom type syntax beyond `Geometry(…)`. |
+| Read parameters and schemas are kept apart; both fit in one JSON **settings file**. A schema maps `name → {type, path}`; without `path` the name is the path. Types are Arrow strings or PostgreSQL-style aliases (`text`, `bigint`, `timestamptz`, `text[]`, `geometry(Point)`) | Editable by hand, reusable across inputs of the same kind. CRS and axis order are parameters, not schema. |
+| Scan and read are decoupled: the scan decides names, types and lists; the read only matches paths | Names are free (the scan suggests the shortest unique one). The read needs no naming rules. |
 | **Stateless: every source is one sequential stream.** No download cache, no chunk index, no range requests, no saved WFS pages | Important servers such as geoportal.gov.pl don't support range requests. The splitter skips other layers cheaply, so an index buys little. Caching is left to the embedding framework. Much less to build and to keep consistent. |
 | Zip kept minimal: the `zip` crate as it is, **local files only**, GML members found by content, one input per archive, no zips inside zips | DataFusion, Spark and Polars don't read zip at all. Only GDAL does it thoroughly. Remote zips are downloaded by the user. |
 | A read without a schema samples **the requested layer**, with conservative types | Layers stored one after another (PRG) make a sample of the file's start useless. A frozen schema must accept data it hasn't seen. |
@@ -65,7 +67,7 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 | `ByteSource` in `xeibe-core` is synchronous. Async I/O lives in `xeibe-io` | Parsing is CPU-bound, and the core stays free of runtimes. DataFusion's `object_store` is adapted to it. |
 | Parquet output: WKB + the native Parquet `GEOMETRY` type + GeoParquet 1.1 metadata | Row-group bbox statistics work for new readers, and the `geo` metadata keeps older ones working. Columns with curves are an error unless linearized: GeoParquet 1.1 forbids curve types. |
 | xlinks kept as strings, never resolved | Keeps reading streaming. Works as foreign keys for SQL joins. |
-| Out-of-schema data goes to an `_overflow` map column | Lossless with any schema: sampled, old or hand-written. The Arrow schema never changes mid-stream. |
+| The schema is the projection: content outside it is not read, and not reported | Leaving a column out is how a user skips data, and skipped subtrees aren't parsed. The Arrow schema never changes mid-stream. May be revisited (e.g. an opt-in column for unread content). |
 | Where the specs are silent (e.g. `ArcByCenterPoint` angle convention, `EPSG:XXXX` axis order), follow GDAL | Most existing GML has been checked against GDAL. Marked **[GDAL]** in the docs |
 
 ## Test corpus
@@ -115,9 +117,6 @@ Reference material:
 
 - How srsNames resolve to CRSs, and where PROJJSON for GeoParquet comes from: see
   [geometry.md](geometry.md#open-questions-srsname--crs).
-- Default nesting for the CLI: `Struct` (lossless) or `FlattenSingleOnly`
-  (friendlier for QGIS and shapefile users). The current plan is `Struct` in the
-  library and `flat` in the CLI.
 - Whether to use `DescribeFeatureType` as a *hint* for WFS schema inference, for
   example for columns that are always null.
 - Whether to add a WebDAV-free directory listing for HTTP (e.g. parsing Apache or

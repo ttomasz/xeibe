@@ -16,11 +16,10 @@ flowchart LR
 ```
 
 - The **path tree** records *what was seen*. It makes no decisions.
-- **`InferenceOptions`** decides *how to represent it*: nesting, flattening, types,
-  naming.
+- **`InferenceOptions`** decides *how to represent it*: types, lists, column names.
 
 Within one scan, changing the options needs no new pass: the same tree can produce
-a nested schema for Parquet and a flat one for QGIS. The tree itself is not saved.
+a typed schema and an all-strings one. The tree itself is not saved.
 What is saved is the resulting schema, in the settings file (see
 [section 2.7](#27-scan-results-and-the-settings-file)).
 
@@ -42,8 +41,8 @@ The same inference runs in two places:
 | spark-xml | Samples. Attributes prefixed `_`, text stored in `_VALUE`. Nests as Struct/Array | Sampling. Lossy numeric inference |
 | xmltodict | No schema. Attributes as `@attr`, text as `#text`. `force_list` option | Not a schema, only a mapping |
 
-This design combines GDAL's full scan with Arrow's nested types and adds lossless
-type rules.
+This design combines GDAL's full scan and flat columns with lists that stay aligned
+(see [Lists and alignment](#lists-and-alignment)) and lossless type rules.
 
 ---
 
@@ -245,8 +244,8 @@ negligible.
   The path tree is not saved.
 - The settings file has no link to the data it came from: no fingerprints and no
   invalidation. It can be applied to any input with the same feature types (for
-  example, one voivodeship's PRG scan for all 16). Data that doesn't fit ends up in
-  `_overflow` and is counted in the read report (see [6.3](#63-data-that-doesnt-fit)).
+  example, one voivodeship's PRG scan for all 16). Content the schema doesn't
+  describe is not read (see [6.3](#63-data-that-doesnt-fit)).
 - A read can also embed the schema it used in the output's Parquet key-value
   metadata (`gml:settings`), to record where it came from.
 
@@ -270,42 +269,59 @@ reporting and some defaults (for example, `boundedBy` handling).
 
 ```rust
 pub struct InferenceOptions {
-    pub naming: NamingOptions,
     pub structure: StructureOptions,
     pub types: TypeOptions,
     pub gml: GmlOptions,
-    pub geometry: GeometryOptions,      // see geometry.md
+    pub geometry_encoding: GeomEncoding, // Auto (default) | Wkb, see geometry.md
     pub overrides: Vec<(PathPattern, FieldOverride)>,
     pub layers: Vec<(LayerSelector, InferenceOptionsPatch)>,   // per-layer adjustments
     pub limits: Limits,
 }
 ```
 
-### 3.1 Naming
+### 3.1 Column names
 
-```rust
-pub struct NamingOptions {
-    pub namespaces: NsMode,        // Strip | StripUnlessCollision (default) | Prefix | Clark
-    pub attribute_prefix: String,  // "@" (fixed decision; configurable for compatibility)
-    pub text_field: String,        // "#text": text of an element that also has attributes
-    pub flatten_separator: String, // "." when flattening
-}
-```
+A schema is flat: **one column per leaf path**. A leaf is an element's text, an
+attribute, or a geometry property. XML structure never becomes a `Struct`.
 
-- XML attributes **always** get the `@` prefix: `@gml:id` → `@id` once namespaces
-  are stripped, `@xlink:href` → `@href`, `@uom`.
-- `StripUnlessCollision`: namespace prefixes are removed unless two sibling
-  elements would then have the same name, in which case both keep their prefix.
+Every column has a path (see [architecture.md](architecture.md#settings-file) for
+the syntax) and a name. The read only uses the path. The name is a suggestion
+written into the settings file, where users can change it. The scan suggests the
+**shortest unique name**:
+
+1. Take the path's steps. Drop type wrappers (`*`, see [3.2](#32-structure)) and
+   namespace prefixes. For a property given only by `xlink:href`, drop the `@href`
+   step too, since the column holds the href.
+2. Start with the last step. While two columns of the layer share a name, each of
+   them that has steps left takes one more step from the front. Steps are joined
+   with `.`.
+3. Two paths that differ only by namespace keep the prefix on the step that differs
+   (`gml:name`, `app:name`), and their paths use it as well.
+
+| Path | Name |
+|---|---|
+| `@id` (the feature's `gml:id`) | `@id` |
+| `nazwa` | `nazwa` |
+| `idIIP/*/lokalnyId` | `lokalnyId` |
+| `idIIP/*/@id` (the wrapper's `gml:id`) | `idIIP.@id` (`@id` is taken by the feature) |
+| `inspireId/*/namespace`, `hydroId/*/namespace` | `inspireId.namespace`, `hydroId.namespace` |
+| `area`, `area/@uom` | `area`, `@uom` (`area.@uom` if another `@uom` exists) |
+| `miejscowosc/@href` (by reference only) | `miejscowosc` |
+| `externeReferenz[]/*/datum` | `datum` |
+
+- XML attributes **always** keep the `@` prefix, so an attribute never collides
+  with an element of the same name.
+- A name depends on the other columns of the layer, so scans of different data can
+  suggest different names for the same path. Once written to a settings file, a
+  name stays as it is.
 
 ### 3.2 Structure
 
 ```rust
 pub struct StructureOptions {
-    pub nesting: Nesting,                  // Struct (default) | FlattenSingleOnly | Flatten{max_depth}
-    pub lists: ListRule,                   // Infer (max_occurs > 1) (default) | Never(TakeFirst|Error)
+    pub lists: ListRule,                   // Infer (max_occurs > 1) (default) | Never
     pub force_list: Vec<PathPattern>,      // xmltodict-style
     pub force_scalar: Vec<PathPattern>,
-    pub simple_with_attrs: SimpleContent,  // Struct (default) | Split | ValueOnly
     pub constant_attrs: ConstantAttrs,     // ToFieldMetadata (default) | Keep
     pub collapse_type_wrappers: bool,      // default true
     pub mixed_content: MixedContent,       // RawXml (default) | TextOnly | Drop
@@ -313,24 +329,12 @@ pub struct StructureOptions {
 }
 ```
 
-**`nesting`**
-- `Struct`: nested elements become `Struct`, repeated ones become `List(…)`.
-  Lossless and suited to Parquet/SQL.
-- `FlattenSingleOnly`: single-occurrence nesting is flattened (`owner.name`), and
-  repeated nesting stays `List(Struct(…))`. This is flat wherever flattening loses
-  nothing.
-- `Flatten{max_depth}`: GDAL-like. Beyond `max_depth`, the subtree becomes raw XML.
-
-**`simple_with_attrs`**: for an element with text and attributes, e.g.
-`<area uom="m2">1523.40</area>`:
-- `Struct`: `area: Struct("#text": Float64, "@uom": Utf8View)`
-- `Split`: `area: Float64`, `area.@uom: Utf8View`
-- `ValueOnly`: `area: Float64` (attributes dropped)
+**Text and attributes** are separate columns. `<area uom="m2">1523.40</area>`
+gives `area: double` (path `area`) and `@uom: text` (path `area/@uom`).
 
 **`constant_attrs = ToFieldMetadata`**: if an attribute has exactly one distinct
 value across the dataset (`uom="m2"` everywhere), it is moved into field metadata
-(`gml:attr:uom = "m2"`) instead of becoming a column. When the attribute was the
-element's only one, `area` then becomes a plain `Float64`. No information is lost.
+(`gml:attr:uom = "m2"`) instead of becoming a column. No information is lost.
 
 **`collapse_type_wrappers`**: INSPIRE-style schemas wrap data types inside
 properties:
@@ -341,16 +345,72 @@ properties:
     <prgad:lokalnyId>…</prgad:lokalnyId>
 ```
 
-The wrapper level is skipped when **all** of these hold:
-- the property has exactly one child element name;
-- that child has `name_shape == UpperCamel`;
-- the child's `max_occurs == 1`;
+An element is a type wrapper when **all** of these hold:
+- each instance of the property contains exactly one child element;
+- every child name seen there has `name_shape == UpperCamel` and `max_occurs == 1`;
 - the property has no text and no attributes other than `xlink`/`nil` attributes;
 - the wrapper has no attributes other than `@gml:id`.
 
-The wrapper's `@gml:id`, if present, is kept. The result is
-`idIIP: Struct("lokalnyId": …, "przestrzenNazw": …, "wersjaId": …)`, not
-`idIIP.AD_IdentyfikatorIIP.lokalnyId`.
+The wrapper step is written as `*` in paths (`idIIP/*/lokalnyId`) and left out of
+names. When several wrapper types occur, as with XPlanung's `XP_ExterneReferenz`
+and `XP_SpezExterneReferenz` inside `externeReferenz`, their subtrees are merged:
+`externeReferenz[]/*/referenzName` gets the value from either. The wrapper's
+`@gml:id`, if present, is kept as a column (`idIIP/*/@id`).
+
+#### Lists and alignment
+
+A column is a **list** (`T[]`) when some element on its path repeats within its
+parent (`max_occurs > 1`), or when `force_list` matches. Its **anchor** is the
+element whose occurrences the list follows: the innermost repeating element on the
+path, marked with `[]` in the path.
+
+Every column under one anchor has **one entry per occurrence of the anchor**, with
+null where an occurrence lacks the value. Entry *i* of each of these columns comes
+from the anchor's *i*-th occurrence, so the lists can be zipped back into records
+(`list_zip`, `arrays_zip`, pandas/Polars `explode` on several columns):
+
+```xml
+<adres><ulica>Polna</ulica><numer>1</numer></adres>
+<adres><numer>2</numer></adres>
+```
+```
+ulica  (path adres[]/ulica) = ["Polna", null]
+numer  (path adres[]/numer) = ["1", "2"]
+```
+
+The reader keeps a counter per anchor while it reads a feature:
+
+1. When an anchor element starts, its counter goes up by one (before its attributes
+   are read, so `name[]/@codeSpace` sees the new count).
+2. Before a value is added, the column is padded with nulls to `count - 1` entries,
+   then the value is appended. This gives leading nulls when the first occurrences
+   lack the value.
+3. If the column already has `count` entries, the value is a second one within the
+   same occurrence: the schema doesn't match the data, and the feature fails (see
+   [6.3](#63-data-that-doesnt-fit)).
+4. When the feature ends, each column is padded with nulls to its anchor's count.
+   A feature in which the anchor never occurs gets `null`, not an empty list.
+
+This was checked against the corpus: on 32,333 features with repeated elements (the
+first 300 features of 264 files), the streaming padding matched a reference that
+groups each anchor occurrence from the whole feature.
+
+- A path has at most one anchor, so there are no lists of lists. When elements
+  repeat at two levels (a repeated `spelling` inside a repeated `name`), the scan
+  anchors columns below the inner one on the inner one (`name/spelling[]/text`).
+  They keep all their values and stay aligned with each other, but not with the
+  columns anchored on `name`. The sample of the corpus has no such case.
+- A geometry property below a repeating element becomes a list of WKB blobs,
+  `geometry[]` (`List(geoarrow.wkb)`), aligned like any other list. It is always
+  WKB, because no native GeoArrow type holds several geometries per row in one
+  column. GeoParquet metadata covers only top-level geometry columns, so such a
+  column is written as a plain list of WKB. The only case in the corpus is GDAL's
+  test file `gmlsubfeature.gml`, where GDAL makes one geometry column and keeps
+  only the last polygon.
+- In the corpus, 44 of 719 feature types have a repeated element. Half are
+  repeated references (a single `text[]` of hrefs). In all but one of the rest,
+  every occurrence has the same children. Only `OM_Observation` (SWE `field` holds
+  `Time`, `Category` or `Quantity`) needs the null padding to stay aligned.
 
 ### 3.3 Types
 
@@ -381,32 +441,35 @@ pub struct GmlOptions {
     pub gml_id: IdMode,                // Column (default; "@id") | Drop
     pub xlink: XlinkMode,              // Href (default) | Full{href,title,role,arcrole} | Drop
     pub strip_local_href_hash: bool,   // "#PL.X.1" → "PL.X.1" (default true)
-    pub nil_reason: bool,              // keep nilReason as "<field>.@nilReason" (default true when seen)
+    pub nil_reason: bool,              // keep nilReason as a `<path>/@nilReason` column (default true when seen)
     pub bounded_by: BoundedBy,         // Drop (default) | BoxStruct | Geometry
     pub standard_props: StdProps,      // gml:name/description/identifier handling
 }
 ```
 
 - Properties given only by reference, such as
-  `<prgad:miejsce xlink:href="#…"/>`, become `miejsce: Struct("@href": Utf8View)`.
-  When the property never has other content or attributes, this is simplified to
-  `miejsce: Utf8View` holding the href. Repeated ones (`adres2`) become
-  `List(Utf8View)`. These act as foreign keys to another layer's `@id`.
+  `<prgad:miejsce xlink:href="#…"/>`, become a column `miejsce` with the path
+  `miejsce/@href`. Repeated ones (`adres2`) become `text[]` (path
+  `adres2[]/@href`). These act as foreign keys to another layer's `@id`. A property
+  that sometimes has inline content gets both the `@href` column and the columns of
+  its content.
 - `xsi:nil="true"` means null. `nilReason` is kept if configured.
 
 ### 3.5 Overrides and limits
 
 ```rust
 pub enum FieldOverride {
-    Type(DataType), Rename(String), Drop, AsRawXml, AsMap, List, Scalar, Geometry(GeometryOverride),
+    Type(DataType), Drop, AsRawXml, AsMap, List, Scalar, Geometry(GeometryOverride),
 }
 
 pub struct Limits {
-    pub max_depth: u16,       // default 16 → deeper subtrees become Map / raw XML
+    pub max_depth: u16,       // default 16 → deeper subtrees become one `map` column
     pub max_children: u16,    // default 512 → element with more distinct child names becomes Map
     pub distinct_values: u16, // BoundedSet capacity (default 64)
 }
 ```
+
+Names are not overridden here: they are edited in the settings file.
 
 `PathPattern` matches local names with globs, optionally namespace-qualified:
 `AD_PunktAdresowy/idIIP`, `*/area`, `**/@uom`, `{https://geoportal.gov.pl/schemas/prgad/1.0}*/**`.
@@ -415,40 +478,45 @@ pub struct Limits {
 
 | Preset | Summary |
 |---|---|
-| `default()` | Lossless by value, `Struct` nesting, `@` attributes, rich types, geometry encoding `Auto` |
-| `flat()` | `FlattenSingleOnly` + `Split`. Aimed at Parquet users who want flat columns and QGIS |
-| `gdal_like()` | `Flatten`, `Split`, lists of scalars only, `Lossy` types, attributes dropped |
-| `spark_xml_like()` | `_` attribute prefix, `_VALUE` text field, `Struct` |
-| `strings()` | Every scalar as `Utf8View` |
+| `default()` | Lossless by value, `@` attributes, rich types, geometry encoding `Auto` |
+| `strings()` | Every scalar as `text` |
 
 ---
 
 ## 4. The rule engine
 
-The engine is a single recursive walk over each layer's tree:
+The engine walks each layer's tree and emits one column per leaf, then names them:
 
 ```
-fn field_for(node, parent_ctx, opts) -> Option<Field>:
-    if override matches            → apply override
-    if node.geometry.is_some()     → geometry column (geometry.md)
-    if node.truncated              → Map or raw XML
-    if collapse_type_wrappers and node is wrapper → field_for(only child, …) with node's name
+fn columns_for(node, path, anchor, opts, out):
+    if override matches                → apply override
+    if node.geometry.is_some()         → geometry column at path (geometry.md);
+                                         under an anchor: geometry[] (list of WKB, see 3.2)
+    if node.truncated                  → one `map` column at path
+    if is_list(node)                   → anchor = path[]   (innermost wins)
 
-    inner = match shape(node):
-        TextOnly                   → scalar(node.text, opts.types)
-        TextAndAttrs               → simple_with_attrs rule
-        ElementsOnly               → Struct(children…) or flatten into parent
-        ByReferenceOnly            → Utf8View (href)
-        Mixed                      → mixed_content rule
-        Empty (never had content)  → all_null type
+    match shape(node):
+        TextOnly                       → scalar(node.text, opts.types)
+        ByReferenceOnly                → text column at path/@href
+        Mixed                          → mixed_content rule (raw XML text at path)
+        Empty (never had content)      → all_null type
+        ElementsOnly                   → (no column of its own)
+    for each attribute (xml_attributes, constant_attrs) → column at path/@attr
+    for each child                     → columns_for(child, path/step(child), anchor, …)
+                                         step(child) = `*` for a type wrapper (collapse_type_wrappers);
+                                         several wrapper types under one property are merged first
 
-    if is_list(node)  (max_occurs > 1 || force_list) && !force_scalar → List(inner)
-    nullable = true   (always; see type-mapping.md "Nullability")
+    a column under an anchor gets T[]; nullable = true (always)
     attach metadata: gml:path, gml:max_scale, gml:attr:*, gml:srs_name, …
+
+then: suggest names (3.1)
 ```
 
-Every field records its source path in metadata (`gml:path`). The reader uses this
-to send values straight to the right builder, without looking up names at runtime.
+`is_list(node)` is `(max_occurs > 1 || force_list) && !force_scalar`.
+
+Every field records its source path in metadata (`gml:path`). The reader builds a
+lookup tree from the schema's paths and sends each value straight to its builder.
+Subtrees that no path leads into are skipped without being parsed.
 
 ---
 
@@ -473,25 +541,26 @@ prgad:AD_PunktAdresowy           features ~410k        @gml:id exact_value{STRIN
 └─ ulica2                        present ~13%; by_reference
 ```
 
-Default schema (`InferenceOptions::default()`; every column nullable):
+Default schema (`InferenceOptions::default()`; every column nullable), as the
+scan writes it into the settings file:
 
 ```
-@id:                   Utf8View
-idIIP:                 Struct("lokalnyId": Utf8View,
-                              "przestrzenNazw": Utf8View,
-                              "wersjaId": Timestamp(µs, "UTC"))
-poczatekWersjiObiektu: Timestamp(µs)
-numerPorzadkowy:       Utf8View                     ("33" alone would be INT; "27a" rules it out)
-georeferencja:         geoarrow.point<xy>           crs = EPSG:2180
-kodPocztowy:           Utf8View
-dataNadania:           Date32
-miejscowosc:           Utf8View                     (href, '#' stripped) → FK to AD_Miejscowosc.@id
-ulica2:                Utf8View                     → FK to AD_UlicaPlac.@id
+"@id":                   "text"
+"lokalnyId":             { "type": "text",        "path": "idIIP/*/lokalnyId" }
+"przestrzenNazw":        { "type": "text",        "path": "idIIP/*/przestrzenNazw" }
+"wersjaId":              { "type": "timestamptz", "path": "idIIP/*/wersjaId" }
+"poczatekWersjiObiektu": "timestamp"
+"numerPorzadkowy":       "text"                  ("33" alone would be INT; "27a" rules it out)
+"georeferencja":         "geometry(Point)"       native point, crs = EPSG:2180
+"kodPocztowy":           "text"
+"dataNadania":           "date"
+"miejscowosc":           { "type": "text", "path": "miejscowosc/@href" }   ('#' stripped) → FK to AD_Miejscowosc.@id
+"ulica2":                { "type": "text", "path": "ulica2/@href" }        → FK to AD_UlicaPlac.@id
 ```
 
 The layer `AD_UlicaPlac` in the same file shows repeated references:
 `<prgad:adres2 xlink:href="#…"/>` appears several times per street, so it becomes
-`adres2: List(Utf8View)`.
+`"adres2": { "type": "text[]", "path": "adres2[]/@href" }`.
 
 `przestrzenNazw` has a single constant value but stays a column. Only XML
 *attributes* with a constant value are moved to metadata. A text element with a
@@ -549,27 +618,28 @@ preset:
 |---|---|---|
 | Typed columns (anything but string) | any evidence | at least `min_typed_values` non-null values in the sample; otherwise `Utf8View` |
 | Integer width | `integers` option | always `Int64` |
-| Date-only values | `Date32` | `Date32` (a later timestamp goes to `_overflow`) |
+| Date-only values | `Date32` | `Date32` (a later timestamp is a feature error) |
 | Geometry encoding `Auto` | native type if the scan saw one simple kind | `geoarrow.wkb` (a `Polygon` sample says nothing about later `MultiPolygon`s) |
-| Lists | from `max_occurs` | same (later repetition goes to `_overflow`) |
+| Lists | from `max_occurs` | same (a later repetition of a scalar is a feature error) |
 
 ### 6.3 Data that doesn't fit
 
 Any schema used by a read can meet data it doesn't describe: a sampled schema, a
-settings file from an older release of the data, or a schema written by hand.
+settings file from an older release of the data, or a schema written by hand. The
+rule is simple: **what the schema describes is read, everything else is not.**
 
-| Situation | `Overflow` (default) | `Error` | `Drop` |
-|---|---|---|---|
-| Unknown element/attribute | `_overflow[path] = raw text / XML` | error | ignored |
-| Unexpected repetition of a scalar | first value in the column, rest in `_overflow` | error | first value kept |
-| Value doesn't parse as column type | column null, `_overflow[path] = value` | error | null |
-| Unknown geometry kind for a native column | null, raw GML in `_overflow` | error | null |
+| Situation | Result |
+|---|---|
+| Element or attribute whose path isn't in the schema | not read, not reported |
+| A second value where the schema has one (a scalar column, or one entry per anchor occurrence) | feature error: the column has the wrong type for the data |
+| Value doesn't parse as the column's type | feature error (`OnFeatureError`, see [architecture.md](architecture.md#error-handling)) |
+| Geometry kind the native column can't hold | geometry error (`OnFeatureError`, `NullGeometry` applies) |
 
-- With `Overflow`, every read appends `_overflow: Map(Utf8View → Utf8View)` to the
-  schema, unless the given schema already has it. When it is never used, it stays
-  null, which is cheap.
-- The read report counts overflow entries per path. A new scan turns them into
-  proper columns.
+Content the schema leaves out is a choice; a value that doesn't fit the type of a
+column the schema does have is a mismatch, and the read doesn't guess. A new scan
+brings new elements into the schema and fixes the types. This may be revisited if silent
+skipping turns out to hide too much, for example with an opt-in column that
+collects unread content.
 
 ---
 
@@ -584,5 +654,5 @@ georeferencja geoarrow.point      geometry: kinds={Point}, dims={2}; encoding Au
                                   crs: "EPSG:2180" short form → x/y axis order (no swap)
 kodPocztowy   Utf8View            numeric rejected: values like "22-120" are not numeric
 dataNadania   Date32              present in 211 995 / 410 402 parents
-idIIP         Struct(…)           type wrapper AD_IdentyfikatorIIP collapsed
+lokalnyId     Utf8View            path idIIP/*/lokalnyId: type wrapper AD_IdentyfikatorIIP collapsed
 ```

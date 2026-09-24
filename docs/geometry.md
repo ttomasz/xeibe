@@ -32,18 +32,49 @@ flowchart LR
 - The parser works on one geometry at a time, inside the feature currently being
   read, so memory is bounded by the largest single geometry.
 
+## Options
+
+Geometry has few options. All of them are read parameters, kept in the settings
+file under `options.geometry`, not in the schema:
+
+```rust
+pub struct GeometryOptions {
+    pub axis: AxisOrderOptions,       // mode + { srsName → mode } overrides, see CRS and axis order
+    pub crs_override: Option<String>, // replaces the CRS from the data
+    pub curves: CurveMode,            // Preserve (default) | Linearize { max_angle_step_deg, max_gap }
+    pub primary: Option<String>,      // column name → GeoParquet primary_column
+}
+```
+
+The scan has one more, `InferenceOptions.geometry_encoding` (below), because the
+encoding ends up as the column's type. Everything else is fixed behaviour:
+
+| Behaviour | Rule |
+|---|---|
+| Dimensions | From the column's type (`geometry(Point)` = XY, `geometry(Point, XYZ)`). A Z value in an XY column is a feature error. WKB columns keep what is written |
+| Coordinates of native columns | Always separated (struct), as GeoParquet's native encoding requires |
+| One column's srsNames resolve to more than one CRS | Feature error ([CRS metadata](#crs-metadata)) |
+| Unsupported geometry (solids, splines, …) | Geometry error, handled by `OnFeatureError` ([Unsupported geometry](#unsupported-geometry)) |
+| Unclosed ring | Closed, with a warning |
+| Too few positions (LineString < 2, LinearRing < 4) | Feature error |
+| Gap between segments | Fixed tolerance of 1e-9 × the geometry's extent ([Joining](#joining-segments-and-members)) |
+
+To keep the source GML of a geometry (for example, the parameters of an
+`ArcByCenterPoint`), add a `text` column whose path is the geometry property. A
+`text` column at an element with children receives its raw XML.
+
 ## Column encoding
 
-`GeometryOptions.encoding`:
+`InferenceOptions.geometry_encoding` (scan and read sample only; a given schema
+already names each column's type):
 
 | Mode | Behaviour |
 |---|---|
-| `Auto` (default) | Chosen per column from the scan's (or the read sample's) `GeometryStats`. A column in a given schema already has its encoding. With `curves = Linearize`, curves count as their linear types (`CircularString` → `LineString`, `CurvePolygon` → `Polygon`, …): <br>• single simple kind, no curves → native GeoArrow type (`point`, `linestring`, `polygon`, `multipoint`, `multilinestring`, `multipolygon`) <br>• several simple kinds, no curves → the native type that holds them all (e.g. Polygon + MultiPolygon → `multipolygon`), otherwise `geoarrow.geometry` <br>• any curves or unusual kinds → `geoarrow.wkb` |
+| `Auto` (default) | Chosen per column from the scan's (or the read sample's) `GeometryStats`. With `curves = Linearize`, curves count as their linear types (`CircularString` → `LineString`, `CurvePolygon` → `Polygon`, …): <br>• one simple kind → its native GeoArrow type (`point`, `linestring`, `polygon`, `multipoint`, `multilinestring`, `multipolygon`) <br>• a kind and its Multi form (Polygon + MultiPolygon) → the Multi type, as GDAL's `PROMOTE_TO_MULTI` does. A single Polygon then reads as a one-part MultiPolygon <br>• anything else (unrelated kinds, curves, unusual kinds) → `geoarrow.wkb` |
 | `Wkb` | Always `geoarrow.wkb` (ISO WKB) |
-| `Native` | Native types. Curves cause an error, or are linearized if `curves = Linearize` |
 
-Native columns use separated (struct) coordinates by default, with interleaved
-coordinates as an option. Dimensions come from `GeometryStats.dims`:
+There is no `geoarrow.geometry` (union) output: downstream support is poor, and the
+Parquet writer turns it into WKB anyway. Dimensions come from `GeometryStats.dims`:
 `xy` or `xyz`. Mixed 2D/3D becomes `xyz`, with Z set to NaN for 2D values.
 Measures (`m`) are not part of GML simple geometry.
 
@@ -85,8 +116,8 @@ The standard requires each segment (or composite/ring member) to start exactly w
 the previous one ended (07-036 §10.4.5, §11.2.2.2). When joining:
 
 - If the start point equals the previous end point exactly, it is dropped.
-- If they differ by no more than `join_tolerance` (default: 1e-9 × the geometry's
-  extent), the start point is dropped and a warning is counted. Otherwise both points
+- If they differ by no more than a fixed tolerance of 1e-9 × the geometry's
+  extent, the start point is dropped and a warning is counted. Otherwise both points
   are kept and a warning is logged.
 - **Stored coordinates always win over computed ones.** When a computed arc endpoint
   (see below) meets a stored coordinate, the stored value is used. Rounding errors
@@ -110,9 +141,9 @@ gives a warning, and the positions are used.
 
 The source stores parameters (center, radius, angles, bulge), not points on the arc.
 The CircularString control points have to be **computed**, so the output is exact
-only up to floating-point rounding. The original parameters are **not** kept. Use
-`unsupported_geometry = RawXml` together with `raw_xml_for_computed_arcs = true`
-to keep the source XML alongside the geometry.
+only up to floating-point rounding. The original parameters are **not** kept. To
+keep the source XML alongside the geometry, add a `text` column whose path is the
+geometry property.
 
 ### `ArcByCenterPoint` and `CircleByCenterPoint`
 
@@ -129,7 +160,7 @@ profile (10-100r3 §8.4.4.11.2, Table 6) explicitly allows `CircleByCenterPoint`
 | Projected or unknown | Degrees, counter-clockwise from the +x (east) axis (mathematical convention). `uom` of angles: `deg` (default) or `rad` | From `startAngle` to `endAngle` through their mean angle, so the arc turns counter-clockwise if `end > start` and clockwise otherwise | CircularString: `start, mid, end` |
 | Projected, radius `uom` is a length unit | — | Radius converted: `uom` → metres → the CRS's linear unit | — |
 | `CircleByCenterPoint`, projected | — | Full circle | CircularString with 5 points: west, north, east, south, west (clockwise, as in GDAL) |
-| **Geographic** CRS with the radius in a length unit (aviation/AIXM data) | Bearings: clockwise from north (the Eurocontrol interpretation used by GDAL) | A circle on the ellipsoid (geodesic distance), which can't be represented as a CircularString in lon/lat | **Lossy.** Linearized along the geodesic with `arc_step_degrees` (default 4°, as GDAL), or `RawXml`. Status 🤔 Considering |
+| **Geographic** CRS with the radius in a length unit (aviation/AIXM data) | Bearings: clockwise from north (the Eurocontrol interpretation used by GDAL) | A circle on the ellipsoid (geodesic distance), which can't be represented as a CircularString in lon/lat | **Lossy.** Linearized along the geodesic with the `Linearize` step `max_angle_step_deg` (default 4°, as GDAL). Status 🤔 Considering |
 
 ### `ArcByBulge` and `ArcStringByBulge`
 
@@ -292,27 +323,20 @@ decision key = (source, srsName string as written, dialect)
   if keys were decided differently does it add overrides, one per srsName that differs
   from the most common decision.
 
-**Overrides**, for inputs that mix srsNames needing different treatment, in order of
-precedence (most specific first):
+**Overrides**, for inputs that mix srsNames needing different treatment, are keyed
+by the srsName exactly as written. That is all the scan ever writes:
 
 ```rust
 pub struct AxisOrderOptions {
-    pub mode: AxisOrderMode,                                  // applies to everything
-    pub overrides: Vec<(AxisSelector, AxisOrderMode)>,        // usually empty
-    pub auto: AutoAxisOptions,                                // evidence used by `Auto`
-}
-pub struct AxisSelector {           // all fields optional; every given field must match
-    pub source: Option<Glob>,       // file path / URL glob
-    pub layer: Option<PathPattern>,
-    pub column: Option<PathPattern>,
-    pub srs_name: Option<String>,   // exact srsName as written
-    pub dialect: Option<Dialect>,
+    pub mode: AxisOrderMode,                           // applies to everything
+    pub overrides: IndexMap<String, AxisOrderMode>,    // srsName → mode; usually empty
 }
 ```
 
-Example: `--axis-order auto --axis-override 'srs=EPSG:4326:yx' --axis-override 'layer=AD_*:xy'`.
-In the settings file, `"axis"` is then an object:
-`{ "mode": "Auto", "overrides": [[{ "srs_name": "EPSG:4326" }, "YX"]] }`.
+Example: `--axis-order auto --axis-override 'EPSG:4326=yx'`. In the settings file,
+`"axis"` is then an object: `{ "mode": "Auto", "overrides": { "EPSG:4326": "YX" } }`.
+Layers are read one at a time, and a dialect-dependent rule is the `GmlVersion`
+mode, so neither needs a selector.
 
 ### srsName forms (`CrsHeuristic`)
 
@@ -384,8 +408,9 @@ evidence wins:
   "swapped" while the srsName heuristic says "as written", `Auto` takes the stronger
   evidence and **always** reports the conflict. `xeibe scan` prints these conflicts
   first.
-- `AxisOrderOptions::auto` (`AutoAxisOptions`) controls which evidence is used and the minimum confidence.
-  Below that confidence, the fallback applies with a warning.
+- `Auto` always uses all of the evidence above; there are no switches for single
+  rows. When nothing is decisive, the `CrsHeuristic` fallback applies with a
+  warning. To decide differently, use a fixed mode.
 
 ### Observed in real services
 
@@ -500,16 +525,16 @@ fallback when no PROJJSON is available.
 - The CRS comes from the data, not the schema: the srsName of the first geometry
   in the column (inherited as described above), seen before the first batch.
 - `crs_override` replaces the detected CRS.
-- If one column's srsNames resolve to more than one CRS, `mixed_crs` decides:
-  `Error` (default) | `SplitColumns` (one column per CRS) | `PerRowCrs` (adds
-  `<column>.crs: Utf8View` with each row's CRS written like the
-  column metadata, e.g. `EPSG:2180`, and leaves the column CRS unset).
-  Different spellings of one CRS (`EPSG:4647` and `urn:ogc:def:crs:EPSG:9.2:4647`)
-  are not mixed. Unknown srsNames are compared as strings. No reprojection is ever done.
+- If one column's srsNames resolve to more than one CRS, the feature that brings
+  the second CRS is a feature error. A column has one CRS, and there is no extra
+  per-row CRS column (it would have no path in the schema). In the corpus, only 2
+  of 1,575 documents mix CRSs. Different spellings of one CRS (`EPSG:4647` and
+  `urn:ogc:def:crs:EPSG:9.2:4647`) are not mixed. Unknown srsNames are compared as
+  strings. No reprojection is ever done.
 
 ### Open questions: srsName → CRS
 
-1. **Normalisation.** Which spellings count as the same CRS, for `MixedCrs` and the
+1. **Normalisation.** Which spellings count as the same CRS, for the mixed-CRS check and the
    CRS table lookup: authority case (`epsg:2180`), surrounding whitespace, `EPSG::2180`
    in a short form, `epsg.xml#2180` vs `#2180`, `http` vs `https`, trailing `/` on
    HTTP URIs? And do axis overrides stay matched on the srsName *exactly as written*
@@ -579,30 +604,28 @@ fallback when no PROJJSON is available.
 - A missing geometry property becomes null.
 - A property with both `xlink:href` **and** inline content: the standard says the
   link is authoritative and the inline content is a cached copy (07-036 §7.2.3.4). We
-  can't resolve links, so we use the inline content and keep the href in
-  `<column>.@href` when `XlinkMode` isn't `Drop`.
+  can't resolve links, so we use the inline content and keep the href in a
+  `<property>/@href` column when `XlinkMode` isn't `Drop`.
 - A polygon with no `exterior`, only `interior` rings, is allowed by the standard for
-  "general manifold" surfaces (§10.5.5) but can't be represented in WKB. It goes
-  through the `unsupported_geometry` policy.
+  "general manifold" surfaces (§10.5.5) but can't be represented in WKB. It is an
+  [unsupported geometry](#unsupported-geometry).
 - Geometries are **not validated** (ring orientation, self-intersection, planarity).
   Rings are written as they are.
-- A ring that isn't closed gives a warning. It is closed only if
-  `close_rings = true`.
+- A ring that isn't closed is closed (its first position is repeated at the end),
+  with a warning. An unclosed ring isn't valid in WKB or GeoParquet, and adding
+  the closing position loses nothing.
 - A LineString with fewer than 2 positions, or a LinearRing with fewer than 4, is a
-  feature error. Such a ring becomes a degenerate ring if
-  `lenient_degenerate = true`.
+  feature error.
 
 ### Unsupported geometry
 
 Solids, triangulated/polyhedral surfaces, splines, clothoids, geodesics, implicit
 geometry (grids), `xlink:href` geometry references and polygons with no exterior are
-covered by `unsupported_geometry`:
-
-| Policy | Behaviour |
-|---|---|
-| `Error` (default) | Stop with location |
-| `Null` | Null geometry, reported in the read report |
-| `RawXml` | Null geometry plus the raw GML in `<column>.gml` (`Utf8View`) |
+**geometry errors**, handled by `OnFeatureError` like any other (see
+[architecture.md](architecture.md#error-handling)): `Error` stops with the
+location, `Skip` drops the feature, and `NullGeometry` keeps the feature with a null
+geometry. To keep the source GML as well, add a `text` column whose path is the
+geometry property.
 
 ### Linearization
 
@@ -621,7 +644,7 @@ is lossy and opt-in. It is
 **required for Parquet output** of columns with curves (see
 [Curves](#curves)); elsewhere, use it when targets can't read curve WKB.
 It is a read option (`--linearize` on `convert` and `wfs convert`; in the settings
-file `"curves": { "Linearize": {} }` for GDAL's defaults, or
+file `options.geometry.curves`: `{ "Linearize": {} }` for GDAL's defaults, or
 `{ "Linearize": { "max_angle_step_deg": 2, "max_gap": 0.5 } }`), not an output option, so every consumer of a read gets the same
 geometry.
 
@@ -661,6 +684,26 @@ Defaults for `xeibe convert --format geoparquet`:
   See [CRS and axis order](#crs-and-axis-order).
 - The Parquet `GEOMETRY` CRS is written as `authority:code` (e.g. `EPSG:2180`) when
   the CRS is known. If it is unknown, `srid:0` is written.
+
+### Several geometry columns
+
+Every geometry property is a column of its own, with its own type, CRS and
+axis-order decision. Nothing is merged. In the corpus, 21 of 719 feature types have
+more than one geometry property:
+
+- **Separate geometries** (7): ALKIS `AX_Flurstueck` (`objektkoordinaten` and
+  `position`), BDOT10k `OT_ADMS_P` (`geometria`, `geometria2`), PRG
+  `AD_Miejscowosc` (`geometria`, `pozycja`), INSPIRE `CadastralParcel`
+  (`geometry`, `referencePoint`). Both are often present in one feature.
+- **Either/or** (14, from FME and ArcGIS exports): the XSD declares both
+  `gml:surfaceProperty` and `gml:multiSurfaceProperty`, and each feature uses the
+  one that fits its geometry. They become two columns, each null where the other
+  one is used. They can be combined in SQL (`COALESCE`) if needed.
+
+GeoParquet marks one column as `primary_column`. It is the column named by the
+read option `geometry.primary` (a column name, e.g. `"primary": "position"` in the
+settings file's `options.geometry`), or the first geometry column in
+schema order when it isn't set.
 
 ### Curves
 

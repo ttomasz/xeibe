@@ -9,7 +9,8 @@
 2. **Observation before policy.** Scanning collects facts. Separate rules turn
    those facts into a schema.
 3. **Lossless by default, lossy by opt-in.** Examples: linearizing curves, allowing
-   lossy type conversions, dropping unknown data.
+   lossy type conversions. A schema from a scan describes everything the scan saw.
+   Leaving columns out of a schema is how a user chooses not to read something.
 4. **Arrow-native.** The output is always `RecordBatch`es. Formats such as Parquet
    and GeoParquet, and engines such as DataFusion, SedonaDB and Python, are
    separate layers built on top.
@@ -26,7 +27,7 @@ There are two operations:
 | Operation | Input | Output |
 |---|---|---|
 | **scan** | sources; full or a sample | every layer (feature type) found, with its inferred schema and summary. Can be saved as a [settings file](#settings-file) |
-| **read** | sources, **one layer**, optionally a schema | a `RecordBatchReader` for that layer |
+| **read** | sources, **one layer**, optionally a schema | a `RecordBatchReader` for that layer. The schema says which XML paths are read and into which columns |
 
 ```rust
 // Scan once (full, or the first N features of the input), keep the result.
@@ -50,9 +51,13 @@ let reader = xeibe_arrow::read(sources, "AD_PunktAdresowy", None, &ReadOptions::
   **of the requested layer** (not of the file), infers a schema from them with
   conservative types, and then streams the rest. See
   [schema-inference.md](schema-inference.md#6-sampled-schemas).
-- Data that doesn't fit the schema is handled by `OnSchemaMismatch`: `Overflow`
-  (default) writes it to an `_overflow: Map(Utf8View → Utf8View)` column, `Error`
-  stops, `Drop` discards it. This is how an old schema meets new data.
+- **The two are decoupled.** Naming, type rules and list detection belong to the
+  scan (and to the sampling inside a read without a schema). A read only matches
+  XML paths to columns. It doesn't need to know how a name was chosen.
+- **The schema is also the projection.** Content whose path isn't in the schema is
+  not read: whole subtrees that no column's path leads into are skipped unparsed.
+  Nothing records what was skipped. This is how an old or hand-written schema
+  meets new data. See [schema-inference.md](schema-inference.md#63-data-that-doesnt-fit).
 - A **sampled scan** reads only the first N features of the input. Layers that start
   later in the file are not listed. Only a full scan guarantees the complete layer
   list. Choosing between them is up to the user.
@@ -69,20 +74,27 @@ both:
 {
   "format_version": 1,
   "options": {
-    "inference": {
-      "naming": { "attribute_prefix": "@" },
-      "geometry": { "axis": "XY" }
-    },
-    "on_mismatch": "Overflow"
+    "geometry": { "axis": "XY" }
   },
   "layers": {
     "prgad:AD_PunktAdresowy": {
-      "@id": "Utf8View",
-      "idIIP": "Struct(\"lokalnyId\": Utf8View, \"przestrzenNazw\": Utf8View, \"wersjaId\": Timestamp(µs, \"UTC\"))",
-      "georeferencja": "Geometry(Point)",
-      "kodPocztowy": "Utf8View",
-      "dataNadania": "Date32",
-      "miejscowosc": "Utf8View"
+      "@id": "text",
+      "lokalnyId": { "type": "text", "path": "idIIP/*/lokalnyId" },
+      "przestrzenNazw": { "type": "text", "path": "idIIP/*/przestrzenNazw" },
+      "wersjaId": { "type": "timestamptz", "path": "idIIP/*/wersjaId" },
+      "poczatekWersjiObiektu": "timestamp",
+      "numerPorzadkowy": "text",
+      "georeferencja": "geometry(Point)",
+      "kodPocztowy": "text",
+      "dataNadania": "date",
+      "miejscowosc": { "type": "text", "path": "miejscowosc/@href" }
+    },
+    "xplan:BP_Plan": {
+      "@id": "text",
+      "referenzName": { "type": "text[]", "path": "externeReferenz[]/*/referenzName" },
+      "referenzURL": { "type": "text[]", "path": "externeReferenz[]/*/referenzURL" },
+      "datum": { "type": "date[]", "path": "externeReferenz[]/*/datum" },
+      "raeumlicherGeltungsbereich": "geometry(MultiPolygon)"
     }
   }
 }
@@ -94,39 +106,69 @@ both:
   mode (`"axis": "XY"`), so a later read doesn't depend on evidence gathering.
   Per-srsName overrides appear only when one input mixes srsNames that were decided
   differently (see [geometry.md](geometry.md#decision-key-and-scope)).
-- **`layers`** maps each layer to its columns: `name → type`, in column order.
-  - Types are Arrow `DataType` strings, as printed and parsed by `arrow-schema`
-    (`Utf8View`, `Int64`, `Date32`, `Timestamp(µs, "UTC")`, `List(Utf8View)`,
-    `Struct("a": Int64, …)`). No parser of our own.
-  - Geometry columns use `Geometry` (WKB) or `Geometry(<kind>[, <dims>])` with a
-    native GeoArrow kind, e.g. `Geometry(MultiPolygon, XYZ)`.
-  - A column can also be an object with `type` and `path` (the XML path, for
-    renamed columns). Every column is nullable.
-  - CRS and axis order are **not** part of the schema. They come from the data
-    (`srsName`) and from the options.
+- **`layers`** maps each layer to its columns, in column order. Every column is
+  nullable. A column is either `"name": "type"` or
+  `"name": { "type": "…", "path": "…" }`. **Without `path`, the name is the
+  path**, which is all a flat schema written by hand needs (`"nazwa": "text"`,
+  `"@id": "text"`).
+- The **name** is free. The scan suggests the shortest unique one (see
+  [schema-inference.md](schema-inference.md#31-column-names)), and users can rename
+  columns by editing it.
+- CRS and axis order are **not** part of the schema. They come from the data
+  (`srsName`) and from the options.
 - In Rust, Python and DataFusion, a schema can be an ordinary Arrow `Schema` instead.
-  Geometry columns are then recognized by their GeoArrow extension type.
+  The field name is the column name, and the field metadata `gml:path` is the path
+  (without it, the name is the path). Geometry columns are recognized by their
+  GeoArrow extension type.
 
-**How columns are matched to XML.** A given schema is matched by name, the way
-spark-xml applies a user schema:
+**Paths.** A path is relative to the feature element:
 
-- element and attribute names are turned into column names with `naming` (namespace
-  handling, `@` prefix, `#text`, flatten separator);
-- a type-wrapper element (see
-  [collapse_type_wrappers](schema-inference.md#32-structure)) with no column of
-  its own is looked through, so `idIIP/AD_IdentyfikatorIIP/lokalnyId` fills
-  `idIIP.lokalnyId`;
-- a `path` given for a column wins over the name;
-- anything that doesn't match goes to `_overflow` (or is dropped, or is an error,
-  per `on_mismatch`). Columns that never match stay null.
+| Syntax | Meaning | Example |
+|---|---|---|
+| `a/b/c` | child elements by local name | `idIIP/AD_IdentyfikatorIIP/lokalnyId` |
+| `@name` | an attribute, as the last step | `miejscowosc/@href`, `@id` (the feature's `gml:id`) |
+| `*` | any one element. The scan writes it for [type wrappers](schema-inference.md#32-structure), which can differ between features (XPlanung's `externeReferenz` holds an `XP_ExterneReferenz` or an `XP_SpezExterneReferenz`) | `idIIP/*/lokalnyId` |
+| `[]` after a step | the **anchor** of a list column: the element whose occurrences the list follows (see [Lists](schema-inference.md#lists-and-alignment)). At most one per path | `externeReferenz[]/*/datum` |
+| `prefix:name` | a namespace-qualified step, only needed when two siblings differ only by namespace. The prefix is declared in the settings file's top-level `"namespaces"` object (`"namespaces": { "gml": "http://www.opengis.net/gml/3.2" }`), or in the schema metadata `gml:ns` of an Arrow schema. It is never taken from the document | `gml:name` |
+
+- A geometry column's path ends at the geometry **property** (`georeferencja`), not
+  at the geometry element inside it.
+- A `text` column whose path ends at an element with child elements receives that
+  element's content as raw XML (used for mixed content).
+- A list column without `[]` is anchored on its first step. The scan always writes
+  `[]` for list columns.
+
+**Types** are Arrow `DataType` strings as `arrow-schema` prints and parses them
+(`Utf8View`, `Int64`, `List(Utf8View)`, `Timestamp(µs, "UTC")`), or one of these
+aliases, which follow PostgreSQL and DuckDB. Aliases are case-insensitive, and the
+scan writes them:
+
+| Alias | Arrow type |
+|---|---|
+| `text`, `varchar`, `string` | `Utf8View` |
+| `boolean`, `bool` | `Boolean` |
+| `smallint`, `int2` / `integer`, `int`, `int4` / `bigint`, `int8` | `Int16` / `Int32` / `Int64` |
+| `real`, `float4` / `double`, `double precision`, `float8` | `Float32` / `Float64` |
+| `date` | `Date32` |
+| `timestamp` / `timestamptz` | `Timestamp(µs)` / `Timestamp(µs, "UTC")` |
+| `time` | `Time64(µs)` |
+| `bytea`, `blob` | `Binary` |
+| `map` | `Map(Utf8View → Utf8View)` |
+| `T[]` | `List(T)`, e.g. `text[]`, `date[]` |
+| `geometry` | `geoarrow.wkb` |
+| `geometry(<kind>[, <dims>])` | a native GeoArrow type, e.g. `geometry(MultiPolygon, XYZ)` |
+| `geometry[]` | `List(geoarrow.wkb)`, for a geometry below a repeated element |
+
+There is deliberately no `numeric` or `decimal`. They are rejected with a hint to
+use `double` or `text` (see [type-mapping.md](type-mapping.md)).
 
 ### Read options
 
 ```rust
 pub struct ReadOptions {
-    pub inference: InferenceOptions,     // sampled schemas; `naming` also for matching
+    pub geometry: GeometryOptions,       // axis order, CRS override, curves, primary column
+    pub inference: InferenceOptions,     // reads without a schema only
     pub sample: SampleOptions,           // reads without a schema
-    pub on_mismatch: OnSchemaMismatch,   // Overflow (default) | Error | Drop
     pub on_feature_error: OnFeatureError,
     pub splitter: SplitterOptions,
     pub batch_size: usize,
@@ -137,9 +179,10 @@ pub struct ReadOptions {
 }
 ```
 
-Geometry options (axis order, CRS override, curves) are part of
-`inference.geometry` and apply to reads with a given schema too (see
-[geometry.md](geometry.md)).
+`geometry` holds the only geometry options: axis order, CRS override, curve
+linearization and the primary geometry column (see
+[geometry.md](geometry.md#options)). They apply to every read. `inference` is
+only used when a read has no schema and samples one.
 
 ## Crates
 
@@ -169,8 +212,8 @@ to turn paths and URLs into sources.
 |---|---|---|
 | `xeibe-core` | Streaming XML reader on top of `quick-xml`; namespace context; GML version detection; **feature-boundary splitter**; input decompression (gzip/zstd) and character-encoding conversion; the synchronous `ByteSource` trait with local-file and one-shot-reader implementations; zip archives (local files only) | `quick-xml`, `encoding_rs`, `zip` |
 | `xeibe-geom` | Parses GML geometry elements into an internal model that implements `geo-traits`; writes ISO WKB, curves included; axis-order handling | `geo-traits`, `wkb` |
-| `xeibe-schema` | Scan → **path tree** (`DatasetObservation`); merging; `InferenceOptions`; rule engine → Arrow `Schema`; binding a given schema to XML paths; `--explain` | `arrow-schema`, `serde` |
-| `xeibe-arrow` | `scan()` and `read()`; settings file; feature → Arrow builders; the `_overflow` column; parallel read pipeline | `arrow-array`, `geoarrow-array` |
+| `xeibe-schema` | Scan → **path tree** (`DatasetObservation`); merging; `InferenceOptions`; rule engine → Arrow `Schema`; binding a given schema's paths to XML; `--explain` | `arrow-schema`, `serde` |
+| `xeibe-arrow` | `scan()` and `read()`; settings file; feature → Arrow builders; parallel read pipeline | `arrow-array`, `geoarrow-array` |
 | `xeibe-io` | `ByteSource`s that stream from HTTP(S) and object stores; resolving inputs (paths, globs, URLs, `archive.zip!/member`) | `reqwest` (feature `http`), `object_store` + `tokio` (feature `object-store`) |
 | `xeibe-wfs` | WFS capabilities, hit counts, paging; pages streamed into a read | `xeibe-io` (HTTP client) |
 | `xeibe-datafusion` | `TableProvider` for one layer; `read_gml()` table function; adapter from DataFusion's `ObjectStore` registry to `ByteSource`; SedonaDB integration | `datafusion` |
@@ -371,11 +414,18 @@ and settings files never have non-null fields, but an Arrow schema passed in fro
 code (e.g. a `pyarrow.Schema`) can. When a feature has no value for such a field
 (the element is absent, empty with `empty_as_null`, or `xsi:nil`), `OnFeatureError`
 applies as above. `NullGeometry` can't help here when the field is the geometry
-itself, so it stops like `Error`. As in Arrow, a non-null field inside a struct
-only needs a value where the struct itself isn't null.
+itself, so it stops like `Error`.
 
-Every read produces a **report**: the feature count, skipped features, overflow
-entries per path and warnings (for example, an unknown srsName). A sampled read
+A **value that doesn't fit its column** is a feature error too: one that doesn't
+parse as the column's type (`abc` in a `bigint` column, a timestamp in a `date`
+column), or a second value where the column holds one (a repeated element in a
+scalar column, or twice within one anchor occurrence of a list). So is a geometry
+kind that a native geometry column can't hold (a `MultiPolygon` in a
+`geometry(Polygon)` column). The latter is a geometry error, so `NullGeometry`
+applies to it.
+
+Every read produces a **report**: the feature count, skipped features and warnings
+(for example, an unknown srsName). Content outside the schema isn't counted. A sampled read
 also reports the schema it inferred, in settings-file form, ready to be saved.
 
 ## Input handling
@@ -476,7 +526,7 @@ xeibe wfs convert <url> --type-name <name> -o out.parquet [--settings settings.j
 - `xeibe scan` without `-o` prints the layers with their feature counts, geometry and
   CRS. Axis-order conflicts are printed first.
 - `xeibe convert` without `--settings` samples the layer. Options such as
-  `--axis-order`, `--crs`, `--linearize`, `--on-mismatch` and `--preset` override the settings file.
+  `--axis-order`, `--crs`, `--linearize` and `--preset` override the settings file.
 - Converting several layers means running `xeibe convert` once per layer.
 
 ### Parquet and GeoParquet output
@@ -490,8 +540,8 @@ column with curves is an error unless `--linearize` is given.
 
 - **One-way only: GML → GeoArrow.** This project reads GML. It will never write
   GML (no GML encoder, no round-tripping, no WFS-T). Design choices such as
-  `@` attributes, `_overflow` and lossless value rules aim for faithful reading. They
-  do not aim for re-serialization.
+  `@` attributes, path metadata and lossless value rules aim for faithful reading.
+  They do not aim for re-serialization.
 - **No state of our own.** No download cache, no saved indexes, no saved WFS pages.
   Reads never need range requests. The only thing that persists is a settings file
   the user asked for.

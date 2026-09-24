@@ -69,8 +69,8 @@ that file with their reason, for example:
 
 - an empty element (`<gml:Point/>`) is an empty geometry, not a null one;
 - a gap between curve members is a warning, not an error;
-- solids, polyhedral and triangulated surfaces are out of scope, so they go
-  through the `unsupported_geometry` policy.
+- solids, polyhedral and triangulated surfaces are out of scope, so they are
+  geometry errors (`OnFeatureError`).
 
 Anything else that differs from GDAL fails the test, listing every case.
 
