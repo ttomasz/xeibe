@@ -225,3 +225,50 @@ fn source_context_is_kept_for_axis_decisions() {
         "the FME namespace is axis-order evidence"
     );
 }
+
+#[test]
+fn geometries_inherit_the_collection_bounded_by() {
+    // Collection `boundedBy` → feature `boundedBy` → geometry: the nearest
+    // srsName and srsDimension win (`docs/geometry.md`, "srsName inheritance").
+    let line = |coordinates: &str| {
+        format!("<app:geom><gml:LineString><gml:posList>{coordinates}</gml:posList></gml:LineString></app:geom>")
+    };
+    let document = gml::collection(
+        gml::GML_32,
+        "gml:featureMember",
+        &[
+            &parcel("p1", &line("0 0 1 1 1 2")),
+            &parcel(
+                "p2",
+                &format!(
+                    concat!(
+                        r#"<gml:boundedBy><gml:Envelope srsName="EPSG:2176" srsDimension="2">"#,
+                        "<gml:lowerCorner>0 0</gml:lowerCorner><gml:upperCorner>1 1</gml:upperCorner>",
+                        "</gml:Envelope></gml:boundedBy>{}"
+                    ),
+                    line("0 0 1 1")
+                ),
+            ),
+        ],
+        "",
+        concat!(
+            r#"<gml:boundedBy><gml:Envelope srsName="EPSG:2180" srsDimension="3">"#,
+            "<gml:lowerCorner>0 0 0</gml:lowerCorner><gml:upperCorner>10 20 30</gml:upperCorner>",
+            "</gml:Envelope></gml:boundedBy>"
+        ),
+    );
+    let observation = scan(&document);
+    let root = &observation.layers[&layer("Parcel")].root;
+    let geom = root
+        .children
+        .iter()
+        .find(|(name, _)| &*name.local == "geom")
+        .and_then(|(_, child)| child.geometry.as_ref())
+        .expect("a geometry column");
+    assert_eq!(geom.srs.get("EPSG:2180"), Some(&1), "{:?}", geom.srs);
+    assert_eq!(geom.srs.get("EPSG:2176"), Some(&1), "{:?}", geom.srs);
+    assert!(geom.dims.contains(&3), "the collection's srsDimension: {:?}", geom.dims);
+    assert!(geom.dims.contains(&2), "the feature's srsDimension: {:?}", geom.dims);
+    // The collection's envelope is the dataset's declared extent.
+    assert_eq!(observation.extent, Some([0.0, 0.0, 10.0, 20.0]));
+}

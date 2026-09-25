@@ -313,3 +313,78 @@ fn a_broken_part_nulls_the_whole_array() {
     assert_eq!(read.i64s("area"), [Some(1)]);
     assert_eq!(read.geometries("pointArrayProperty"), [None]);
 }
+
+/// A GML 3.2 collection whose `boundedBy` envelope has `attributes` and the
+/// corners `lower` and `upper`.
+fn bounded_collection(attributes: &str, lower: &str, upper: &str, members: &[&str]) -> String {
+    let envelope = format!(
+        "<gml:boundedBy><gml:Envelope {attributes}><gml:lowerCorner>{lower}</gml:lowerCorner>\
+         <gml:upperCorner>{upper}</gml:upperCorner></gml:Envelope></gml:boundedBy>"
+    );
+    gml::collection(gml::GML_32, "gml:featureMember", members, "", &envelope)
+}
+
+#[test]
+fn geometries_inherit_the_collection_s_srs_name_and_dimension() {
+    // A geometry without srsName or srsDimension takes the collection's
+    // `boundedBy`'s (`docs/geometry.md`, "srsName inheritance").
+    let document = bounded_collection(
+        r#"srsName="EPSG:2180" srsDimension="3""#,
+        "0 0 0",
+        "10 10 10",
+        &[&parcel("p1", "<app:geom><gml:LineString><gml:posList>0 0 1 1 1 2</gml:posList></gml:LineString></app:geom>")],
+    );
+    let read = read_document(&document, "Parcel");
+    assert_eq!(read.field("geom").metadata().get(meta::SRS_NAME).map(String::as_str), Some("EPSG:2180"));
+    assert_wkt(read.geometries("geom")[0].as_ref().expect("a line"), "LINESTRING Z (0 0 1,1 1 2)");
+}
+
+#[test]
+fn the_inherited_srs_name_decides_the_axis_order() {
+    // The URN form of EPSG:4326 is latitude first, so the positions are
+    // swapped, as they would be with the srsName on the geometry.
+    let document = bounded_collection(
+        r#"srsName="urn:ogc:def:crs:EPSG::4326""#,
+        "49 14",
+        "55 24",
+        &[&parcel("p1", "<app:geom><gml:Point><gml:pos>52 21</gml:pos></gml:Point></app:geom>")],
+    );
+    let read = read_document(&document, "Parcel");
+    assert_eq!(read.field("geom").metadata().get(meta::AXIS_SWAPPED).map(String::as_str), Some("true"));
+    assert_wkt(read.geometries("geom")[0].as_ref().expect("a point"), "POINT (21 52)");
+}
+
+#[test]
+fn a_feature_s_bounded_by_comes_before_the_collection_s() {
+    let document = bounded_collection(
+        r#"srsName="EPSG:2180""#,
+        "0 0",
+        "10 10",
+        &[&parcel(
+            "p1",
+            concat!(
+                r#"<gml:boundedBy><gml:Envelope srsName="EPSG:2176"><gml:lowerCorner>1 1</gml:lowerCorner>"#,
+                "<gml:upperCorner>2 2</gml:upperCorner></gml:Envelope></gml:boundedBy>",
+                "<app:geom><gml:Point><gml:pos>1 2</gml:pos></gml:Point></app:geom>"
+            ),
+        )],
+    );
+    let read = read_document(&document, "Parcel");
+    assert_eq!(read.field("geom").metadata().get(meta::SRS_NAME).map(String::as_str), Some("EPSG:2176"));
+    assert_wkt(read.geometries("geom")[0].as_ref().expect("a point"), "POINT (1 2)");
+}
+
+#[test]
+fn a_scan_reports_the_extent_the_collection_declares() {
+    let document = bounded_collection(
+        r#"srsName="EPSG:2180""#,
+        "100 200",
+        "300 400",
+        &[&parcel("p1", &format!("<app:geom>{}</app:geom>", point(150.0, 250.0)))],
+    );
+    let declared = scan(sources(&document), ScanExtent::Full, &ReadOptions::default()).expect("a scan");
+    assert_eq!(declared.extent(), Some([100.0, 200.0, 300.0, 400.0]));
+    let plain = gml::gml32_collection(&[&parcel("p1", &format!("<app:geom>{}</app:geom>", point(150.0, 250.0)))]);
+    let undeclared = scan(sources(&plain), ScanExtent::Full, &ReadOptions::default()).expect("a scan");
+    assert_eq!(undeclared.extent(), None);
+}

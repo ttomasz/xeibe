@@ -407,6 +407,12 @@ impl ScanResult {
         !self.observation.sampled
     }
 
+    /// The extent the collections declare in their `boundedBy`, as written,
+    /// for all layers together. `None` if no collection has one.
+    pub fn extent(&self) -> Option<[f64; 4]> {
+        self.observation.extent
+    }
+
     pub fn layers(&self) -> Vec<LayerInfo> {
         self.observation
             .layers

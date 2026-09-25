@@ -9,7 +9,8 @@ use xeibe_core::version::VersionHints;
 use xeibe_core::{
     FeatureChunk, FeatureSplitter, Location, NamespaceContext, QName, SourceId, Sources, ns,
 };
-use xeibe_geom::sniff::sniff_geometry;
+use xeibe_geom::ParseContext;
+use xeibe_geom::sniff::sniff_geometry_in;
 
 use crate::geometry_stats::{GeometryStats, is_envelope, union_bbox};
 use crate::node::{ElementNode, is_gml_id};
@@ -425,6 +426,13 @@ const GEOMETRY_ELEMENTS: &[&str] = &[
     "RectifiedGrid",
 ];
 
+/// An envelope's corners as a 2D bbox, as written.
+fn envelope_bbox(envelope: Option<&xeibe_geom::model::Envelope>) -> Option<[f64; 4]> {
+    let envelope = envelope.filter(|e| e.lower.len() >= 2 && e.upper.len() >= 2)?;
+    let (lower, upper) = (&envelope.lower, &envelope.upper);
+    union_bbox(Some([lower[0], lower[1], lower[0], lower[1]]), Some([upper[0], upper[1], upper[0], upper[1]]))
+}
+
 fn is_geometry_element(name: &QName) -> bool {
     name.is_gml() && GEOMETRY_ELEMENTS.contains(&&*name.local)
 }
@@ -453,8 +461,12 @@ struct WalkState {
 struct FeatureState {
     seq: u64,
     gml_id: Option<String>,
-    /// srsName from the feature's `boundedBy`, inherited by its geometries.
+    /// srsName and srsDimension its geometries inherit: the feature's
+    /// `boundedBy`'s, else the collection's.
     srs_name: Option<String>,
+    srs_dimension: Option<u8>,
+    /// The feature's `boundedBy` was read.
+    bounded: bool,
     extent: Option<[f64; 4]>,
 }
 
@@ -477,6 +489,8 @@ struct Instance {
     gml_id: Option<String>,
     /// A GML array property (`gml:pointArrayProperty`, …).
     array: bool,
+    /// The feature's `gml:boundedBy`.
+    bounded_by: bool,
 }
 
 impl<'o> TreeBuilder<'o> {
@@ -506,6 +520,14 @@ impl<'o> TreeBuilder<'o> {
     fn scan(&mut self, chunk: &FeatureChunk, budget: &mut Option<u64>) -> crate::Result<bool> {
         let mut reader = GmlReader::new(&chunk.bytes, &chunk.namespaces, chunk.byte_offset)
             .with_source(chunk.source);
+        let inherited = match chunk.collection_bounded_by.as_deref() {
+            Some(raw) => {
+                let (envelope, inherited) = xeibe_geom::parse::collection_bounded_by(raw)?;
+                self.observation.extent = envelope_bbox(envelope.as_ref());
+                inherited
+            }
+            None => ParseContext::default(),
+        };
         let mut index = 0u64;
         loop {
             match reader.next_event()? {
@@ -539,6 +561,8 @@ impl<'o> TreeBuilder<'o> {
                     self.state.feature = FeatureState {
                         seq: chunk.first_feature_seq + index,
                         gml_id: instance.gml_id.clone(),
+                        srs_name: inherited.srs_name.clone(),
+                        srs_dimension: inherited.srs_dimension,
                         ..FeatureState::default()
                     };
                     index += 1;
@@ -629,7 +653,7 @@ impl WalkState {
                     frame.had_children = true;
                     self.hints.observe(&name);
                     if depth >= 1 && is_geometry_element(&name) {
-                        let sniff = self.geometry(reader, depth)?;
+                        let sniff = self.geometry(reader, depth == 1 && instance.bounded_by)?;
                         frame.geometries.push(sniff);
                         continue;
                     }
@@ -649,6 +673,7 @@ impl WalkState {
                     child.instances += 1;
                     let mut child_instance = self.start(child, &attrs);
                     child_instance.array = xeibe_geom::parse::is_array_property(&name);
+                    child_instance.bounded_by = name.is_gml_named("boundedBy");
                     let location = reader.location();
                     child.first_seen.get_or_insert((self.source, location.byte_offset));
                     match frame.child_counts.iter_mut().find(|(i, _, _)| *i == index) {
@@ -723,8 +748,13 @@ impl WalkState {
     }
 
     /// A geometry element inside a property: sniff it (without building it).
-    fn geometry(&mut self, reader: &mut GmlReader<'_>, depth: u16) -> crate::Result<xeibe_geom::sniff::GeometrySniff> {
-        let sniff = sniff_geometry(reader, self.feature.srs_name.as_deref())?;
+    /// `feature_bounds`: the envelope of the feature's `boundedBy`.
+    fn geometry(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        feature_bounds: bool,
+    ) -> crate::Result<xeibe_geom::sniff::GeometrySniff> {
+        let sniff = sniff_geometry_in(reader, self.feature.srs_name.as_deref(), self.feature.srs_dimension)?;
         match sniff.dialect {
             Some(xeibe_core::Dialect::Gml2) => self.hints.saw_gml2_elements = true,
             Some(xeibe_core::Dialect::Gml3) if self.hints.saw_gml && !self.hints.saw_gml32 => {
@@ -733,9 +763,14 @@ impl WalkState {
             _ => {}
         }
         if is_envelope(&sniff) {
-            // A feature's `boundedBy` gives its geometries their srsName.
-            if depth == 1 && self.feature.srs_name.is_none() {
-                self.feature.srs_name = sniff.srs_name.clone();
+            // A feature's `boundedBy` hands its srsName and srsDimension down
+            // to its geometries, in place of the collection's.
+            if feature_bounds && !self.feature.bounded {
+                self.feature.bounded = true;
+                self.feature.srs_name.clone_from(&sniff.srs_name);
+                if sniff.srs_dimension.is_some() {
+                    self.feature.srs_dimension = sniff.srs_dimension;
+                }
             }
         } else if let Some(p) = sniff.first_position.as_deref().filter(|p| p.len() >= 2) {
             self.feature.extent = union_bbox(self.feature.extent, Some([p[0], p[1], p[0], p[1]]));

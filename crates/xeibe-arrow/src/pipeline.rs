@@ -16,7 +16,7 @@ use arrow_schema::SchemaRef;
 use crossbeam_channel::{Receiver, Sender, bounded};
 use xeibe_core::reader::{GmlReader, XmlEvent};
 use xeibe_core::{FeatureChunk, FeatureSplitter, Location, NamespaceContext, QName, SourceId, Sources, ns};
-use xeibe_geom::GeometryParser;
+use xeibe_geom::{GeometryParser, ParseContext};
 use xeibe_geom::options::GeometryOptions;
 
 use crate::axis::{AxisDecisions, SharedContexts};
@@ -308,7 +308,11 @@ impl Pipeline {
     fn process_chunk(&self, chunk: &FeatureChunk) -> crate::Result<Vec<SeqBatch>> {
         let plan = &*self.plan;
         let axis = plan.axis.iter().map(|axis| axis.for_source(chunk.source)).collect();
-        let features = FeatureReader::new(plan, GeometryParser::new(&plan.geometry), axis);
+        let inherited = match chunk.collection_bounded_by.as_deref() {
+            Some(raw) if plan.has_geometry => xeibe_geom::parse::collection_bounded_by(raw)?.1,
+            _ => ParseContext::default(),
+        };
+        let features = FeatureReader::new(plan, GeometryParser::new(&plan.geometry), axis).with_inherited(inherited);
         let mut builder = LayerBatchBuilder::new(plan.schema.clone(), plan.batch_size.min(4096))?;
         let mut report = ReadReport::default();
         let mut batches = Vec::new();

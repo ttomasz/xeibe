@@ -40,6 +40,17 @@ pub fn sniff_geometry(
     reader: &mut GmlReader<'_>,
     inherited_srs: Option<&str>,
 ) -> crate::Result<GeometrySniff> {
+    sniff_geometry_in(reader, inherited_srs, None)
+}
+
+/// [`sniff_geometry`] with an inherited `srsDimension` as well (a
+/// `boundedBy`'s), which splits the first position like the geometry's own
+/// would.
+pub fn sniff_geometry_in(
+    reader: &mut GmlReader<'_>,
+    inherited_srs: Option<&str>,
+    inherited_dimension: Option<u8>,
+) -> crate::Result<GeometrySniff> {
     let root = current_element(reader)?;
     let table = CrsTable::builtin();
     let kind = geom_kind(&root.name);
@@ -53,7 +64,8 @@ pub fn sniff_geometry(
     let mut first_srs: Option<String> = None;
     // (srsDimension, CRS dimension) in scope, per open element.
     let mut scopes = Vec::new();
-    let scope = observe(&mut sniff, &mut first_srs, &root.attrs, (None, inherited_srs.and_then(|s| crs_dimension(s, &table))), &table);
+    let inherited = (inherited_dimension, inherited_srs.and_then(|s| crs_dimension(s, &table)));
+    let scope = observe(&mut sniff, &mut first_srs, &root.attrs, inherited, &table);
     scopes.push(scope);
     let root_srs = root.attrs.srs_name.clone();
 

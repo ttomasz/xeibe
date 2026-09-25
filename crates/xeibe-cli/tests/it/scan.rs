@@ -128,3 +128,16 @@ fn scan_of_a_missing_file_fails() {
     assert!(!run.success);
     assert!(run.stderr.starts_with("error:"), "{}", run.stderr);
 }
+
+#[test]
+fn scan_prints_the_extent_the_collection_declares() {
+    // WFS 2.0's `wfs:boundedBy` on the collection, as written.
+    let run = xeibe_ok(&["scan", &sample("wfs/pl-gugik-mapserver-addresses-wfs200.xml")]);
+    assert!(
+        run.stdout.contains("dataset extent (394384.17, 547502.59) - (394484.64, 547565.14)"),
+        "{}",
+        run.stdout
+    );
+    let run = xeibe_ok(&["scan", &sample(PRG)]);
+    assert!(!run.stdout.contains("dataset extent"), "PRG's collection has no boundedBy: {}", run.stdout);
+}

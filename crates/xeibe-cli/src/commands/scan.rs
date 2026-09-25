@@ -47,6 +47,9 @@ pub fn run(
     if !scan.is_complete() {
         writeln!(out, "sampled scan: layers starting after the sample are missing; counts are lower bounds")?;
     }
+    if let Some([x0, y0, x1, y1]) = scan.extent() {
+        writeln!(out, "dataset extent ({x0}, {y0}) - ({x1}, {y1}) as the collection declares it")?;
+    }
     for (info, (name, columns)) in layers.iter().zip(&saved.layers) {
         let mut line = format!("{name}: {} features", info.feature_count);
         if !info.geometry_columns.is_empty() {

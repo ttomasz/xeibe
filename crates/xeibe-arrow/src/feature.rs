@@ -27,6 +27,8 @@ pub struct FeatureReader<'a> {
     geometry: GeometryParser<'a>,
     /// One resolver per geometry column, for the chunk's source.
     axis: Vec<AxisDecisions>,
+    /// What the collection's `boundedBy` hands down to every feature.
+    inherited: ParseContext,
 }
 
 /// What became of one feature.
@@ -47,8 +49,12 @@ struct RowState {
     error: Option<String>,
     /// The first geometry error.
     geometry_error: Option<String>,
-    /// srsName of the feature's `boundedBy`, inherited by its geometries.
+    /// srsName and srsDimension its geometries inherit: the feature's
+    /// `boundedBy`'s, else the collection's.
     srs_name: Option<String>,
+    srs_dimension: Option<u8>,
+    /// The feature's `boundedBy` was read.
+    bounded: bool,
     location: Location,
     warnings: Vec<Warning>,
     /// Scratch space for attribute targets.
@@ -71,11 +77,32 @@ impl RowState {
     fn fail(&mut self, message: String) {
         self.error.get_or_insert(message);
     }
+
+    /// What the geometries of the feature inherit.
+    fn inherited(&self) -> ParseContext {
+        ParseContext { srs_name: self.srs_name.clone(), srs_dimension: self.srs_dimension, axis: None }
+    }
+
+    /// The feature's (first) `boundedBy` hands `inherited` down.
+    fn bounded_by(&mut self, inherited: ParseContext) {
+        if !self.bounded {
+            self.bounded = true;
+            self.srs_name = inherited.srs_name;
+            self.srs_dimension = inherited.srs_dimension;
+        }
+    }
 }
 
 impl<'a> FeatureReader<'a> {
     pub fn new(plan: &'a ReadPlan, geometry: GeometryParser<'a>, axis: Vec<AxisDecisions>) -> Self {
-        FeatureReader { plan, geometry, axis }
+        FeatureReader { plan, geometry, axis, inherited: ParseContext::default() }
+    }
+
+    /// The features are in a collection whose `boundedBy` hands `inherited`
+    /// down to them ([`xeibe_geom::parse::collection_bounded_by`]).
+    pub fn with_inherited(mut self, inherited: ParseContext) -> Self {
+        self.inherited = inherited;
+        self
     }
 
     /// Reader positioned on the feature start element; consumes it and appends
@@ -93,7 +120,9 @@ impl<'a> FeatureReader<'a> {
             counts: vec![0; routes.anchors],
             error: None,
             geometry_error: None,
-            srs_name: None,
+            srs_name: self.inherited.srs_name.clone(),
+            srs_dimension: self.inherited.srs_dimension,
+            bounded: false,
             location,
             warnings: Vec::new(),
             targets: Vec::new(),
@@ -367,7 +396,7 @@ impl<'a> FeatureReader<'a> {
             reader.skip_element()?;
             return Ok(None);
         };
-        let context = ParseContext { srs_name: state.srs_name.clone(), srs_dimension: None, axis: None };
+        let context = ParseContext { srs_name: state.srs_name.clone(), srs_dimension: state.srs_dimension, axis: None };
         match self.geometry.parse(reader, &context, &self.axis[*axis]) {
             Ok(parsed) => {
                 for warning in parsed.warnings {
@@ -440,11 +469,11 @@ impl<'a> FeatureReader<'a> {
 
     /// A `boundedBy` routed to a box column.
     fn bounding_box(&self, reader: &mut GmlReader<'_>, target: Target, depth: usize, state: &mut RowState) -> crate::Result<()> {
-        let context = ParseContext { srs_name: state.srs_name.clone(), ..ParseContext::default() };
-        match self.geometry.parse_bounded_by(reader, &context) {
-            Ok(Some(mut envelope)) => {
-                if depth == 0 && state.srs_name.is_none() {
-                    state.srs_name = envelope.srs_name.clone();
+        let context = state.inherited();
+        match self.geometry.parse_bounded_by_inherited(reader, &context) {
+            Ok((Some(mut envelope), inherited)) => {
+                if depth == 0 {
+                    state.bounded_by(inherited);
                 }
                 if let Item::Box(axis) = &self.plan.routes.columns[target.column].item
                     && self.axis[*axis].resolve(envelope.srs_name.as_deref(), Dialect::Gml3).swap {
@@ -457,7 +486,7 @@ impl<'a> FeatureReader<'a> {
                 self.put(target.column, Value::Box(envelope), state);
                 Ok(())
             }
-            Ok(None) => Ok(()),
+            Ok((None, _)) => Ok(()),
             Err(xeibe_geom::Error::Core(error)) => Err(error.into()),
             Err(error) => {
                 state.geometry_error.get_or_insert(error.to_string());
@@ -466,13 +495,11 @@ impl<'a> FeatureReader<'a> {
         }
     }
 
-    /// Read a feature's `boundedBy` for its srsName only.
+    /// Read a feature's `boundedBy` only for what it hands down.
     fn bounded_by_srs(&self, reader: &mut GmlReader<'_>, state: &mut RowState) -> crate::Result<()> {
-        match self.geometry.parse_bounded_by(reader, &ParseContext::default()) {
-            Ok(envelope) => {
-                if state.srs_name.is_none() {
-                    state.srs_name = envelope.and_then(|envelope| envelope.srs_name);
-                }
+        match self.geometry.parse_bounded_by_inherited(reader, &state.inherited()) {
+            Ok((_, inherited)) => {
+                state.bounded_by(inherited);
                 Ok(())
             }
             Err(xeibe_geom::Error::Core(error)) => Err(error.into()),

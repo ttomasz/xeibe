@@ -153,6 +153,13 @@ impl Scan {
         self.inner.is_complete()
     }
 
+    /// `(xmin, ymin, xmax, ymax)` the collections declare in their
+    /// `boundedBy`, as written, for all layers; `None` if none does.
+    #[getter]
+    fn extent(&self) -> Option<(f64, f64, f64, f64)> {
+        self.inner.extent().map(|[a, b, c, d]| (a, b, c, d))
+    }
+
     /// The layer's schema as a `pyarrow.Schema`.
     fn schema<'py>(&self, py: Python<'py>, layer: &str) -> PyResult<Bound<'py, PyAny>> {
         to_pyarrow(py, self.inner.arrow_schema(layer).map_err(error)?)

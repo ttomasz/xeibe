@@ -227,6 +227,14 @@ wfs:/gml:FeatureCollection boundedBy/Envelope/@srsName     (collection level)
 
 In GML 2, `srsName` may appear only on the outermost geometry (02-069 §4.3.4).
 
+`srsDimension` follows the same chain. The collection's `boundedBy` is
+`gml:boundedBy` or, in WFS 2.0, `wfs:boundedBy`. In a WFS 2.0 response with
+several queries, each inner collection's `boundedBy` applies to its own
+features and the outer one to the rest. `gml:Null` (`gml:null` in GML 2)
+declares nothing. An envelope whose corners can't be read still passes on its
+srsName and srsDimension. The collection's envelope, as written, is also the
+dataset extent that a scan reports (`ScanResult::extent`, `xeibe scan`).
+
 ## CRS and axis order
 
 **Terminology.** *srsName* (in code `srs_name`, `SrsName`) is the attribute string

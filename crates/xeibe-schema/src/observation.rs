@@ -23,6 +23,10 @@ pub struct DatasetObservation {
     /// Namespace URI → the prefix it was first declared with, for readable
     /// `gml:path` metadata. Bounded; URIs without an entry get `ns1`, `ns2`, ….
     pub prefixes: IndexMap<Arc<str>, String>,
+    /// Union of the collections' `boundedBy` envelopes (as written): the
+    /// extent the producer declares for the whole dataset, all layers.
+    #[serde(default)]
+    pub extent: Option<[f64; 4]>,
 }
 
 /// Bound on [`DatasetObservation::prefixes`].
@@ -115,6 +119,7 @@ impl Merge for DatasetObservation {
         }
         self.sampled |= other.sampled;
         self.source_context.extend(other.source_context);
+        self.extent = union_bbox(self.extent, other.extent);
         for (uri, prefix) in other.prefixes {
             self.note_prefix(&uri, &prefix);
         }

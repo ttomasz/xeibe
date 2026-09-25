@@ -311,3 +311,78 @@ fn a_custom_member_rule_covers_application_collections() {
     };
     assert_eq!(feature_names(&split(&document, options)), ["Parcel"]);
 }
+
+/// A collection envelope in `srs`, as the `boundedBy` element `element`
+/// (`gml:boundedBy`, or `wfs:boundedBy` in WFS 2.0).
+fn bounded_by(element: &str, srs: &str) -> String {
+    format!(
+        r#"<{element}><gml:Envelope srsName="{srs}"><gml:lowerCorner>0 0</gml:lowerCorner><gml:upperCorner>1 1</gml:upperCorner></gml:Envelope></{element}>"#
+    )
+}
+
+/// The `boundedBy` a chunk's features inherit, as text.
+fn chunk_bounded_by(chunk: &xeibe_core::FeatureChunk) -> Option<String> {
+    chunk
+        .collection_bounded_by
+        .as_ref()
+        .map(|raw| String::from_utf8(raw.bytes.to_vec()).expect("UTF-8"))
+}
+
+#[test]
+fn chunks_carry_the_collection_bounded_by() {
+    // The collection's `boundedBy` is kept as written, for its features to
+    // inherit the srsName (`docs/geometry.md`, "srsName inheritance").
+    let features = parcels(2);
+    let envelope = bounded_by("gml:boundedBy", "EPSG:2180");
+    let document = gml::collection(ns::GML_32, "gml:featureMember", &refs(&features), "", &envelope);
+    let chunks = split(&document, one_feature_per_chunk());
+    assert_eq!(feature_names(&chunks), ["Parcel", "Parcel"], "the boundedBy is not a feature");
+    for chunk in &chunks {
+        assert_eq!(chunk_bounded_by(chunk).as_deref(), Some(envelope.as_str()));
+        let raw = chunk.collection_bounded_by.as_ref().expect("a boundedBy");
+        assert_eq!(raw.namespaces.resolve_prefix(Some("gml")), Some(ns::GML_32));
+        assert_eq!(&document.as_bytes()[raw.byte_offset as usize..][..raw.bytes.len()], &raw.bytes[..]);
+    }
+
+    let plain = split(&gml::gml32_collection(&refs(&features)), SplitterOptions::default());
+    assert!(plain.iter().all(|chunk| chunk.collection_bounded_by.is_none()));
+}
+
+#[test]
+fn nested_collections_hand_down_their_own_bounded_by() {
+    // WFS 2.0 with several queries: an inner collection per query. Features
+    // take the innermost envelope, and a chunk never spans two of them.
+    let inner = |envelope: &str, ids: &[&str]| {
+        let members: String = ids
+            .iter()
+            .map(|id| format!("<wfs:member>{}</wfs:member>", gml::feature("Parcel", id, "")))
+            .collect();
+        format!("<wfs:FeatureCollection>{envelope}{members}</wfs:FeatureCollection>")
+    };
+    let document = gml::wfs20_collection(
+        "",
+        &[&inner(&bounded_by("wfs:boundedBy", "EPSG:2180"), &["p1", "p2"]), &inner("", &["p3"])],
+    )
+    .replacen("<wfs:member>", &format!("{}<wfs:member>", bounded_by("wfs:boundedBy", "EPSG:4326")), 1);
+    let chunks = split(&document, SplitterOptions::default());
+    let per_chunk: Vec<(usize, Option<String>)> =
+        chunks.iter().map(|chunk| (features(std::slice::from_ref(chunk)).len(), chunk_bounded_by(chunk))).collect();
+    assert_eq!(
+        per_chunk,
+        [(2, Some(bounded_by("wfs:boundedBy", "EPSG:2180"))), (1, Some(bounded_by("wfs:boundedBy", "EPSG:4326")))]
+    );
+}
+
+#[test]
+fn the_bounded_by_of_a_feature_root_stays_the_feature_s_own() {
+    let envelope = bounded_by("gml:boundedBy", "EPSG:2180");
+    let document = gml::single_feature_document("Parcel", "p1", &format!("{envelope}<app:area>1</app:area>"));
+    let options = SplitterOptions {
+        allow_single_feature_root: true,
+        ..SplitterOptions::default()
+    };
+    let chunks = split(&document, options);
+    assert_eq!(feature_names(&chunks), ["Parcel"]);
+    assert!(chunks[0].collection_bounded_by.is_none(), "a property of the feature, not a collection's");
+    assert!(String::from_utf8_lossy(&chunks[0].bytes).contains(&envelope));
+}

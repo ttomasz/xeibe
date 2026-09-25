@@ -7,7 +7,8 @@
 //! resolved only outside features: for the root, the containers and the
 //! feature elements themselves. Inside a feature it only counts depth, and a
 //! feature of a layer that was not asked for is passed over without being
-//! copied.
+//! copied. A collection's `boundedBy` is copied like a feature and travels
+//! with the chunks of the features it bounds, which inherit its srsName.
 
 use std::collections::VecDeque;
 use std::io::Read;
@@ -16,7 +17,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
-use crate::{FeatureChunk, Location, NamespaceContext, QName, SourceId, ns};
+use crate::{FeatureChunk, Location, NamespaceContext, QName, RawElement, SourceId, ns};
 
 /// Which elements wrap features.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -157,6 +158,7 @@ pub struct FeatureSplitter<R: Read> {
     chunk_context: Arc<NamespaceContext>,
     chunk_offset: u64,
     chunk_first_feature: u64,
+    chunk_bounded_by: Option<Arc<RawElement>>,
     features_emitted: u64,
     ready: VecDeque<FeatureChunk>,
     finished: bool,
@@ -170,11 +172,13 @@ enum Mode {
     Prolog,
     /// Inside the root, outside any feature.
     Outside,
-    /// Inside a feature that started at stream offset `start`.
+    /// Inside a feature that started at stream offset `start`, or inside a
+    /// collection's `boundedBy` (`bounded_by`), which is copied too.
     Feature {
         depth: usize,
         emit: bool,
         start: u64,
+        bounded_by: bool,
     },
     /// After the root element.
     Epilog,
@@ -191,6 +195,8 @@ struct Frame {
     has_child: bool,
     /// Length of `bindings` before this element's declarations.
     bindings_before: usize,
+    /// The element's `boundedBy`, for the features inside it.
+    bounded_by: Option<Arc<RawElement>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -242,6 +248,7 @@ impl<R: Read> FeatureSplitter<R> {
             chunk: Vec::new(),
             chunk_offset: 0,
             chunk_first_feature: 0,
+            chunk_bounded_by: None,
             features_emitted: 0,
             ready: VecDeque::new(),
             finished: false,
@@ -283,23 +290,34 @@ impl<R: Read> FeatureSplitter<R> {
             return self.finish();
         };
         match self.mode {
-            Mode::Feature { depth, emit, start } => match markup.kind {
+            Mode::Feature {
+                depth,
+                emit,
+                start,
+                bounded_by,
+            } => match markup.kind {
                 Kind::Start { empty: false, .. } => {
                     self.mode = Mode::Feature {
                         depth: depth + 1,
                         emit,
                         start,
+                        bounded_by,
                     };
                 }
                 Kind::End if depth == 1 => {
                     self.mode = Mode::Outside;
-                    self.end_feature(emit, start, markup.end);
+                    if bounded_by {
+                        self.end_bounded_by(start, markup.end);
+                    } else {
+                        self.end_feature(emit, start, markup.end);
+                    }
                 }
                 Kind::End => {
                     self.mode = Mode::Feature {
                         depth: depth - 1,
                         emit,
                         start,
+                        bounded_by,
                     }
                 }
                 _ => {}
@@ -418,6 +436,25 @@ impl<R: Read> FeatureSplitter<R> {
                     depth: 1,
                     emit,
                     start,
+                    bounded_by: false,
+                };
+            }
+            return Ok(());
+        }
+
+        if !is_root && is_bounded_by(&name) {
+            // The envelope of the collection this element is in, copied for
+            // the features it bounds. Its declarations travel in its bytes.
+            if declared {
+                self.bindings.truncate(bindings_before);
+                self.bindings_generation += 1;
+            }
+            if !empty {
+                self.mode = Mode::Feature {
+                    depth: 1,
+                    emit: true,
+                    start,
+                    bounded_by: true,
                 };
             }
             return Ok(());
@@ -455,6 +492,7 @@ impl<R: Read> FeatureSplitter<R> {
             members,
             has_child: false,
             bindings_before,
+            bounded_by: None,
         });
         Ok(())
     }
@@ -585,13 +623,39 @@ impl<R: Read> FeatureSplitter<R> {
     /// A feature that enters a chunk starts at stream offset `start`.
     fn begin_feature(&mut self, start: u64) {
         let context = self.current_context();
-        if !self.chunk.is_empty() && !Arc::ptr_eq(&context, &self.chunk_context) {
+        let bounded_by = self.collection_bounded_by();
+        let same_bounds = match (bounded_by, &self.chunk_bounded_by) {
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+            (a, b) => a.is_none() && b.is_none(),
+        };
+        if !self.chunk.is_empty() && (!Arc::ptr_eq(&context, &self.chunk_context) || !same_bounds) {
             self.flush_chunk();
         }
         if self.chunk.is_empty() {
+            self.chunk_bounded_by = self.collection_bounded_by().cloned();
             self.chunk_context = context;
             self.chunk_offset = start;
             self.chunk_first_feature = self.features_emitted;
+        }
+    }
+
+    /// The `boundedBy` of the innermost open collection that has one.
+    fn collection_bounded_by(&self) -> Option<&Arc<RawElement>> {
+        self.stack.iter().rev().find_map(|frame| frame.bounded_by.as_ref())
+    }
+
+    /// A collection's `boundedBy` that started at stream offset `start` ended
+    /// at `end` (an index into `buf`).
+    fn end_bounded_by(&mut self, start: u64, end: usize) {
+        let from = (start - self.base) as usize;
+        let element = RawElement {
+            source: self.source,
+            byte_offset: start,
+            bytes: Bytes::copy_from_slice(&self.buf[from..end]),
+            namespaces: self.current_context(),
+        };
+        if let Some(collection) = self.stack.last_mut() {
+            collection.bounded_by = Some(Arc::new(element));
         }
     }
 
@@ -620,6 +684,7 @@ impl<R: Read> FeatureSplitter<R> {
             bytes,
             namespaces: self.chunk_context.clone(),
             first_feature_seq: self.chunk_first_feature,
+            collection_bounded_by: self.chunk_bounded_by.clone(),
         });
         self.next_seq += 1;
     }
@@ -822,6 +887,16 @@ impl<R: Read> Iterator for FeatureSplitter<R> {
             }
         }
     }
+}
+
+/// The `boundedBy` of a collection: GML's, or WFS's own (`wfs:boundedBy`,
+/// 2.0).
+fn is_bounded_by(name: &QName) -> bool {
+    &*name.local == "boundedBy"
+        && matches!(
+            name.ns.as_deref(),
+            Some(ns::GML | ns::GML_32 | ns::WFS | ns::WFS_20)
+        )
 }
 
 /// Collection elements, which are containers even inside a member.

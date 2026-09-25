@@ -343,6 +343,12 @@ Details:
 - Namespace declarations from the root element and the ancestors of the feature
   container are recorded once and passed to every chunk. A chunk can then be parsed
   on its own.
+- A collection's `boundedBy` (`gml:boundedBy`, or `wfs:boundedBy` in WFS 2.0) is
+  copied as written and passed to the chunks of the features it bounds
+  (`FeatureChunk::collection_bounded_by`), which inherit its srsName and
+  srsDimension (see [geometry.md](geometry.md#srsname-inheritance)). In a WFS 2.0
+  response with several queries each inner collection passes on its own, and a
+  chunk never spans two of them.
 - Comments, CDATA, processing instructions and quoted attribute values are handled
   correctly, so a `<` inside them doesn't mislead the splitter.
 - With a layer filter (every read), features of other layers never enter a chunk.
@@ -524,7 +530,8 @@ xeibe wfs convert <url> --type-name <name> -o out.parquet [--settings settings.j
   or an `http(s)://`, `s3://`, `gs://` or `az://` URL (object stores need the
   `object-store` feature).
 - `xeibe scan` without `-o` prints the layers with their feature counts, geometry and
-  CRS. Axis-order conflicts are printed first.
+  CRS, and the extent the collection declares in its `boundedBy`, if it does.
+  Axis-order conflicts are printed first.
 - `xeibe convert` without `--settings` samples the layer. Options such as
   `--axis-order`, `--crs`, `--linearize` and `--preset` override the settings file.
 - Converting several layers means running `xeibe convert` once per layer.

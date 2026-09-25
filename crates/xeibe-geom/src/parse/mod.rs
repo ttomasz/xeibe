@@ -21,7 +21,7 @@ pub use coords::{CoordinatesFormat, parse_coordinates, parse_pos_list, swap_xy};
 pub use envelope::parse_envelope;
 
 use xeibe_core::reader::{Attributes, GmlReader, XmlEvent};
-use xeibe_core::{Dialect, QName, ns};
+use xeibe_core::{Dialect, QName, RawElement, ns};
 
 use crate::axis::AxisDecision;
 use crate::dialect::DialectTracker;
@@ -129,6 +129,18 @@ impl<'o> GeometryParser<'o> {
         reader: &mut GmlReader<'_>,
         context: &ParseContext,
     ) -> crate::Result<Option<Envelope>> {
+        Ok(self.parse_bounded_by_inherited(reader, context)?.0)
+    }
+
+    /// [`Self::parse_bounded_by`], and what the envelope hands down to the
+    /// geometries it bounds: its srsName and srsDimension, else the ones of
+    /// `context` (`docs/geometry.md`, "srsName inheritance"). The handed-down
+    /// context holds no axis decision.
+    pub fn parse_bounded_by_inherited(
+        &self,
+        reader: &mut GmlReader<'_>,
+        context: &ParseContext,
+    ) -> crate::Result<(Option<Envelope>, ParseContext)> {
         let first = current_element(reader)?;
         let mut parser = Parser::new(self.options, None, context);
         let scope = parser.root_scope(context);
@@ -136,11 +148,11 @@ impl<'o> GeometryParser<'o> {
         let result = (|| {
             let mut envelope = None;
             if is_envelope(&first.name) {
-                envelope = Some(parser.envelope(reader, &first, scope)?);
+                envelope = Some((parser.envelope(reader, &first, scope)?, first.attrs.srs_dimension));
             } else {
                 while let Some(child) = parser.next_child(reader)? {
                     if envelope.is_none() && is_envelope(&child.name) {
-                        envelope = Some(parser.envelope(reader, &child, scope)?);
+                        envelope = Some((parser.envelope(reader, &child, scope)?, child.attrs.srs_dimension));
                     } else {
                         parser.skip(reader)?;
                     }
@@ -148,23 +160,65 @@ impl<'o> GeometryParser<'o> {
             }
             Ok(envelope)
         })();
-        let mut envelope = match result {
+        let envelope = match result {
             Ok(envelope) => envelope,
             Err(error) => {
                 let _ = parser.recover(reader);
                 return Err(error);
             }
         };
-        if let Some(envelope) = &mut envelope {
+        let mut inherited = ParseContext {
+            srs_name: context.srs_name.clone(),
+            srs_dimension: context.srs_dimension,
+            axis: None,
+        };
+        let envelope = envelope.map(|(mut envelope, srs_dimension)| {
             if swap {
-                envelope::swap_corners(envelope);
+                envelope::swap_corners(&mut envelope);
             }
             if envelope.srs_name.is_none() {
                 envelope.srs_name = context.srs_name.clone();
             }
-        }
-        Ok(envelope)
+            inherited.srs_name.clone_from(&envelope.srs_name);
+            inherited.srs_dimension = srs_dimension.or(context.srs_dimension);
+            envelope
+        });
+        Ok((envelope, inherited))
     }
+}
+
+/// The `boundedBy` of a feature collection, as the splitter keeps it
+/// ([`xeibe_core::FeatureChunk::collection_bounded_by`]): its envelope as
+/// written, and what it hands down to every feature of the collection (its
+/// srsName and srsDimension). An envelope whose corners can't be read still
+/// hands down its srsName and srsDimension; `gml:Null` hands down nothing.
+pub fn collection_bounded_by(raw: &RawElement) -> crate::Result<(Option<Envelope>, ParseContext)> {
+    let mut reader = GmlReader::new(&raw.bytes, &raw.namespaces, raw.byte_offset).with_source(raw.source);
+    let mut depth = 0;
+    let attrs = loop {
+        match reader.next_event()? {
+            XmlEvent::Start { name, attrs } => {
+                depth += 1;
+                // The first element inside the `boundedBy`.
+                if depth == 2 {
+                    if !is_envelope(&name) {
+                        return Ok((None, ParseContext::default()));
+                    }
+                    break Attrs::read(&attrs);
+                }
+            }
+            XmlEvent::End { .. } | XmlEvent::Eof => return Ok((None, ParseContext::default())),
+            XmlEvent::Text(_) => {}
+        }
+    };
+    let context = ParseContext { srs_name: attrs.srs_name, srs_dimension: attrs.srs_dimension, axis: None };
+    let options = GeometryOptions::default();
+    let envelope = match GeometryParser::new(&options).parse_bounded_by(&mut reader, &ParseContext::default()) {
+        Ok(envelope) => envelope,
+        Err(Error::Core(error)) => return Err(Error::Core(error)),
+        Err(_) => None,
+    };
+    Ok((envelope, context))
 }
 
 fn is_envelope(name: &QName) -> bool {

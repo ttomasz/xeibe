@@ -15,7 +15,7 @@ pub mod source;
 pub mod splitter;
 pub mod version;
 
-pub use chunk::FeatureChunk;
+pub use chunk::{FeatureChunk, RawElement};
 pub use error::{Error, Result};
 pub use location::Location;
 pub use namespace::{NamespaceContext, ns};
