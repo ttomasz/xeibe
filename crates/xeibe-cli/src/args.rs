@@ -98,6 +98,10 @@ pub struct OutputArgs {
     pub output: PathBuf,
     #[arg(long, value_enum, default_value_t = OutputFormat::Parquet)]
     pub format: OutputFormat,
+    /// A GeoParquet 1.1 `bbox` covering column per geometry column
+    /// (`<column>_bbox`). Parquet only.
+    #[arg(long, value_enum, default_value_t = BboxColumn::Auto)]
+    pub bbox_column: BboxColumn,
 }
 
 /// Read parameters. They override the settings file's `options`.
@@ -158,6 +162,15 @@ pub enum AxisMode {
     GmlVersion,
     /// Evidence-based (default).
     Auto,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum BboxColumn {
+    /// For every geometry column but point columns, where the bbox would
+    /// repeat the coordinates.
+    Auto,
+    Always,
+    Never,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

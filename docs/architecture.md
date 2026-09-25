@@ -520,7 +520,7 @@ The CLI is deliberately simple: one command per operation, one layer per output.
 
 ```
 xeibe scan    <src>… [--sample N] [--preset …] [--explain] [-o settings.json]
-xeibe convert <src>… --layer <name> -o out.parquet [--settings settings.json] [--format parquet|ipc] [options…]
+xeibe convert <src>… --layer <name> -o out.parquet [--settings settings.json] [--format parquet|ipc] [--bbox-column auto|always|never] [options…]
 xeibe wfs layers  <url>
 xeibe wfs count   <url> --type-name <name>
 xeibe wfs convert <url> --type-name <name> -o out.parquet [--settings settings.json] [--page-size N]

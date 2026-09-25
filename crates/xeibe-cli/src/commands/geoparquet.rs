@@ -3,17 +3,21 @@
 //! the native `GEOMETRY` logical type (CRS as `authority:code`, `srid:0` when
 //! unknown), plus GeoParquet 1.1 `geo` metadata with the CRS as PROJJSON or
 //! `null`. Curves and other non-simple types are an error: neither standard
-//! has them.
+//! has them. A geometry column can get a GeoParquet 1.1 `bbox` covering column
+//! (`--bbox-column`).
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, RecordBatch, cast::AsArray};
-use arrow_schema::{DataType, Field, Schema, SchemaRef};
+use arrow_array::{Array, ArrayRef, BinaryArray, Float64Array, RecordBatch, StructArray, cast::AsArray};
+use arrow_buffer::NullBuffer;
+use arrow_schema::{DataType, Field, Fields, Schema, SchemaRef};
 use geoarrow_array::GeoArrowArray;
 use geoarrow_schema::{CrsType, GeoArrowType};
 use serde_json::{Value, json};
 use xeibe_geom::{CrsRef, SrsName};
+
+use crate::args::BboxColumn;
 
 /// Top-level geometry columns of a layer and what has been written of them.
 pub(crate) struct GeoColumns {
@@ -31,14 +35,31 @@ struct GeoColumn {
     projjson: Value,
     types: BTreeSet<&'static str>,
     bbox: Option<[f64; 4]>,
+    /// The name of its `bbox` covering column, which follows it.
+    covering: Option<String>,
+}
+
+/// The fields of a `bbox` covering column, in the order GeoParquet requires.
+const BBOX_FIELDS: [&str; 4] = ["xmin", "ymin", "xmax", "ymax"];
+
+fn bbox_fields() -> Fields {
+    BBOX_FIELDS.iter().map(|name| Field::new(*name, DataType::Float64, false)).collect()
 }
 
 impl GeoColumns {
     /// `primary` is the `primary` geometry option: a column name; else the first
-    /// geometry column is the primary one.
-    pub(crate) fn new(layer: &str, schema: &Schema, primary: Option<&str>) -> super::Result<Self> {
+    /// geometry column is the primary one. `first`: the first batch, which
+    /// tells `BboxColumn::Auto` whether a WKB column holds points.
+    pub(crate) fn new(
+        layer: &str,
+        schema: &Schema,
+        primary: Option<&str>,
+        bbox: BboxColumn,
+        first: Option<&RecordBatch>,
+    ) -> super::Result<Self> {
         let mut columns = Vec::new();
         let mut fields = Vec::new();
+        let mut names: HashSet<String> = schema.fields().iter().map(|field| field.name().clone()).collect();
         for (index, field) in schema.fields().iter().enumerate() {
             let Some(typ) = GeoArrowType::from_extension_field(field)? else {
                 fields.push(field.clone());
@@ -69,12 +90,24 @@ impl GeoColumns {
             fields.push(Arc::new(
                 Field::new(field.name(), DataType::Binary, true).with_metadata(metadata),
             ));
+            let covered = match bbox {
+                BboxColumn::Always => true,
+                BboxColumn::Never => false,
+                BboxColumn::Auto => !holds_points(&typ, field, first.map(|batch| batch.column(index)))?,
+            };
+            let covering = covered.then(|| {
+                let name = unique_name(&format!("{}_bbox", field.name()), &names);
+                names.insert(name.clone());
+                fields.push(Arc::new(Field::new(&name, DataType::Struct(bbox_fields()), true)));
+                name
+            });
             columns.push(GeoColumn {
                 index,
                 name: field.name().clone(),
                 projjson,
                 types: BTreeSet::new(),
                 bbox: None,
+                covering,
             });
         }
         let primary = primary
@@ -89,19 +122,32 @@ impl GeoColumns {
         self.output.clone()
     }
 
-    /// The batch with its geometry columns as checked WKB; bbox and geometry
-    /// types are collected on the way.
+    /// The batch with its geometry columns as checked WKB, each followed by
+    /// its covering column if it has one; bbox and geometry types are
+    /// collected on the way.
     pub(crate) fn convert(&mut self, batch: &RecordBatch) -> super::Result<RecordBatch> {
         let mut arrays: Vec<ArrayRef> = batch.columns().to_vec();
+        let mut coverings = Vec::new();
         let schema = batch.schema();
         for column in &mut self.columns {
-            let field = schema.field(column.index);
-            let array = geoarrow_array::array::from_arrow_array(batch.column(column.index).as_ref(), field)?;
-            let wkb = geoarrow_array::cast::to_wkb::<i32>(array.as_ref())?.to_array_ref();
+            let wkb = to_wkb(batch.column(column.index), schema.field(column.index))?;
+            let mut boxes = column.covering.as_ref().map(|_| Boxes::with_capacity(wkb.len()));
             for (row, value) in wkb.as_binary::<i32>().iter().enumerate() {
-                let Some(value) = value else { continue };
-                let mut reader = WkbReader { buf: value, pos: 0, bbox: &mut column.bbox };
-                match reader.geometry(true) {
+                let Some(value) = value else {
+                    if let Some(boxes) = &mut boxes {
+                        boxes.push(None);
+                    }
+                    continue;
+                };
+                let mut row_bbox = None;
+                let mut reader = WkbReader { buf: value, pos: 0, bbox: &mut row_bbox };
+                let result = reader.geometry(true);
+                column.bbox = union(column.bbox, row_bbox);
+                if let Some(boxes) = &mut boxes {
+                    // An empty geometry has a bbox of NaNs, as GeoPandas writes.
+                    boxes.push(Some(row_bbox.unwrap_or([f64::NAN; 4])));
+                }
+                match result {
                     Ok(name) => {
                         column.types.insert(name);
                     }
@@ -128,6 +174,14 @@ impl GeoColumns {
                 }
             }
             arrays[column.index] = wkb;
+            if let Some(boxes) = boxes {
+                coverings.push((column.index, boxes.finish()?));
+            }
+        }
+        // Each covering column after its geometry column, the last first so
+        // the indices of the earlier ones stay valid.
+        for (index, covering) in coverings.into_iter().rev() {
+            arrays.insert(index + 1, covering);
         }
         Ok(RecordBatch::try_new(self.output.clone(), arrays)?)
     }
@@ -148,11 +202,95 @@ impl GeoColumns {
                 if let Some(bbox) = column.bbox {
                     entry["bbox"] = json!(bbox);
                 }
+                if let Some(covering) = &column.covering {
+                    let paths: serde_json::Map<String, Value> =
+                        BBOX_FIELDS.iter().map(|field| (field.to_string(), json!([covering, field]))).collect();
+                    entry["covering"] = json!({ "bbox": paths });
+                }
                 (column.name.clone(), entry)
             })
             .collect();
         let geo = json!({ "version": "1.1.0", "primary_column": primary, "columns": columns });
         Some(geo.to_string())
+    }
+}
+
+/// A geometry column as WKB.
+fn to_wkb(array: &ArrayRef, field: &Field) -> super::Result<ArrayRef> {
+    let array = geoarrow_array::array::from_arrow_array(array.as_ref(), field)?;
+    Ok(geoarrow_array::cast::to_wkb::<i32>(array.as_ref())?.to_array_ref())
+}
+
+/// A point column, which `BboxColumn::Auto` leaves without a covering:
+/// `geoarrow.point`, or a WKB (or WKT, or mixed) column whose values in the
+/// first batch are all points. A column that holds no value there counts as
+/// not points.
+fn holds_points(typ: &GeoArrowType, field: &Field, first: Option<&ArrayRef>) -> super::Result<bool> {
+    use GeoArrowType::*;
+    match typ {
+        Point(_) => Ok(true),
+        Wkb(_) | LargeWkb(_) | WkbView(_) | Wkt(_) | LargeWkt(_) | WktView(_) | Geometry(_) => {
+            let Some(array) = first else { return Ok(false) };
+            let wkb = to_wkb(array, field)?;
+            let wkb: &BinaryArray = wkb.as_binary::<i32>();
+            let mut values = wkb.iter().flatten().peekable();
+            Ok(values.peek().is_some() && values.all(is_wkb_point))
+        }
+        _ => Ok(false),
+    }
+}
+
+/// The WKB value is a Point (ISO or EWKB, any dimension).
+fn is_wkb_point(value: &[u8]) -> bool {
+    let Some(code) = value.get(1..5) else { return false };
+    let code: [u8; 4] = code.try_into().expect("4 bytes");
+    let code = match value[0] {
+        0 => u32::from_be_bytes(code),
+        _ => u32::from_le_bytes(code),
+    };
+    (code & 0x0FFF_FFFF) % 1000 == 1
+}
+
+/// `name`, or `name_2`, `name_3`, … if a column already has it.
+fn unique_name(name: &str, taken: &HashSet<String>) -> String {
+    if !taken.contains(name) {
+        return name.to_string();
+    }
+    (2..).map(|n| format!("{name}_{n}")).find(|candidate| !taken.contains(candidate)).expect("a free name")
+}
+
+fn union(a: Option<[f64; 4]>, b: Option<[f64; 4]>) -> Option<[f64; 4]> {
+    match (a, b) {
+        (Some([x0, y0, x1, y1]), Some([u0, v0, u1, v1])) => Some([x0.min(u0), y0.min(v0), x1.max(u1), y1.max(v1)]),
+        (a, b) => a.or(b),
+    }
+}
+
+/// The values of one covering column: a bbox per row, null where the
+/// geometry is null.
+struct Boxes {
+    ordinates: [Vec<f64>; 4],
+    valid: Vec<bool>,
+}
+
+impl Boxes {
+    fn with_capacity(rows: usize) -> Self {
+        Boxes { ordinates: std::array::from_fn(|_| Vec::with_capacity(rows)), valid: Vec::with_capacity(rows) }
+    }
+
+    fn push(&mut self, bbox: Option<[f64; 4]>) {
+        // A null row's fields hold NaN; they are not written.
+        let values = bbox.unwrap_or([f64::NAN; 4]);
+        for (ordinates, value) in self.ordinates.iter_mut().zip(values) {
+            ordinates.push(value);
+        }
+        self.valid.push(bbox.is_some());
+    }
+
+    fn finish(self) -> super::Result<ArrayRef> {
+        let nulls = self.valid.contains(&false).then(|| NullBuffer::from(self.valid));
+        let arrays = self.ordinates.map(|ordinates| Arc::new(Float64Array::from(ordinates)) as ArrayRef);
+        Ok(Arc::new(StructArray::try_new(bbox_fields(), arrays.to_vec(), nulls)?))
     }
 }
 

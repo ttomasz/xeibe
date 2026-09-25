@@ -341,3 +341,125 @@ fn geometry_primary_names_the_geoparquet_primary_column() {
     ]);
     assert_eq!(geo_metadata(&named)["primary_column"], "pozycja");
 }
+
+/// A GML 3.2 document of `app:Place` features with these bodies.
+fn places(bodies: &[&str]) -> String {
+    let members: String = bodies
+        .iter()
+        .enumerate()
+        .map(|(i, body)| format!("<gml:featureMember><app:Place gml:id=\"p{i}\">{body}</app:Place></gml:featureMember>"))
+        .collect();
+    format!(
+        "<gml:FeatureCollection xmlns:gml=\"http://www.opengis.net/gml/3.2\" xmlns:app=\"http://example.com/app\">{members}</gml:FeatureCollection>"
+    )
+}
+
+const SQUARE: &str = concat!(
+    "<app:geometria><gml:Polygon srsName=\"EPSG:2180\"><gml:exterior><gml:LinearRing>",
+    "<gml:posList>0 0 2 0 2 1 0 0</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon></app:geometria>"
+);
+const POINT: &str = "<app:pozycja><gml:Point srsName=\"EPSG:2180\"><gml:pos>0.5 0.25</gml:pos></gml:Point></app:pozycja>";
+
+/// Convert `document` (layer `Place`) with these extra arguments; the file and its batches.
+fn convert_places(test: &str, document: &str, args: &[&str]) -> (std::path::PathBuf, Vec<arrow_array::RecordBatch>) {
+    let dir = out_dir(test);
+    let input = dir.join("places.gml");
+    std::fs::write(&input, document).unwrap();
+    let out = dir.join("places.parquet");
+    let mut command = vec!["convert", path_str(&input), "--layer", "Place", "--axis-order", "xy", "-o", path_str(&out)];
+    command.extend_from_slice(args);
+    xeibe_ok(&command);
+    let batches = ParquetRecordBatchReaderBuilder::try_new(File::open(&out).unwrap())
+        .unwrap()
+        .build()
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    (out, batches)
+}
+
+/// The rows of a covering column: `None` for a null row.
+fn boxes(batches: &[arrow_array::RecordBatch], column: &str) -> Vec<Option<[f64; 4]>> {
+    use arrow_array::Array;
+    use arrow_array::types::Float64Type;
+    let mut rows = Vec::new();
+    for batch in batches {
+        let boxes = batch.column_by_name(column).unwrap_or_else(|| panic!("no column {column}")).as_struct();
+        let names: Vec<&str> = boxes.fields().iter().map(|field| field.name().as_str()).collect();
+        assert_eq!(names, ["xmin", "ymin", "xmax", "ymax"], "the fields GeoParquet requires, in its order");
+        let values: Vec<_> = (0..4).map(|i| boxes.column(i).as_primitive::<Float64Type>().clone()).collect();
+        for row in 0..boxes.len() {
+            rows.push((!boxes.is_null(row)).then(|| std::array::from_fn(|i| values[i].value(row))));
+        }
+    }
+    rows
+}
+
+#[test]
+fn bbox_column_auto_covers_every_geometry_column_but_points() {
+    // GeoParquet 1.1 `bbox` covering (`docs/geometry.md`, "Parquet and
+    // GeoParquet output"): a struct column after its geometry column, named in
+    // the column's `covering`. Points would only repeat their coordinates.
+    let document = places(&[
+        &format!("{SQUARE}{POINT}"),
+        POINT,
+        "<app:geometria><gml:Polygon srsName=\"EPSG:2180\"/></app:geometria>",
+    ]);
+    let (out, batches) = convert_places("bbox_auto", &document, &[]);
+    let names: Vec<String> = batches[0].schema().fields().iter().map(|field| field.name().clone()).collect();
+    assert_eq!(names, ["@id", "geometria", "geometria_bbox", "pozycja"]);
+
+    let rows = boxes(&batches, "geometria_bbox");
+    assert_eq!(rows[0], Some([0.0, 0.0, 2.0, 1.0]));
+    assert_eq!(rows[1], None, "no geometry, no bbox");
+    assert!(rows[2].expect("an empty polygon has a bbox").iter().all(|v| v.is_nan()), "{rows:?}");
+
+    let geo = geo_metadata(&out);
+    assert_eq!(
+        geo["columns"]["geometria"]["covering"],
+        serde_json::json!({ "bbox": {
+            "xmin": ["geometria_bbox", "xmin"], "ymin": ["geometria_bbox", "ymin"],
+            "xmax": ["geometria_bbox", "xmax"], "ymax": ["geometria_bbox", "ymax"],
+        } })
+    );
+    assert!(geo["columns"]["pozycja"].get("covering").is_none(), "{geo}");
+    assert_eq!(geo["columns"]["geometria"]["bbox"], serde_json::json!([0.0, 0.0, 2.0, 1.0]), "the file bbox leaves NaN out");
+
+    // The bbox fields get ordinary min/max statistics, NaN left out.
+    let reader = parquet_reader(&out);
+    let schema = reader.metadata().file_metadata().schema_descr();
+    let xmax = (0..schema.num_columns())
+        .find(|&i| schema.column(i).path().string() == "geometria_bbox.xmax")
+        .expect("a geometria_bbox.xmax leaf");
+    match reader.metadata().row_group(0).column(xmax).statistics() {
+        Some(parquet::file::statistics::Statistics::Double(stats)) => {
+            assert_eq!((stats.min_opt(), stats.max_opt()), (Some(&2.0), Some(&2.0)));
+        }
+        other => panic!("expected double statistics, got {other:?}"),
+    }
+}
+
+#[test]
+fn bbox_column_always_and_never() {
+    let document = places(&[&format!("{SQUARE}{POINT}")]);
+    let (out, batches) = convert_places("bbox_always", &document, &["--bbox-column", "always"]);
+    let names: Vec<String> = batches[0].schema().fields().iter().map(|field| field.name().clone()).collect();
+    assert_eq!(names, ["@id", "geometria", "geometria_bbox", "pozycja", "pozycja_bbox"]);
+    assert_eq!(boxes(&batches, "pozycja_bbox"), [Some([0.5, 0.25, 0.5, 0.25])]);
+    assert!(geo_metadata(&out)["columns"]["pozycja"]["covering"]["bbox"].is_object());
+
+    let (out, batches) = convert_places("bbox_never", &document, &["--bbox-column", "never"]);
+    let names: Vec<String> = batches[0].schema().fields().iter().map(|field| field.name().clone()).collect();
+    assert_eq!(names, ["@id", "geometria", "pozycja"]);
+    let geo = geo_metadata(&out);
+    assert!(geo["columns"]["geometria"].get("covering").is_none(), "{geo}");
+}
+
+#[test]
+fn a_bbox_column_name_that_is_taken_gets_a_suffix() {
+    let document = places(&[&format!("{SQUARE}<app:geometria_bbox>tekst</app:geometria_bbox>")]);
+    let (out, batches) = convert_places("bbox_name", &document, &[]);
+    let names: Vec<String> = batches[0].schema().fields().iter().map(|field| field.name().clone()).collect();
+    assert_eq!(names, ["@id", "geometria", "geometria_bbox_2", "geometria_bbox"]);
+    assert_eq!(geo_metadata(&out)["columns"]["geometria"]["covering"]["bbox"]["xmin"], serde_json::json!(["geometria_bbox_2", "xmin"]));
+}

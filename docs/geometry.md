@@ -697,7 +697,18 @@ Defaults for `xeibe convert --format geoparquet`:
 - `--bbox-column auto|always|never`: GeoParquet 1.1 `bbox` covering column. `auto`
   (default) adds it for non-point columns and leaves it out for points, where it
   would duplicate the coordinates. It helps readers that don't understand
-  `GEOMETRY` statistics prune row groups.
+  `GEOMETRY` statistics prune row groups, and, as an ordinary struct column with a
+  page index, lets any reader prune pages within a row group.
+  - The column is named `<geometry column>_bbox` (`_bbox_2`, … if a column already
+    has that name) and follows its geometry column. It is a
+    `Struct(xmin, ymin, xmax, ymax)` of `Float64`, x/y only, named in the geometry
+    column's `covering` in the `geo` metadata.
+  - A null geometry has a null bbox. An empty geometry has a bbox of NaNs, as
+    GeoPandas writes; Parquet statistics leave NaN out.
+  - A point column for `auto` is a `geoarrow.point` column, or a WKB column whose
+    values in the first batch are all points. The first batch decides because the
+    schema must be fixed before writing. A WKB column that holds only nulls there
+    gets a covering.
 - Coordinates are always x/y (easting/longitude first), as both standards require.
   See [CRS and axis order](#crs-and-axis-order).
 - The Parquet `GEOMETRY` CRS is written as `authority:code` (e.g. `EPSG:2180`) when

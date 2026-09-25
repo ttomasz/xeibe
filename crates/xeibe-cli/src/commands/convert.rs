@@ -10,7 +10,7 @@ use parquet::file::properties::WriterProperties;
 use xeibe_arrow::{LayerReader, Settings};
 
 use super::geoparquet::GeoColumns;
-use crate::args::{InputArgs, OutputArgs, OutputFormat, ReadArgs};
+use crate::args::{BboxColumn, InputArgs, OutputArgs, OutputFormat, ReadArgs};
 
 pub fn run(input: InputArgs, output: OutputArgs, read: ReadArgs) -> super::Result {
     let layer = output.layer.clone().ok_or("--layer is required: run `xeibe scan` to list the layers")?;
@@ -43,7 +43,7 @@ pub(crate) fn write(
 ) -> super::Result<u64> {
     let path = &output.output;
     let result = match output.format {
-        OutputFormat::Parquet => write_parquet(reader, path, layer, primary),
+        OutputFormat::Parquet => write_parquet(reader, path, layer, primary, output.bbox_column),
         OutputFormat::Ipc => write_ipc(reader, path),
     };
     if result.is_err() {
@@ -52,15 +52,23 @@ pub(crate) fn write(
     result
 }
 
-fn write_parquet(reader: &mut LayerReader, path: &Path, layer: &str, primary: Option<&str>) -> super::Result<u64> {
-    let mut geo = GeoColumns::new(layer, &reader.schema(), primary)?;
+fn write_parquet(
+    reader: &mut LayerReader,
+    path: &Path,
+    layer: &str,
+    primary: Option<&str>,
+    bbox: BboxColumn,
+) -> super::Result<u64> {
+    // The first batch tells `--bbox-column auto` which WKB columns hold points.
+    let first = reader.next().transpose()?;
+    let mut geo = GeoColumns::new(layer, &reader.schema(), primary, bbox, first.as_ref())?;
     let properties = WriterProperties::builder()
         .set_compression(Compression::ZSTD(ZstdLevel::default()))
         .build();
     let file = File::create(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut writer = ArrowWriter::try_new(file, geo.schema(), Some(properties))?;
     let mut rows = 0;
-    for batch in reader.by_ref() {
+    for batch in first.map(Ok).into_iter().chain(reader.by_ref()) {
         let batch = geo.convert(&batch?)?;
         rows += batch.num_rows() as u64;
         writer.write(&batch)?;
