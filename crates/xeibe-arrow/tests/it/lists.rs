@@ -200,3 +200,45 @@ fn a_geometry_below_a_repeated_element_is_a_list_of_wkb() {
     assert_wkt(row[0].as_ref().expect("a geometry"), "POINT (10 2)");
     assert_wkt(row[1].as_ref().expect("a geometry"), "POINT (20 2)");
 }
+
+#[test]
+fn bytea_columns_hold_the_geometry_as_plain_wkb() {
+    // `bytea` is WKB without a GeoArrow type; `bytea[]` a list of it, aligned
+    // like `geometry[]` (`docs/architecture.md`, "Settings file").
+    let object = |id: &str, x: &str| {
+        format!(
+            concat!(
+                "<app:content><app:Object gml:id=\"{}\"><app:geometry>",
+                "<gml:Point srsName=\"EPSG:2180\"><gml:pos>{} 2</gml:pos></gml:Point>",
+                "</app:geometry></app:Object></app:content>"
+            ),
+            id, x
+        )
+    };
+    let body = format!(
+        "<app:geom><gml:Point srsName=\"EPSG:2180\"><gml:pos>1 2</gml:pos></gml:Point></app:geom>{}{}",
+        object("o1", "10"),
+        object("o2", "20")
+    );
+    let document = gml::gml32_collection(&[&parcel("p1", &body), &parcel("p2", "")]);
+    let settings: xeibe_arrow::Settings = serde_json::from_str(
+        r#"{ "format_version": 1, "layers": { "Parcel": {
+            "geom": "bytea",
+            "geometries": { "type": "bytea[]", "path": "content[]/*/geometry" }
+        } } }"#,
+    )
+    .expect("settings");
+    let schema = settings.schema("Parcel").expect("a schema");
+    assert_eq!(schema.field(0).data_type(), &DataType::Binary);
+    assert!(schema.field(0).metadata().get("ARROW:extension:name").is_none());
+
+    let read = read_with(&document, "Parcel", Some(schema), &ReadOptions::default());
+    let geometries = read.geometries("geom");
+    assert_wkt(geometries[0].as_ref().expect("a geometry"), "POINT (1 2)");
+    assert_eq!(geometries[1], None);
+    let lists = read.geometry_lists("geometries");
+    let row = lists[0].as_ref().expect("a list");
+    assert_wkt(row[0].as_ref().expect("a geometry"), "POINT (10 2)");
+    assert_wkt(row[1].as_ref().expect("a geometry"), "POINT (20 2)");
+    assert_eq!(lists[1], None, "no `content`: null, not an empty list");
+}

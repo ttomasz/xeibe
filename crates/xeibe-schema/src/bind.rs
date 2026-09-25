@@ -148,6 +148,8 @@ fn route_value(field: &Field, item: &Field, list: bool) -> Result<RouteValue, St
         };
     }
     match item.data_type() {
+        // `bytea`: the geometry at the path as plain WKB (`bytea[]`, a list).
+        DataType::Binary => Ok(RouteValue::Geometry),
         DataType::Map(..) => Ok(RouteValue::Map),
         data_type if is_scalar(data_type) => {
             let text_only = field.metadata().get(meta::CONTENT).is_some_and(|content| content == "text");
@@ -189,8 +191,6 @@ pub fn is_scalar(data_type: &DataType) -> bool {
             | DataType::Utf8
             | DataType::LargeUtf8
             | DataType::Utf8View
-            | DataType::Binary
-            | DataType::LargeBinary
             | DataType::Date32
             | DataType::Date64
             | DataType::Timestamp(..)

@@ -6,8 +6,8 @@
 use std::sync::Arc;
 
 use arrow_array::builder::{
-    ArrayBuilder, BinaryBuilder, BooleanBuilder, Date32Builder, Date64Builder, Float32Builder, Float64Builder,
-    Int8Builder, Int16Builder, Int32Builder, Int64Builder, LargeBinaryBuilder, LargeStringBuilder,
+    ArrayBuilder, BooleanBuilder, Date32Builder, Date64Builder, Float32Builder, Float64Builder,
+    Int8Builder, Int16Builder, Int32Builder, Int64Builder, LargeStringBuilder,
     NullBuilder,
     StringBuilder, StringViewBuilder, Time32MillisecondBuilder, Time32SecondBuilder,
     Time64MicrosecondBuilder, Time64NanosecondBuilder, TimestampMicrosecondBuilder,
@@ -91,8 +91,6 @@ enum Inner {
     Utf8(StringBuilder),
     LargeUtf8(LargeStringBuilder),
     Utf8View(StringViewBuilder),
-    Binary(BinaryBuilder),
-    LargeBinary(LargeBinaryBuilder),
     Date32(Date32Builder),
     Date64(Date64Builder),
     TimestampSecond(TimestampSecondBuilder),
@@ -124,8 +122,6 @@ macro_rules! each_builder {
             Inner::Utf8($b) => $body,
             Inner::LargeUtf8($b) => $body,
             Inner::Utf8View($b) => $body,
-            Inner::Binary($b) => $body,
-            Inner::LargeBinary($b) => $body,
             Inner::Date32($b) => $body,
             Inner::Date64($b) => $body,
             Inner::TimestampSecond($b) => $body,
@@ -163,8 +159,6 @@ impl ScalarBuilder {
             DataType::Utf8 => Inner::Utf8(StringBuilder::with_capacity(capacity, capacity * 8)),
             DataType::LargeUtf8 => Inner::LargeUtf8(LargeStringBuilder::with_capacity(capacity, capacity * 8)),
             DataType::Utf8View => Inner::Utf8View(StringViewBuilder::with_capacity(capacity)),
-            DataType::Binary => Inner::Binary(BinaryBuilder::with_capacity(capacity, capacity * 8)),
-            DataType::LargeBinary => Inner::LargeBinary(LargeBinaryBuilder::with_capacity(capacity, capacity * 8)),
             DataType::Date32 => Inner::Date32(Date32Builder::with_capacity(capacity)),
             DataType::Date64 => Inner::Date64(Date64Builder::with_capacity(capacity)),
             DataType::Timestamp(TimeUnit::Second, _) => Inner::TimestampSecond(
@@ -235,8 +229,6 @@ impl ScalarBuilder {
             (Inner::Utf8(b), Scalar::Str(v)) => b.append_value(v),
             (Inner::LargeUtf8(b), Scalar::Str(v)) => b.append_value(v),
             (Inner::Utf8View(b), Scalar::Str(v)) => b.append_value(v),
-            (Inner::Binary(b), Scalar::Str(v)) => b.append_value(v),
-            (Inner::LargeBinary(b), Scalar::Str(v)) => b.append_value(v),
             (Inner::Date32(b), Scalar::Int32(v)) => b.append_value(v),
             (Inner::Date64(b), Scalar::Int(v)) => b.append_value(v),
             (Inner::TimestampSecond(b), Scalar::Int(v)) => b.append_value(v),
@@ -268,8 +260,6 @@ impl ScalarBuilder {
             Inner::Utf8(b) => b.append_null(),
             Inner::LargeUtf8(b) => b.append_null(),
             Inner::Utf8View(b) => b.append_null(),
-            Inner::Binary(b) => b.append_null(),
-            Inner::LargeBinary(b) => b.append_null(),
             Inner::Date32(b) => b.append_null(),
             Inner::Date64(b) => b.append_null(),
             Inner::TimestampSecond(b) => b.append_null(),
@@ -307,8 +297,6 @@ pub fn is_scalar_type(data_type: &DataType) -> bool {
             | DataType::Utf8
             | DataType::LargeUtf8
             | DataType::Utf8View
-            | DataType::Binary
-            | DataType::LargeBinary
             | DataType::Date32
             | DataType::Date64
             | DataType::Timestamp(..)
@@ -328,6 +316,8 @@ impl ColumnBuilder {
             _ => {}
         }
         Ok(match field.data_type() {
+            // `bytea`: the geometry as WKB, without a GeoArrow type.
+            DataType::Binary => ColumnBuilder::Geometry(GeometryColumnBuilder::plain_wkb(capacity)),
             DataType::List(item) | DataType::LargeList(item) => ColumnBuilder::List {
                 item_field: item.clone(),
                 large: matches!(field.data_type(), DataType::LargeList(_)),

@@ -219,7 +219,7 @@ jobs:
         # the image, and this job is the only thing that compiles the
         # regenerated table. Install stable explicitly and log the version, so
         # a build failure on the PR can be pinned to a toolchain. The
-        # workspace MSRV (1.85) is a separate concern, checked elsewhere.
+        # workspace MSRV (1.95) is a separate concern, checked elsewhere.
         run: |
           set -euo pipefail
           rustup toolchain install stable --profile minimal --no-self-update

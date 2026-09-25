@@ -30,7 +30,8 @@ default-members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+# geoarrow-array/geoarrow-schema 0.9 need 1.95 (DataFusion 55 needs 1.94).
+rust-version = "1.95"
 license = "CC0-1.0"
 publish = false
 

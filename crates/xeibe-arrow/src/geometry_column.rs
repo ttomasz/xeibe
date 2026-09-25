@@ -151,6 +151,13 @@ impl GeometryColumnBuilder {
         Ok(GeometryColumnBuilder { typ, inner, len: 0, wkb: Vec::new() })
     }
 
+    /// A plain `Binary` column (`bytea`): ISO WKB without a GeoArrow type.
+    pub fn plain_wkb(capacity: usize) -> Self {
+        let typ = GeoArrowType::Wkb(geoarrow_schema::WkbType::new(Default::default()));
+        let inner = Inner::Wkb(BinaryBuilder::with_capacity(capacity, capacity * 32));
+        GeometryColumnBuilder { typ, inner, len: 0, wkb: Vec::new() }
+    }
+
     /// Append a geometry already brought into the column's form
     /// ([`GeometrySpec::prepare`]), or a null.
     pub fn push(&mut self, geometry: Option<&Geometry>) -> crate::Result<()> {

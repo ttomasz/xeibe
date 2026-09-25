@@ -10,7 +10,7 @@ use arrow_schema::{DataType, Field};
 use xeibe_core::QName;
 use xeibe_schema::{LayerSchema, RouteValue};
 
-use crate::geometry_column::{GeometrySpec, geoarrow_type};
+use crate::geometry_column::{GeometryKind, GeometrySpec, geoarrow_type};
 
 /// How one output column is filled.
 #[derive(Debug, Clone)]
@@ -57,6 +57,7 @@ impl ColumnPlan {
             }
             _ => match item.data_type() {
                 DataType::Map(..) => Item::Map,
+                DataType::Binary => Item::Geometry(GeometrySpec { kind: GeometryKind::Wkb, dim: None }, axis()),
                 data_type => Item::Scalar(data_type.clone()),
             },
         };

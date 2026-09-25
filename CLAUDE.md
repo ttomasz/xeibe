@@ -37,7 +37,7 @@ the bodies are `todo!()` — that is the progress tracker. Only
 
 System tools:
 
-- Rust stable with edition 2024 (MSRV 1.85). Developed on 1.97.
+- Rust stable with edition 2024 (MSRV 1.95, set by geoarrow 0.9). Developed on 1.97.
 - `uv`. All Python scripts are PEP 723 scripts with the shebang
   `#!/usr/bin/env -S uv run --script`, so you run them directly
   (`scripts/foo.py`) and uv installs their dependencies. There is no venv or

@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use arrow_schema::{Field, Schema, SchemaRef};
+use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use geoarrow_schema::{Crs, GeoArrowType, Metadata};
 use xeibe_core::{FeatureChunk, QName, SourceId, Sources};
 use indexmap::IndexMap;
@@ -68,7 +68,7 @@ pub fn read(
     // A sample: for the schema, and for `Auto` axis evidence.
     // A given schema's geometry columns need one too when their CRS is to
     // come from the data.
-    let has_geometry = schema.as_ref().is_none_or(|schema| schema.fields().iter().any(|f| is_geometry(f)));
+    let has_geometry = schema.as_ref().is_none_or(|schema| schema.fields().iter().any(|f| reads_geometry(f)));
     let crs_from_data = options.geometry.crs_override.is_none()
         && schema.as_ref().is_some_and(|schema| schema.fields().iter().any(|f| is_geometry(f) && !has_crs(f)));
     let needs_sample = schema.is_none()
@@ -285,6 +285,16 @@ fn with_crs(field: &Field, srs: &str) -> crate::Result<Field> {
     }
     metadata.insert(meta::SRS_NAME.to_string(), srs.to_string());
     Ok(with.with_metadata(metadata))
+}
+
+/// The column takes geometry: a GeoArrow type, `geometry[]`, or plain WKB
+/// (`bytea`, `bytea[]`).
+fn reads_geometry(field: &Field) -> bool {
+    let item = match field.data_type() {
+        DataType::List(item) | DataType::LargeList(item) if !is_geometry(field) => item.as_ref(),
+        _ => field,
+    };
+    is_geometry(item) || *item.data_type() == DataType::Binary
 }
 
 fn is_geometry(field: &Field) -> bool {

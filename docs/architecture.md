@@ -152,7 +152,7 @@ scan writes them:
 | `date` | `Date32` |
 | `timestamp` / `timestamptz` | `Timestamp(µs)` / `Timestamp(µs, "UTC")` |
 | `time` | `Time64(µs)` |
-| `bytea`, `blob` | `Binary` |
+| `bytea`, `blob` | `Binary`: the geometry at the column's path as ISO WKB, without a GeoArrow type or CRS. `bytea[]` is a list of them, like `geometry[]` |
 | `map` | `Map(Utf8View → Utf8View)` |
 | `T[]` | `List(T)`, e.g. `text[]`, `date[]` |
 | `geometry` | `geoarrow.wkb` |

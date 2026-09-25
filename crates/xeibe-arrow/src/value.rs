@@ -21,10 +21,7 @@ pub enum Scalar {
 /// Parse `text` (already trimmed) as a value of `data_type`.
 pub fn parse_scalar(data_type: &DataType, text: &str) -> Option<Scalar> {
     Some(match data_type {
-        // Binary columns take the text's bytes as written.
-        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View | DataType::Binary | DataType::LargeBinary => {
-            Scalar::Str(text.to_string())
-        }
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => Scalar::Str(text.to_string()),
         DataType::Boolean => Scalar::Bool(match text {
             "true" | "1" => true,
             "false" | "0" => false,
