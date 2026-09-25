@@ -435,13 +435,12 @@ impl Decider<'_> {
         let Some(sampled) = self.evidence.sampled_bbox else {
             return;
         };
-        if let Some(envelope) = self.evidence.envelope_bbox {
-            if !intersects(sampled, envelope) && intersects(swapped_bbox(sampled), envelope) {
+        if let Some(envelope) = self.evidence.envelope_bbox
+            && !intersects(sampled, envelope) && intersects(swapped_bbox(sampled), envelope) {
                 conflicts.push(
                     "the boundedBy envelope is written in the other axis order than the geometry".into(),
                 );
             }
-        }
         if let Some(requested) = self.context.requested_bbox {
             let output = if swap { swapped_bbox(sampled) } else { sampled };
             let other = if swap { sampled } else { swapped_bbox(sampled) };

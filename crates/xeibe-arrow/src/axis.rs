@@ -103,8 +103,8 @@ impl AxisDecisions {
                     },
                 }),
                 Some(crs) => {
-                    if let CrsRef::Code { authority, code } = crs.horizontal() {
-                        if !crs.is_lon_lat_by_definition() && table.get(authority, code).is_none() {
+                    if let CrsRef::Code { authority, code } = crs.horizontal()
+                        && !crs.is_lon_lat_by_definition() && table.get(authority, code).is_none() {
                             warnings.push(Warning {
                                 kind: WarningKind::UnknownCrs,
                                 location: None,
@@ -114,7 +114,6 @@ impl AxisDecisions {
                                 ),
                             });
                         }
-                    }
                 }
             }
             if !decision.conflicts.is_empty() {

@@ -130,7 +130,7 @@ fn push_tuple(coords: &mut Coords, tuple: &str, cs: char, decimal: char) -> crat
     }
     if n == 3 && coords.dim == Some(Dim::Xy) {
         let mut padded = Vec::with_capacity(coords.values.len() / 2 * 3 + 3);
-        for position in coords.values.chunks_exact(2) {
+        for position in coords.values.as_chunks::<2>().0 {
             padded.extend([position[0], position[1], 0.0]);
         }
         coords.values = padded;
@@ -166,7 +166,7 @@ pub(crate) fn parse_number(token: &str) -> crate::Result<f64> {
 }
 
 fn parse_values(values: Vec<f64>, dimension: usize) -> crate::Result<Coords> {
-    if values.len() < 2 || values.len() % dimension != 0 {
+    if values.len() < 2 || !values.len().is_multiple_of(dimension) {
         return Err(Error::invalid_coordinates(format!(
             "corrupt <coordinates> value: {} ordinates",
             values.len()

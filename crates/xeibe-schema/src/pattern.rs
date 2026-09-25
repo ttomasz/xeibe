@@ -152,11 +152,10 @@ fn match_step(pattern: &str, name: &str) -> bool {
     if pattern.attribute != name.attribute {
         return false;
     }
-    if let Some(ns) = pattern.ns {
-        if name.ns != Some(ns) {
+    if let Some(ns) = pattern.ns
+        && name.ns != Some(ns) {
             return false;
         }
-    }
     wildcard(pattern.local.as_bytes(), name.local.as_bytes())
 }
 

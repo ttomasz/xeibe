@@ -92,8 +92,8 @@ fn analyze_number(value: &str, number: &Number<'_>, analysis: &mut Analysis) {
     // `0012`, `-012`: an identifier, never a number (but `0` and `0.5` are fine).
     let identifier = number.int_digits.len() > 1 && number.int_digits.starts_with('0');
 
-    if number.is_integer() {
-        if let Ok(int) = value.trim_start_matches('+').parse::<i64>() {
+    if number.is_integer()
+        && let Ok(int) = value.trim_start_matches('+').parse::<i64>() {
             analysis.int = Some(int);
             c.lossy |= TypeSet::INT;
             if !identifier {
@@ -103,7 +103,6 @@ fn analyze_number(value: &str, number: &Number<'_>, analysis: &mut Analysis) {
                 }
             }
         }
-    }
 
     let Ok(float) = value.parse::<f64>() else {
         return;

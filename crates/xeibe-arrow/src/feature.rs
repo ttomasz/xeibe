@@ -396,15 +396,14 @@ impl<'a> FeatureReader<'a> {
                 if depth == 0 && state.srs_name.is_none() {
                     state.srs_name = envelope.srs_name.clone();
                 }
-                if let Item::Box(axis) = &self.plan.routes.columns[target.column].item {
-                    if self.axis[*axis].resolve(envelope.srs_name.as_deref(), Dialect::Gml3).swap {
+                if let Item::Box(axis) = &self.plan.routes.columns[target.column].item
+                    && self.axis[*axis].resolve(envelope.srs_name.as_deref(), Dialect::Gml3).swap {
                         for corner in [&mut envelope.lower, &mut envelope.upper] {
                             if corner.len() >= 2 {
                                 corner.swap(0, 1);
                             }
                         }
                     }
-                }
                 self.put(target.column, Value::Box(envelope), state);
                 Ok(())
             }

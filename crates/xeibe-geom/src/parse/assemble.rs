@@ -264,7 +264,7 @@ pub(crate) fn check_curve_ring(curve: &mut Curve) -> Vec<String> {
 /// odd count ≥ 3 is accepted for `Arc` too. A `numArc` that doesn't match is
 /// a warning; the positions are used.
 pub(crate) fn check_arc_positions(found: usize, num_arc: Option<usize>) -> Result<Option<String>, String> {
-    if found < 3 || found % 2 == 0 {
+    if found < 3 || found.is_multiple_of(2) {
         return Err(format!("{found} positions (an odd number of at least 3 expected)"));
     }
     Ok(num_arc.filter(|n| 2 * n + 1 != found).map(|n| {
@@ -344,10 +344,10 @@ pub(crate) fn effective_dimension(inputs: DimensionInputs, values: usize) -> (us
     if inputs.single_position && (values == 2 || values == 3) {
         return (values, None);
     }
-    if let Some(count) = inputs.count.filter(|&c| c > 0 && values % c == 0) {
+    if let Some(count) = inputs.count.filter(|&c| c > 0 && values.is_multiple_of(c)) {
         return (values / count, None);
     }
-    let warning = (values % 2 != 0 && values % 3 == 0).then(|| {
+    let warning = (!values.is_multiple_of(2) && values.is_multiple_of(3)).then(|| {
         format!("{values} values without srsDimension are not divisible by 2 but are by 3; read as 2D")
     });
     (2, warning)

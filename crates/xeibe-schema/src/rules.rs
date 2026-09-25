@@ -242,10 +242,10 @@ impl Col {
             .filter(|step| !step.wrapper)
             .map(|step| display(&step.name, step.prefixed))
             .collect();
-        if let Some((attribute, prefixed)) = &self.attribute {
-            if !self.by_reference || steps.is_empty() {
-                steps.push(format!("@{}", display(attribute, *prefixed)));
-            }
+        if let Some((attribute, prefixed)) = &self.attribute
+            && (!self.by_reference || steps.is_empty())
+        {
+            steps.push(format!("@{}", display(attribute, *prefixed)));
         }
         if steps.is_empty() {
             // A path of wrappers only; name it by its path.
@@ -737,15 +737,14 @@ impl Engine<'_> {
         };
         let lossy = types.lossless == Lossless::Lossy;
         let mut set = (stats.types(types.lossless) & types.enabled) | TypeSet::STRING;
-        if let Some(sample) = self.sampled {
-            if stats.count < sample.min_typed_values && set != TypeSet::STRING {
+        if let Some(sample) = self.sampled
+            && stats.count < sample.min_typed_values && set != TypeSet::STRING {
                 scalar.reasons.push(format!(
                     "only {} values in the sample (fewer than {}): kept as text",
                     stats.count, sample.min_typed_values
                 ));
                 set = TypeSet::STRING;
             }
-        }
         let temporal = stats.temporal.unwrap_or_default();
         let unit = types.timestamps.unit;
         let fraction_fits = temporal.max_fraction_digits <= unit_digits(unit);
@@ -833,11 +832,10 @@ impl Engine<'_> {
             }
         }
         scalar.reasons.insert(0, format!("{} values, candidates {}", stats.count, type_names(set)));
-        if let Some(example) = stats.distinct.values.first() {
-            if set == TypeSet::STRING && stats.types(Lossless::Lossy) != TypeSet::STRING {
+        if let Some(example) = stats.distinct.values.first()
+            && set == TypeSet::STRING && stats.types(Lossless::Lossy) != TypeSet::STRING {
                 scalar.reasons.push(format!("typed values rejected (e.g. {example:?})"));
             }
-        }
         scalar
     }
 

@@ -69,11 +69,10 @@ impl GeometryStats {
             dialect: sniff.dialect.unwrap_or(Dialect::Gml3),
         };
         let evidence = self.axis_evidence.entry(key).or_default();
-        if let Some(labels) = &sniff.axis_labels {
-            if !evidence.axis_labels.contains(labels) {
+        if let Some(labels) = &sniff.axis_labels
+            && !evidence.axis_labels.contains(labels) {
                 evidence.axis_labels.push(labels.clone());
             }
-        }
         if let Some(p) = position {
             let point = Some([p[0], p[1], p[0], p[1]]);
             if is_envelope(sniff) {

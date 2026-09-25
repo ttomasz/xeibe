@@ -544,10 +544,10 @@ impl Parser {
 
     /// `EMPTY` after the tag (and the optional `Z`/`M`/`ZM`).
     fn empty_or_open(&mut self) -> Result<bool, String> {
-        if let Some(Token::Word(word)) = self.peek() {
-            if matches!(word.as_str(), "Z" | "M" | "ZM") {
-                self.pos += 1;
-            }
+        if let Some(Token::Word(word)) = self.peek()
+            && matches!(word.as_str(), "Z" | "M" | "ZM")
+        {
+            self.pos += 1;
         }
         match self.next() {
             Some(Token::Word(word)) if word == "EMPTY" => Ok(true),

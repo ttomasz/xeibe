@@ -842,18 +842,17 @@ fn find_byte(haystack: &[u8], needle: u8) -> Option<usize> {
     const LO: u64 = 0x0101_0101_0101_0101;
     const HI: u64 = 0x8080_8080_8080_8080;
     let pattern = LO * needle as u64;
-    let mut chunks = haystack.chunks_exact(8);
+    let (chunks, remainder) = haystack.as_chunks::<8>();
     let mut offset = 0;
-    for chunk in &mut chunks {
-        let word = u64::from_le_bytes(chunk.try_into().expect("eight bytes")) ^ pattern;
+    for chunk in chunks {
+        let word = u64::from_le_bytes(*chunk) ^ pattern;
         let found = word.wrapping_sub(LO) & !word & HI;
         if found != 0 {
             return Some(offset + (found.trailing_zeros() / 8) as usize);
         }
         offset += 8;
     }
-    chunks
-        .remainder()
+    remainder
         .iter()
         .position(|&b| b == needle)
         .map(|i| offset + i)
