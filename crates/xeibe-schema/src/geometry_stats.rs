@@ -34,8 +34,8 @@ pub struct GeometryStats {
 
 impl GeometryStats {
     /// Record one sniffed geometry of source `source`.
-    /// Several geometries in one property (`gml:pointArrayProperty`, …): one
-    /// value, of the Multi kind of each part, as the reader combines them
+    /// The geometries of an array property (`gml:pointArrayProperty`, …): one
+    /// value, of the Multi kind of its parts, as the reader combines them
     /// ([`xeibe_geom::Geometry::from_parts`]).
     pub fn observe_parts(&mut self, source: u32, parts: &[GeometrySniff]) {
         for part in parts {

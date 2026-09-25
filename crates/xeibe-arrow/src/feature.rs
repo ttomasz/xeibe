@@ -55,6 +55,18 @@ struct RowState {
     targets: Vec<Target>,
 }
 
+/// An element whose start tag was read.
+#[derive(Debug, Clone, Copy)]
+struct Opened {
+    /// The feature is 0.
+    depth: usize,
+    nil: bool,
+    /// Where its content begins in the buffer, for raw XML.
+    content_start: usize,
+    /// A GML array property: its geometries are one Multi value.
+    array: bool,
+}
+
 impl RowState {
     fn fail(&mut self, message: String) {
         self.error.get_or_insert(message);
@@ -94,8 +106,8 @@ impl<'a> FeatureReader<'a> {
             })?;
             self.start(&nodes, &attrs, &mut state)
         };
-        let content_start = reader.position();
-        self.content(reader, &nodes, 0, nil, content_start, &mut state)?;
+        let opened = Opened { depth: 0, nil, content_start: reader.position(), array: false };
+        self.content(reader, &nodes, opened, &mut state)?;
         self.commit(state, out, report)
     }
 
@@ -194,18 +206,16 @@ impl<'a> FeatureReader<'a> {
         nil
     }
 
-    /// The content of an element that `nodes` match (at `depth`, the feature
-    /// being 0), up to and including its end tag. `content_start`: where its
-    /// content begins in the buffer, for raw XML.
+    /// The content of an element that `nodes` match, up to and including its
+    /// end tag.
     fn content(
         &self,
         reader: &mut GmlReader<'_>,
         nodes: &[&RouteNode],
-        depth: usize,
-        nil: bool,
-        content_start: usize,
+        opened: Opened,
         state: &mut RowState,
     ) -> crate::Result<()> {
+        let Opened { depth, nil, content_start, array } = opened;
         let targets = || nodes.iter().flat_map(|node| node.targets.iter().copied());
         if nil {
             // Null: whatever it holds is not read.
@@ -229,12 +239,25 @@ impl<'a> FeatureReader<'a> {
         // The geometries of a geometry property: one, or several in an array
         // property (`gml:pointArrayProperty`, …); `None` once one failed.
         let mut parts: Option<Vec<Geometry>> = Some(Vec::new());
+        let mut geometries = 0usize;
         loop {
             match reader.next_event()? {
                 XmlEvent::Start { name, attrs } => {
                     had_children = true;
                     if wants_geometry && name.is_gml() {
                         drop(attrs);
+                        geometries += 1;
+                        if geometries > 1 && !array {
+                            // A second value where the column holds one.
+                            let column = geometry_targets(nodes).next().map(|target| target.column);
+                            let name = column.map_or("", |column| self.plan.routes.columns[column].name.as_str());
+                            state.fail(format!(
+                                "column {name}: a second geometry in one property; only GML's array properties \
+                                 (pointArrayProperty, …) hold several"
+                            ));
+                            reader.skip_element()?;
+                            continue;
+                        }
                         let part = self.geometry(reader, nodes, state)?;
                         parts = parts.zip(part).map(|(mut parts, part)| {
                             parts.push(part);
@@ -258,8 +281,13 @@ impl<'a> FeatureReader<'a> {
                     }
                     let nil = self.start(&matched, &attrs, state);
                     drop(attrs);
-                    let child_start = reader.position();
-                    self.content(reader, &matched, depth + 1, nil, child_start, state)?;
+                    let opened = Opened {
+                        depth: depth + 1,
+                        nil,
+                        content_start: reader.position(),
+                        array: xeibe_geom::parse::is_array_property(&name),
+                    };
+                    self.content(reader, &matched, opened, state)?;
                 }
                 XmlEvent::Text(t) => {
                     if wants_text {
@@ -270,8 +298,9 @@ impl<'a> FeatureReader<'a> {
                 XmlEvent::Eof => return Err(unexpected_eof(reader).into()),
             }
         }
-        if let Some(parts) = parts.filter(|parts| !parts.is_empty()) {
-            self.put_geometry(nodes, Geometry::from_parts(parts), state);
+        if let Some(mut parts) = parts.filter(|parts| !parts.is_empty()) {
+            let geometry = if array { Geometry::from_parts(parts) } else { parts.remove(0) };
+            self.put_geometry(nodes, geometry, state);
         }
         if wants_text {
             let raw = if had_children { Some(inner_raw(&reader.raw_since(content_start))) } else { None };

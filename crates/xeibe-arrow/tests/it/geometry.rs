@@ -224,8 +224,8 @@ fn a_crs_without_projjson_is_written_as_an_authority_code() {
 #[test]
 fn an_array_property_is_read_as_the_matching_multi_geometry() {
     // `gml:pointArrayProperty`, `curveArrayProperty` and `surfaceArrayProperty`
-    // hold several geometries: one value of the Multi kind, never just the
-    // first (`docs/support-matrix.md`, §4).
+    // hold several geometries: one value of the Multi kind, also for one part
+    // (`docs/geometry.md`, "Empty, invalid and degenerate geometry").
     let line = |a: &str| format!("<gml:LineString srsName=\"EPSG:2180\"><gml:posList>{a}</gml:posList></gml:LineString>");
     let polygon = format!("<gml:Polygon srsName=\"EPSG:2180\">{RING}</gml:Polygon>");
     let document = gml::gml32_collection(&[
@@ -253,7 +253,7 @@ fn an_array_property_is_read_as_the_matching_multi_geometry() {
     let read = read_document(&document, "Parcel");
     let points = read.geometries("pointArrayProperty");
     assert_wkt(points[0].as_ref().expect("points"), "MULTIPOINT ((1 2),(3 4),(5 6))");
-    assert_wkt(points[1].as_ref().expect("points"), "POINT (7 8)");
+    assert_wkt(points[1].as_ref().expect("points"), "MULTIPOINT ((7 8))");
     assert_wkt(
         read.geometries("curveArrayProperty")[0].as_ref().expect("curves"),
         "MULTILINESTRING ((0 0,1 1),(2 2,3 3))",
@@ -263,8 +263,8 @@ fn an_array_property_is_read_as_the_matching_multi_geometry() {
         "MULTIPOLYGON (((0 0,1 0,1 1,0 0)),((0 0,1 0,1 1,0 0)))",
     );
 
-    // A full scan knows the property holds several: a native Multi column,
-    // where a single point is a one-part MultiPoint.
+    // A full scan types an array property by its Multi kind: a native Multi
+    // column.
     let (read, settings) = read_scanned(&document, "Parcel");
     assert_eq!(scanned_type(&settings, "pointArrayProperty"), "geometry(MultiPoint)");
     assert_eq!(scanned_type(&settings, "curveArrayProperty"), "geometry(MultiLineString)");
@@ -275,20 +275,26 @@ fn an_array_property_is_read_as_the_matching_multi_geometry() {
 }
 
 #[test]
-fn geometries_of_different_families_in_one_property_are_a_collection() {
-    let document = gml::gml32_collection(&[&parcel(
-        "p1",
-        &format!(
-            "<app:things>{}<gml:LineString srsName=\"EPSG:2180\"><gml:posList>0 0 1 1</gml:posList></gml:LineString></app:things>",
-            point(1.0, 2.0)
-        ),
-    )]);
-    let (read, settings) = read_scanned(&document, "Parcel");
-    assert_eq!(scanned_type(&settings, "things"), "geometry", "no native type holds both: WKB");
-    assert_wkt(
-        read.geometries("things")[0].as_ref().expect("a collection"),
-        "GEOMETRYCOLLECTION (POINT (1 2),LINESTRING (0 0,1 1))",
-    );
+fn a_second_geometry_in_an_ordinary_property_is_a_feature_error() {
+    // Only GML's array properties hold several geometries; anywhere else a
+    // second one is a second value where the column holds one. It is not a
+    // geometry error, so `NullGeometry` doesn't keep the feature.
+    let document = gml::gml32_collection(&[
+        &parcel("p1", &format!("<app:geom>{}</app:geom>", point(1.0, 2.0))),
+        &parcel("p2", &format!("<app:geom>{}{}</app:geom>", point(3.0, 4.0), point(5.0, 6.0))),
+    ]);
+    for policy in [OnFeatureError::Error, OnFeatureError::NullGeometry] {
+        let options = ReadOptions { on_feature_error: policy, ..ReadOptions::default() };
+        let failed = match read(sources(&document), "Parcel", None, &options) {
+            Err(_) => true,
+            Ok(reader) => reader.into_iter().any(|batch| batch.is_err()),
+        };
+        assert!(failed, "{policy:?} stops the read");
+    }
+    let skipping = ReadOptions { on_feature_error: OnFeatureError::Skip, ..ReadOptions::default() };
+    let read = read_with(&document, "Parcel", None, &skipping);
+    assert_eq!(read.rows(), 1);
+    assert!(read.report.skipped[0].1.contains("second geometry"), "{:?}", read.report.skipped);
 }
 
 #[test]

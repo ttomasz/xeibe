@@ -203,9 +203,13 @@ fn bounding_boxes_cover_every_part() {
 #[test]
 fn the_parts_of_an_array_property_become_the_multi_geometry_of_their_family() {
     // `gml:pointArrayProperty`, `curveArrayProperty`, `surfaceArrayProperty`
-    // hold several geometries (`docs/support-matrix.md`, §4).
+    // hold several geometries (`docs/geometry.md`, "Empty, invalid and
+    // degenerate geometry").
     let point = |x: f64| Geometry::Point(Point { coord: Some(vec![x, 0.0]) });
-    assert_eq!(Geometry::from_parts(vec![point(1.0)]), point(1.0), "one part stays as it is");
+    assert!(
+        matches!(Geometry::from_parts(vec![point(1.0)]), Geometry::MultiPoint(points) if points.0.len() == 1),
+        "one part is a one-part Multi: the type doesn't depend on the count"
+    );
     assert!(matches!(
         Geometry::from_parts(vec![point(1.0), point(2.0)]),
         Geometry::MultiPoint(points) if points.0.len() == 2

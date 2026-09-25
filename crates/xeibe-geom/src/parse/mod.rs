@@ -200,6 +200,15 @@ pub(crate) fn geom_kind(name: &QName) -> GeomKind {
     }
 }
 
+/// GML's array properties (`gml:PointArrayPropertyType` and its siblings),
+/// which hold several geometries of one kind: read as one Multi geometry
+/// ([`crate::Geometry::from_parts`]). Any other property holds one geometry.
+pub fn is_array_property(name: &QName) -> bool {
+    ["pointArrayProperty", "curveArrayProperty", "surfaceArrayProperty", "solidArrayProperty"]
+        .iter()
+        .any(|local| name.is_gml_named(local))
+}
+
 /// Curve segments given by points or by parameters (the ones we read).
 pub(crate) const ARC_SEGMENTS: &[&str] = &[
     "Arc",

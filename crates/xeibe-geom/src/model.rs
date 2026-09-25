@@ -538,16 +538,13 @@ pub enum Geometry {
 }
 
 impl Geometry {
-    /// The geometries of one property that holds several
-    /// (`gml:pointArrayProperty`, `curveArrayProperty`, `surfaceArrayProperty`)
-    /// as one: the Multi geometry of their family, Multi parts flattened
+    /// The geometries of an array property (`gml:pointArrayProperty`,
+    /// `curveArrayProperty`, `surfaceArrayProperty`, see
+    /// [`crate::parse::is_array_property`]) as one value: the Multi geometry
+    /// of their family, also for a single part, Multi parts flattened
     /// (MultiPoint; MultiLineString, or MultiCurve with arcs; MultiPolygon, or
-    /// MultiSurface with arcs), else a GeometryCollection. One geometry is
-    /// returned as it is.
-    pub fn from_parts(mut parts: Vec<Geometry>) -> Geometry {
-        if parts.len() == 1 {
-            return parts.pop().expect("one part");
-        }
+    /// MultiSurface with arcs), else a GeometryCollection.
+    pub fn from_parts(parts: Vec<Geometry>) -> Geometry {
         let points = parts.iter().all(|part| matches!(part, Geometry::Point(_) | Geometry::MultiPoint(_)));
         let curves = parts.iter().all(|part| {
             matches!(
@@ -774,8 +771,8 @@ pub enum GeomKind {
 }
 
 impl GeomKind {
-    /// The kind of several of these in one property (`gml:pointArrayProperty`,
-    /// …): the Multi kind of their family. See [`Geometry::from_parts`].
+    /// The kind of these in an array property (`gml:pointArrayProperty`, …):
+    /// the Multi kind of their family. See [`Geometry::from_parts`].
     pub fn multi(self) -> GeomKind {
         use GeomKind::*;
         match self {

@@ -475,6 +475,8 @@ struct Frame {
 struct Instance {
     href: bool,
     gml_id: Option<String>,
+    /// A GML array property (`gml:pointArrayProperty`, …).
+    array: bool,
 }
 
 impl<'o> TreeBuilder<'o> {
@@ -645,7 +647,8 @@ impl WalkState {
                     };
                     let child = &mut node.children[index];
                     child.instances += 1;
-                    let child_instance = self.start(child, &attrs);
+                    let mut child_instance = self.start(child, &attrs);
+                    child_instance.array = xeibe_geom::parse::is_array_property(&name);
                     let location = reader.location();
                     child.first_seen.get_or_insert((self.source, location.byte_offset));
                     match frame.child_counts.iter_mut().find(|(i, _, _)| *i == index) {
@@ -679,10 +682,17 @@ impl WalkState {
             }
         }
 
-        match frame.geometries.as_slice() {
-            [] => {}
-            [one] => node.geometry.get_or_insert_with(GeometryStats::default).observe(self.source, one),
-            parts => node.geometry.get_or_insert_with(GeometryStats::default).observe_parts(self.source, parts),
+        if !frame.geometries.is_empty() {
+            let stats = node.geometry.get_or_insert_with(GeometryStats::default);
+            if instance.array {
+                stats.observe_parts(self.source, &frame.geometries);
+            } else {
+                // A second geometry in an ordinary property is a feature error
+                // when read; each one still tells its kind and position.
+                for geometry in &frame.geometries {
+                    stats.observe(self.source, geometry);
+                }
+            }
         }
         if !frame.had_text && matches!(frame.child_counts.as_slice(), [(_, 1, _)]) {
             node.single_child += 1;
