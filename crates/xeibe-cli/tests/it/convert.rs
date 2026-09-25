@@ -298,3 +298,46 @@ fn overrides_change_column_types() {
     let field = builder.schema().field_with_name("numerPorzadkowy").unwrap().clone();
     assert!(field.data_type().to_string().starts_with("Utf8"), "{:?}", field.data_type());
 }
+
+#[test]
+fn geometry_primary_names_the_geoparquet_primary_column() {
+    // Several geometry properties stay separate columns; the first one is
+    // primary unless `options.geometry.primary` names another
+    // (`docs/geometry.md`, "Several geometry columns").
+    let dir = out_dir("convert_primary");
+    let input = dir.join("two.gml");
+    std::fs::write(
+        &input,
+        concat!(
+            "<gml:FeatureCollection xmlns:gml=\"http://www.opengis.net/gml/3.2\" xmlns:app=\"http://example.com/app\">",
+            "<gml:featureMember><app:Place gml:id=\"p1\">",
+            "<app:geometria><gml:Polygon srsName=\"EPSG:2180\"><gml:exterior><gml:LinearRing>",
+            "<gml:posList>0 0 1 0 1 1 0 0</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon></app:geometria>",
+            "<app:pozycja><gml:Point srsName=\"EPSG:2180\"><gml:pos>0.5 0.25</gml:pos></gml:Point></app:pozycja>",
+            "</app:Place></gml:featureMember></gml:FeatureCollection>"
+        ),
+    )
+    .unwrap();
+
+    let first = dir.join("first.parquet");
+    xeibe_ok(&["convert", path_str(&input), "--layer", "Place", "--axis-order", "xy", "-o", path_str(&first)]);
+    let geo = geo_metadata(&first);
+    assert_eq!(geo["primary_column"], "geometria", "the first geometry column");
+    assert!(geo["columns"]["pozycja"].is_object(), "both columns are described: {geo}");
+
+    let settings = dir.join("settings.json");
+    std::fs::write(&settings, r#"{ "format_version": 1, "options": { "geometry": { "axis": "XY", "primary": "pozycja" } } }"#)
+        .unwrap();
+    let named = dir.join("named.parquet");
+    xeibe_ok(&[
+        "convert",
+        path_str(&input),
+        "--layer",
+        "Place",
+        "--settings",
+        path_str(&settings),
+        "-o",
+        path_str(&named),
+    ]);
+    assert_eq!(geo_metadata(&named)["primary_column"], "pozycja");
+}

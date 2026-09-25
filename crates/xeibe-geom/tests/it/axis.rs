@@ -435,3 +435,43 @@ fn a_bare_mode_is_enough_in_the_settings_file() {
         "written back in the same form"
     );
 }
+
+#[test]
+fn auto_reports_envelopes_and_request_boxes_in_the_other_order() {
+    // Supporting evidence only: never decisive, always reported
+    // (`docs/geometry.md`, "`Auto`: evidence-based decision").
+    let sampled = [500_000.0, 300_000.0, 500_010.0, 300_010.0];
+    let swapped = [300_000.0, 500_000.0, 300_010.0, 500_010.0];
+    let evidence = AxisEvidence {
+        sampled_bbox: Some(sampled),
+        samples: 2,
+        axis_labels: Vec::new(),
+        envelope_bbox: Some(swapped),
+    };
+    let context = AxisContext {
+        requested_bbox: Some(swapped),
+        ..AxisContext::default()
+    };
+    let decision = decide(
+        &key("EPSG:2180", Dialect::Gml3),
+        None,
+        None,
+        &evidence,
+        &context,
+        &options(AxisOrderMode::XY),
+    );
+    assert!(!decision.swap, "a fixed mode decides");
+    assert!(decision.conflicts.is_empty(), "only `Auto` weighs evidence: {:?}", decision.conflicts);
+
+    let decision = decide(
+        &key("EPSG:2180", Dialect::Gml3),
+        None,
+        None,
+        &evidence,
+        &context,
+        &options(AxisOrderMode::Auto),
+    );
+    let conflicts = decision.conflicts.join("; ");
+    assert!(conflicts.contains("boundedBy envelope"), "{conflicts}");
+    assert!(conflicts.contains("requested BBOX"), "{conflicts}");
+}

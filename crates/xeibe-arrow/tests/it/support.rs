@@ -232,6 +232,24 @@ impl Read {
         })
     }
 
+    /// Values of any geometry column, native GeoArrow or WKB, read through
+    /// geoarrow's own conversion to WKB.
+    #[track_caller]
+    pub fn native_geometries(&self, name: &str) -> Vec<Option<G>> {
+        use geoarrow_array::GeoArrowArray;
+
+        let field = self.field(name);
+        self.map_column(name, |array| {
+            let geometry = geoarrow_array::array::from_arrow_array(array, &field).expect("a GeoArrow column");
+            let wkb = geoarrow_array::cast::to_wkb::<i32>(geometry.as_ref()).expect("convertible to WKB");
+            let binary = wkb.into_array_ref();
+            let binary = binary.as_binary::<i32>();
+            (0..binary.len())
+                .map(|i| (!binary.is_null(i)).then(|| wkb::decode(binary.value(i)).expect("valid WKB")))
+                .collect()
+        })
+    }
+
     /// Values of a list-of-`Int64` column: `None` for a null list.
     #[track_caller]
     pub fn i64_lists(&self, name: &str) -> Vec<Option<Vec<Option<i64>>>> {

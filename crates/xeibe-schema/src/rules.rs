@@ -188,6 +188,8 @@ struct Col {
     anchor: Option<usize>,
     /// The property holds only an `xlink:href`: the name leaves out `@href`.
     by_reference: bool,
+    /// The feature's GML 2 `fid`: named `@id`, like a `gml:id`.
+    feature_id: bool,
     kind: ColKind,
     metadata: HashMap<String, String>,
     reasons: Vec<String>,
@@ -206,6 +208,7 @@ impl Col {
             attribute: None,
             anchor,
             by_reference: false,
+            feature_id: false,
             kind: ColKind::Scalar(data_type),
             metadata: HashMap::new(),
             reasons: Vec::new(),
@@ -242,10 +245,12 @@ impl Col {
             .filter(|step| !step.wrapper)
             .map(|step| display(&step.name, step.prefixed))
             .collect();
-        if let Some((attribute, prefixed)) = &self.attribute
-            && (!self.by_reference || steps.is_empty())
-        {
-            steps.push(format!("@{}", display(attribute, *prefixed)));
+        if let Some((attribute, prefixed)) = &self.attribute {
+            if self.feature_id {
+                steps.push("@id".to_string());
+            } else if !self.by_reference || steps.is_empty() {
+                steps.push(format!("@{}", display(attribute, *prefixed)));
+            }
         }
         if steps.is_empty() {
             // A path of wrappers only; name it by its path.
@@ -487,15 +492,25 @@ impl Engine<'_> {
             let mut col = Col::new(steps, anchor, plan.data_type.clone().unwrap_or(scalar.data_type));
             col.attribute = Some((name.clone(), prefixed));
             col.by_reference = is_href(name) && node.shape() == Shape::ByReferenceOnly;
+            // GML 2 writes the feature's id as `fid`: it is `@id` too, unless the
+            // feature also has a `gml:id`.
+            col.feature_id = steps.is_empty()
+                && name.ns.is_none()
+                && &*name.local == "fid"
+                && !node.attributes.keys().any(is_gml_id);
             col.metadata.extend(scalar.metadata);
             col.reasons = plan.reasons;
             col.reasons.extend(scalar.reasons);
+            if col.feature_id {
+                col.reasons.insert(0, "the feature's GML 2 id (fid)".to_string());
+            }
             if col.by_reference {
                 let strip = if self.options.gml.strip_local_href_hash { ", '#' stripped" } else { "" };
                 col.reasons.insert(0, format!("by-reference only (xlink:href){strip}"));
             }
             let constant = self.options.structure.constant_attrs == ConstantAttrs::ToFieldMetadata
                 && !is_gml_id(name)
+                && !col.feature_id
                 && !is_href(name)
                 && stats.count == node.instances
                 && plan.data_type.is_none();

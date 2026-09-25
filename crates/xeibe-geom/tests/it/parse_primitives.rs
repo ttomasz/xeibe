@@ -283,3 +283,26 @@ fn legacy_elements_are_accepted_in_every_version() {
         "POINT (1 2)",
     );
 }
+
+#[test]
+fn the_gml_30_dimension_attribute_is_read_as_srs_dimension() {
+    // GML 3.0 wrote `posList dimension="3"`; 3.1.1 renamed it `srsDimension`.
+    assert_geometry(
+        r#"<gml:LineString><gml:posList dimension="3">1 2 3 4 5 6</gml:posList></gml:LineString>"#,
+        "LINESTRING Z (1 2 3,4 5 6)",
+    );
+}
+
+#[test]
+fn without_srs_dimension_the_crs_gives_the_dimension() {
+    // The standard derives `srsDimension` from the CRS (`docs/geometry.md`,
+    // "Dimension"): EPSG:4979 is 3D, so three values are one position.
+    assert_geometry(
+        r#"<gml:LineString srsName="EPSG:4979"><gml:posList>1 2 3 4 5 6</gml:posList></gml:LineString>"#,
+        "LINESTRING Z (1 2 3,4 5 6)",
+    );
+    assert_geometry(
+        r#"<gml:LineString srsName="EPSG:2180"><gml:posList>1 2 3 4 5 6</gml:posList></gml:LineString>"#,
+        "LINESTRING (1 2,3 4,5 6)",
+    );
+}
