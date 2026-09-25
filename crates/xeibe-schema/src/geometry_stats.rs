@@ -34,6 +34,20 @@ pub struct GeometryStats {
 
 impl GeometryStats {
     /// Record one sniffed geometry of source `source`.
+    /// Several geometries in one property (`gml:pointArrayProperty`, …): one
+    /// value, of the Multi kind of each part, as the reader combines them
+    /// ([`xeibe_geom::Geometry::from_parts`]).
+    pub fn observe_parts(&mut self, source: u32, parts: &[GeometrySniff]) {
+        for part in parts {
+            let mut part = part.clone();
+            if let Some(kind) = part.kinds.first_mut() {
+                *kind = kind.multi();
+            }
+            self.observe(source, &part);
+        }
+        self.count -= parts.len().saturating_sub(1) as u64;
+    }
+
     pub fn observe(&mut self, source: u32, sniff: &GeometrySniff) {
         self.count += 1;
         // The outermost element is the geometry's kind; nested kinds (a

@@ -602,6 +602,12 @@ fallback when no PROJJSON is available.
 - An empty geometry element, such as `<gml:Point/>` or `posList count="0"`, becomes
   an empty geometry, not null.
 - A missing geometry property becomes null.
+- A property that holds several geometries (`gml:pointArrayProperty`,
+  `curveArrayProperty`, `surfaceArrayProperty`, or any property with more than one
+  geometry element) is one value: the Multi geometry of their family (MultiPoint;
+  MultiLineString, or MultiCurve with arcs; MultiPolygon, or MultiSurface with
+  arcs), or a GeometryCollection when the families differ. The scan counts such a
+  property as its Multi kind, so `Auto` picks a type that holds it.
 - A property with both `xlink:href` **and** inline content: the standard says the
   link is authoritative and the inline content is a cached copy (07-036 §7.2.3.4). We
   can't resolve links, so we use the inline content and keep the href in a

@@ -220,3 +220,90 @@ fn a_crs_without_projjson_is_written_as_an_authority_code() {
     let metadata = read.field("geom").metadata().get("ARROW:extension:metadata").cloned().unwrap_or_default();
     assert!(metadata.contains("projjson"), "EPSG codes get PROJJSON: {metadata}");
 }
+
+#[test]
+fn an_array_property_is_read_as_the_matching_multi_geometry() {
+    // `gml:pointArrayProperty`, `curveArrayProperty` and `surfaceArrayProperty`
+    // hold several geometries: one value of the Multi kind, never just the
+    // first (`docs/support-matrix.md`, §4).
+    let line = |a: &str| format!("<gml:LineString srsName=\"EPSG:2180\"><gml:posList>{a}</gml:posList></gml:LineString>");
+    let polygon = format!("<gml:Polygon srsName=\"EPSG:2180\">{RING}</gml:Polygon>");
+    let document = gml::gml32_collection(&[
+        &parcel(
+            "p1",
+            &format!(
+                concat!(
+                    "<gml:pointArrayProperty>{}{}{}</gml:pointArrayProperty>",
+                    "<gml:curveArrayProperty>{}{}</gml:curveArrayProperty>",
+                    "<gml:surfaceArrayProperty>{}{}</gml:surfaceArrayProperty>"
+                ),
+                point(1.0, 2.0),
+                point(3.0, 4.0),
+                point(5.0, 6.0),
+                line("0 0 1 1"),
+                line("2 2 3 3"),
+                polygon,
+                polygon
+            ),
+        ),
+        &parcel("p2", &format!("<gml:pointArrayProperty>{}</gml:pointArrayProperty>", point(7.0, 8.0))),
+    ]);
+
+    // A read's own sample: WKB.
+    let read = read_document(&document, "Parcel");
+    let points = read.geometries("pointArrayProperty");
+    assert_wkt(points[0].as_ref().expect("points"), "MULTIPOINT ((1 2),(3 4),(5 6))");
+    assert_wkt(points[1].as_ref().expect("points"), "POINT (7 8)");
+    assert_wkt(
+        read.geometries("curveArrayProperty")[0].as_ref().expect("curves"),
+        "MULTILINESTRING ((0 0,1 1),(2 2,3 3))",
+    );
+    assert_wkt(
+        read.geometries("surfaceArrayProperty")[0].as_ref().expect("surfaces"),
+        "MULTIPOLYGON (((0 0,1 0,1 1,0 0)),((0 0,1 0,1 1,0 0)))",
+    );
+
+    // A full scan knows the property holds several: a native Multi column,
+    // where a single point is a one-part MultiPoint.
+    let (read, settings) = read_scanned(&document, "Parcel");
+    assert_eq!(scanned_type(&settings, "pointArrayProperty"), "geometry(MultiPoint)");
+    assert_eq!(scanned_type(&settings, "curveArrayProperty"), "geometry(MultiLineString)");
+    assert_eq!(scanned_type(&settings, "surfaceArrayProperty"), "geometry(MultiPolygon)");
+    let points = read.native_geometries("pointArrayProperty");
+    assert_wkt(points[0].as_ref().expect("points"), "MULTIPOINT ((1 2),(3 4),(5 6))");
+    assert_wkt(points[1].as_ref().expect("points"), "MULTIPOINT ((7 8))");
+}
+
+#[test]
+fn geometries_of_different_families_in_one_property_are_a_collection() {
+    let document = gml::gml32_collection(&[&parcel(
+        "p1",
+        &format!(
+            "<app:things>{}<gml:LineString srsName=\"EPSG:2180\"><gml:posList>0 0 1 1</gml:posList></gml:LineString></app:things>",
+            point(1.0, 2.0)
+        ),
+    )]);
+    let (read, settings) = read_scanned(&document, "Parcel");
+    assert_eq!(scanned_type(&settings, "things"), "geometry", "no native type holds both: WKB");
+    assert_wkt(
+        read.geometries("things")[0].as_ref().expect("a collection"),
+        "GEOMETRYCOLLECTION (POINT (1 2),LINESTRING (0 0,1 1))",
+    );
+}
+
+#[test]
+fn a_broken_part_nulls_the_whole_array() {
+    // With `NullGeometry`, a geometry error nulls the column's value, never
+    // leaves the parts that could be read.
+    let document = gml::gml32_collection(&[&parcel(
+        "p1",
+        &format!(
+            "<app:area>1</app:area><gml:pointArrayProperty>{}<gml:Point srsName=\"EPSG:2180\"><gml:pos>x y</gml:pos></gml:Point></gml:pointArrayProperty>",
+            point(1.0, 2.0)
+        ),
+    )]);
+    let options = ReadOptions { on_feature_error: OnFeatureError::NullGeometry, ..ReadOptions::default() };
+    let read = read_with(&document, "Parcel", None, &options);
+    assert_eq!(read.i64s("area"), [Some(1)]);
+    assert_eq!(read.geometries("pointArrayProperty"), [None]);
+}

@@ -538,6 +538,74 @@ pub enum Geometry {
 }
 
 impl Geometry {
+    /// The geometries of one property that holds several
+    /// (`gml:pointArrayProperty`, `curveArrayProperty`, `surfaceArrayProperty`)
+    /// as one: the Multi geometry of their family, Multi parts flattened
+    /// (MultiPoint; MultiLineString, or MultiCurve with arcs; MultiPolygon, or
+    /// MultiSurface with arcs), else a GeometryCollection. One geometry is
+    /// returned as it is.
+    pub fn from_parts(mut parts: Vec<Geometry>) -> Geometry {
+        if parts.len() == 1 {
+            return parts.pop().expect("one part");
+        }
+        let points = parts.iter().all(|part| matches!(part, Geometry::Point(_) | Geometry::MultiPoint(_)));
+        let curves = parts.iter().all(|part| {
+            matches!(
+                part,
+                Geometry::LineString(_)
+                    | Geometry::CircularString(_)
+                    | Geometry::CompoundCurve(_)
+                    | Geometry::MultiLineString(_)
+                    | Geometry::MultiCurve(_)
+            )
+        });
+        let surfaces = parts.iter().all(|part| {
+            matches!(
+                part,
+                Geometry::Polygon(_) | Geometry::CurvePolygon(_) | Geometry::MultiPolygon(_) | Geometry::MultiSurface(_)
+            )
+        });
+        if points {
+            let mut all = Vec::new();
+            for part in parts {
+                match part {
+                    Geometry::Point(point) => all.push(point),
+                    Geometry::MultiPoint(multi) => all.extend(multi.0),
+                    _ => unreachable!("checked above"),
+                }
+            }
+            return Geometry::MultiPoint(MultiPoint(all));
+        }
+        if curves {
+            let mut all = Vec::new();
+            for part in parts {
+                match part {
+                    Geometry::LineString(line) => all.push(Curve::Linear(line)),
+                    Geometry::CircularString(arc) => all.push(Curve::Circular(arc)),
+                    Geometry::CompoundCurve(compound) => all.push(Curve::Compound(compound)),
+                    Geometry::MultiLineString(lines) => all.extend(lines.0.into_iter().map(Curve::Linear)),
+                    Geometry::MultiCurve(multi) => all.extend(multi.0),
+                    _ => unreachable!("checked above"),
+                }
+            }
+            return Geometry::MultiCurve(MultiCurve(all)).simplify_types();
+        }
+        if surfaces {
+            let mut all = Vec::new();
+            for part in parts {
+                match part {
+                    Geometry::Polygon(polygon) => all.push(Surface::Polygon(polygon)),
+                    Geometry::CurvePolygon(polygon) => all.push(Surface::CurvePolygon(polygon)),
+                    Geometry::MultiPolygon(polygons) => all.extend(polygons.0.into_iter().map(Surface::Polygon)),
+                    Geometry::MultiSurface(multi) => all.extend(multi.0),
+                    _ => unreachable!("checked above"),
+                }
+            }
+            return Geometry::MultiSurface(MultiSurface(all)).simplify_types();
+        }
+        Geometry::GeometryCollection(GeometryCollection(parts))
+    }
+
     pub fn kind(&self) -> OutputKind {
         match self {
             Geometry::Point(_) => OutputKind::Point,
@@ -701,8 +769,25 @@ pub enum GeomKind {
     MultiGeometry,
     Envelope,
     Box,
-    /// Solid, Tin, splines, grids, … (see `unsupported_geometry` policy).
+    /// Solid, Tin, splines, grids, … (geometry errors when read).
     Unsupported,
+}
+
+impl GeomKind {
+    /// The kind of several of these in one property (`gml:pointArrayProperty`,
+    /// …): the Multi kind of their family. See [`Geometry::from_parts`].
+    pub fn multi(self) -> GeomKind {
+        use GeomKind::*;
+        match self {
+            Point | MultiPoint => MultiPoint,
+            LineString | LinearRing | Curve | OrientableCurve | CompositeCurve | Ring | MultiLineString
+            | MultiCurve => MultiCurve,
+            Polygon | Surface | OrientableSurface | CompositeSurface | MultiPolygon | MultiSurface | Envelope
+            | Box => MultiSurface,
+            MultiGeometry => MultiGeometry,
+            Unsupported => Unsupported,
+        }
+    }
 }
 
 /// An envelope in output axis order.

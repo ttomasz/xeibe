@@ -11,7 +11,7 @@
 
 use xeibe_core::reader::{Attributes, GmlReader, XmlEvent};
 use xeibe_core::{Dialect, Location, QName, ns};
-use xeibe_geom::{AxisResolver, GeometryParser, ParseContext, SrsName};
+use xeibe_geom::{AxisResolver, Geometry, GeometryParser, ParseContext, SrsName};
 use xeibe_schema::RouteValue;
 
 use crate::OnFeatureError;
@@ -226,15 +226,20 @@ impl<'a> FeatureReader<'a> {
 
         let mut text = String::new();
         let mut had_children = false;
-        let mut geometry_done = false;
+        // The geometries of a geometry property: one, or several in an array
+        // property (`gml:pointArrayProperty`, …); `None` once one failed.
+        let mut parts: Option<Vec<Geometry>> = Some(Vec::new());
         loop {
             match reader.next_event()? {
                 XmlEvent::Start { name, attrs } => {
                     had_children = true;
-                    if wants_geometry && !geometry_done && name.is_gml() {
-                        geometry_done = true;
+                    if wants_geometry && name.is_gml() {
                         drop(attrs);
-                        self.geometry(reader, nodes, state)?;
+                        let part = self.geometry(reader, nodes, state)?;
+                        parts = parts.zip(part).map(|(mut parts, part)| {
+                            parts.push(part);
+                            parts
+                        });
                         continue;
                     }
                     let mut matched = Vec::new();
@@ -264,6 +269,9 @@ impl<'a> FeatureReader<'a> {
                 XmlEvent::End { .. } => break,
                 XmlEvent::Eof => return Err(unexpected_eof(reader).into()),
             }
+        }
+        if let Some(parts) = parts.filter(|parts| !parts.is_empty()) {
+            self.put_geometry(nodes, Geometry::from_parts(parts), state);
         }
         if wants_text {
             let raw = if had_children { Some(inner_raw(&reader.raw_since(content_start))) } else { None };
@@ -315,15 +323,20 @@ impl<'a> FeatureReader<'a> {
 
     /// The geometry element whose start the reader has just returned, inside
     /// a property that `nodes` match: into each of their geometry targets.
-    fn geometry(&self, reader: &mut GmlReader<'_>, nodes: &[&RouteNode], state: &mut RowState) -> crate::Result<()> {
+    /// Parse the geometry element whose start the reader has just returned,
+    /// inside a property that `nodes` match. `None` if it is a geometry error
+    /// (recorded in `state`), or a CRS one of the columns can't take.
+    fn geometry(
+        &self,
+        reader: &mut GmlReader<'_>,
+        nodes: &[&RouteNode],
+        state: &mut RowState,
+    ) -> crate::Result<Option<Geometry>> {
         let columns = &self.plan.routes.columns;
-        let targets: Vec<Target> = nodes
-            .iter()
-            .flat_map(|node| node.targets.iter().copied())
-            .filter(|target| target.value == RouteValue::Geometry)
-            .collect();
-        let Some(Item::Geometry(_, axis)) = targets.first().map(|target| &columns[target.column].item) else {
-            return reader.skip_element().map_err(Into::into);
+        let mut targets = geometry_targets(nodes);
+        let Some(Item::Geometry(_, axis)) = targets.next().map(|target| &columns[target.column].item) else {
+            reader.skip_element()?;
+            return Ok(None);
         };
         let context = ParseContext { srs_name: state.srs_name.clone(), srs_dimension: None, axis: None };
         match self.geometry.parse(reader, &context, &self.axis[*axis]) {
@@ -331,33 +344,41 @@ impl<'a> FeatureReader<'a> {
                 for warning in parsed.warnings {
                     state.warnings.push(Warning::from_geometry(warning, Some(state.location.clone())));
                 }
-                let Some(geometry) = parsed.geometry else { return Ok(()) };
-                for target in targets {
-                    let column = &columns[target.column];
-                    let Item::Geometry(spec, _) = &column.item else { continue };
-                    if let Some(message) = self.other_crs(column, parsed.srs_name.as_deref()) {
+                for target in geometry_targets(nodes) {
+                    if let Some(message) = self.other_crs(&columns[target.column], parsed.srs_name.as_deref()) {
                         state.geometry_error.get_or_insert(message);
-                        continue;
-                    }
-                    match spec.prepare(geometry.clone()) {
-                        Ok(geometry) => self.put(target.column, Value::Geometry(geometry), state),
-                        Err(geometry) => {
-                            state.geometry_error.get_or_insert(format!(
-                                "column {}: a {:?}{} doesn't fit {}",
-                                column.name,
-                                geometry.kind(),
-                                if geometry.dim() == Some(xeibe_geom::Dim::Xyz) { " with Z" } else { "" },
-                                spec.describe()
-                            ));
-                        }
+                        return Ok(None);
                     }
                 }
-                Ok(())
+                Ok(parsed.geometry)
             }
             Err(xeibe_geom::Error::Core(error)) => Err(error.into()),
             Err(error) => {
                 state.geometry_error.get_or_insert(error.to_string());
-                Ok(())
+                Ok(None)
+            }
+        }
+    }
+
+    /// A property's geometry into each of its geometry columns, in the
+    /// column's form; a kind or a Z value the column can't hold is a geometry
+    /// error.
+    fn put_geometry(&self, nodes: &[&RouteNode], geometry: Geometry, state: &mut RowState) {
+        let columns = &self.plan.routes.columns;
+        for target in geometry_targets(nodes) {
+            let column = &columns[target.column];
+            let Item::Geometry(spec, _) = &column.item else { continue };
+            match spec.prepare(geometry.clone()) {
+                Ok(geometry) => self.put(target.column, Value::Geometry(geometry), state),
+                Err(geometry) => {
+                    state.geometry_error.get_or_insert(format!(
+                        "column {}: a {:?}{} doesn't fit {}",
+                        column.name,
+                        geometry.kind(),
+                        if geometry.dim() == Some(xeibe_geom::Dim::Xyz) { " with Z" } else { "" },
+                        spec.describe()
+                    ));
+                }
             }
         }
     }
@@ -478,6 +499,14 @@ impl<'a> FeatureReader<'a> {
         items.resize(count - 1, Value::Null);
         items.push(value);
     }
+}
+
+/// The geometry targets of the nodes an element matched.
+fn geometry_targets<'n>(nodes: &'n [&RouteNode]) -> impl Iterator<Item = Target> + 'n {
+    nodes
+        .iter()
+        .flat_map(|node| node.targets.iter().copied())
+        .filter(|target| target.value == RouteValue::Geometry)
 }
 
 fn is_string(data_type: &arrow_schema::DataType) -> bool {

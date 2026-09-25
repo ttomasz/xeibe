@@ -466,6 +466,8 @@ struct Frame {
     had_text: bool,
     had_children: bool,
     text: String,
+    /// The geometry elements of this instance (several in an array property).
+    geometries: Vec<xeibe_geom::sniff::GeometrySniff>,
 }
 
 /// What an element's start tag said.
@@ -625,7 +627,8 @@ impl WalkState {
                     frame.had_children = true;
                     self.hints.observe(&name);
                     if depth >= 1 && is_geometry_element(&name) {
-                        self.geometry(reader, node, depth)?;
+                        let sniff = self.geometry(reader, depth)?;
+                        frame.geometries.push(sniff);
                         continue;
                     }
                     let known = node.children.get_index_of(&name);
@@ -676,6 +679,11 @@ impl WalkState {
             }
         }
 
+        match frame.geometries.as_slice() {
+            [] => {}
+            [one] => node.geometry.get_or_insert_with(GeometryStats::default).observe(self.source, one),
+            parts => node.geometry.get_or_insert_with(GeometryStats::default).observe_parts(self.source, parts),
+        }
         if !frame.had_text && matches!(frame.child_counts.as_slice(), [(_, 1, _)]) {
             node.single_child += 1;
         }
@@ -704,14 +712,8 @@ impl WalkState {
         Ok(())
     }
 
-    /// A geometry element inside property `node`: sniff it (without building
-    /// it) into the property's geometry statistics.
-    fn geometry(
-        &mut self,
-        reader: &mut GmlReader<'_>,
-        node: &mut ElementNode,
-        depth: u16,
-    ) -> crate::Result<()> {
+    /// A geometry element inside a property: sniff it (without building it).
+    fn geometry(&mut self, reader: &mut GmlReader<'_>, depth: u16) -> crate::Result<xeibe_geom::sniff::GeometrySniff> {
         let sniff = sniff_geometry(reader, self.feature.srs_name.as_deref())?;
         match sniff.dialect {
             Some(xeibe_core::Dialect::Gml2) => self.hints.saw_gml2_elements = true,
@@ -728,10 +730,7 @@ impl WalkState {
         } else if let Some(p) = sniff.first_position.as_deref().filter(|p| p.len() >= 2) {
             self.feature.extent = union_bbox(self.feature.extent, Some([p[0], p[1], p[0], p[1]]));
         }
-        node.geometry
-            .get_or_insert_with(GeometryStats::default)
-            .observe(self.source, &sniff);
-        Ok(())
+        Ok(sniff)
     }
 
     /// A location with the current feature's sequence number and `gml:id`.

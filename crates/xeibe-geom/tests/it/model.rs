@@ -199,3 +199,30 @@ fn bounding_boxes_cover_every_part() {
     // An empty geometry has no bounding box.
     assert_eq!(Geometry::Point(Point { coord: None }).bbox(), None);
 }
+
+#[test]
+fn the_parts_of_an_array_property_become_the_multi_geometry_of_their_family() {
+    // `gml:pointArrayProperty`, `curveArrayProperty`, `surfaceArrayProperty`
+    // hold several geometries (`docs/support-matrix.md`, §4).
+    let point = |x: f64| Geometry::Point(Point { coord: Some(vec![x, 0.0]) });
+    assert_eq!(Geometry::from_parts(vec![point(1.0)]), point(1.0), "one part stays as it is");
+    assert!(matches!(
+        Geometry::from_parts(vec![point(1.0), point(2.0)]),
+        Geometry::MultiPoint(points) if points.0.len() == 2
+    ));
+
+    let lines = Geometry::from_parts(vec![Geometry::LineString(line(&[0.0, 0.0, 1.0, 1.0])), Geometry::LineString(ring())]);
+    assert!(matches!(lines, Geometry::MultiLineString(lines) if lines.0.len() == 2));
+    let with_arc = Geometry::from_parts(vec![Geometry::LineString(ring()), Geometry::CircularString(arc())]);
+    assert!(matches!(with_arc, Geometry::MultiCurve(curves) if curves.0.len() == 2), "arcs stay curves");
+
+    let polygon = || Geometry::Polygon(Polygon { exterior: Some(ring()), interiors: Vec::new() });
+    let surfaces = Geometry::from_parts(vec![
+        polygon(),
+        Geometry::MultiPolygon(MultiPolygon(vec![Polygon { exterior: Some(ring()), interiors: Vec::new() }])),
+    ]);
+    assert!(matches!(surfaces, Geometry::MultiPolygon(polygons) if polygons.0.len() == 2), "Multi parts are flattened");
+
+    let mixed = Geometry::from_parts(vec![point(1.0), polygon()]);
+    assert!(matches!(mixed, Geometry::GeometryCollection(members) if members.0.len() == 2));
+}
