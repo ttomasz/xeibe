@@ -1,12 +1,13 @@
 # xeibe: GML → GeoArrow
 
 A set of Rust crates that read **GML** (Geography Markup Language) documents and
-**WFS** responses and convert them into **Apache Arrow** record batches with
+**WFS** (Web Feature Service) responses and convert them into **Apache Arrow** record batches with
 **GeoArrow** geometry columns. The resulting batches can be written to Parquet or
 GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 
-> **Status: design phase.** Nothing is implemented yet. These documents describe
-> the intended design. [`support-matrix.md`](support-matrix.md) tracks progress.
+> **Status: early implementation.** Every crate is implemented and the test suites
+> pass, but the API isn't stable yet. These documents describe the design and remain
+> the source of truth. [`support-matrix.md`](support-matrix.md) tracks what is supported.
 
 ## Goals
 
@@ -45,12 +46,13 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 | [wfs.md](wfs.md) | WFS bulk-read client: paging, pages streamed into a read |
 | [support-matrix.md](support-matrix.md) | Supported, planned and out-of-scope GML/WFS features (progress tracker) |
 | [testing.md](testing.md) | How the test suites are organized: synthetic tests, the samples, the GDAL reference |
+| [links.md](links.md) | External resources for testing, including GDAL's GML autotests |
 
 ## Key decisions
 
 | Decision | Rationale |
 |---|---|
-| Separate crates: core / geom / schema / arrow / wfs / integrations | Users who only need geometry don't pull in Arrow. Each part is testable on its own. |
+| Separate crates: core / crs / geom / schema / arrow / io / wfs / integrations (DataFusion, CLI, Python) | Users who only need geometry don't pull in Arrow. Each part is testable on its own. |
 | Standalone project with a thin DataFusion adapter, instead of developing inside SedonaDB | Faster iteration while the API is unstable. Also usable outside SedonaDB. Upstream an adapter later. |
 | `geo-traits` as the geometry interface | One GML geometry model can feed GeoArrow builders, WKB writers and `geo`. |
 | Schema inference = **observation** (path tree) + **policy** (`InferenceOptions`) | Different rules can be applied to one scan. Decisions can be explained. |
@@ -72,6 +74,13 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 
 ## Test corpus
 
+Curated samples in `tests/data/` (committed; see its `README.md`): 18 small
+extracts listed in `samples.toml`, each with GDAL's `ogrinfo` output and a verified
+axis order. They cover GML 2 with `<gml:coordinates>`, GML 3.1.1 and 3.2, WFS 1.0,
+1.1 and 2.0 responses from MapServer and GeoServer, arcs and circles, AdV CRS URNs
+and the common srsName forms. `tests/data/gdal/` holds geometry snippets from GDAL's
+test suite.
+
 Real data in `example_data/` (not committed):
 
 - **PRG address points** (Polish national address register): GML 3.2, 0.6–3.3 GB per
@@ -84,16 +93,20 @@ Real data in `example_data/` (not committed):
 - **PRG administrative boundaries** (`A00_Granice_panstwa.gml`, national border;
   `A01_Granice_wojewodztw.gml`, voivodeship borders): `gml:Surface` geometries.
 
-Still needed: a GML 2 file using `<gml:coordinates>`, a GML 3.1.1 file, a WFS 1.1
-response and a WFS 2.0 response, and data containing arcs (`Arc`, `ArcString`,
-`CircleByCenterPoint`).
+- **WFS**: capabilities and small `GetFeature` responses from the endpoints in
+  `example_data/wfs/endpoints-*.txt` (geoportal.gov.pl and data.europa.eu).
+- **Portal downloads**: GML files selected from the Polish and EU portal
+  inventories.
+
+Still needed: an `ArcByBulge` test case with independently known geometry (see
+the support matrix).
 
 Reference material:
 - `ogc_schemas/`: a local copy of schemas.opengis.net, plus the spec PDFs (GML 2.1.2,
   3.1.1, 3.2.1; GML SF profile 2.0; WFS 1.0/1.1/2.0.0/2.0.2; FES 2.0.2; OWS Common 2.0;
   CRS naming 07-092r3, 09-048r7, 11-135r2). The docs cite sections as `07-036 §10.4.7`
   and similar.
-- `stuff.md`: links, including GDAL's GML autotests.
+- [links.md](links.md): links, including GDAL's GML autotests.
 - `scripts/schema_coverage.py` checks that every schema element appears in the
   support matrix.
 - `scripts/gdal <cmd>` runs GDAL **3.13.3** (Docker image `ghcr.io/osgeo/gdal:ubuntu-full-3.13.3`,
@@ -110,13 +123,12 @@ Reference material:
   are git-ignored and built by `scripts/fetch_ogc_schemas.py`). Use `--schema ns=path` for
   local application schemas and `--net` for remote ones.
 - Rust test tooling: `cargo nextest run --workspace`. The suites are written
-  against these documents, so most of them fail until the corresponding feature
-  exists: see [testing.md](testing.md).
+  against these documents: see [testing.md](testing.md).
 
 ## Open questions
 
-- How srsNames resolve to CRSs, and where PROJJSON for GeoParquet comes from: see
-  [geometry.md](geometry.md#open-questions-srsname--crs).
+- Which srsName spellings count as the same CRS, and whether users can extend the
+  CRS name table: see [geometry.md](geometry.md#open-questions-srsname--crs).
 - Whether to use `DescribeFeatureType` as a *hint* for WFS schema inference, for
   example for columns that are always null.
 - Whether to add a WebDAV-free directory listing for HTTP (e.g. parsing Apache or

@@ -1,9 +1,9 @@
 # xeibe
 
-Rust library for reading GML files and WFS responses into Arrow/GeoArrow. It
-is still a design-phase skeleton: most function bodies are `todo!()`. The
-design docs in `docs/` are the source of truth, starting with `docs/README.md`
-and `docs/architecture.md`. `docs/support-matrix.md` tracks status. After
+Rust library for reading GML files and WFS responses into Arrow/GeoArrow. Every
+crate is implemented, but the API isn't stable yet. The design docs in
+`docs/` are the source of truth, starting with `docs/README.md` and
+`docs/architecture.md`. `docs/support-matrix.md` tracks status. After
 changing a status there, rerun `scripts/support_summary.py`. Draw diagrams in
 docs as Mermaid (```` ```mermaid ````), not ASCII art.
 
@@ -29,9 +29,8 @@ use those names.
 
 Each crate has one integration-test binary (`crates/*/tests/it/`) plus
 `crates/xeibe-testkit`, which loads `tests/data` and provides independent
-WKT/WKB readers. The suites describe the design docs, so most tests fail while
-the bodies are `todo!()` — that is the progress tracker. Only
-`xeibe-testkit`'s own tests must always pass. See `docs/testing.md`.
+WKT/WKB readers. The suites describe the design docs, and all of them are
+expected to pass. See `docs/testing.md`.
 
 ## Setting up a new environment
 
