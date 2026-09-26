@@ -721,6 +721,7 @@ impl<R: Read> FeatureSplitter<R> {
             bytes,
             namespaces: self.chunk_context.clone(),
             first_feature_seq: self.chunk_first_feature,
+            features: self.features_emitted - self.chunk_first_feature,
             collection_bounded_by: self.chunk_bounded_by.clone(),
         });
         self.next_seq += 1;

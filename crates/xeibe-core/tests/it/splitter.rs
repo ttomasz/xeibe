@@ -164,9 +164,10 @@ fn a_large_target_puts_every_feature_in_one_chunk() {
     let features = parcels(5);
     let document = gml::gml32_collection(&refs(&features));
     let chunks = split(&document, SplitterOptions::default());
-    assert_eq!(chunks.len(), 1, "a 16+ MB target holds this document");
+    assert_eq!(chunks.len(), 1, "the default target holds this document");
     assert_eq!(feature_names(&chunks).len(), 5);
     assert_eq!(chunks[0].first_feature_seq, 0);
+    assert_eq!(chunks[0].features, 5);
 }
 
 #[test]
@@ -210,6 +211,8 @@ fn a_layer_filter_skips_other_feature_types() {
         chunks.iter().map(|c| c.first_feature_seq).collect::<Vec<_>>(),
         [0, 1]
     );
+    // Features of other layers are not counted in a chunk either.
+    assert_eq!(chunks.iter().map(|c| c.features).collect::<Vec<_>>(), [1, 1]);
 }
 
 #[test]

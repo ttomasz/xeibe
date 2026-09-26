@@ -393,8 +393,9 @@ flowchart LR
   batch queue or reorder stage, because a scan produces one observation.
 - **Sampling happens before the workers start.** A read without a schema, or an
   `Auto` axis-order decision with a given schema, first takes the layer's chunks
-  from the splitter one at a time until `sample.features_per_layer` features are
-  in. It infers the schema or decides the axis order from them, then starts the
+  from the splitter until they hold `sample.features_per_layer` features (each
+  chunk knows its feature count) and scans them on all threads, merging in chunk
+  order. It infers the schema or decides the axis order from them, then starts the
   workers and feeds them the buffered chunks first, followed by the rest of the
   stream. Nothing is read twice.
 

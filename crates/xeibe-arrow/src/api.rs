@@ -173,7 +173,8 @@ struct Sample {
 }
 
 /// Take chunks until `sample.features_per_layer` features of the layer (or
-/// `max_buffer_bytes`) are in, or the input ends.
+/// `max_buffer_bytes`) are in, or the input ends, and scan them on all
+/// threads: the workers aren't running yet.
 fn take_sample(stream: &mut ChunkStream, contexts: &SharedContexts, options: &ReadOptions) -> crate::Result<Sample> {
     let scanner = Scanner::new(ScanOptions {
         extent: ScanExtent::Full,
@@ -183,35 +184,78 @@ fn take_sample(stream: &mut ChunkStream, contexts: &SharedContexts, options: &Re
         threads: 1,
     });
     let mut sample = Sample { chunks: Vec::new(), observation: DatasetObservation::default(), complete: false };
-    let mut bytes = 0u64;
-    let mut budget = options.sample.features_per_layer;
+    let budget = options.sample.features_per_layer;
+    let (mut features, mut bytes) = (0u64, 0u64);
+    // A chunk after the sample, taken only to tell whether there is more.
+    let mut after = None;
     loop {
         let Some(chunk) = stream.next() else {
             sample.complete = true;
             break;
         };
         let chunk = chunk?;
-        // Only the first `features_per_layer` features count, even where a
-        // chunk holds more.
-        let (observation, stopped) = scanner.scan_chunk_limited(&chunk, &mut budget)?;
-        sample.observation.merge(observation);
+        features += chunk.features;
         bytes += chunk.bytes.len() as u64;
         sample.chunks.push(chunk);
-        if stopped {
+        // More features than the budget: some go unscanned.
+        if features > budget {
             break;
         }
-        if budget == 0 || bytes >= options.sample.max_buffer_bytes {
-            // One chunk more tells whether the sample is the whole layer.
+        if features == budget || bytes >= options.sample.max_buffer_bytes {
             match stream.next() {
                 None => sample.complete = true,
-                Some(chunk) => sample.chunks.push(chunk?),
+                Some(chunk) => after = Some(chunk?),
             }
             break;
         }
     }
+    sample.observation = scan_sample(&scanner, &sample.chunks, budget, options.threads)?;
+    sample.chunks.extend(after);
     sample.observation.source_context = lock(contexts).clone();
     sample.observation.sampled = !sample.complete;
     Ok(sample)
+}
+
+/// The first `budget` features of `chunks`, scanned on up to `threads`
+/// threads and merged in chunk order.
+fn scan_sample(scanner: &Scanner, chunks: &[FeatureChunk], budget: u64, threads: usize) -> crate::Result<DatasetObservation> {
+    // Only the first `budget` features count, even where a chunk holds more.
+    let mut left = budget;
+    let budgets: Vec<u64> = chunks
+        .iter()
+        .map(|chunk| {
+            let take = chunk.features.min(left);
+            left -= take;
+            take
+        })
+        .collect();
+    let threads = threads.clamp(1, chunks.len().max(1));
+    let budgets = &budgets;
+    let mut scanned: Vec<(usize, xeibe_schema::Result<DatasetObservation>)> = std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..threads)
+            .map(|first| {
+                scope.spawn(move || {
+                    (first..chunks.len())
+                        .step_by(threads)
+                        .map(|i| {
+                            let mut budget = budgets[i];
+                            (i, scanner.scan_chunk_limited(&chunks[i], &mut budget).map(|(observation, _)| observation))
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|worker| worker.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic)))
+            .collect()
+    });
+    scanned.sort_by_key(|(i, _)| *i);
+    let mut observation = DatasetObservation::default();
+    for (_, scanned) in scanned {
+        observation.merge(scanned?);
+    }
+    Ok(observation)
 }
 
 fn sample_options(options: &SampleOptions, complete: bool) -> SampleOptions {
