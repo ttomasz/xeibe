@@ -709,6 +709,9 @@ Defaults for `xeibe convert --format geoparquet`:
     values in the first batch are all points. The first batch decides because the
     schema must be fixed before writing. A WKB column that holds only nulls there
     gets a covering.
+- `--row-group-size N` (default 128,000 rows). Row-group statistics and the
+  covering prune at this granularity. The writer holds a whole row group in
+  memory, so lower it for layers with large polygons.
 - Coordinates are always x/y (easting/longitude first), as both standards require.
   See [CRS and axis order](#crs-and-axis-order).
 - The Parquet `GEOMETRY` CRS is written as `authority:code` (e.g. `EPSG:2180`) when

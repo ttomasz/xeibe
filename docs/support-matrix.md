@@ -423,7 +423,7 @@ file. Not listed individually:
 |---|---|---|---|
 | `RecordBatchReader` per layer | ✅ Supported | P0 | `crates/xeibe-arrow/tests/it/api.rs` |
 | Parallel read pipeline with order preservation | ✅ Supported | P0 | Bounded queues and reorder stage (`xeibe-arrow` `pipeline`). `crates/xeibe-arrow/tests/it/api.rs` (`rows_keep_their_source_order_by_default`, `batch_size_bounds_the_batches`) |
-| Parquet output | ✅ Supported | P0 | `xeibe convert`, `xeibe wfs convert`. `crates/xeibe-cli/tests/it/convert.rs` |
+| Parquet output | ✅ Supported | P0 | `xeibe convert`, `xeibe wfs convert`. ZSTD, 128,000-row row groups (`--row-group-size`). `crates/xeibe-cli/tests/it/convert.rs` |
 | GeoParquet 1.1 metadata | ✅ Supported | P0 | `geo` key: WKB encoding, `geometry_types`, CRS as PROJJSON or `null`, file bbox. Top-level geometry columns only. `crates/xeibe-cli/tests/it/convert.rs` |
 | Native Parquet `GEOMETRY` logical type + row-group bbox statistics | ✅ Supported | P0 | `parquet` feature `geospatial`; CRS as `authority:code`, `srid:0` when unknown. A column with curves is an error unless `--linearize`. `crates/xeibe-cli/tests/it/convert.rs` |
 | GeoParquet 1.1 `bbox` covering column | ✅ Supported | P1 | `--bbox-column auto|always|never` (`xeibe convert`, `xeibe wfs convert`). `auto` (default): every geometry column but points; `<column>_bbox` struct, named in `covering`. `crates/xeibe-cli/tests/it/convert.rs` |

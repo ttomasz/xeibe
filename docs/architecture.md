@@ -520,7 +520,7 @@ The CLI is deliberately simple: one command per operation, one layer per output.
 
 ```
 xeibe scan    <src>… [--sample N] [--preset …] [--explain] [-o settings.json]
-xeibe convert <src>… --layer <name> -o out.parquet [--settings settings.json] [--format parquet|ipc] [--bbox-column auto|always|never] [options…]
+xeibe convert <src>… --layer <name> -o out.parquet [--settings settings.json] [--format parquet|ipc] [--bbox-column auto|always|never] [--row-group-size N] [options…]
 xeibe wfs layers  <url>
 xeibe wfs count   <url> --type-name <name>
 xeibe wfs convert <url> --type-name <name> -o out.parquet [--settings settings.json] [--page-size N]
@@ -541,7 +541,9 @@ xeibe wfs convert <url> --type-name <name> -o out.parquet [--settings settings.j
 See [geometry.md](geometry.md#parquet-and-geoparquet-output). In short, by default
 geometry is written as WKB with the native Parquet `GEOMETRY` logical type, which
 gives bbox statistics per row group, plus GeoParquet 1.1 `geo` metadata. A
-column with curves is an error unless `--linearize` is given.
+column with curves is an error unless `--linearize` is given. Row groups hold
+128,000 rows (`--row-group-size`). The Parquet writer keeps a whole row group
+in memory, outside the bounds in [Memory](#memory).
 
 ## Non-goals and deliberate limits
 

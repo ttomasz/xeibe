@@ -1,3 +1,4 @@
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -102,6 +103,10 @@ pub struct OutputArgs {
     /// (`<column>_bbox`). Parquet only.
     #[arg(long, value_enum, default_value_t = BboxColumn::Auto)]
     pub bbox_column: BboxColumn,
+    /// Rows per Parquet row group. The writer holds a whole row group in
+    /// memory, so wide rows (large polygons) call for fewer. Parquet only.
+    #[arg(long, value_name = "ROWS", default_value = "128000")]
+    pub row_group_size: NonZeroUsize,
 }
 
 /// Read parameters. They override the settings file's `options`.

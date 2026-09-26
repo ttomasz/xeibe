@@ -456,6 +456,18 @@ fn bbox_column_always_and_never() {
 }
 
 #[test]
+fn row_group_size_caps_the_rows_per_row_group() {
+    let document = places(&[POINT, POINT, POINT]);
+    let (out, _) = convert_places("row_group_size", &document, &["--row-group-size", "2"]);
+    let metadata = parquet_reader(&out).metadata().clone();
+    let rows: Vec<i64> = metadata.row_groups().iter().map(|group| group.num_rows()).collect();
+    assert_eq!(rows, [2, 1]);
+
+    let zero = xeibe(&["convert", path_str(&out), "--layer", "Place", "-o", path_str(&out), "--row-group-size", "0"]);
+    assert!(!zero.success, "a row group needs a row");
+}
+
+#[test]
 fn a_bbox_column_name_that_is_taken_gets_a_suffix() {
     let document = places(&[&format!("{SQUARE}<app:geometria_bbox>tekst</app:geometria_bbox>")]);
     let (out, batches) = convert_places("bbox_name", &document, &[]);
