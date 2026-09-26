@@ -15,7 +15,8 @@ flate2.workspace = true
 zstd.workspace = true
 zip.workspace = true
 bytes.workspace = true
-serde.workspace = true
+# `rc`: `QName` serializes its `Arc<str>` fields.
+serde = { workspace = true, features = ["rc"] }
 thiserror.workspace = true
 globset.workspace = true
 
