@@ -267,7 +267,7 @@ impl Decider<'_> {
             return Ok(Vote { swap: false, reason: format!("{} is lon/lat by definition", crs.authority_code()) });
         }
         let CrsRef::Code { authority, code } = crs.horizontal() else {
-            return Err(format!("no horizontal CRS in {:?}", srs.raw));
+            return Err(format!("no known horizontal CRS in {:?}", srs.raw));
         };
         let info = self
             .table

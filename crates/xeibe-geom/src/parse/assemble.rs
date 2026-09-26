@@ -354,7 +354,9 @@ pub(crate) fn effective_dimension(inputs: DimensionInputs, values: usize) -> (us
 }
 
 /// Dimension of the CRS an srsName names, from the CRS table. A compound
-/// CRS adds up its components.
+/// CRS adds up its components. An unresolved part after the first is 1D: the
+/// parts that follow a compound's horizontal CRS are vertical, temporal or
+/// parametric (ISO 19111), each of one axis.
 pub(crate) fn crs_dimension(srs_name: &str, table: &CrsTable) -> Option<u8> {
     fn of(crs: &CrsRef, table: &CrsTable) -> Option<u8> {
         match crs {
@@ -362,7 +364,15 @@ pub(crate) fn crs_dimension(srs_name: &str, table: &CrsTable) -> Option<u8> {
                 Some(if code.eq_ignore_ascii_case("CRS84h") { 3 } else { 2 })
             }
             CrsRef::Code { authority, code } => Some(table.get(authority, code)?.dimension),
-            CrsRef::Compound(parts) => parts.iter().map(|p| of(p, table)).sum(),
+            CrsRef::Compound(parts) => parts
+                .iter()
+                .enumerate()
+                .map(|(i, p)| match p {
+                    CrsRef::Unresolved(_) if i > 0 => Some(1),
+                    p => of(p, table),
+                })
+                .sum(),
+            CrsRef::Unresolved(_) => None,
         }
     }
     of(SrsName::parse(srs_name).crs.as_ref()?, table)

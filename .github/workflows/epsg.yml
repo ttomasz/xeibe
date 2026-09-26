@@ -246,6 +246,7 @@ jobs:
           # The archives live in example_data/, which is git-ignored; nothing
           # to clean up, but be explicit about what gets committed.
           git add crates/xeibe-crs/src/table.rs \
+                  crates/xeibe-crs/src/aliases.rs \
                   crates/xeibe-crs/data/projjson.bin \
                   crates/xeibe-crs/EPSG-NOTICE.md \
                   crates/xeibe-crs/CHANGELOG.md \

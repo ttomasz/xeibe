@@ -305,8 +305,13 @@ fn without_srs_dimension_the_crs_gives_the_dimension() {
         r#"<gml:LineString srsName="EPSG:2180"><gml:posList>1 2 3 4 5 6</gml:posList></gml:LineString>"#,
         "LINESTRING (1 2,3 4,5 6)",
     );
-    // A compound CRS adds up its parts: 2D horizontal + 1D height.
-    for srs in ["urn:adv:crs:ETRS89_UTM32*DE_DHHN2016_NH", "EPSG:25832+7837"] {
+    // A compound CRS adds up its parts: 2D horizontal + 1D height. A part
+    // after the first is 1D even when it names no known CRS.
+    for srs in [
+        "urn:adv:crs:ETRS89_UTM32*DE_DHHN2016_NH",
+        "EPSG:25832+7837",
+        "urn:ogc:def:crs,crs:EPSG::25832,crs:DE_XYZ",
+    ] {
         assert_geometry(
             &format!(r#"<gml:LineString srsName="{srs}"><gml:posList>1 2 3 4 5 6</gml:posList></gml:LineString>"#),
             "LINESTRING Z (1 2 3,4 5 6)",

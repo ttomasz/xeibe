@@ -5,7 +5,7 @@
 //! `docs/geometry.md` records, and that the normalisations the EPSG terms
 //! permit were actually applied.
 
-use xeibe_crs::{CrsKind, FirstAxis, get, projjson};
+use xeibe_crs::{CrsKind, FirstAxis, alias, get, projjson};
 
 #[test]
 fn knows_which_crss_are_northing_or_latitude_first() {
@@ -154,3 +154,26 @@ fn every_record_has_a_sane_shape() {
 }
 
 const CRS_LEN: usize = xeibe_crs::CRS.len();
+
+#[test]
+fn aliases_name_one_crs_and_ignore_case() {
+    // "Poland alternative identifier" in EPSG's alias table.
+    assert_eq!(alias("PL-1992"), Some(2180));
+    assert_eq!(alias("pl-evrf2007-nh"), Some(9651));
+    assert_eq!(alias(" PL-KRON86 "), Some(9650));
+    assert_eq!(alias("ETRS89-LAEA"), Some(3035));
+    // EPSG gives this one to EPSG:9700, 9701 and 9702: no guess.
+    assert_eq!(alias("PL-ETRF2000"), None);
+    // ISO Geodetic Register codes are numbers, which read as EPSG codes.
+    assert_eq!(alias("727"), None);
+    assert_eq!(alias("PL-KRON86-NH"), None, "not EPSG's spelling");
+}
+
+#[test]
+fn every_alias_names_a_crs_in_the_table() {
+    for (alias_name, code) in xeibe_crs::ALIASES {
+        assert!(get(*code).is_some(), "{alias_name} → {code}");
+        assert_eq!(alias(alias_name), Some(*code), "{alias_name}");
+    }
+    assert!(xeibe_crs::ALIASES.windows(2).all(|w| w[0].0 < w[1].0), "sorted and unique");
+}

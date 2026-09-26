@@ -222,6 +222,29 @@ fn a_crs_without_projjson_is_written_as_an_authority_code() {
 }
 
 #[test]
+fn a_compound_crs_with_an_unknown_part_is_its_known_part_and_reported() {
+    // `docs/geometry.md`, "CRS metadata": the CRS is EPSG:2180 alone, and
+    // the read report says which part was left out.
+    let srs = "urn:ogc:def:crs,crs:EPSG::2180,crs:PL-XYZ";
+    let document = gml::gml32_collection(&[&parcel(
+        "p1",
+        &format!("<app:geom><gml:Point srsName=\"{srs}\"><gml:pos>2 1 5</gml:pos></gml:Point></app:geom>"),
+    )]);
+    let (read, _) = read_scanned(&document, "Parcel");
+    let metadata = read.field("geom").metadata().get("ARROW:extension:metadata").cloned().unwrap_or_default();
+    let metadata: serde_json::Value = serde_json::from_str(&metadata).expect("JSON metadata");
+    assert_eq!(metadata["crs"]["id"]["code"], 2180, "{metadata}");
+    let unknown: Vec<&str> = read
+        .report
+        .warnings
+        .iter()
+        .filter(|warning| warning.kind == xeibe_arrow::report::WarningKind::UnknownCrs)
+        .map(|warning| warning.message.as_str())
+        .collect();
+    assert!(unknown.iter().any(|message| message.contains("\"PL-XYZ\"")), "{unknown:?}");
+}
+
+#[test]
 fn an_array_property_is_read_as_the_matching_multi_geometry() {
     // `gml:pointArrayProperty`, `curveArrayProperty` and `surfaceArrayProperty`
     // hold several geometries: one value of the Multi kind, also for one part

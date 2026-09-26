@@ -26,7 +26,8 @@ pub enum WarningKind {
     /// srsName missing or in no recognised form; read as written (x/y).
     UnknownSrs,
     /// srsName recognised, but its code is not in the CRS table: where the CRS's
-    /// axis order was needed, x/y was assumed.
+    /// axis order was needed, x/y was assumed. Also a compound CRS's part that
+    /// names no known CRS: the CRS is its other parts.
     UnknownCrs,
     AxisConflict,
     SegmentGap,

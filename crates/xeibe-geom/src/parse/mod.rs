@@ -492,7 +492,7 @@ impl<'p> Parser<'p> {
         let srs = SrsName::parse(self.srs_name.as_deref()?);
         match srs.crs?.horizontal() {
             crate::crs::CrsRef::Code { authority, code } => self.table.get(authority, code),
-            crate::crs::CrsRef::Compound(_) => None,
+            crate::crs::CrsRef::Compound(_) | crate::crs::CrsRef::Unresolved(_) => None,
         }
     }
 

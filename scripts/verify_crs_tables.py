@@ -51,6 +51,7 @@ import zstandard as zstd
 REPO = Path(__file__).resolve().parent.parent
 CRATE = REPO / "crates" / "xeibe-crs"
 TABLE_RS = CRATE / "src" / "table.rs"
+ALIASES_RS = CRATE / "src" / "aliases.rs"
 BLOB = CRATE / "data" / "projjson.bin"
 
 # Float comparisons: PROJ rounds conversion factors to 15 significant digits,
@@ -237,8 +238,20 @@ class Report:
         print(f"  {check}: {detail}")
 
 
+def read_committed_aliases() -> list[tuple[str, int]]:
+    text = ALIASES_RS.read_text()
+    return [(json.loads(alias), int(code)) for alias, code in re.findall(r'^    \(("(?:[^"\\]|\\.)*"), (\d+)\),$', text, re.M)]
+
+
 def check_self(report: Report, table: dict, docs: dict) -> None:
     problems = []
+    aliases = read_committed_aliases()
+    dangling = [alias for alias, code in aliases if code not in table]
+    if dangling:
+        problems.append(f"{len(dangling)} aliases name no CRS record (e.g. {dangling[:5]})")
+    keys = [alias for alias, _ in aliases]
+    if keys != sorted(set(keys)) or any(alias != alias.lower() for alias in keys):
+        problems.append("aliases are not lowercased, sorted and unique")
     missing_doc = sorted(set(table) - set(docs))
     orphan_doc = sorted(set(docs) - set(table))
     if missing_doc:
@@ -265,7 +278,9 @@ def check_self(report: Report, table: dict, docs: dict) -> None:
     if problems:
         report.fail("self-consistency", "; ".join(problems))
     else:
-        report.ok("self-consistency", f"{len(table)} records and {len(docs)} documents agree")
+        report.ok(
+            "self-consistency", f"{len(table)} records, {len(docs)} documents and {len(aliases)} aliases agree"
+        )
 
 
 def check_schema(report: Report, docs: dict) -> None:

@@ -1,7 +1,7 @@
 //! EPSG CRS facts and PROJJSON definitions, generated from the EPSG dataset.
 //!
 //! Two tables, with deliberately different shapes because they are used very
-//! differently:
+//! differently (plus [`alias`], EPSG's other names for its CRSs):
 //!
 //! * [`CRS`] holds the facts the axis-order decision needs ([`FirstAxis`],
 //!   dimension, units, area of use). It is on the hot path, so it is a plain
@@ -21,7 +21,9 @@ use std::sync::{Mutex, OnceLock};
 // Generated data: bbox longitudes such as 3.14 are not π.
 #[allow(clippy::approx_constant)]
 mod table;
+mod aliases;
 
+pub use aliases::ALIASES;
 pub use table::{CRS, EPSG_DATE, EPSG_VERSION, PROJJSON_COUNT};
 
 /// Direction of a CRS's first axis, in the authority's own axis order.
@@ -116,6 +118,20 @@ pub fn get(code: u32) -> Option<&'static CrsRecord> {
     CRS.binary_search_by_key(&code, |record| record.code)
         .ok()
         .map(|index| &CRS[index])
+}
+
+/// The EPSG code a CRS alias names, e.g. `PL-1992` → 2180. Case is ignored.
+///
+/// These are EPSG's own aliases (its abbreviations and former names, INSPIRE
+/// and national identifiers), limited to those that name a single CRS. An
+/// alias EPSG gives to several live CRSs (`PL-ETRF2000`) is not here.
+pub fn alias(name: &str) -> Option<u32> {
+    let name = name.trim().to_lowercase();
+    let aliases = aliases::ALIASES;
+    aliases
+        .binary_search_by(|(alias, _)| (*alias).cmp(name.as_str()))
+        .ok()
+        .map(|index| aliases[index].1)
 }
 
 // -------------------------------------------------------------------------

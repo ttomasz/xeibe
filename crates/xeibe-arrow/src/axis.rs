@@ -103,6 +103,17 @@ impl AxisDecisions {
                     },
                 }),
                 Some(crs) => {
+                    for part in crs.unresolved() {
+                        warnings.push(Warning {
+                            kind: WarningKind::UnknownCrs,
+                            location: None,
+                            message: format!(
+                                "{}: {part:?} in srsName {:?} names no known CRS; the CRS is its other parts",
+                                key.source,
+                                key.srs_name.as_deref().unwrap_or_default()
+                            ),
+                        });
+                    }
                     if let CrsRef::Code { authority, code } = crs.horizontal()
                         && !crs.is_lon_lat_by_definition() && table.get(authority, code).is_none() {
                             warnings.push(Warning {

@@ -144,6 +144,57 @@ fn the_proj_compound_spelling_is_a_short_form() {
 }
 
 #[test]
+fn names_resolve_wherever_a_crs_can_stand() {
+    // EPSG's aliases ("Poland alternative identifier") as a whole srsName…
+    let parsed = SrsName::parse("PL-1992");
+    assert_eq!((parsed.form, parsed.crs), (SrsNameForm::Short, Some(epsg("2180"))));
+    assert_eq!(SrsName::parse("pl-2000/15").crs, Some(epsg("2176")));
+    // …and as compound parts: GUGiK's 3D building models, LoD1 and LoD2.
+    assert_eq!(
+        SrsName::parse("urn:ogc:def:crs,crs:EPSG::2180,crs:EPSG::9651").crs,
+        Some(CrsRef::Compound(vec![epsg("2180"), epsg("9651")]))
+    );
+    assert_eq!(
+        SrsName::parse("urn:ogc:def:crs,crs:EPSG::2180,crs:PL-KRON86-NH").crs,
+        Some(CrsRef::Compound(vec![epsg("2180"), epsg("9650")]))
+    );
+    // AdV names outside `urn:adv:crs:`, and versioned parts (GDAL's citygml.gml).
+    assert_eq!(
+        SrsName::parse("urn:ogc:def:crs,crs:EPSG::25832,crs:DE_DHHN2016_NH").crs,
+        Some(CrsRef::Compound(vec![epsg("25832"), epsg("7837")]))
+    );
+    assert_eq!(
+        SrsName::parse("urn:ogc:def:crs,crs:EPSG:6.12:3068,crs:EPSG:6.12:5783").crs,
+        Some(CrsRef::Compound(vec![epsg("3068"), epsg("5783")]))
+    );
+    // A name EPSG gives to several CRSs is no CRS: no guessing.
+    assert_eq!(SrsName::parse("PL-ETRF2000").crs, None);
+}
+
+#[test]
+fn a_compound_crs_keeps_its_known_parts() {
+    let parsed = SrsName::parse("urn:ogc:def:crs,crs:EPSG::2180,crs:PL-XYZ");
+    assert_eq!(parsed.form, SrsNameForm::CompoundUrn);
+    let crs = parsed.crs.expect("the known part is kept");
+    assert_eq!(crs, CrsRef::Compound(vec![epsg("2180"), CrsRef::Unresolved("PL-XYZ".into())]));
+    assert_eq!(crs.unresolved(), ["PL-XYZ"]);
+    assert_eq!(crs.horizontal(), &epsg("2180"));
+    // The output CRS is the known part alone.
+    assert_eq!(crs.projjson().unwrap()["id"]["code"], 2180);
+    // The fallback spelling keeps the unknown part, and reads back.
+    assert_eq!(crs.authority_code(), "EPSG:2180+PL-XYZ");
+    assert_eq!(SrsName::parse("EPSG:2180+PL-XYZ").crs, Some(crs));
+
+    // With no known part there is no CRS.
+    for raw in ["urn:ogc:def:crs,crs:PL-XYZ,crs:PL-ABC", "urn:adv:crs:DE_XYZ", "urn:adv:crs:DE_XYZ*DE_ABC"] {
+        let parsed = SrsName::parse(raw);
+        assert_eq!((parsed.form, parsed.crs), (SrsNameForm::Unknown, None), "{raw}");
+    }
+    // An empty part is malformed, not unknown.
+    assert_eq!(SrsName::parse("urn:ogc:def:crs,crs:EPSG::2180,").crs, None);
+}
+
+#[test]
 fn a_compound_crs_gets_projjson_built_from_its_components() {
     // As PROJ builds `EPSG:25832+7837`: "A + B", components without
     // `$schema`, and no `id`, since the pair has no code of its own.

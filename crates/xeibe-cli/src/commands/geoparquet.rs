@@ -315,7 +315,14 @@ fn crs_forms(crs_type: Option<CrsType>, value: Option<&Value>) -> (Value, Option
     let Some(crs) = crs else {
         return (Value::Null, None);
     };
-    (crs.projjson().unwrap_or(Value::Null), Some(crs.authority_code()))
+    // Both name the same CRS: without the parts PROJJSON leaves out.
+    match crs.projjson() {
+        Some(projjson) => {
+            let parquet = projjson_ref(&projjson).map(|crs| crs.authority_code());
+            (projjson, parquet)
+        }
+        None => (Value::Null, Some(crs.authority_code())),
+    }
 }
 
 /// The CRS a PROJJSON document identifies: its `id`, or for a compound CRS

@@ -79,6 +79,9 @@ fn a_compound_crs_takes_the_axis_order_of_its_horizontal_part() {
     assert!(!swaps(AxisOrderMode::CrsHeuristic, "EPSG:4269+5713"));
     assert!(swaps(AxisOrderMode::Crs, "EPSG:4269+5713"));
     assert!(!swaps(AxisOrderMode::Crs, "urn:adv:crs:ETRS89_UTM32*DE_DHHN2016_NH"));
+    // An unknown height doesn't matter either; an unknown horizontal part does.
+    assert!(swaps(AxisOrderMode::Crs, "urn:ogc:def:crs,crs:EPSG::2180,crs:PL-XYZ"));
+    assert!(!swaps(AxisOrderMode::Crs, "urn:ogc:def:crs,crs:PL-XYZ,crs:EPSG::9651"));
 }
 
 #[test]

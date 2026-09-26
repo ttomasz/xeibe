@@ -27,6 +27,8 @@ release and emits:
 - `src/table.rs` -- for each CRS: code, name, kind, first axis direction,
   dimension, axis units and EPSG's published area of use.
 - `data/projjson.bin` -- a PROJJSON encoding of each CRS definition.
+- `src/aliases.rs` -- EPSG's aliases for CRSs (table `epsg_alias`), lowercased,
+  keeping only those that name a single CRS.
 
 Values are reproduced as EPSG publishes them, with two representation changes
 that the Terms permit because they preserve numeric equivalence:

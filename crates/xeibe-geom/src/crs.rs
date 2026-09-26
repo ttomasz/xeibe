@@ -37,6 +37,11 @@ pub enum CrsRef {
     Code { authority: String, code: String },
     /// Horizontal + vertical (+ …) components, in order.
     Compound(Vec<CrsRef>),
+    /// A compound CRS's part that names no CRS we know, as written:
+    /// `PL-XYZ` in `urn:ogc:def:crs,crs:EPSG::2180,crs:PL-XYZ`. The compound
+    /// keeps its known parts, and the read report names this one. Never a
+    /// whole CRS: an srsName that is only unknown names has no CRS.
+    Unresolved(String),
 }
 
 impl CrsRef {
@@ -48,10 +53,12 @@ impl CrsRef {
     /// metadata with `crs_type = "authority_code"`.
     ///
     /// A compound CRS has no such form; it is written PROJ-style,
-    /// `EPSG:4269+5713` (or `EPSG:25832+OGC:…` across authorities).
+    /// `EPSG:4269+5713` (or `EPSG:25832+OGC:…` across authorities), with an
+    /// unresolved part as written (`EPSG:2180+PL-XYZ`).
     pub fn authority_code(&self) -> String {
         match self {
             CrsRef::Code { authority, code } => format!("{authority}:{code}"),
+            CrsRef::Unresolved(name) => name.clone(),
             CrsRef::Compound(parts) => {
                 let mut out = String::new();
                 let mut previous_authority: Option<&str> = None;
@@ -86,6 +93,7 @@ impl CrsRef {
                         .any(|c| code.eq_ignore_ascii_case(c))
             }
             CrsRef::Compound(parts) => parts.first().is_some_and(CrsRef::is_lon_lat_by_definition),
+            CrsRef::Unresolved(_) => false,
         }
     }
 
@@ -97,23 +105,36 @@ impl CrsRef {
         }
     }
 
+    /// The parts named as written because they name no known CRS.
+    pub fn unresolved(&self) -> Vec<&str> {
+        match self {
+            CrsRef::Unresolved(name) => vec![name.as_str()],
+            CrsRef::Compound(parts) => parts.iter().flat_map(CrsRef::unresolved).collect(),
+            CrsRef::Code { .. } => Vec::new(),
+        }
+    }
+
     /// PROJJSON from the built-in EPSG tables, or `None` when a part isn't
     /// in them (another authority, or a code EPSG doesn't define).
     ///
     /// A compound CRS is a `CompoundCRS` built from its parts, the way PROJ
     /// builds `EPSG:25832+7837`: named `"A + B"`, and without an `id`, even
-    /// when EPSG registers the same pair under a code of its own.
+    /// when EPSG registers the same pair under a code of its own. Unresolved
+    /// parts are left out, so `EPSG:2180+PL-XYZ` is EPSG:2180.
     pub fn projjson(&self) -> Option<serde_json::Value> {
         match self {
             CrsRef::Code { authority, code } if authority.eq_ignore_ascii_case("EPSG") => {
                 serde_json::from_str(xeibe_crs::projjson(code.parse().ok()?)?).ok()
             }
-            CrsRef::Code { .. } => None,
-            CrsRef::Compound(parts) if parts.len() < 2 => parts.first()?.projjson(),
+            CrsRef::Code { .. } | CrsRef::Unresolved(_) => None,
             CrsRef::Compound(parts) => {
+                let known: Vec<&CrsRef> = parts.iter().filter(|p| !matches!(p, CrsRef::Unresolved(_))).collect();
+                if known.len() < 2 {
+                    return known.first()?.projjson();
+                }
                 let mut schema = serde_json::Value::Null;
                 let mut components = Vec::new();
-                for part in parts {
+                for part in known {
                     let mut json = part.projjson()?;
                     let object = json.as_object_mut()?;
                     schema = object.remove("$schema").unwrap_or(schema);
@@ -161,11 +182,8 @@ fn parse_form(s: &str) -> Option<(SrsNameForm, Option<CrsRef>)> {
     }
     if let Some(rest) = strip_prefix_ci(s, "urn:ogc:def:crs,") {
         // `crs:EPSG::4269,crs:EPSG::5713`
-        let parts = rest
-            .split(',')
-            .map(|part| ogc_urn_code(strip_prefix_ci(part.trim(), "crs:")?))
-            .collect::<Option<Vec<_>>>()?;
-        return Some((SrsNameForm::CompoundUrn, Some(CrsRef::Compound(parts))));
+        let parts = rest.split(',').map(|p| part(strip_prefix_ci(p.trim(), "crs:").unwrap_or(p.trim())));
+        return Some((SrsNameForm::CompoundUrn, compound(parts.collect::<Option<_>>()?)));
     }
     if let Some(rest) = strip_prefix_ci(s, "urn:ogc:def:crs:") {
         return Some((SrsNameForm::OgcUrn, Some(ogc_urn_code(rest)?)));
@@ -174,7 +192,8 @@ fn parse_form(s: &str) -> Option<(SrsNameForm, Option<CrsRef>)> {
         return Some((SrsNameForm::ExperimentalUrn, Some(ogc_urn_code(rest)?)));
     }
     if let Some(rest) = strip_prefix_ci(s, "urn:adv:crs:") {
-        return Some((SrsNameForm::AdvUrn, Some(adv_crs(rest)?)));
+        // A `*` joins a horizontal and a vertical CRS.
+        return Some((SrsNameForm::AdvUrn, compound(rest.split('*').map(part).collect::<Option<_>>()?)));
     }
     if let Some(rest) = strip_prefix_ci(s, "urn:epsg:") {
         // `urn:EPSG:geographicCRS:4326`
@@ -188,7 +207,7 @@ fn parse_form(s: &str) -> Option<(SrsNameForm, Option<CrsRef>)> {
         // A bare code: treated as the short form.
         return Some((SrsNameForm::Short, Some(CrsRef::epsg(epsg_code(s)?))));
     }
-    if let Some(crs) = alias(s) {
+    if let Some(crs) = named(s) {
         return Some((SrsNameForm::Short, Some(crs)));
     }
     let (authority, code) = s.split_once(':')?;
@@ -200,23 +219,35 @@ fn parse_form(s: &str) -> Option<(SrsNameForm, Option<CrsRef>)> {
     None
 }
 
-/// `2180`, or PROJ's compound spelling `25832+7837` (also `25832+EPSG:7837`),
-/// which [`CrsRef::authority_code`] writes.
+/// `2180`, or PROJ's compound spelling `25832+7837` (also `25832+EPSG:7837`,
+/// `2180+PL-KRON86-NH`), which [`CrsRef::authority_code`] writes.
 fn epsg_codes(codes: &str) -> Option<CrsRef> {
-    let parts = codes
-        .split('+')
-        .map(|code| {
-            let code = code.trim();
-            epsg_code(strip_prefix_ci(code, "EPSG:").unwrap_or(code)).map(CrsRef::epsg)
-        })
-        .collect::<Option<Vec<_>>>()?;
-    Some(one_or_compound(parts))
+    let mut codes = codes.split('+').map(str::trim);
+    let first = CrsRef::epsg(epsg_code(codes.next()?)?);
+    let rest = codes.map(|code| epsg_code(code).map_or_else(|| part(code), |code| Some(CrsRef::epsg(code))));
+    compound(std::iter::once(Some(first)).chain(rest).collect::<Option<_>>()?)
 }
 
-fn one_or_compound(parts: Vec<CrsRef>) -> CrsRef {
+/// One part of a compound CRS: an srsName of its own, `AUTH:[VERSION]:CODE`
+/// or a name, else [`CrsRef::Unresolved`]. An empty part is malformed.
+fn part(text: &str) -> Option<CrsRef> {
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    let crs = parse_form(text).and_then(|(_, crs)| crs).or_else(|| ogc_urn_code(text));
+    Some(crs.unwrap_or_else(|| CrsRef::Unresolved(text.to_string())))
+}
+
+/// The CRS of these parts: one part is itself, several a compound. Without a
+/// part that names a known CRS there is none.
+fn compound(parts: Vec<CrsRef>) -> Option<CrsRef> {
+    if parts.iter().all(|p| matches!(p, CrsRef::Unresolved(_))) {
+        return None;
+    }
     match <[CrsRef; 1]>::try_from(parts) {
-        Ok([single]) => single,
-        Err(parts) => CrsRef::Compound(parts),
+        Ok([single]) => Some(single),
+        Err(parts) => Some(CrsRef::Compound(parts)),
     }
 }
 
@@ -231,12 +262,11 @@ fn parse_http(rest: &str) -> Option<(SrsNameForm, Option<CrsRef>)> {
         let mut parts: Vec<(u32, CrsRef)> = Vec::new();
         for pair in query.split('&') {
             let (key, value) = pair.split_once('=')?;
-            let (_, crs) = parse_form(value.trim())?;
-            parts.push((key.trim().parse().ok()?, crs?));
+            parts.push((key.trim().parse().ok()?, part(value)?));
         }
         parts.sort_by_key(|(key, _)| *key);
         let parts = parts.into_iter().map(|(_, crs)| crs).collect();
-        return Some((SrsNameForm::CompoundUri, Some(CrsRef::Compound(parts))));
+        return Some((SrsNameForm::CompoundUri, compound(parts)));
     }
     if let Some(query) = strip_prefix_ci(rest, "def/crs?") {
         let mut authority = None;
@@ -292,45 +322,37 @@ fn epsg_code(code: &str) -> Option<String> {
     Some(number.to_string())
 }
 
-/// AdV CRS names (German surveying authorities, ALKIS/NAS, XPlanung) → EPSG.
-/// A `*` joins a horizontal and a vertical CRS.
-fn adv_crs(name: &str) -> Option<CrsRef> {
-    let parts = name
-        .split('*')
-        .map(|part| ADV_CRS.iter().find(|(adv, _)| adv.eq_ignore_ascii_case(part.trim())))
-        .map(|entry| entry.map(|(_, code)| CrsRef::epsg(*code)))
-        .collect::<Option<Vec<_>>>()?;
-    Some(one_or_compound(parts))
+/// A CRS given by name: ours ([`NAMES`]) first, then EPSG's aliases
+/// (`PL-1992` → EPSG:2180). Case is ignored.
+fn named(name: &str) -> Option<CrsRef> {
+    let name = name.trim();
+    if let Some((_, authority, code)) = NAMES.iter().find(|(known, _, _)| known.eq_ignore_ascii_case(name)) {
+        return Some(CrsRef::Code { authority: (*authority).into(), code: (*code).into() });
+    }
+    xeibe_crs::alias(name).map(|code| CrsRef::epsg(code.to_string()))
 }
 
-/// The AdV CRS register entries seen in real data, and their EPSG codes.
-const ADV_CRS: &[(&str, &str)] = &[
-    ("ETRS89_UTM31", "25831"),
-    ("ETRS89_UTM32", "25832"),
-    ("ETRS89_UTM33", "25833"),
-    ("ETRS89_Lat-Lon", "4258"),
-    ("DE_DHDN_3GK2", "31466"),
-    ("DE_DHDN_3GK3", "31467"),
-    ("DE_DHDN_3GK4", "31468"),
-    ("DE_DHDN_3GK5", "31469"),
-    ("DE_DHHN92_NH", "5783"),
-    ("DE_DHHN2016_NH", "7837"),
+/// Names seen in real data that EPSG's aliases lack, or spell otherwise.
+const NAMES: &[(&str, &str, &str)] = &[
+    // The AdV CRS register (German surveying authorities; ALKIS/NAS, XPlanung).
+    ("ETRS89_UTM31", "EPSG", "25831"),
+    ("ETRS89_UTM32", "EPSG", "25832"),
+    ("ETRS89_UTM33", "EPSG", "25833"),
+    ("ETRS89_Lat-Lon", "EPSG", "4258"),
+    ("DE_DHDN_3GK2", "EPSG", "31466"),
+    ("DE_DHDN_3GK3", "EPSG", "31467"),
+    ("DE_DHDN_3GK4", "EPSG", "31468"),
+    ("DE_DHDN_3GK5", "EPSG", "31469"),
+    ("DE_DHHN92_NH", "EPSG", "5783"),
+    ("DE_DHHN2016_NH", "EPSG", "7837"),
+    // GUGiK's 3D building models; EPSG's Polish alias is `PL-KRON86`.
+    ("PL-KRON86-NH", "EPSG", "9650"),
+    ("osgb:BNG", "EPSG", "27700"),
+    ("CRS:84", "OGC", "CRS84"),
+    ("OGC:CRS84", "OGC", "CRS84"),
+    ("CRS:83", "OGC", "CRS83"),
+    ("CRS:27", "OGC", "CRS27"),
 ];
-
-/// Other authority prefixes seen in the corpus.
-fn alias(s: &str) -> Option<CrsRef> {
-    const ALIASES: &[(&str, &str, &str)] = &[
-        ("osgb:BNG", "EPSG", "27700"),
-        ("CRS:84", "OGC", "CRS84"),
-        ("OGC:CRS84", "OGC", "CRS84"),
-        ("CRS:83", "OGC", "CRS83"),
-        ("CRS:27", "OGC", "CRS27"),
-    ];
-    ALIASES
-        .iter()
-        .find(|(alias, _, _)| alias.eq_ignore_ascii_case(s))
-        .map(|(_, authority, code)| CrsRef::Code { authority: (*authority).into(), code: (*code).into() })
-}
 
 fn strip_prefix_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
     let head = s.get(..prefix.len())?;

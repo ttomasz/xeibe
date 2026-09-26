@@ -1,10 +1,12 @@
 # xeibe-crs
 
 EPSG CRS facts and PROJJSON definitions, for the axis-order decision and for
-GeoArrow/GeoParquet CRS metadata. See `docs/geometry.md` for how they are used.
+GeoArrow/GeoParquet CRS metadata, and EPSG's CRS aliases, for srsNames that
+give a name (`PL-1992`) instead of a code. See `docs/geometry.md` for how they
+are used.
 
-Everything in `src/table.rs` and `data/` is **generated** by
-`scripts/gen_crs_tables.py`; do not edit either by hand. `src/lib.rs` and the
+Everything in `src/table.rs`, `src/aliases.rs` and `data/` is **generated** by
+`scripts/gen_crs_tables.py`; do not edit any of it by hand. `src/lib.rs` and the
 tests are hand-written.
 
 The embedded data is the EPSG Geodetic Parameter Dataset, which is IOGP's, not
@@ -26,6 +28,7 @@ flowchart TD
     F -->|"disagrees"| G["refuse to write"]
     F -->|"agrees"| H["data/projjson.bin"]
     D --> I["src/table.rs"]
+    B --> J["aliases naming<br/>one CRS"] --> K["src/aliases.rs"]
 ```
 
 No PROJ, GDAL, pyproj or network access is involved, at generation time or at

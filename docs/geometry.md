@@ -204,7 +204,9 @@ dimension is determined in this order:
 
 1. `srsDimension` on the `pos`/`posList`;
 2. `srsDimension` on the nearest ancestor geometry;
-3. the dimension of the CRS, from the built-in EPSG table (e.g. EPSG:4979, compound CRSs → 3);
+3. the dimension of the CRS, from the built-in EPSG table (e.g. EPSG:4979, compound CRSs → 3;
+   a compound's part after the first counts 1 even when it names no known CRS, as
+   those parts are vertical, temporal or parametric);
 4. for `pos`: the number of values; for `posList` with `count`: values ÷ count;
 5. otherwise 2.
 
@@ -359,13 +361,38 @@ mode, so neither needs a selector.
 | OGC HTTP URI | `http://www.opengis.net/def/crs/EPSG/0/2180` | 09-048r7, 11-135r2 | authority order |
 | HTTP URI, KVP form | `http://www.opengis.net/def/crs?authority=EPSG&version=0&code=4326` | 11-135r2 | authority order (P2) |
 | CRS84 / CRS83 / CRS27 | `urn:ogc:def:crs:OGC:1.3:CRS84`, `http://www.opengis.net/def/crs/OGC/1.3/CRS84` | 07-092r3 Table | lon/lat (x/y) in every mode except `YX` |
-| Compound URN | `urn:ogc:def:crs,crs:EPSG::4269,crs:EPSG::5713` | 07-092r3 §7.5 | horizontal part's order; the height stays third |
+| Compound URN | `urn:ogc:def:crs,crs:EPSG::4269,crs:EPSG::5713`; parts may be [names](#crs-names) (`crs:PL-KRON86-NH`) | 07-092r3 §7.5 | horizontal part's order; the height stays third |
 | Compound URI | `http://www.opengis.net/def/crs-compound?1=…&2=…` | 11-135r2 | as compound URN |
 | PROJ compound | `EPSG:25832+7837`, `EPSG:25832+EPSG:7837` | PROJ/GDAL; what `crs_override` users write, and the `authority_code` fallback | short form (x/y) |
 | AdV (German surveying) URN | `urn:adv:crs:ETRS89_UTM32` (→ EPSG:25832), `urn:adv:crs:ETRS89_UTM32*DE_DHHN2016_NH` (compound, `*` joins horizontal and vertical) | ALKIS/NAS, XPlanung (250 docs in corpus) | via a built-in AdV → EPSG mapping; authority order (all AdV UTM CRSs are easting-first) |
 | Bare EPSG code | `25833` | seen in corpus | treated as short form |
-| Other authority prefixes | `osgb:BNG` (→ EPSG:27700), `AUT-GK31-5` | seen in corpus | small alias table; otherwise unknown |
+| CRS names | `PL-1992` (→ EPSG:2180), `osgb:BNG` (→ EPSG:27700), `AUT-GK31-5` | seen in corpus and in GUGiK's 3D building models | as the code they name ([CRS names](#crs-names)); `AUT-GK31-5` names none, so unknown |
 | Unknown / missing | — | — | as written. Warning in the read report |
+
+#### CRS names
+
+A name can stand wherever a CRS can: as the whole srsName, or as a part of a
+compound (`crs:PL-KRON86-NH` in a compound URN, either side of the AdV `*` or
+PROJ's `+`). Names are looked up ignoring case, in two tables:
+
+1. our own list in `xeibe-geom`, for names real data uses that EPSG lacks or
+   spells otherwise: the AdV register (`ETRS89_UTM32`, `DE_DHHN2016_NH`, …),
+   `PL-KRON86-NH` (EPSG says `PL-KRON86`), `osgb:BNG`, `CRS:84`;
+2. EPSG's own aliases (table `epsg_alias`: its abbreviations and former names,
+   INSPIRE, EuroGeographics and national identifiers such as Poland's `PL-1992`,
+   `PL-2000/15`, `PL-EVRF2007-NH`), generated into `xeibe-crs` with the CRS
+   table. Only aliases that name one CRS are kept: 6,590 of 7,476. An alias
+   shared by several codes keeps the one that isn't deprecated, if there is
+   one; `PL-ETRF2000`, which EPSG gives to three live CRSs, is left out. So are
+   numbers (ISO Geodetic Register codes, which would read as EPSG codes) and
+   aliases that are another CRS's current EPSG name. EPSG's names themselves
+   are never matched: they change between releases.
+
+A compound part that names no known CRS is kept as written
+(`CrsRef::Unresolved`) and the compound keeps its known parts:
+`urn:ogc:def:crs,crs:EPSG::2180,crs:PL-XYZ` reads as EPSG:2180, whose axis
+order and PROJJSON apply, with an `UnknownCrs` warning naming `PL-XYZ`. An
+srsName with no known part at all has no CRS. An empty part is malformed.
 
 #### The short-form problem
 
@@ -536,8 +563,9 @@ fallback when no PROJJSON is available.
   `EPSG:25832+7837`: named `"A + B"`, components without `$schema`, and no `id`,
   even when EPSG registers the same pair under a code of its own (EPSG:5555 is
   `25832+5783`). The Parquet `GEOMETRY` type gets the PROJ spelling,
-  `EPSG:25832+7837`. If a part has no PROJJSON, the whole CRS falls back to
-  `authority_code` in that spelling.
+  `EPSG:25832+7837`. If a known part has no PROJJSON, the whole CRS falls back to
+  `authority_code` in that spelling. A part that names no known CRS is left
+  out, so `EPSG:2180+PL-XYZ` is written as EPSG:2180 ([CRS names](#crs-names)).
 - The CRS comes from the data, not the schema: the srsName of the first geometry
   in the column (inherited as described above), seen before the first batch.
 - `crs_override` replaces the detected CRS.
@@ -555,8 +583,10 @@ fallback when no PROJJSON is available.
    in a short form, `epsg.xml#2180` vs `#2180`, `http` vs `https`, trailing `/` on
    HTTP URIs? And do axis overrides stay matched on the srsName *exactly as written*
    (current assumption)?
-2. **AdV mapping and alias table** (`urn:adv:crs:…`, `osgb:BNG`): where they live, in
-   what format, and can users extend them like the CRS table?
+2. **AdV mapping and alias table** (`urn:adv:crs:…`, `osgb:BNG`). *Partly resolved*:
+   one name lookup serves every srsName form, from our list in `xeibe-geom` and
+   EPSG's aliases generated into `xeibe-crs` ([CRS names](#crs-names)). Still
+   open: can users extend it, like the CRS table?
 3. ~~**Generating the CRS table.**~~ **Resolved.** `scripts/gen_crs_tables.py`
    generates `crates/xeibe-crs` from the EPSG Dataset's own "PostgreSQL scripts"
    release, not from PROJ's `proj.db`: it is the authoritative source, it is
