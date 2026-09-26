@@ -13,6 +13,7 @@ xeibe-geom.workspace = true
 xeibe-schema.workspace = true
 arrow-array.workspace = true
 arrow-buffer.workspace = true
+arrow-select.workspace = true
 arrow-schema.workspace = true
 geoarrow-array.workspace = true
 geoarrow-schema.workspace = true

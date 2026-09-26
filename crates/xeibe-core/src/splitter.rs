@@ -70,10 +70,10 @@ pub struct SplitterOptions {
 }
 
 impl Default for SplitterOptions {
-    /// 32 MB chunks, the built-in member rules, no single-feature root, every layer.
+    /// 2 MB chunks, the built-in member rules, no single-feature root, every layer.
     fn default() -> Self {
         Self {
-            target_chunk_bytes: 32 << 20,
+            target_chunk_bytes: 2 << 20,
             member_rules: MemberRule::builtin(),
             allow_single_feature_root: false,
             layers: None,

@@ -4257,6 +4257,7 @@ dependencies = [
  "arrow-array",
  "arrow-buffer",
  "arrow-schema",
+ "arrow-select",
  "crossbeam-channel",
  "geoarrow-array",
  "geoarrow-schema",

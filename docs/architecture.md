@@ -356,10 +356,15 @@ Details:
   reads a tag only when it is a comment, CDATA, a processing instruction or an
   element named like the feature, which it counts to find the matching end tag.
 - With a layer filter (every read), features of other layers never enter a chunk.
-- Chunks are cut at the first feature boundary after `target_chunk_bytes` (planned
-  default in the 16–64 MB range). A single feature larger than that becomes a chunk
-  of its own, so the largest feature sets a floor on chunk memory. Chunks carry a
-  sequence number so the output order can be restored.
+- Chunks are cut at the first feature boundary after `target_chunk_bytes`
+  (default 2 MB). A single feature larger than that becomes a chunk of its own, so
+  the largest feature sets a floor on chunk memory. Chunks carry a sequence number
+  so the output order can be restored.
+- Small chunks keep every worker busy: the first ones are ready almost at once,
+  the last ones finish together, and a chunk is still in the CPU cache when a
+  worker takes it. On a 6-core machine, 2 MB chunks against 32 MB made reads of
+  corpus files 10–55% faster and scanning a directory of 73 BDOT10k files 2.7×
+  faster. Their batches are combined into `batch_size` ones before output.
 
 ## Parallel pipeline
 
@@ -378,8 +383,10 @@ flowchart LR
   (such as a Parquet writer) is downstream.
 - The reorder stage emits batches in order of their sequence number. It can be
   disabled for maximum throughput when row order doesn't matter.
-- Workers never share builders. Each worker produces complete batches for its chunk,
-  and small batches from different chunks can be combined before output.
+- Workers never share builders. Each worker produces complete batches for its chunk.
+  The reorder stage combines the small batches that end chunks into `batch_size`
+  ones (Arrow's `BatchCoalescer`); a batch of at least half that size passes
+  through uncopied.
 - Several sources are split one after another into the same chunk queue.
 - **Scans use the same stages.** Each worker builds a path tree for its chunk
   (`Scanner::scan_chunk`), and the per-chunk observations are merged. There is no
@@ -404,9 +411,9 @@ Every stage holds a bounded amount, set by `ReadOptions`:
 | Sample buffer | the chunks holding the first `sample.features_per_layer` features of the layer, until the workers take them |
 | WFS | one page, fetched whole before it is parsed (see [wfs.md](wfs.md)) |
 
-With 64 MB chunks, 8 workers and a queue depth of 8, chunks alone can take about
-1 GB. Smaller `target_chunk_bytes` or `queue_depth` lowers that at some cost in
-parallelism.
+With the default 2 MB chunks, 12 workers and a queue depth of 8, chunks take
+about 40 MB. Larger features raise that: each chunk holds at least one whole
+feature.
 
 ## Error handling
 

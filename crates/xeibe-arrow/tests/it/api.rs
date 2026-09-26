@@ -242,6 +242,29 @@ fn batch_size_bounds_the_batches() {
 }
 
 #[test]
+fn small_chunks_still_give_full_batches() {
+    // One feature per chunk: the chunks' batches are combined up to `batch_size`.
+    let features: Vec<String> = (0..10)
+        .map(|i| parcel(&format!("p{i}"), &format!("<app:area>{i}</app:area>")))
+        .collect();
+    let refs: Vec<&str> = features.iter().map(String::as_str).collect();
+    let options = ReadOptions {
+        threads: 4,
+        batch_size: 4,
+        splitter: xeibe_core::SplitterOptions {
+            target_chunk_bytes: 1,
+            ..xeibe_core::SplitterOptions::default()
+        },
+        ..ReadOptions::default()
+    };
+    let read = read_with(&gml::gml32_collection(&refs), "Parcel", None, &options);
+    let sizes: Vec<usize> = read.batches.iter().map(|b| b.num_rows()).collect();
+    assert_eq!(sizes, [4, 4, 2]);
+    let areas: Vec<i64> = read.i64s("area").into_iter().flatten().collect();
+    assert_eq!(areas, (0..10).collect::<Vec<_>>());
+}
+
+#[test]
 fn rows_keep_their_source_order_by_default() {
     let features: Vec<String> = (0..20)
         .map(|i| parcel(&format!("p{i}"), &format!("<app:area>{i}</app:area>")))

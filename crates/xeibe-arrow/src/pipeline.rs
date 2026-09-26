@@ -1,6 +1,7 @@
 //! Parallel read pipeline:
 //! splitter → bounded chunk queue → workers (parse + build) → bounded batch
-//! queue → optional reorder by sequence number. One layer per pipeline.
+//! queue → optional reorder by sequence number, where the small batches that
+//! end chunks are combined into `batch_size` ones. One layer per pipeline.
 //!
 //! Memory stays bounded however slow the consumer is: the splitter hands out
 //! a chunk only while fewer than `queue_depth + threads` chunks are between
@@ -13,6 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
+use arrow_select::coalesce::BatchCoalescer;
 use crossbeam_channel::{Receiver, Sender, bounded};
 use xeibe_core::reader::{GmlReader, XmlEvent};
 use xeibe_core::{FeatureChunk, FeatureSplitter, Location, NamespaceContext, QName, SourceId, Sources, ns};
@@ -276,6 +278,10 @@ impl Pipeline {
         let threads = self.options.threads.max(1);
         let depth = self.options.queue_depth.max(1);
         let preserve_order = self.options.preserve_order;
+        // Batches of at least half the size pass through uncopied.
+        let batch_size = self.plan.batch_size;
+        let coalescer = BatchCoalescer::new(self.plan.schema.clone(), batch_size)
+            .with_biggest_coalesce_batch_size(Some(batch_size / 2));
         let (chunk_tx, chunk_rx) = bounded::<(u64, xeibe_core::Result<FeatureChunk>)>(depth);
         let (result_tx, result_rx) = bounded::<ChunkResult>(depth);
         let (out_tx, out_rx) = bounded::<crate::Result<RecordBatch>>(depth);
@@ -323,7 +329,7 @@ impl Pipeline {
 
         std::thread::Builder::new()
             .name("xeibe-order".into())
-            .spawn(move || reorder(result_rx, out_tx, ticket_rx, preserve_order))
+            .spawn(move || reorder(result_rx, out_tx, ticket_rx, preserve_order, coalescer))
             .expect("spawning the reorder thread");
         out_rx
     }
@@ -399,13 +405,15 @@ fn split(
     }
 }
 
-/// The reorder stage: pass batches on (in chunk order if asked), release one
-/// ticket per chunk, stop at the first error.
+/// The reorder stage: pass batches on (in chunk order if asked), combined
+/// into batches of the target size, release one ticket per chunk, stop at the
+/// first error.
 fn reorder(
     results: Receiver<ChunkResult>,
     out: Sender<crate::Result<RecordBatch>>,
     tickets: Receiver<()>,
     preserve_order: bool,
+    mut coalescer: BatchCoalescer,
 ) {
     let mut pending: BTreeMap<u64, crate::Result<Vec<SeqBatch>>> = BTreeMap::new();
     let mut next = 0u64;
@@ -415,26 +423,59 @@ fn reorder(
             while let Some(batches) = pending.remove(&next) {
                 next += 1;
                 let _ = tickets.try_recv();
-                if !emit(&out, batches) {
+                if !emit(&out, batches, &mut coalescer) {
                     return;
                 }
             }
         } else {
             let _ = tickets.try_recv();
-            if !emit(&out, result.batches) {
+            if !emit(&out, result.batches, &mut coalescer) {
                 return;
             }
         }
     }
+    let step = coalescer.finish_buffered_batch();
+    let _ = flush(&out, &mut coalescer, step);
 }
 
-/// Send one chunk's batches; `false` to stop (an error, or no consumer).
-fn emit(out: &Sender<crate::Result<RecordBatch>>, batches: crate::Result<Vec<SeqBatch>>) -> bool {
+/// Pass one chunk's batches to the coalescer and send the completed ones;
+/// `false` to stop (an error, or no consumer).
+fn emit(
+    out: &Sender<crate::Result<RecordBatch>>,
+    batches: crate::Result<Vec<SeqBatch>>,
+    coalescer: &mut BatchCoalescer,
+) -> bool {
     match batches {
-        Ok(batches) => batches.into_iter().all(|batch| out.send(Ok(batch.batch)).is_ok()),
+        Ok(batches) => batches.into_iter().all(|batch| {
+            let step = coalescer.push_batch(batch.batch);
+            flush(out, coalescer, step)
+        }),
         Err(error) => {
-            let _ = out.send(Err(error));
+            // The rows before the error still go out first.
+            let step = coalescer.finish_buffered_batch();
+            if flush(out, coalescer, step) {
+                let _ = out.send(Err(error));
+            }
             false
         }
     }
+}
+
+/// Send the coalescer's completed batches, or the error of the step that
+/// completed them; `false` to stop.
+fn flush(
+    out: &Sender<crate::Result<RecordBatch>>,
+    coalescer: &mut BatchCoalescer,
+    step: Result<(), arrow_schema::ArrowError>,
+) -> bool {
+    if let Err(error) = step {
+        let _ = out.send(Err(error.into()));
+        return false;
+    }
+    while let Some(batch) = coalescer.next_completed_batch() {
+        if out.send(Ok(batch)).is_err() {
+            return false;
+        }
+    }
+    true
 }

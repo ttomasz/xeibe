@@ -25,8 +25,8 @@ fn refs(features: &[String]) -> Vec<&str> {
 fn defaults_follow_the_documented_ranges() {
     let options = SplitterOptions::default();
     assert!(
-        (16 << 20..=64 << 20).contains(&options.target_chunk_bytes),
-        "the planned default chunk size is 16–64 MB, got {}",
+        (1 << 20..=8 << 20).contains(&options.target_chunk_bytes),
+        "the default chunk size is a few MB, got {}",
         options.target_chunk_bytes
     );
     assert!(
