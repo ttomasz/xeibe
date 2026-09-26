@@ -16,6 +16,7 @@ mod primitives;
 mod surfaces;
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 
 pub use coords::{CoordinatesFormat, parse_coordinates, parse_pos_list, swap_xy};
 pub use envelope::parse_envelope;
@@ -64,11 +65,12 @@ pub trait AxisResolver {
 
 pub struct GeometryParser<'o> {
     options: &'o GeometryOptions,
+    dimensions: CrsDimensions,
 }
 
 impl<'o> GeometryParser<'o> {
     pub fn new(options: &'o GeometryOptions) -> Self {
-        GeometryParser { options }
+        GeometryParser { options, dimensions: CrsDimensions::default() }
     }
 
     /// Parse the geometry element whose `Start` event the reader has just
@@ -88,7 +90,7 @@ impl<'o> GeometryParser<'o> {
     ) -> crate::Result<ParsedGeometry> {
         let root = current_element(reader)?;
         let source_kind = geom_kind(&root.name);
-        let mut parser = Parser::new(self.options, Some(axis), context);
+        let mut parser = Parser::new(self.options, Some(axis), context, &self.dimensions);
         parser.srs_name = root.attrs.srs_name.clone().or_else(|| context.srs_name.clone());
         parser.dialect.observe(&root.name);
         let scope = parser.root_scope(context);
@@ -142,7 +144,7 @@ impl<'o> GeometryParser<'o> {
         context: &ParseContext,
     ) -> crate::Result<(Option<Envelope>, ParseContext)> {
         let first = current_element(reader)?;
-        let mut parser = Parser::new(self.options, None, context);
+        let mut parser = Parser::new(self.options, None, context, &self.dimensions);
         let scope = parser.root_scope(context);
         let swap = context.axis.as_ref().is_some_and(|decision| decision.swap);
         let result = (|| {
@@ -396,9 +398,34 @@ pub(crate) struct Scope {
     pub crs_dimension: Option<u8>,
 }
 
+/// CRS dimensions by srsName, remembered across the geometries of one
+/// [`GeometryParser`]: the same few srsNames repeat for every feature.
+#[derive(Default)]
+pub(crate) struct CrsDimensions(RefCell<Vec<(String, Option<u8>)>>);
+
+impl CrsDimensions {
+    /// Bound on the srsNames remembered.
+    const LIMIT: usize = 16;
+
+    pub fn get(&self, srs_name: &str, table: &CrsTable) -> Option<u8> {
+        if let Some((_, dimension)) = self.0.borrow().iter().find(|(srs, _)| srs == srs_name) {
+            return *dimension;
+        }
+        let dimension = assemble::crs_dimension(srs_name, table);
+        let mut known = self.0.borrow_mut();
+        if known.len() >= Self::LIMIT {
+            known.clear();
+        }
+        known.push((srs_name.to_string(), dimension));
+        dimension
+    }
+}
+
 /// State of one geometry parse.
 pub(crate) struct Parser<'p> {
     pub table: Cow<'p, CrsTable>,
+    /// The dimensions of srsNames in `table`.
+    dimensions: &'p CrsDimensions,
     axis: Option<&'p dyn AxisResolver>,
     fixed: Option<bool>,
     /// See [`ParsedGeometry::srs_name`].
@@ -416,6 +443,7 @@ impl<'p> Parser<'p> {
         options: &'p GeometryOptions,
         axis: Option<&'p dyn AxisResolver>,
         context: &ParseContext,
+        dimensions: &'p CrsDimensions,
     ) -> Self {
         let table = match &options.axis.crs_table {
             Some(table) => Cow::Borrowed(table),
@@ -423,6 +451,7 @@ impl<'p> Parser<'p> {
         };
         Parser {
             table,
+            dimensions,
             axis,
             fixed: context.axis.as_ref().map(|decision| decision.swap),
             srs_name: None,
@@ -440,8 +469,13 @@ impl<'p> Parser<'p> {
             crs_dimension: context
                 .srs_name
                 .as_deref()
-                .and_then(|srs| assemble::crs_dimension(srs, &self.table)),
+                .and_then(|srs| self.crs_dimension(srs)),
         }
+    }
+
+    /// Dimension of the CRS an srsName names ([`assemble::crs_dimension`]).
+    pub fn crs_dimension(&self, srs_name: &str) -> Option<u8> {
+        self.dimensions.get(srs_name, &self.table)
     }
 
     /// Take an element's srsName and srsDimension into the scope of its
@@ -449,7 +483,7 @@ impl<'p> Parser<'p> {
     pub fn enter(&mut self, elem: &Elem, scope: Scope) -> Scope {
         let mut scope = scope;
         if let Some(srs) = &elem.attrs.srs_name {
-            scope.crs_dimension = assemble::crs_dimension(srs, &self.table);
+            scope.crs_dimension = self.crs_dimension(srs);
             match &self.srs_name {
                 None => self.srs_name = Some(srs.clone()),
                 Some(current) if current != srs && !self.warned_srs => {

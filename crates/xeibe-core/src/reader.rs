@@ -109,6 +109,8 @@ pub struct GmlReader<'a> {
     last_start_tag: Option<(QName, &'a str, usize)>,
     /// Interned names: `"{ns}\0local"` → name, so repeated elements share `Arc`s.
     names: HashMap<String, QName>,
+    /// Names of the open elements, so an end tag needs no lookup.
+    open: Vec<QName>,
     scratch: String,
 }
 
@@ -143,6 +145,7 @@ impl<'a> GmlReader<'a> {
             last_start: 0,
             last_start_tag: None,
             names: HashMap::new(),
+            open: Vec::new(),
             scratch: String::new(),
         }
     }
@@ -165,6 +168,7 @@ impl<'a> GmlReader<'a> {
                     let tag = self.tag_text(start);
                     let name_len = start_tag.name().as_ref().len();
                     self.last_start_tag = Some((name.clone(), tag, name_len));
+                    self.open.push(name.clone());
                     return Ok(XmlEvent::Start {
                         name,
                         attrs: Attributes {
@@ -174,7 +178,11 @@ impl<'a> GmlReader<'a> {
                     });
                 }
                 Event::End(end) => {
-                    let name = self.resolve_element(end.name())?;
+                    // quick-xml checks that the end tag matches its start tag.
+                    let name = match self.open.pop() {
+                        Some(name) => name,
+                        None => self.resolve_element(end.name())?,
+                    };
                     return Ok(XmlEvent::End { name });
                 }
                 Event::Text(text) => {
@@ -201,8 +209,8 @@ impl<'a> GmlReader<'a> {
 
     /// Skip the current element and its subtree without resolving names.
     ///
-    /// Call it right after the element's `Start`; the next event is whatever
-    /// follows the element's end tag.
+    /// Call it right after the element's `Start`, or anywhere in its content;
+    /// the next event is whatever follows the element's end tag.
     pub fn skip_element(&mut self) -> crate::Result<()> {
         let mut depth = 0usize;
         loop {
@@ -211,6 +219,7 @@ impl<'a> GmlReader<'a> {
                 Event::Start(_) => depth += 1,
                 Event::End(_) => {
                     if depth == 0 {
+                        self.open.pop();
                         return Ok(());
                     }
                     depth -= 1;

@@ -3,7 +3,7 @@
 use xeibe_core::reader::GmlReader;
 
 use super::primitives::append;
-use super::{Elem, ParseContext, Parser, Scope, current_element};
+use super::{CrsDimensions, Elem, ParseContext, Parser, Scope, current_element};
 use crate::model::{Coords, Envelope};
 use crate::options::GeometryOptions;
 
@@ -12,7 +12,8 @@ use crate::options::GeometryOptions;
 pub fn parse_envelope(reader: &mut GmlReader<'_>, swap: bool) -> crate::Result<Envelope> {
     let elem = current_element(reader)?;
     let options = GeometryOptions::default();
-    let mut parser = Parser::new(&options, None, &ParseContext::default());
+    let dimensions = CrsDimensions::default();
+    let mut parser = Parser::new(&options, None, &ParseContext::default(), &dimensions);
     match parser.envelope(reader, &elem, Scope::default()) {
         Ok(mut envelope) => {
             if swap {

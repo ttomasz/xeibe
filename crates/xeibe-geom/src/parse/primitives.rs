@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 
 use xeibe_core::reader::GmlReader;
 
-use super::assemble::{DimensionInputs, check_line_string, check_linear_ring, crs_dimension, effective_dimension};
+use super::assemble::{DimensionInputs, check_line_string, check_linear_ring, effective_dimension};
 use super::coords::{CoordinatesFormat, parse_coordinates, parse_number};
 use super::{Elem, Parser, Scope};
 use crate::error::Error;
@@ -123,7 +123,7 @@ impl Parser<'_> {
         single: bool,
     ) -> crate::Result<Coords> {
         let crs = match &elem.attrs.srs_name {
-            Some(srs) => crs_dimension(srs, &self.table),
+            Some(srs) => self.crs_dimension(srs),
             None => scope.crs_dimension,
         };
         let mut values = Vec::new();
