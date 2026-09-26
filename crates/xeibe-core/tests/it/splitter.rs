@@ -242,6 +242,25 @@ fn comments_cdata_and_attributes_do_not_confuse_the_splitter() {
 }
 
 #[test]
+fn a_feature_ends_at_its_own_end_tag() {
+    // Inside a feature only tags named like it count; its end tag inside a
+    // comment, CDATA or a processing instruction, or behind a longer name
+    // or a `>` in an attribute value, does not end it.
+    let body = concat!(
+        r#"<app:note title="a > b">x</app:note>"#,
+        "<!-- </app:Parcel> --><![CDATA[</app:Parcel>]]><?pi </app:Parcel>?>",
+        "<app:ParcelPart><app:Parcel><app:Parcel/></app:Parcel></app:ParcelPart>",
+        "<app:Parcel\n/><app:Parcel\tgml:id=\"n\" a='>'></app:Parcel >",
+    );
+    let first = gml::feature("Parcel", "p1", body);
+    let second = gml::feature("Parcel", "p2", "");
+    let document = gml::gml32_collection(&[&first, &second]);
+    let chunks = split(&document, one_feature_per_chunk());
+    let bytes: Vec<&[u8]> = chunks.iter().map(|chunk| &chunk.bytes[..]).collect();
+    assert_eq!(bytes, [first.as_bytes(), second.as_bytes()]);
+}
+
+#[test]
 fn chunks_inherit_namespaces_declared_on_ancestors_of_the_members() {
     // The prefix is declared on the container, not on the features.
     let document = concat!(

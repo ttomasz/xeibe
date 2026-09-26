@@ -59,6 +59,7 @@ wkb = "0.9"
 datafusion = "55"
 
 quick-xml = "0.42"
+memchr = "2"
 encoding_rs = "0.8"
 flate2 = "1"
 zstd = "0.13"

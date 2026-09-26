@@ -210,7 +210,7 @@ to turn paths and URLs into sources.
 
 | Crate | Responsibility | Key dependencies |
 |---|---|---|
-| `xeibe-core` | Streaming XML reader on top of `quick-xml`; namespace context; GML version detection; **feature-boundary splitter**; input decompression (gzip/zstd) and character-encoding conversion; the synchronous `ByteSource` trait with local-file and one-shot-reader implementations; zip archives (local files only) | `quick-xml`, `encoding_rs`, `zip` |
+| `xeibe-core` | Streaming XML reader on top of `quick-xml`; namespace context; GML version detection; **feature-boundary splitter**; input decompression (gzip/zstd) and character-encoding conversion; the synchronous `ByteSource` trait with local-file and one-shot-reader implementations; zip archives (local files only) | `quick-xml`, `memchr`, `encoding_rs`, `zip` |
 | `xeibe-geom` | Parses GML geometry elements into an internal model that implements `geo-traits`; writes ISO WKB, curves included; axis-order handling | `geo-traits`, `wkb` |
 | `xeibe-schema` | Scan → **path tree** (`DatasetObservation`); merging; `InferenceOptions`; rule engine → Arrow `Schema`; binding a given schema's paths to XML; `--explain` | `arrow-schema`, `serde` |
 | `xeibe-arrow` | `scan()` and `read()`; settings file; feature → Arrow builders; parallel read pipeline | `arrow-array`, `geoarrow-array` |
@@ -351,6 +351,10 @@ Details:
   chunk never spans two of them.
 - Comments, CDATA, processing instructions and quoted attribute values are handled
   correctly, so a `<` inside them doesn't mislead the splitter.
+- Inside a feature the splitter looks only for the feature's end. XML allows no
+  raw `<` in text or attribute values, so it jumps from `<` to `<` (`memchr`) and
+  reads a tag only when it is a comment, CDATA, a processing instruction or an
+  element named like the feature, which it counts to find the matching end tag.
 - With a layer filter (every read), features of other layers never enter a chunk.
 - Chunks are cut at the first feature boundary after `target_chunk_bytes` (planned
   default in the 16–64 MB range). A single feature larger than that becomes a chunk

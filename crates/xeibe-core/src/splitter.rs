@@ -10,7 +10,7 @@
 //! copied. A collection's `boundedBy` is copied like a feature and travels
 //! with the chunks of the features it bounds, which inherit its srsName.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::io::Read;
 use std::sync::Arc;
 
@@ -164,6 +164,11 @@ pub struct FeatureSplitter<R: Read> {
     finished: bool,
     /// Reused for the start tags that are parsed.
     tag: Vec<u8>,
+    /// The name of the element in [`Mode::Feature`], as written.
+    feature_name: Vec<u8>,
+    /// Element names resolved under `names_generation` of `bindings`.
+    names: HashMap<Box<str>, Option<QName>>,
+    names_generation: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -173,7 +178,8 @@ enum Mode {
     /// Inside the root, outside any feature.
     Outside,
     /// Inside a feature that started at stream offset `start`, or inside a
-    /// collection's `boundedBy` (`bounded_by`), which is copied too.
+    /// collection's `boundedBy` (`bounded_by`), which is copied too. `depth`
+    /// counts the open elements named like it (`feature_name`), itself included.
     Feature {
         depth: usize,
         emit: bool,
@@ -253,6 +259,9 @@ impl<R: Read> FeatureSplitter<R> {
             ready: VecDeque::new(),
             finished: false,
             tag: Vec::new(),
+            feature_name: Vec::new(),
+            names: HashMap::new(),
+            names_generation: 0,
         }
     }
 
@@ -286,7 +295,11 @@ impl<R: Read> FeatureSplitter<R> {
 
     /// Process one piece of markup, or the end of the input.
     fn step(&mut self) -> crate::Result<()> {
-        let Some(markup) = self.next_markup()? else {
+        let markup = match self.mode {
+            Mode::Feature { .. } => self.next_feature_markup()?,
+            _ => self.next_markup()?,
+        };
+        let Some(markup) = markup else {
             return self.finish();
         };
         match self.mode {
@@ -397,7 +410,7 @@ impl<R: Read> FeatureSplitter<R> {
         if declared {
             self.bindings_generation += 1;
         }
-        let Some(name) = self.resolve(raw_name, true) else {
+        let Some(name) = self.resolve_element(raw_name) else {
             return Err(self.error(
                 markup.start,
                 format!("undeclared namespace prefix in <{raw_name}>"),
@@ -432,6 +445,7 @@ impl<R: Read> FeatureSplitter<R> {
             if empty {
                 self.end_feature(emit, start, markup.end);
             } else {
+                self.enter_feature(raw_name);
                 self.mode = Mode::Feature {
                     depth: 1,
                     emit,
@@ -450,6 +464,7 @@ impl<R: Read> FeatureSplitter<R> {
                 self.bindings_generation += 1;
             }
             if !empty {
+                self.enter_feature(raw_name);
                 self.mode = Mode::Feature {
                     depth: 1,
                     emit: true,
@@ -524,6 +539,11 @@ impl<R: Read> FeatureSplitter<R> {
         Ok(())
     }
 
+    fn enter_feature(&mut self, raw_name: &str) {
+        self.feature_name.clear();
+        self.feature_name.extend_from_slice(raw_name.as_bytes());
+    }
+
     /// The root element ended at `end`; a root that is still a candidate is
     /// the one feature of the document.
     fn end_root(&mut self, end: usize) {
@@ -579,6 +599,21 @@ impl<R: Read> FeatureSplitter<R> {
     }
 
     /// Resolve a prefixed name against the open elements' declarations.
+    /// [`Self::resolve`] for an element name, remembered while the bindings
+    /// stay the same: the same few names repeat for every feature.
+    fn resolve_element(&mut self, raw: &str) -> Option<QName> {
+        if self.names_generation != self.bindings_generation {
+            self.names.clear();
+            self.names_generation = self.bindings_generation;
+        }
+        if let Some(name) = self.names.get(raw) {
+            return name.clone();
+        }
+        let name = self.resolve(raw, true);
+        self.names.insert(raw.into(), name.clone());
+        name
+    }
+
     fn resolve(&self, raw: &str, element: bool) -> Option<QName> {
         let (prefix, local) = match raw.split_once(':') {
             Some((prefix, local)) => (Some(prefix), local),
@@ -632,6 +667,8 @@ impl<R: Read> FeatureSplitter<R> {
             self.flush_chunk();
         }
         if self.chunk.is_empty() {
+            // A chunk grows to about the target: no reallocation on the way.
+            self.chunk.reserve(self.options.target_chunk_bytes);
             self.chunk_bounded_by = self.collection_bounded_by().cloned();
             self.chunk_context = context;
             self.chunk_offset = start;
@@ -706,7 +743,7 @@ impl<R: Read> FeatureSplitter<R> {
     /// The next piece of markup, skipping text. `None` at the end of input.
     fn next_markup(&mut self) -> crate::Result<Option<Markup>> {
         loop {
-            if let Some(i) = find_byte(&self.buf[self.pos..], b'<') {
+            if let Some(i) = memchr::memchr(b'<', &self.buf[self.pos..]) {
                 self.pos += i;
                 break;
             }
@@ -752,6 +789,40 @@ impl<R: Read> FeatureSplitter<R> {
         }))
     }
 
+    /// Inside a feature, the next markup that can end it or hide a `<`: a
+    /// tag named like the feature, a comment, CDATA or a processing
+    /// instruction. XML allows no raw `<` in text or attribute values, so
+    /// any other tag is passed over at its `<`, without looking for its end.
+    fn next_feature_markup(&mut self) -> crate::Result<Option<Markup>> {
+        loop {
+            let Some(i) = memchr::memchr(b'<', &self.buf[self.pos..]) else {
+                self.pos = self.buf.len();
+                if !self.fill()? {
+                    return Ok(None);
+                }
+                continue;
+            };
+            self.pos += i;
+            self.need(2)?;
+            let name_at = match self.buf[self.pos + 1] {
+                b'!' | b'?' => return self.next_markup(),
+                b'/' => 2,
+                _ => 1,
+            };
+            let name_len = self.feature_name.len();
+            self.need(name_at + name_len + 1)?;
+            let at = self.pos + name_at;
+            // The byte after the name rules out most tags before comparing names.
+            let after = self.buf[at + name_len];
+            if (after.is_ascii_whitespace() || after == b'>' || (name_at == 1 && after == b'/'))
+                && self.buf[at..at + name_len] == self.feature_name[..]
+            {
+                return self.next_markup();
+            }
+            self.pos += 1;
+        }
+    }
+
     fn location(&self, index: usize) -> Location {
         Location {
             source: self.source,
@@ -775,7 +846,11 @@ impl<R: Read> FeatureSplitter<R> {
     fn find(&mut self, mut from: usize, pattern: &[u8]) -> crate::Result<usize> {
         loop {
             let haystack = &self.buf[self.pos + from..];
-            if let Some(i) = find_bytes(haystack, pattern) {
+            let found = match pattern {
+                [byte] => memchr::memchr(*byte, haystack),
+                _ => memchr::memmem::find(haystack, pattern),
+            };
+            if let Some(i) = found {
                 return Ok(from + i);
             }
             from = (self.buf.len() - self.pos)
@@ -791,29 +866,38 @@ impl<R: Read> FeatureSplitter<R> {
     /// its name. A `>` inside a quoted attribute value does not close the tag.
     fn scan_start_tag(&mut self) -> crate::Result<(usize, usize)> {
         let mut i = 1;
-        let mut quote = 0u8;
-        let mut name_end = None;
+        let name_end = loop {
+            let tag = &self.buf[self.pos..];
+            if let Some(j) = tag[i..]
+                .iter()
+                .position(|&b| b.is_ascii_whitespace() || b == b'/' || b == b'>')
+            {
+                break i + j;
+            }
+            i = tag.len();
+            if !self.fill()? {
+                return Err(self.error(self.pos, "unexpected end of input in a start tag"));
+            }
+        };
+        // Past the name, jump from quote to quote to the closing `>`.
+        let mut i = name_end;
+        let mut quote = None;
         loop {
             let tag = &self.buf[self.pos..];
             while i < tag.len() {
-                let b = tag[i];
-                if quote != 0 {
-                    match find_byte(&tag[i..], quote) {
-                        Some(j) => {
-                            i += j;
-                            quote = 0;
-                        }
-                        None => {
-                            i = tag.len();
-                            break;
-                        }
-                    }
-                } else if b == b'>' {
-                    return Ok((i, name_end.unwrap_or(i)));
-                } else if b == b'"' || b == b'\'' {
-                    quote = b;
-                } else if name_end.is_none() && (b.is_ascii_whitespace() || b == b'/') {
-                    name_end = Some(i);
+                let found = match quote {
+                    Some(q) => memchr::memchr(q, &tag[i..]),
+                    None => memchr::memchr3(b'>', b'"', b'\'', &tag[i..]),
+                };
+                let Some(j) = found else {
+                    i = tag.len();
+                    break;
+                };
+                i += j;
+                match (quote, tag[i]) {
+                    (None, b'>') => return Ok((i, name_end)),
+                    (None, q) => quote = Some(q),
+                    (Some(_), _) => quote = None,
                 }
                 i += 1;
             }
@@ -909,44 +993,6 @@ fn is_collection(name: &QName) -> bool {
         ),
         _ => false,
     }
-}
-
-/// Position of the first `needle`, eight bytes at a time (the splitter spends
-/// most of its time looking for `<`).
-fn find_byte(haystack: &[u8], needle: u8) -> Option<usize> {
-    const LO: u64 = 0x0101_0101_0101_0101;
-    const HI: u64 = 0x8080_8080_8080_8080;
-    let pattern = LO * needle as u64;
-    let (chunks, remainder) = haystack.as_chunks::<8>();
-    let mut offset = 0;
-    for chunk in chunks {
-        let word = u64::from_le_bytes(*chunk) ^ pattern;
-        let found = word.wrapping_sub(LO) & !word & HI;
-        if found != 0 {
-            return Some(offset + (found.trailing_zeros() / 8) as usize);
-        }
-        offset += 8;
-    }
-    remainder
-        .iter()
-        .position(|&b| b == needle)
-        .map(|i| offset + i)
-}
-
-fn find_bytes(haystack: &[u8], pattern: &[u8]) -> Option<usize> {
-    let (&first, rest) = pattern.split_first()?;
-    let mut from = 0;
-    while let Some(i) = find_byte(&haystack[from..], first) {
-        let at = from + i;
-        if haystack.len() < at + pattern.len() {
-            return None;
-        }
-        if &haystack[at + 1..at + pattern.len()] == rest {
-            return Some(at);
-        }
-        from = at + 1;
-    }
-    None
 }
 
 /// `name="value"` pairs of a start tag, after the element name. Values are
