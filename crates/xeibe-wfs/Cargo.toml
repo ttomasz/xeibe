@@ -14,8 +14,7 @@ http = ["xeibe-io/http"]
 
 [dependencies]
 xeibe-core.workspace = true
-xeibe-geom.workspace = true
-xeibe-io = { workspace = true, default-features = false }
+xeibe-io.workspace = true
 # Capabilities and exception reports need prefix resolution in text content
 # (`<Name>ms:AD.Address</Name>`), which `xeibe_core::reader` does not expose.
 quick-xml.workspace = true

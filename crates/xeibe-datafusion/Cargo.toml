@@ -17,7 +17,7 @@ xeibe-io = { workspace = true, features = ["object-store"] }
 datafusion.workspace = true
 object_store.workspace = true
 tokio.workspace = true
-async-trait = "0.1"
+async-trait.workspace = true
 
 [dev-dependencies]
 xeibe-testkit.workspace = true

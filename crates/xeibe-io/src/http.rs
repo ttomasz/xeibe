@@ -37,6 +37,9 @@ impl HttpClient {
                 .map_err(|e| crate::Error::InvalidOption(format!("header {name}: {e}")))?;
             headers.append(name, value);
         }
+        // reqwest is built without a crypto provider (see the workspace manifest).
+        // Fails only when one is already installed, which is just as good.
+        let _ = rustls::crypto::ring::default_provider().install_default();
         // In the blocking client the timeout applies to each operation (connecting,
         // each read), not to the whole body.
         let client = reqwest::blocking::Client::builder()

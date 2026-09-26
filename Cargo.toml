@@ -52,7 +52,7 @@ arrow-buffer = "59"
 arrow-select = "59"
 arrow-ipc = "59"
 arrow-schema = { version = "59", features = ["serde"] }
-parquet = { version = "59", default-features = false, features = ["arrow", "zstd", "snap", "geospatial"] }
+parquet = { version = "59", default-features = false, features = ["arrow", "zstd", "geospatial"] }
 geoarrow-array = "0.9"
 geoarrow-schema = "0.9"
 geo-traits = "0.3"
@@ -68,15 +68,38 @@ fast-float2 = "0.2"
 bytes = "1"
 indexmap = { version = "2", features = ["serde"] }
 bitflags = { version = "2", features = ["serde"] }
-serde = { version = "1", features = ["derive", "rc"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 globset = "0.4"
 crossbeam-channel = "0.5"
-reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls", "gzip", "deflate"] }
+# `rustls-no-provider` + `rustls/ring`: object_store (through reqwest 0.12) already
+# brings ring, so reqwest 0.13's default aws-lc-rs would be a second crypto
+# library, and one that needs CMake and a C toolchain to build.
+# `xeibe_io::http::HttpClient::new` installs ring as the process default.
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls-no-provider", "gzip", "deflate"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 url = "2"
-zip = { version = "8", default-features = false, features = ["deflate"] }
+# Reading only: `deflate` would also bring the zopfli encoder.
+zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 object_store = { version = "0.13", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 clap = { version = "4", features = ["derive"] }
+async-trait = "0.1"
+futures-util = { version = "0.3", default-features = false }
 pyo3 = { version = "0.29", features = ["extension-module", "abi3-py310"] }
+
+# Everyday builds and benchmarks. Line tables give readable profiler stacks at
+# no runtime cost.
+[profile.release]
+debug = "line-tables-only"
+
+# Shipped binaries and wheels: `cargo build --profile dist`, `maturin build
+# --profile dist`. About 10% faster than `release` and a third smaller, for a
+# much slower build. Panics must keep unwinding: the pipeline catches worker
+# panics and pyo3 turns them into Python exceptions.
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+strip = "symbols"

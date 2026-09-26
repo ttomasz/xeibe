@@ -25,5 +25,4 @@ thiserror.workspace = true
 
 [dev-dependencies]
 xeibe-testkit.workspace = true
-xeibe-geom.workspace = true
 zip.workspace = true
