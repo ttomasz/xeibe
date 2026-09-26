@@ -107,7 +107,9 @@ pub(crate) fn open_member(archive: &Path, member: &str) -> crate::Result<Box<dyn
     let data = handle.take(compressed_size);
     match method {
         zip::CompressionMethod::Stored => Ok(Box::new(data)),
-        zip::CompressionMethod::Deflated => Ok(Box::new(flate2::read::DeflateDecoder::new(data))),
+        zip::CompressionMethod::Deflated => {
+            Ok(crate::decode::read_ahead(Box::new(flate2::read::DeflateDecoder::new(data)))?)
+        }
         other => Err(crate::Error::Zip {
             archive: archive.display().to_string(),
             member: member.to_string(),

@@ -450,7 +450,9 @@ also reports the schema it inferred, in settings-file form, ready to be saved.
 
 - Compression: gzip and zstd are detected from magic bytes and decompressed as a
   stream in front of the splitter. DataFusion and Spark treat compressed files the
-  same way.
+  same way. Decompression (zip members' too) and transcoding run on a thread of
+  their own, a few 256 KB blocks ahead of the splitter, the one sequential stage;
+  compressed input then reads about as fast as plain.
 - Zip archives: see [Zip archives](#zip-archives).
 - Encoding: UTF-8 is the fast path. Other encodings declared in the XML header
   (ISO-8859-x, windows-125x, UTF-16) are converted to UTF-8 with `encoding_rs`.

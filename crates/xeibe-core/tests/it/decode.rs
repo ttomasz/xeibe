@@ -75,6 +75,26 @@ fn decompresses_gzip_and_zstd_transparently() {
 }
 
 #[test]
+fn a_long_compressed_stream_arrives_whole_and_in_order() {
+    // Decompression runs ahead on a thread of its own, in blocks: many
+    // blocks, more than it may be ahead, arrive as they were.
+    let document: String = (0..200_000).map(|i| format!("<a>{i}</a>\n")).collect();
+    assert_eq!(decode_all(gzip(document.as_bytes())), document);
+    assert_eq!(decode_all(zstd(document.as_bytes())), document);
+}
+
+#[test]
+fn a_truncated_compressed_stream_is_an_error() {
+    let document: String = (0..200_000).map(|i| format!("<a>{i}</a>\n")).collect();
+    let mut bytes = gzip(document.as_bytes());
+    bytes.truncate(bytes.len() / 2);
+    let reader: Box<dyn Read + Send> = Box::new(std::io::Cursor::new(bytes));
+    let mut text = String::new();
+    let result = decoded_reader(reader).and_then(|mut stream| Ok(stream.read_to_string(&mut text)?));
+    assert!(result.is_err(), "read {} bytes without an error", text.len());
+}
+
+#[test]
 fn decompresses_and_transcodes_in_one_pass() {
     let (bytes, _, _) = encoding_rs::WINDOWS_1250
         .encode("<?xml version=\"1.0\" encoding=\"windows-1250\"?><a>Żabczyn</a>");

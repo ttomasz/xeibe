@@ -85,10 +85,12 @@ fn declared_label(prefix: &[u8]) -> Option<&[u8]> {
 /// Wrap a raw reader: decompress, then transcode to UTF-8 if needed.
 ///
 /// A UTF-8 BOM is removed. A zip archive is an error here: archives are
-/// expanded into member sources before anything is opened.
+/// expanded into member sources before anything is opened. Decompression
+/// and transcoding run on a thread of their own ([`read_ahead`]).
 pub fn decoded_reader(raw: Box<dyn Read + Send>) -> crate::Result<Box<dyn Read + Send>> {
     let (magic, raw) = peek(raw, MAGIC_LEN)?;
-    let decompressed: Box<dyn Read + Send> = match detect_compression(&magic) {
+    let compression = detect_compression(&magic);
+    let decompressed: Box<dyn Read + Send> = match compression {
         Compression::None => raw,
         Compression::Gzip => Box::new(flate2::read::MultiGzDecoder::new(raw)),
         Compression::Zstd => Box::new(zstd::stream::read::Decoder::new(raw)?),
@@ -105,16 +107,90 @@ pub fn decoded_reader(raw: Box<dyn Read + Send>) -> crate::Result<Box<dyn Read +
     let encoding = sniff_encoding(&prefix)
         .map_err(crate::Error::UnsupportedEncoding)?
         .unwrap_or(UTF_8);
-    if encoding == UTF_8 {
+    let decoded: Box<dyn Read + Send> = if encoding == UTF_8 {
+        let mut stream = stream;
         if prefix.starts_with(b"\xEF\xBB\xBF") {
-            let mut stream = stream;
             let mut bom = [0u8; 3];
             stream.read_exact(&mut bom)?;
-            return Ok(stream);
         }
-        return Ok(stream);
+        stream
+    } else {
+        Box::new(Utf8Transcoder::new(stream, encoding))
+    };
+    if compression != Compression::None || encoding != UTF_8 {
+        return Ok(read_ahead(decoded)?);
     }
-    Ok(Box::new(Utf8Transcoder::new(stream, encoding)))
+    Ok(decoded)
+}
+
+/// Bytes a [`read_ahead`] thread reads at a time, and blocks it may be ahead.
+const AHEAD_BLOCK: usize = 256 * 1024;
+const AHEAD_BLOCKS: usize = 8;
+
+/// Run `reader` on a thread of its own, up to a few blocks ahead of the
+/// consumer, so that decompression overlaps with the splitter, the one
+/// sequential stage of a read. Where there are no threads (WebAssembly),
+/// `reader` itself.
+pub(crate) fn read_ahead(mut reader: Box<dyn Read + Send>) -> std::io::Result<Box<dyn Read + Send>> {
+    if cfg!(target_family = "wasm") {
+        return Ok(reader);
+    }
+    let (sender, blocks) = std::sync::mpsc::sync_channel(AHEAD_BLOCKS);
+    std::thread::Builder::new()
+        .name("xeibe-decode".into())
+        .spawn(move || loop {
+            let mut block = vec![0; AHEAD_BLOCK];
+            let mut len = 0;
+            let error = loop {
+                match reader.read(&mut block[len..]) {
+                    Ok(0) => break None,
+                    Ok(n) => {
+                        len += n;
+                        if len == block.len() {
+                            break None;
+                        }
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                    Err(e) => break Some(e),
+                }
+            };
+            // A short block: the end of input, or an error.
+            let last = len < block.len();
+            block.truncate(len);
+            // A failed send: the consumer is gone.
+            if len > 0 && sender.send(Ok(block)).is_err() {
+                return;
+            }
+            if let Some(error) = error {
+                let _ = sender.send(Err(error));
+            }
+            if last {
+                return;
+            }
+        })?;
+    Ok(Box::new(ReadAhead { blocks, current: Cursor::new(Vec::new()) }))
+}
+
+/// The consumer's end of [`read_ahead`].
+struct ReadAhead {
+    blocks: std::sync::mpsc::Receiver<std::io::Result<Vec<u8>>>,
+    current: Cursor<Vec<u8>>,
+}
+
+impl Read for ReadAhead {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        loop {
+            let n = self.current.read(out)?;
+            if n > 0 || out.is_empty() {
+                return Ok(n);
+            }
+            match self.blocks.recv() {
+                Ok(block) => self.current = Cursor::new(block?),
+                // The thread has finished: the end of input.
+                Err(_) => return Ok(0),
+            }
+        }
+    }
 }
 
 /// Read up to `len` bytes, and return them with a reader that still yields
