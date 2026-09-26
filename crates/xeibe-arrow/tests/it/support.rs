@@ -312,12 +312,14 @@ pub fn extension_name(field: &arrow_schema::Field) -> Option<&str> {
         .map(String::as_str)
 }
 
-/// A fresh directory for files a test writes (`target/tmp/<name>-<n>`).
-/// Each call gets its own, so tests running in parallel never share one.
+/// A fresh directory for files a test writes (`target/tmp/<name>-<pid>-<n>`).
+/// Each call gets its own, so tests running in parallel never share one: the
+/// process id tells apart tests that nextest runs in processes of their own,
+/// where the counter starts at 0 in each.
 pub fn temp_dir(name: &str) -> PathBuf {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}-{n}"));
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}-{}-{n}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("creating the temporary directory");
     dir
