@@ -13,8 +13,8 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 
 - **Bulk conversion** of large GML files (multi-GB) and complete WFS datasets,
   following pagination until every feature has been fetched.
-- **GML 2, 3.1 and 3.2.** The target is the simple-feature part of GML plus curves,
-  not all of GML.
+- **GML 2, 3.1, 3.2 and 3.3.** The target is the simple-feature part of GML plus curves,
+  not all of GML. Of GML 3.3's additions, that is the compact geometry encodings.
 - **Streaming.** Memory stays bounded no matter how large the input is.
 - **Lossless where possible.** Curves are kept as curves. Identifiers such as `0012`
   stay strings. Repeated elements become lists that stay aligned with each other.
@@ -33,7 +33,8 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 - XSD-driven schema mapping in the style of GDAL's GMLAS driver.
 - **Writing GML, ever.** The project converts in one direction only, GML → GeoArrow.
   There will be no GML encoder, no round-tripping, and no WFS-T (transactions).
-- Coverages, topology, and GML dictionaries or CRS definitions.
+- Coverages, topology, GML 3.3 linear referencing, and GML dictionaries or CRS
+  definitions.
 
 ## Documents
 
@@ -76,7 +77,7 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 
 Curated samples in `tests/data/` (committed; see its `README.md`): 18 small
 extracts listed in `samples.toml`, each with GDAL's `ogrinfo` output and a verified
-axis order. They cover GML 2 with `<gml:coordinates>`, GML 3.1.1 and 3.2, WFS 1.0,
+axis order. They cover GML 2 with `<gml:coordinates>`, GML 3.1.1, 3.2 and 3.3, WFS 1.0,
 1.1 and 2.0 responses from MapServer and GeoServer, arcs and circles, AdV CRS URNs
 and the common srsName forms. `tests/data/gdal/` holds geometry snippets from GDAL's
 test suite.
@@ -93,6 +94,10 @@ Real data in `example_data/` (not committed):
 - **PRG administrative boundaries** (`A00_Granice_panstwa.gml`, national border;
   `A01_Granice_wojewodztw.gml`, voivodeship borders): `gml:Surface` geometries.
 
+- **Wallonia LPIS and GSA** (agricultural parcels, data.europa.eu): GML 3.3 by
+  declaration. The root declares GML 3.3's encoding-rule namespace (`gmlexr`), and
+  every element is GML 3.2's. No real data with GML 3.3 compact encodings was found;
+  those are tested with hand-written snippets and GDAL's.
 - **WFS**: capabilities and small `GetFeature` responses from the endpoints in
   `example_data/wfs/endpoints-*.txt` (geoportal.gov.pl and data.europa.eu).
 - **Portal downloads**: GML files selected from the Polish and EU portal
@@ -103,7 +108,7 @@ the support matrix).
 
 Reference material:
 - `ogc_schemas/`: a local copy of schemas.opengis.net, plus the spec PDFs (GML 2.1.2,
-  3.1.1, 3.2.1; GML SF profile 2.0; WFS 1.0/1.1/2.0.0/2.0.2; FES 2.0.2; OWS Common 2.0;
+  3.1.1, 3.2.1, 3.3 (10-129r1); GML SF profile 2.0; WFS 1.0/1.1/2.0.0/2.0.2; FES 2.0.2; OWS Common 2.0;
   CRS naming 07-092r3, 09-048r7, 11-135r2). The docs cite sections as `07-036 §10.4.7`
   and similar.
 - [links.md](links.md): links, including GDAL's GML autotests.

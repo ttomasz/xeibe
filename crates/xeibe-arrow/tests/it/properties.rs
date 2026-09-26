@@ -184,3 +184,24 @@ fn utf_16_input_is_read_like_utf_8() {
     let read = crate::support::collect(reader);
     assert_eq!(read.strings("nazwa"), [s("Łódź")]);
 }
+
+#[test]
+fn gml_33_descriptions_follow_the_generic_rules() {
+    // `gmlxbt:description` stands in for `gml:description` and adds
+    // `xml:lang` (OGC 10-129r1 §6.2.2); it is a text column like it.
+    let document = gml::collection(
+        gml::GML_32,
+        "gml:featureMember",
+        &[
+            &parcel("p1", r#"<gmlxbt:description xml:lang="fr">Parcelle</gmlxbt:description>"#),
+            &parcel("p2", r#"<gmlxbt:description xml:lang="nl">Perceel</gmlxbt:description>"#),
+        ],
+        r#" xmlns:gmlxbt="http://www.opengis.net/gml/3.3/xbt""#,
+        "",
+    );
+    let read = read_document(&document, "Parcel");
+    assert_eq!(read.column_names(), ["@id", "description", "@lang"]);
+    assert_eq!(read.strings("description"), [s("Parcelle"), s("Perceel")]);
+    assert_eq!(path(&read, "@lang"), "description/@lang");
+    assert_eq!(read.strings("@lang"), [s("fr"), s("nl")]);
+}

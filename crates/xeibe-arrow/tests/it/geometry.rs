@@ -426,3 +426,68 @@ fn a_scan_reports_the_extent_the_collection_declares() {
     let undeclared = scan(sources(&plain), ScanExtent::Full, &ReadOptions::default()).expect("a scan");
     assert_eq!(undeclared.extent(), None);
 }
+
+// ------------------------------------------------------------------ GML 3.3
+
+#[test]
+fn gml_33_compact_encodings_read_as_the_geometry_they_abbreviate() {
+    // OGC 10-129r1 §7 (`docs/geometry.md`, "GML 3.3").
+    let document = gml::gml33_collection(&[
+        &parcel(
+            "p1",
+            r#"<app:geom><gmlce:SimplePolygon srsName="EPSG:2180"><gml:posList>0 0 1 0 1 1 0 1</gml:posList></gmlce:SimplePolygon></app:geom>"#,
+        ),
+        &parcel(
+            "p2",
+            r#"<app:geom><gmlce:SimpleTriangle srsName="EPSG:2180"><gml:posList>5 5 6 5 6 6</gml:posList></gmlce:SimpleTriangle></app:geom>"#,
+        ),
+    ]);
+    let scanned = scan(sources(&document), ScanExtent::Full, &ReadOptions::default()).expect("a scan");
+    let schema = scanned.arrow_schema("Parcel").expect("a schema");
+    assert_eq!(schema.metadata().get(meta::VERSIONS).map(String::as_str), Some("3.3"));
+
+    let (read, settings) = read_scanned(&document, "Parcel");
+    assert_eq!(scanned_type(&settings, "geom"), "geometry(Polygon)");
+    let polygons = read.native_geometries("geom");
+    assert_wkt(polygons[0].as_ref().expect("a polygon"), "POLYGON ((0 0,1 0,1 1,0 1,0 0))");
+    assert_wkt(polygons[1].as_ref().expect("a polygon"), "POLYGON ((5 5,6 5,6 6,5 5))");
+}
+
+#[test]
+fn gml_33_compact_curves_keep_their_arcs() {
+    let document = gml::gml33_collection(&[
+        &parcel(
+            "p1",
+            r#"<app:geom><gmlce:SimpleArc srsName="EPSG:2180"><gml:posList>0 0 1 1 2 0</gml:posList></gmlce:SimpleArc></app:geom>"#,
+        ),
+        &parcel(
+            "p2",
+            concat!(
+                r#"<app:geom><gml:MultiCurve srsName="EPSG:2180"><gml:curveMember>"#,
+                "<gmlce:SimpleCircle><gml:posList>0 0 1 1 2 0</gml:posList></gmlce:SimpleCircle>",
+                "</gml:curveMember></gml:MultiCurve></app:geom>"
+            ),
+        ),
+    ]);
+    let read = read_document(&document, "Parcel");
+    assert_eq!(extension_name(&read.field("geom")), Some("geoarrow.wkb"));
+    let curves = read.geometries("geom");
+    assert_wkt(curves[0].as_ref().expect("an arc"), "CIRCULARSTRING (0 0,1 1,2 0)");
+    assert_wkt(curves[1].as_ref().expect("a circle"), "MULTICURVE (CIRCULARSTRING (0 0,1 1,2 0,1 -1,0 0))");
+}
+
+#[test]
+fn a_gml_33_tin_is_a_geometry_error() {
+    // Like `gml:Tin` (`docs/geometry.md`, "Unsupported geometry").
+    let document = gml::gml33_collection(&[&parcel(
+        "p1",
+        concat!(
+            "<app:area>1</app:area><app:geom><gmltin:TIN><gml:patches><gmltin:SimpleTrianglePatch>",
+            "<gml:posList>0 0 0 1 1 1</gml:posList></gmltin:SimpleTrianglePatch></gml:patches></gmltin:TIN></app:geom>"
+        ),
+    )]);
+    let options = ReadOptions { on_feature_error: OnFeatureError::NullGeometry, ..ReadOptions::default() };
+    let read = read_with(&document, "Parcel", None, &options);
+    assert_eq!(read.i64s("area"), [Some(1)], "the feature is kept");
+    assert_eq!(read.geometries("geom"), [None]);
+}

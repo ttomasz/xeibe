@@ -150,3 +150,37 @@ fn a_3d_geometry_is_reported_as_such() {
         Some(vec![701548.2375, 711198.8765, 50.8437])
     );
 }
+
+#[test]
+fn gml_33_compact_encodings_have_the_kind_they_abbreviate() {
+    let sniff33 = |snippet: &str| sniff_in(&gml::geometry_document_gml33(snippet), None);
+
+    let polygon = sniff33("<gmlce:SimplePolygon><gml:posList>1 2 3 4 5 6</gml:posList></gmlce:SimplePolygon>");
+    assert_eq!(polygon.kinds, vec![GeomKind::Polygon]);
+    assert_eq!(polygon.first_position, Some(vec![1.0, 2.0]));
+    assert!(polygon.gml_33 && !polygon.has_curves && !polygon.has_unsupported);
+    assert_eq!(polygon.dialect, Some(Dialect::Gml3));
+
+    let points = sniff33("<gmlce:SimpleMultiPoint><gml:posList>1 2 3 4</gml:posList></gmlce:SimpleMultiPoint>");
+    assert_eq!(points.kinds, vec![GeomKind::MultiPoint]);
+
+    // A compact curve is a curve, so `Auto` encodes its column as WKB.
+    let arc = sniff33("<gmlce:SimpleArc><gml:posList>0 0 1 1 2 0</gml:posList></gmlce:SimpleArc>");
+    assert_eq!(arc.kinds, vec![GeomKind::Curve]);
+    assert!(arc.has_curves);
+    let nested = sniff33(concat!(
+        "<gml:MultiCurve><gml:curveMember><gmlce:SimpleArc><gml:posList>0 0 1 1 2 0</gml:posList>",
+        "</gmlce:SimpleArc></gml:curveMember></gml:MultiCurve>"
+    ));
+    assert!(nested.has_curves && nested.gml_33);
+}
+
+#[test]
+fn gml_33_triangulated_surfaces_are_unsupported() {
+    let sniff33 = |snippet: &str| sniff_in(&gml::geometry_document_gml33(snippet), None);
+    let tin = sniff33("<gmltin:TIN><gml:patches/></gmltin:TIN>");
+    assert_eq!(tin.kinds, vec![GeomKind::Unsupported]);
+    assert!(tin.has_unsupported);
+    let nested = sniff33("<gml:MultiGeometry><gml:geometryMember><gmltin:TIN/></gml:geometryMember></gml:MultiGeometry>");
+    assert!(nested.has_unsupported);
+}

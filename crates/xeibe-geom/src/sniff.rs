@@ -10,7 +10,7 @@ use crate::epsg::CrsTable;
 use crate::model::GeomKind;
 use crate::parse::assemble::{DimensionInputs, crs_dimension, effective_dimension};
 use crate::parse::coords::{CoordinatesFormat, parse_coordinates, parse_number};
-use crate::parse::{ARC_SEGMENTS, Attrs, UNSUPPORTED, current_element, geom_kind};
+use crate::parse::{ARC_SEGMENTS, Attrs, UNSUPPORTED, compact_curve, current_element, geom_kind, is_unsupported_33};
 
 #[derive(Debug, Clone, Default)]
 pub struct GeometrySniff {
@@ -29,6 +29,8 @@ pub struct GeometrySniff {
     pub by_reference: bool,
     /// No position at all.
     pub empty: bool,
+    /// An element in a GML 3.3 namespace (a compact encoding, TIN, …).
+    pub gml_33: bool,
 }
 
 /// Called right after the reader returned a geometry's start element (as for
@@ -57,6 +59,8 @@ pub fn sniff_geometry_in(
     let mut sniff = GeometrySniff {
         kinds: vec![kind],
         has_unsupported: kind == GeomKind::Unsupported,
+        has_curves: compact_curve(&root.name).is_some(),
+        gml_33: root.name.is_gml_33(),
         ..GeometrySniff::default()
     };
     let mut dialect = DialectTracker::default();
@@ -87,7 +91,11 @@ pub fn sniff_geometry_in(
         dialect.observe(&name);
         let parent = *scopes.last().expect("inside the geometry");
         let scope = observe(&mut sniff, &mut first_srs, &attrs, parent, &table);
-        if name.is_gml() {
+        if name.is_gml_33() {
+            sniff.gml_33 = true;
+            sniff.has_curves |= compact_curve(&name).is_some();
+            sniff.has_unsupported |= is_unsupported_33(&name);
+        } else if name.is_gml() {
             let local = &*name.local;
             if ARC_SEGMENTS.contains(&local) {
                 sniff.has_curves = true;

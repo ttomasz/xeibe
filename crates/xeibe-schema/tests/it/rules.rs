@@ -437,6 +437,58 @@ fn a_column_with_curves_is_written_as_wkb() {
     assert_eq!(extension_name(field(&schema, "geom")), Some("geoarrow.wkb"));
 }
 
+/// A GML 3.3 collection of parcels with these bodies.
+fn many_gml33(bodies: &[&str]) -> String {
+    let features: Vec<String> = bodies
+        .iter()
+        .enumerate()
+        .map(|(i, body)| gml::feature("Parcel", &format!("p{i}"), body))
+        .collect();
+    let refs: Vec<&str> = features.iter().map(String::as_str).collect();
+    gml::gml33_collection(&refs)
+}
+
+#[test]
+fn gml_33_compact_encodings_have_the_types_of_what_they_abbreviate() {
+    // A `SimplePolygon` is a polygon, with a `MultiSurface` a multipolygon.
+    let polygon = "<gmlce:SimplePolygon srsName=\"EPSG:2180\"><gml:posList>0 0 1 0 1 1</gml:posList></gmlce:SimplePolygon>";
+    let schema = schema(&many_gml33(&[&format!("<app:geom>{polygon}</app:geom>")]), "Parcel");
+    assert_eq!(extension_name(field(&schema, "geom")), Some("geoarrow.polygon"));
+    assert_eq!(column_names(&schema), ["@id", "geom"], "the geometry is a leaf");
+
+    let document = many_gml33(&[
+        &format!("<app:geom>{polygon}</app:geom>"),
+        &format!(
+            "<app:geom><gml:MultiSurface srsName=\"EPSG:2180\"><gml:surfaceMember>{polygon}</gml:surfaceMember></gml:MultiSurface></app:geom>"
+        ),
+    ]);
+    assert_eq!(extension_name(field(&schema_of(&document), "geom")), Some("geoarrow.multipolygon"));
+
+    let points = "<app:geom><gmlce:SimpleMultiPoint><gml:posList>0 0 1 1</gml:posList></gmlce:SimpleMultiPoint></app:geom>";
+    assert_eq!(extension_name(field(&schema_of(&many_gml33(&[points])), "geom")), Some("geoarrow.multipoint"));
+
+    // A compact curve has arcs.
+    let arc = "<app:geom><gmlce:SimpleArc><gml:posList>0 0 1 1 2 0</gml:posList></gmlce:SimpleArc></app:geom>";
+    assert_eq!(extension_name(field(&schema_of(&many_gml33(&[arc])), "geom")), Some("geoarrow.wkb"));
+}
+
+#[test]
+fn a_gml_33_tin_is_a_geometry_column_not_nested_columns() {
+    // Unsupported geometry, like `gml:Tin`: a geometry column whose values
+    // are geometry errors when read.
+    let tin = concat!(
+        "<app:geom><gmltin:TIN><gml:patches><gmltin:SimpleTrianglePatch>",
+        "<gml:posList>0 0 0 1 1 1</gml:posList></gmltin:SimpleTrianglePatch></gml:patches></gmltin:TIN></app:geom>"
+    );
+    let schema = schema_of(&many_gml33(&[tin]));
+    assert_eq!(column_names(&schema), ["@id", "geom"]);
+    assert_eq!(extension_name(field(&schema, "geom")), Some("geoarrow.wkb"));
+}
+
+fn schema_of(document: &str) -> arrow_schema::Schema {
+    schema(document, "Parcel")
+}
+
 #[test]
 fn a_kind_and_its_multi_form_become_the_multi_type() {
     // As GDAL's `PROMOTE_TO_MULTI` (`docs/geometry.md`, "Column encoding").

@@ -20,7 +20,7 @@ MATRIX = (ROOT / "docs" / "support-matrix.md").read_text(encoding="utf-8")
 XS = "{http://www.w3.org/2001/XMLSchema}"
 
 SETS = {
-    "GML 2.1.2": "gml/2.1.2", "GML 3.1.1": "gml/3.1.1/base", "GML 3.2.1": "gml/3.2.1",
+    "GML 2.1.2": "gml/2.1.2", "GML 3.1.1": "gml/3.1.1/base", "GML 3.2.1": "gml/3.2.1", "GML 3.3": "gml/3.3",
     "WFS 1.0.0": "wfs/1.0.0", "WFS 1.1.0": "wfs/1.1.0", "WFS 2.0": "wfs/2.0",
 }
 # Files covered by a single "not planned" group row in the matrix.
@@ -34,7 +34,7 @@ SKIP_FILES = {
 # Names that exist only in XSD annotations, or that the matrix covers via a group row.
 SKIP_NAMES = {
     "targetElement", "reversePropertyName", "associationName", "defaultCodeSpace",
-    "gmlProfileSchema", "remarks",
+    "gmlProfileSchema", "remarks", "extendedEncodingRule", "targetCodeList",
     # deprecated CRS/operation dictionary internals (dictionary group row)
     "anchorPoint", "includesValue", "methodFormula", "valuesOfGroup",
     # WFS request/response plumbing covered by operation rows
@@ -67,7 +67,8 @@ for label, rel in SETS.items():
         tree = ET.parse(f).getroot()
         for e in tree.findall(XS + "element"):
             n = e.get("name")
-            if (e.get("abstract") == "true" or n.startswith("_") or n in SKIP_NAMES
+            # GML 3.3 leaves its substitution heads (AbstractSimplePolygon, ...) non-abstract.
+            if (e.get("abstract") == "true" or n.startswith(("_", "Abstract")) or n in SKIP_NAMES
                     or CRS_LIKE.search(n) or mentioned(n)):
                 continue
             missing.append(f"{f.name}: <{n}>")

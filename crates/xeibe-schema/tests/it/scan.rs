@@ -40,6 +40,29 @@ fn the_gml_version_is_recorded() {
 }
 
 #[test]
+fn a_gml_33_namespace_makes_the_document_gml_33() {
+    // Used by a compact encoding...
+    let compact = scan(&gml::gml33_collection(&[&parcel(
+        "p1",
+        "<app:geom><gmlce:SimplePolygon><gml:posList>0 0 1 0 1 1</gml:posList></gmlce:SimplePolygon></app:geom>",
+    )]));
+    assert!(compact.gml_versions.contains(&GmlVersion::V3_3));
+    assert!(!compact.gml_versions.contains(&GmlVersion::V3_2));
+
+    // ...or only declared, as by the Wallonia LPIS files, whose application
+    // schema follows GML 3.3's extended encoding rule (`gmlexr`).
+    let declared = scan(&gml::collection(
+        gml::GML_32,
+        "gml:featureMember",
+        &[&parcel("p1", "<app:area>1</app:area>")],
+        r#" xmlns:gmlexr="http://www.opengis.net/gml/3.3/exr""#,
+        "",
+    ));
+    assert!(declared.gml_versions.contains(&GmlVersion::V3_3));
+    assert!(!declared.gml_versions.contains(&GmlVersion::V3_2));
+}
+
+#[test]
 fn geometry_statistics_are_collected_without_building_geometry() {
     let document = gml::gml32_collection(&[
         &parcel(

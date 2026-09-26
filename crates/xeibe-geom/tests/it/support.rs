@@ -85,6 +85,21 @@ pub fn parse_gml31(snippet: &str) -> xeibe_geom::Result<ParsedGeometry> {
     )
 }
 
+/// The same in GML 3.3: the GML 3.2 namespace with the `gmlce` and `gmltin`
+/// prefixes declared.
+pub fn parse_gml33(snippet: &str) -> xeibe_geom::Result<ParsedGeometry> {
+    parse_gml33_with(snippet, &FixedAxis::no_swap())
+}
+
+pub fn parse_gml33_with(snippet: &str, axis: &dyn AxisResolver) -> xeibe_geom::Result<ParsedGeometry> {
+    parse_in(
+        &gml::geometry_document_gml33(snippet),
+        &GeometryOptions::default(),
+        axis,
+        &ParseContext::default(),
+    )
+}
+
 pub fn parse_with(
     snippet: &str,
     options: &GeometryOptions,
@@ -150,6 +165,12 @@ pub fn g(snippet: &str) -> G {
 /// Parse a GML 2 / 3.1 snippet and return it as a comparable value.
 pub fn g31(snippet: &str) -> G {
     let parsed = parse_gml31(snippet).unwrap_or_else(|e| panic!("parsing {snippet}: {e}"));
+    to_g(&parsed.geometry.expect("a geometry"))
+}
+
+/// Parse a GML 3.3 snippet and return it as a comparable value.
+pub fn g33(snippet: &str) -> G {
+    let parsed = parse_gml33(snippet).unwrap_or_else(|e| panic!("parsing {snippet}: {e}"));
     to_g(&parsed.geometry.expect("a geometry"))
 }
 

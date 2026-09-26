@@ -4,12 +4,14 @@ use serde::{Deserialize, Serialize};
 ///
 /// GML 2 and 3.1 share a namespace, so the version is derived from
 /// `xsi:schemaLocation`, the WFS version/output format, and the elements seen.
+/// GML 3.3 keeps the 3.2 namespace and adds its own ([`crate::ns::GML_33`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum GmlVersion {
     V2,
     V3_0,
     V3_1,
     V3_2,
+    V3_3,
 }
 
 /// Encoding style of one geometry element, decided per element from the tags
@@ -29,6 +31,8 @@ pub struct VersionHints {
     pub schema_location: Option<String>,
     pub wfs_version: Option<String>,
     pub output_format: Option<String>,
+    /// A GML 3.3 namespace is declared or used.
+    pub gml_33: bool,
     pub saw_gml2_elements: bool,
     pub saw_gml3_elements: bool,
     /// `posList@dimension` is GML 3.0 only.
@@ -36,21 +40,26 @@ pub struct VersionHints {
 }
 
 impl VersionHints {
-    /// The evidence in order of strength: the 3.2 namespace, the
-    /// `xsi:schemaLocation` of the GML schema, the WFS output format and
-    /// version, and finally the elements seen.
+    /// The evidence in order of strength: a GML 3.3 namespace, the 3.2
+    /// namespace (3.3 if the `xsi:schemaLocation` or the output format says
+    /// so), the `xsi:schemaLocation` of the GML schema, the WFS output format
+    /// and version, and finally the elements seen.
     pub fn detect(&self) -> Option<GmlVersion> {
-        if self.gml_namespace.as_deref() == Some(crate::ns::GML_32) {
-            return Some(GmlVersion::V3_2);
+        if self.gml_33 {
+            return Some(GmlVersion::V3_3);
         }
-        if let Some(version) = self
+        let stated = self
             .schema_location
             .as_deref()
             .and_then(from_schema_location)
-        {
-            return Some(version);
+            .or_else(|| self.output_format.as_deref().and_then(from_output_format));
+        if self.gml_namespace.as_deref() == Some(crate::ns::GML_32) {
+            return Some(match stated {
+                Some(GmlVersion::V3_3) => GmlVersion::V3_3,
+                _ => GmlVersion::V3_2,
+            });
         }
-        if let Some(version) = self.output_format.as_deref().and_then(from_output_format) {
+        if let Some(version) = stated {
             return Some(version);
         }
         if let Some(version) = self.wfs_version.as_deref().and_then(from_wfs_version) {
@@ -70,12 +79,13 @@ impl VersionHints {
     }
 }
 
-/// A `…/gml/<version>/…` schema URL in `xsi:schemaLocation`.
+/// The highest version of the `…/gml/<version>/…` URLs in
+/// `xsi:schemaLocation`: a GML 3.3 document may list the 3.2 schema too.
 fn from_schema_location(location: &str) -> Option<GmlVersion> {
-    location.split_ascii_whitespace().find_map(|url| {
-        url.split_once("/gml/")
-            .and_then(|(_, rest)| version_prefix(rest))
-    })
+    location
+        .split_ascii_whitespace()
+        .filter_map(|url| url.split_once("/gml/").and_then(|(_, rest)| version_prefix(rest)))
+        .max()
 }
 
 /// `text/xml; subtype=gml/3.1.1`, `application/gml+xml; version=3.2`, `GML2`.
@@ -109,7 +119,9 @@ fn from_wfs_version(version: &str) -> Option<GmlVersion> {
 /// The GML version a string such as `3.1.1/base/gml.xsd` or `2` starts with.
 fn version_prefix(text: &str) -> Option<GmlVersion> {
     let text = text.trim_start_matches(['"', '\'']);
-    if text.starts_with("3.2") {
+    if text.starts_with("3.3") {
+        Some(GmlVersion::V3_3)
+    } else if text.starts_with("3.2") {
         Some(GmlVersion::V3_2)
     } else if text.starts_with("3.1") {
         Some(GmlVersion::V3_1)

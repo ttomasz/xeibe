@@ -260,6 +260,19 @@ determined from:
 3. the elements seen: `coordinates`, `outerBoundaryIs`, `coord` → 2;
    `pos`, `posList`, `exterior`, `Curve`, `Surface` → 3.1.
 
+GML 3.3 (OGC 10-129r1) keeps the 3.2 namespace and adds its own
+(`http://www.opengis.net/gml/3.3/ce`, `…/tin`, `…/xbt`, `…/lr`, `…/exr`, …). A
+document in the 3.2 namespace is GML 3.3 when:
+
+1. a GML 3.3 namespace is declared in scope or used by an element. A declaration is
+   enough: an application schema built with GML 3.3's encoding rule declares
+   `gmlexr` on the root even if no element uses it, as the Wallonia LPIS files do;
+2. or `xsi:schemaLocation` names a `…/gml/3.3/…` schema, or the output format says
+   `version=3.3`.
+
+The versions found go into the schema metadata as `gml:versions` (`2`, `3.0`,
+`3.1`, `3.2`, `3.3`).
+
 Geometry parsing accepts elements from all versions, so detection affects only
 reporting and some defaults (for example, `boundedBy` handling).
 

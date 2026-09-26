@@ -149,13 +149,9 @@ fn expectation(case: &GeometryCase) -> (Expect, &'static str) {
     if let Some((_, expect, reason)) = OVERRIDES.iter().find(|(id, _, _)| *id == case.id) {
         return (*expect, reason);
     }
-    // GML 3.3 compact encodings are not planned.
-    if case.gml.contains("gmlce:") {
-        return (Expect::Error, "GML 3.3 compact encodings are not planned");
-    }
     // Elements are matched by namespace: AIXM and unprefixed roots are not GML.
     let root = root_element(&case.gml);
-    if !root.starts_with("gml:") {
+    if !root.starts_with("gml:") && !root.starts_with("gmlce:") {
         return (Expect::Error, "the root element is not in a GML namespace");
     }
     let wkt = case.gdal.wkt.as_deref().unwrap_or_default();
@@ -174,7 +170,12 @@ fn expectation(case: &GeometryCase) -> (Expect, &'static str) {
 
 /// `Ok(None)` is a null geometry, `Err` the message of a failed parse.
 fn run(case: &GeometryCase) -> Result<Option<G>, String> {
-    let document = xeibe_testkit::gml::geometry_document_gml31(&wrap(&case.gml));
+    // GDAL's snippets use the `gmlce` prefix without declaring it.
+    let document = if case.gml.contains("gmlce:") {
+        xeibe_testkit::gml::geometry_document_gml33(&case.gml)
+    } else {
+        xeibe_testkit::gml::geometry_document_gml31(&wrap(&case.gml))
+    };
     let options = GeometryOptions::default();
     let parsed = parse_in(
         &document,

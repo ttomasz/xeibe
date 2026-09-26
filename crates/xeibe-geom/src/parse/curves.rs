@@ -1,6 +1,7 @@
-//! `Curve` + segments, `OrientableCurve`, `CompositeCurve`, `Ring`, and the
+//! `Curve` + segments, `OrientableCurve`, `CompositeCurve`, `Ring`, the
 //! arcs (`docs/geometry.md`, "Arcs given by points", "Arcs given by
-//! parameters", "Joining segments and members").
+//! parameters", "Joining segments and members"), and GML 3.3's compact curves
+//! (`SimpleArc`, …).
 
 use xeibe_core::reader::GmlReader;
 
@@ -17,33 +18,52 @@ use crate::model::{CircularString, Coords, Curve, Dim, LineString};
 
 impl Parser<'_> {
     /// Any curve element as a [`Curve`]: `LineString`, `Curve`,
-    /// `OrientableCurve`, `CompositeCurve`, `Ring` (and, leniently, `LinearRing`).
+    /// `OrientableCurve`, `CompositeCurve`, `Ring` (and, leniently, `LinearRing`),
+    /// and GML 3.3's compact curves.
     pub(super) fn curve(&mut self, reader: &mut GmlReader<'_>, elem: Elem, scope: Scope) -> crate::Result<Curve> {
-        if !elem.name.is_gml() {
+        let curve = if let Some((element, segment)) = super::compact_curve(&elem.name) {
+            // GML 3.3: a `Curve` of one segment, written compactly
+            // (OGC 10-129r1 §7.6–7.12), with that segment's rules.
+            self.one_segment(reader, &elem, element, segment, scope)?
+        } else if !elem.name.is_gml() {
             return Err(self.wrong_kind(reader, &elem, "a curve"));
-        }
-        let curve = match elem.local() {
-            "LineString" => Curve::Linear(self.line_string(reader, &elem, scope)?),
-            "LinearRing" => Curve::Linear(self.linear_ring(reader, &elem, scope)?),
-            "Curve" => self.segmented_curve(reader, &elem, scope)?,
-            "OrientableCurve" => self.orientable_curve(reader, &elem, scope)?,
-            "CompositeCurve" => self.composite_curve(reader, &elem, scope)?,
-            "Ring" => self.ring(reader, &elem, scope)?,
-            // [GDAL] A bare segment where a curve belongs (e.g. an `Arc` as
-            // a `curveMember`) is read as a curve of that one segment.
-            local if super::SEGMENTS.contains(&local) => {
-                let mut builder = CurveBuilder::default();
-                self.segment(reader, &elem, scope, &mut builder)?;
-                let joined = builder.finish();
-                self.warnings.extend(joined.warnings);
-                joined.curve.unwrap_or_else(|| Curve::Linear(LineString::default()))
+        } else {
+            match elem.local() {
+                "LineString" => Curve::Linear(self.line_string(reader, &elem, scope)?),
+                "LinearRing" => Curve::Linear(self.linear_ring(reader, &elem, scope)?),
+                "Curve" => self.segmented_curve(reader, &elem, scope)?,
+                "OrientableCurve" => self.orientable_curve(reader, &elem, scope)?,
+                "CompositeCurve" => self.composite_curve(reader, &elem, scope)?,
+                "Ring" => self.ring(reader, &elem, scope)?,
+                // [GDAL] A bare segment where a curve belongs (e.g. an `Arc` as
+                // a `curveMember`) is read as a curve of that one segment.
+                local => match super::SEGMENTS.iter().find(|segment| **segment == local) {
+                    Some(segment) => self.one_segment(reader, &elem, segment, segment, scope)?,
+                    None => return Err(self.wrong_kind(reader, &elem, "a curve")),
+                },
             }
-            _ => return Err(self.wrong_kind(reader, &elem, "a curve")),
         };
         if elem.attrs.href && curve.is_empty() {
             return Err(Error::ByReference { location: reader.location() });
         }
         Ok(curve)
+    }
+
+    /// A curve of the one segment `elem`, read as `segment` and named
+    /// `element` in messages.
+    fn one_segment(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: &Elem,
+        element: &'static str,
+        segment: &'static str,
+        scope: Scope,
+    ) -> crate::Result<Curve> {
+        let mut builder = CurveBuilder::default();
+        self.segment_as(reader, elem, element, segment, scope, &mut builder)?;
+        let joined = builder.finish();
+        self.warnings.extend(joined.warnings);
+        Ok(joined.curve.unwrap_or_else(|| Curve::Linear(LineString::default())))
     }
 
     /// `Curve` with its `segments`, joined. `segments` is required; an empty
@@ -82,18 +102,38 @@ impl Parser<'_> {
         if !elem.name.is_gml() {
             return Err(self.unsupported(reader, elem.name.to_clark()));
         }
-        let scope = self.enter(elem, scope);
-        let (element, interpolation): (&'static str, &str) = match elem.local() {
+        let segment = match elem.local() {
             // [GDAL] A `LineString` among the segments is read as a `LineStringSegment`.
-            "LineStringSegment" | "LineString" => ("LineStringSegment", "linear"),
-            "Arc" => ("Arc", "circularArc3Points"),
-            "ArcString" => ("ArcString", "circularArc3Points"),
-            "Circle" => ("Circle", "circularArc3Points"),
-            "ArcByCenterPoint" => ("ArcByCenterPoint", "circularArcCenterPointWithRadius"),
-            "CircleByCenterPoint" => ("CircleByCenterPoint", "circularArcCenterPointWithRadius"),
-            "ArcByBulge" => ("ArcByBulge", "circularArc2PointWithBulge"),
-            "ArcStringByBulge" => ("ArcStringByBulge", "circularArc2PointWithBulge"),
-            other => return Err(self.unsupported(reader, other)),
+            "LineString" => "LineStringSegment",
+            local => match super::SEGMENTS.iter().find(|segment| **segment == local) {
+                Some(segment) => segment,
+                None => return Err(self.unsupported(reader, local)),
+            },
+        };
+        self.segment_as(reader, elem, segment, segment, scope, builder)
+    }
+
+    /// `elem` read as the segment `segment` (`LineStringSegment` or one of
+    /// the arcs), pushed onto `builder`. `element` names it in messages: the
+    /// segment itself, or the GML 3.3 compact curve that stands for it. A
+    /// compact curve is a geometry of its own, so an empty one is an empty
+    /// curve; an empty segment is an error.
+    fn segment_as(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: &Elem,
+        element: &'static str,
+        segment: &'static str,
+        scope: Scope,
+        builder: &mut CurveBuilder,
+    ) -> crate::Result<()> {
+        let scope = self.enter(elem, scope);
+        let compact = element != segment;
+        let interpolation = match segment {
+            "LineStringSegment" => "linear",
+            "Arc" | "ArcString" | "Circle" => "circularArc3Points",
+            "ArcByCenterPoint" | "CircleByCenterPoint" => "circularArcCenterPointWithRadius",
+            _ => "circularArc2PointWithBulge",
         };
         // The element name decides how the segment is read (support matrix §5.4).
         if let Some(written) = elem.attrs.interpolation.as_deref().filter(|i| *i != interpolation) {
@@ -101,7 +141,7 @@ impl Parser<'_> {
                 "{element} has interpolation=\"{written}\" (expected \"{interpolation}\"); read as {element}"
             ));
         }
-        match element {
+        match segment {
             "LineStringSegment" => {
                 // Not a geometry of its own: an empty segment is an error.
                 let coords = self.positions(reader, scope, true)?;
@@ -112,6 +152,9 @@ impl Parser<'_> {
             }
             "Arc" | "ArcString" => {
                 let coords = self.positions(reader, scope, true)?;
+                if compact && coords.is_empty() {
+                    return Ok(());
+                }
                 match check_arc_positions(coords.len(), elem.attrs.num_arc) {
                     Ok(warning) => self.warnings.extend(warning),
                     Err(_) => {
@@ -122,6 +165,9 @@ impl Parser<'_> {
             }
             "Circle" => {
                 let coords = self.positions(reader, scope, true)?;
+                if compact && coords.is_empty() {
+                    return Ok(());
+                }
                 if coords.len() != 3 {
                     return Err(self.position_count(reader, element, coords.len(), "3"));
                 }
@@ -129,19 +175,23 @@ impl Parser<'_> {
                 builder.push_circular(circle);
             }
             "ArcByCenterPoint" | "CircleByCenterPoint" => {
-                let arc = self.arc_by_center_point(reader, element, scope)?;
-                builder.push_circular(arc);
+                let circle = segment == "CircleByCenterPoint";
+                if let Some(arc) = self.arc_by_center_point(reader, element, circle, compact, scope)? {
+                    builder.push_circular(arc);
+                }
             }
             _ => {
-                let arc = self.arc_string_by_bulge(reader, elem, element, scope)?;
-                builder.push_circular(arc);
+                if let Some(arc) = self.arc_string_by_bulge(reader, elem, element, compact, scope)? {
+                    builder.push_circular(arc);
+                }
             }
         }
         Ok(())
     }
 
-    /// `ArcByCenterPoint`/`CircleByCenterPoint`, GDAL convention (projected
-    /// or unknown CRS): angles counter-clockwise from +x in output order.
+    /// `ArcByCenterPoint`/`CircleByCenterPoint` (`circle`), GDAL convention
+    /// (projected or unknown CRS): angles counter-clockwise from +x in output
+    /// order. `None` for an element with no content if `empty_ok`.
     ///
     /// The model is built as written and swapped at the end, so the points
     /// are computed in output order and turned back into written order.
@@ -149,9 +199,10 @@ impl Parser<'_> {
         &mut self,
         reader: &mut GmlReader<'_>,
         element: &'static str,
+        circle: bool,
+        empty_ok: bool,
         scope: Scope,
-    ) -> crate::Result<CircularString> {
-        let circle = element == "CircleByCenterPoint";
+    ) -> crate::Result<Option<CircularString>> {
         let mut center = Coords::default();
         let mut radius = None;
         let mut angles = [None, None];
@@ -187,6 +238,9 @@ impl Parser<'_> {
                 }
                 _ => self.skip(reader)?,
             }
+        }
+        if empty_ok && center.is_empty() && radius.is_none() && angles == [None, None] {
+            return Ok(None);
         }
         if center.len() != 1 {
             return Err(self.position_count(reader, element, center.len(), "1 (the center)"));
@@ -231,19 +285,21 @@ impl Parser<'_> {
             coords.values.extend(z);
         }
         let computed = (0..coords.len()).collect();
-        Ok(CircularString { coords, computed })
+        Ok(Some(CircularString { coords, computed }))
     }
 
     /// `ArcByBulge`/`ArcStringByBulge`: `numArc + 1` positions, one `bulge`
     /// and one `normal` per arc; the mid-arc points are computed (GDAL's
-    /// formula, in output order like the center-point arcs).
+    /// formula, in output order like the center-point arcs). `None` for an
+    /// element with no content if `empty_ok`.
     fn arc_string_by_bulge(
         &mut self,
         reader: &mut GmlReader<'_>,
         elem: &Elem,
         element: &'static str,
+        empty_ok: bool,
         scope: Scope,
-    ) -> crate::Result<CircularString> {
+    ) -> crate::Result<Option<CircularString>> {
         let mut coords = Coords::default();
         let mut bulges = Vec::new();
         let mut normals = Vec::new();
@@ -264,6 +320,9 @@ impl Parser<'_> {
             }
         }
         let n = coords.len();
+        if empty_ok && n == 0 && bulges.is_empty() && normals.is_empty() {
+            return Ok(None);
+        }
         if n < 2 {
             return Err(self.position_count(reader, element, n, "at least 2"));
         }
@@ -295,7 +354,7 @@ impl Parser<'_> {
             }
             out.push(p1);
         }
-        Ok(CircularString { coords: out, computed })
+        Ok(Some(CircularString { coords: out, computed }))
     }
 
     /// One number: the text of the current element.

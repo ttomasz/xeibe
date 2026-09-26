@@ -132,6 +132,27 @@ licence_evidence = "data.europa.eu distribution licence CC_BY_4_0; NGI open data
 attribution = "Electricity network INSPIRE – ©NGI-IGN, 2021, licence CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); extract, modified (feature selection)"
 
 [[sample]]
+name = "be-wallonia-lpis-gml33"
+axis_order = "x/y"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "countries", code = "BEL", why = "published by the Service public de Wallonie, a Belgian region" },
+               # Belgium alone can't tell the readings apart: Walloon positions swapped land in Flanders.
+               { layer = "admin1", code = ["BE-WBR", "BE-WHT", "BE-WLG", "BE-WLX", "BE-WNA"], why = "the LPIS of Wallonia (file BEWA.LPIS.EcologicalFocusArea.2022.gml, published by the Service public de Wallonie); these are Wallonia's five provinces" }]
+file = "samples/be/wallonia-lpis-ecological-focus-area-gml33.gml"
+source = "example_data/downloads/data.europa.eu/geoservices.wallonie.be/f3728900_SIGEC_LPIS_ECOLOGICAL_FOCUS_AREA__2022_GML_3812.zip"
+member = "BEWA.LPIS.EcologicalFocusArea.2022.gml"
+rules = ["contains=interior;count=1", "contains=LineString;count=1", "contains=Point;count=1"]
+covers = ["GML 3.3 document: the namespace of GML 3.3's extended encoding rule (gmlexr) declared on the root, elements from GML 3.2",
+          "one geometry property holding gml:Surface (with interior rings), gml:LineString and gml:Point",
+          "srsName http://www.opengis.net/def/crs/EPSG/0/3812 (Belgian Lambert 2008)",
+          "gml:description with both text and xlink:href", "repeated gml:name"]
+publisher = "Service public de Wallonie (SPW)"
+dataset = "Ecological focus area from 2022 SIGEC (LPIS)"
+dataset_url = "https://data.europa.eu/data/datasets/https-geodata-wallonie-be-id-6b1c19ac-1d43-4343-a59f-b9024c34e8fe"
+licence = "cc-by-4"
+licence_evidence = "terms shipped in the zip (Conditions_Utilisation_Access.html): 'Ces données sont disponibles sous licence CC-BY 4.0 […] Crédits : Service public de Wallonie'; data.europa.eu distribution licence CC_BY_4_0; owner's record https://geoportail.wallonie.be/catalogue/6b1c19ac-1d43-4343-a59f-b9024c34e8fe.html"
+attribution = "Service public de Wallonie (SPW), Surfaces d'intérêt écologique 2022 (SIGEC LPIS), licence CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); extract, modified (feature selection)"
+
+[[sample]]
 name = "de-sachsen-anhalt-inspire-su"
 axis_order = "y/x"  # verified by scripts/corpus/axis_evidence.py
 axis_places = [{ layer = "countries", code = "DEU", why = "INSPIRE statistical units of Saxony-Anhalt" }]

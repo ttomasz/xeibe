@@ -87,6 +87,17 @@ fn temporal_values() {
 }
 
 #[test]
+fn gml_33_ordinal_and_week_dates_stay_strings() {
+    // GML 3.3 adds ISO 8601 ordinal and week dates to time positions
+    // (`gmlxbt:OrdDate`, `WeekDate`, 10-129r1 §6.3). Arrow has no such types,
+    // and reading them as a number or a date would change the value.
+    for value in ["2012-123", "-2012-001", "2012-W05", "2012-W05-3"] {
+        assert_exact_value(value, TypeSet::STRING);
+        assert_eq!(classify(value).lossy, TypeSet::STRING, "lossy of {value:?}");
+    }
+}
+
+#[test]
 fn statistics_intersect_over_the_values() {
     let mut stats = ValueStats::default();
     stats.observe("1");

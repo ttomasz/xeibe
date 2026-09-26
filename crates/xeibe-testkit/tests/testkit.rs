@@ -191,7 +191,7 @@ fn wkb_reads_an_empty_point_as_nan() {
 #[test]
 fn every_sample_file_exists_and_matches_the_manifest() {
     let samples = samples();
-    assert_eq!(samples.len(), 17, "samples.json lists 17 samples");
+    assert_eq!(samples.len(), 18, "samples.json lists 18 samples");
     for s in &samples {
         assert!(s.path().exists(), "{} is missing", s.file);
         assert!(

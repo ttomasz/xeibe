@@ -227,8 +227,19 @@ fn is_envelope(name: &QName) -> bool {
     name.is_gml_named("Envelope") || name.is_gml_named("EnvelopeWithTimePeriod") || name.is_gml_named("Box")
 }
 
-/// The source kind of a geometry element.
+/// The source kind of a geometry element. A GML 3.3 compact encoding has
+/// the kind of the geometry it abbreviates: `SimplePolygon` is a `Polygon`,
+/// `SimpleArc` a `Curve`, `SimpleMultiPoint` a `MultiPoint`.
 pub(crate) fn geom_kind(name: &QName) -> GeomKind {
+    if is_compact_surface(name) {
+        return GeomKind::Polygon;
+    }
+    if compact_curve(name).is_some() {
+        return GeomKind::Curve;
+    }
+    if is_ce(name, "SimpleMultiPoint") {
+        return GeomKind::MultiPoint;
+    }
     if !name.is_gml() {
         return GeomKind::Unsupported;
     }
@@ -264,6 +275,64 @@ pub fn is_array_property(name: &QName) -> bool {
     ["pointArrayProperty", "curveArrayProperty", "surfaceArrayProperty", "solidArrayProperty"]
         .iter()
         .any(|local| name.is_gml_named(local))
+}
+
+/// GML 3.3 compact encodings of surfaces (OGC 10-129r1 §7.3–7.5): a polygon
+/// given by the corners of its one ring, which needn't repeat the first.
+const COMPACT_SURFACES: &[&str] = &["SimplePolygon", "SimpleRectangle", "SimpleTriangle"];
+
+/// GML 3.3 compact encodings of curves (§7.6–7.12), each the compact form of
+/// a `Curve` with one segment: `(element, segment)`. Their content is the
+/// segment's, in the `gmlce` namespace.
+const COMPACT_CURVES: &[(&str, &str)] = &[
+    ("SimpleArcString", "ArcString"),
+    ("SimpleArc", "Arc"),
+    ("SimpleCircle", "Circle"),
+    ("SimpleArcByCenterPoint", "ArcByCenterPoint"),
+    ("SimpleCircleByCenterPoint", "CircleByCenterPoint"),
+    ("SimpleArcStringByBulge", "ArcStringByBulge"),
+    ("SimpleArcByBulge", "ArcByBulge"),
+];
+
+/// GML 3.3 geometry that is out of scope, like its GML 3.2 counterparts
+/// (support matrix §5.1): triangulated surfaces (§8) and referenceable
+/// grids (§10). `(namespace, element)`.
+const UNSUPPORTED_33: &[(&str, &str)] = &[
+    (ns::GML_33_TIN, "TriangulatedSurface"),
+    (ns::GML_33_TIN, "TIN"),
+    (ns::GML_33_RGRID, "ReferenceableGridByArray"),
+    (ns::GML_33_RGRID, "ReferenceableGridByVectors"),
+    (ns::GML_33_RGRID, "ReferenceableGridByTransformation"),
+];
+
+/// `local` in the GML 3.3 compact-encoding namespace.
+fn is_ce(name: &QName, local: &str) -> bool {
+    name.ns.as_deref() == Some(ns::GML_33_CE) && &*name.local == local
+}
+
+/// `gmlce:SimplePolygon`, `SimpleRectangle` or `SimpleTriangle`.
+pub(crate) fn is_compact_surface(name: &QName) -> bool {
+    COMPACT_SURFACES.iter().any(|local| is_ce(name, local))
+}
+
+/// A GML 3.3 compact curve (`gmlce:SimpleArc`, …) and the GML 3.2 segment it
+/// abbreviates.
+pub(crate) fn compact_curve(name: &QName) -> Option<(&'static str, &'static str)> {
+    COMPACT_CURVES.iter().copied().find(|(local, _)| is_ce(name, local))
+}
+
+/// A GML 3.3 geometry element: a compact encoding, which is read, or a
+/// triangulated surface or referenceable grid, which is unsupported. The rest
+/// of GML 3.3 (linear referencing, basic types) is not geometry.
+pub fn is_gml_33_geometry(name: &QName) -> bool {
+    geom_kind(name) != GeomKind::Unsupported || is_unsupported_33(name)
+}
+
+/// A GML 3.3 geometry element that is out of scope.
+pub(crate) fn is_unsupported_33(name: &QName) -> bool {
+    UNSUPPORTED_33
+        .iter()
+        .any(|(namespace, local)| name.ns.as_deref() == Some(*namespace) && &*name.local == *local)
 }
 
 /// Curve segments given by points or by parameters (the ones we read).
@@ -665,7 +734,10 @@ impl<'p> Parser<'p> {
     /// The error for an element that is not a geometry of the expected kind:
     /// unsupported if it is out of scope (or not GML), else invalid.
     pub fn wrong_kind(&self, reader: &GmlReader<'_>, elem: &Elem, expected: &str) -> Error {
-        if !elem.name.is_gml() {
+        if geom_kind(&elem.name) != GeomKind::Unsupported && !elem.name.is_gml() {
+            // A GML 3.3 compact encoding of another kind.
+            self.invalid(reader, format!("{} is not {expected}", elem.local()))
+        } else if !elem.name.is_gml() {
             self.unsupported(reader, elem.name.to_clark())
         } else if UNSUPPORTED.contains(&elem.local()) {
             self.unsupported(reader, elem.local())
@@ -678,11 +750,28 @@ impl<'p> Parser<'p> {
 
     /// Any geometry element, consumed up to its end tag.
     pub fn geometry(&mut self, reader: &mut GmlReader<'_>, elem: Elem, scope: Scope) -> crate::Result<Geometry> {
+        let href = elem.attrs.href;
+        let geometry = if is_compact_surface(&elem.name) {
+            assemble::surfaces_to_geometry(vec![self.simple_polygon(reader, &elem, scope)?])
+        } else if compact_curve(&elem.name).is_some() {
+            assemble::curve_to_geometry(self.curve(reader, elem, scope)?)
+        } else if is_ce(&elem.name, "SimpleMultiPoint") {
+            Geometry::MultiPoint(self.simple_multi_point(reader, &elem, scope)?)
+        } else {
+            self.gml_geometry(reader, elem, scope)?
+        };
+        if href && geometry.dim().is_none() {
+            return Err(Error::ByReference { location: reader.location() });
+        }
+        Ok(geometry)
+    }
+
+    /// A geometry element in one of the GML namespaces (2/3.1 or 3.2).
+    fn gml_geometry(&mut self, reader: &mut GmlReader<'_>, elem: Elem, scope: Scope) -> crate::Result<Geometry> {
         if !elem.name.is_gml() {
             return Err(self.unsupported(reader, elem.name.to_clark()));
         }
-        let href = elem.attrs.href;
-        let geometry = match elem.local() {
+        Ok(match elem.local() {
             "Point" => Geometry::Point(self.point(reader, &elem, scope)?),
             "LineString" => Geometry::LineString(self.line_string(reader, &elem, scope)?),
             "LinearRing" => Geometry::LineString(self.linear_ring(reader, &elem, scope)?),
@@ -706,17 +795,15 @@ impl<'p> Parser<'p> {
                 Geometry::Polygon(self.envelope(reader, &elem, scope)?.to_polygon())
             }
             other => return Err(self.unsupported(reader, other)),
-        };
-        if href && geometry.dim().is_none() {
-            return Err(Error::ByReference { location: reader.location() });
-        }
-        Ok(geometry)
+        })
     }
 
     /// A surface element (`Polygon`, `Surface`, `OrientableSurface`,
-    /// `CompositeSurface`) as its surfaces.
+    /// `CompositeSurface`, or a GML 3.3 `SimplePolygon`, `SimpleRectangle`,
+    /// `SimpleTriangle`) as its surfaces.
     pub fn surfaces(&mut self, reader: &mut GmlReader<'_>, elem: Elem, scope: Scope) -> crate::Result<Vec<Surface>> {
         let surfaces = match elem.local() {
+            _ if is_compact_surface(&elem.name) => vec![self.simple_polygon(reader, &elem, scope)?],
             "Polygon" if elem.name.is_gml() => vec![self.polygon(reader, &elem, scope)?],
             "Surface" if elem.name.is_gml() => self.surface(reader, &elem, scope)?,
             "OrientableSurface" if elem.name.is_gml() => self.orientable_surface(reader, &elem, scope)?,

@@ -162,6 +162,21 @@ fn a_sample_with_curves_is_written_as_wkb() {
 }
 
 #[test]
+fn the_wallonia_lpis_sample_is_gml_33() {
+    // Its root declares GML 3.3's encoding-rule namespace (`gmlexr`), which
+    // no element uses: the application schema was built with GML 3.3's rule.
+    let observation = scan_file(&sample("be-wallonia-lpis-gml33").file);
+    assert_eq!(observation.gml_versions.iter().copied().collect::<Vec<_>>(), [xeibe_core::GmlVersion::V3_3]);
+    let (name, _) = observation.layer("EcologicalFocusArea").expect("the layer");
+    let schema = xeibe_schema::infer_schema(&observation, name, &InferenceOptions::default(), None)
+        .expect("a schema")
+        .schema;
+    assert_eq!(schema.metadata().get(xeibe_schema::rules::meta::VERSIONS).map(String::as_str), Some("3.3"));
+    // A surface, a line and a point in one property.
+    assert_eq!(extension_name(field(&schema, "geometry")), Some("geoarrow.wkb"));
+}
+
+#[test]
 fn a_scan_records_the_srs_names_it_saw() {
     let observation = scan_file(&sample("de-hamburg-alkis-nas-arcs").file);
     let srs: Vec<String> = observation

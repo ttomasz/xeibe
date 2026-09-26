@@ -58,7 +58,7 @@ are enough to build and test the crates.
 
 ```sh
 scripts/corpus/fetch_gdal_autotest.sh     # example_data/gdal-autotest-src (sparse GDAL clone, pinned commit)
-scripts/corpus/reference_data.py          # example_data/reference/: PRG + Natural Earth boundaries (~390 MB), builds axis_reference.gpkg via GDAL
+scripts/corpus/reference_data.py          # example_data/reference/: PRG + Natural Earth boundaries (~400 MB), builds axis_reference.gpkg via GDAL
 scripts/corpus/inventory_eu.py            # example_data/_inventory/: portal inventories (metadata only)
 scripts/corpus/inventory_pl.py
 scripts/corpus/downloads.py select        # example_data/_inventory/selection.jsonl

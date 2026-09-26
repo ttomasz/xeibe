@@ -9,6 +9,26 @@ pub mod ns {
     /// GML 2.x and 3.0/3.1 share this namespace.
     pub const GML: &str = "http://www.opengis.net/gml";
     pub const GML_32: &str = "http://www.opengis.net/gml/3.2";
+    /// GML 3.3 compact encodings (`gmlce:SimplePolygon`, …).
+    pub const GML_33_CE: &str = "http://www.opengis.net/gml/3.3/ce";
+    /// GML 3.3 triangulated irregular networks (`gmltin:TIN`, …).
+    pub const GML_33_TIN: &str = "http://www.opengis.net/gml/3.3/tin";
+    /// GML 3.3 referenceable grids (`gmlrgrid:ReferenceableGridByArray`, …).
+    pub const GML_33_RGRID: &str = "http://www.opengis.net/gml/3.3/rgrid";
+    /// Every GML 3.3 namespace (OGC 10-129r1 Table 1, with the `exr` spelling
+    /// of its schema). GML 3.3 extends GML 3.2: the core stays in
+    /// [`GML_32`], these hold the additions.
+    pub const GML_33: &[&str] = &[
+        GML_33_CE,
+        GML_33_TIN,
+        GML_33_RGRID,
+        "http://www.opengis.net/gml/3.3/xbt",
+        "http://www.opengis.net/gml/3.3/lr",
+        "http://www.opengis.net/gml/3.3/lrtr",
+        "http://www.opengis.net/gml/3.3/lro",
+        "http://www.opengis.net/gml/3.3/lrov",
+        "http://www.opengis.net/gml/3.3/exr",
+    ];
     pub const XLINK: &str = "http://www.w3.org/1999/xlink";
     pub const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
     pub const WFS: &str = "http://www.opengis.net/wfs";

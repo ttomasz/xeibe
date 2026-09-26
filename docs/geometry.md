@@ -5,6 +5,7 @@ planned elements is in [support-matrix.md](support-matrix.md#5-geometry).
 
 References (PDFs in `ogc_schemas/`):
 - GML 3.2.1 (OGC 07-036) §10–11;
+- GML 3.3 (OGC 10-129r1) §7–8, the compact encodings and TINs;
 - GML 3.1.1 (OGC 03-105r1);
 - GML 2.1.2 (OGC 02-069);
 - GML Simple Features Profile 2.0 (OGC 10-100r3);
@@ -107,9 +108,20 @@ Measures (`m`) are not part of GML simple geometry.
 | `MultiPolygon` (GML 2/3.1) / `MultiSurface` | MultiPolygon / MultiSurface | |
 | `MultiGeometry` | GeometryCollection | |
 | `Envelope` / `Box` as a *property value* | Polygon (5 points) | As `boundedBy`: see type-mapping |
+| GML 3.3 `SimplePolygon`, `SimpleRectangle`, `SimpleTriangle` | Polygon | The corners of the one ring. The ring is closed by repeating the first corner unless the last one already repeats it (10-129r1 §7.3), which is not a repair and gives no warning. The number of corners is not checked beyond 3, as for the `Rectangle` and `Triangle` patches. **[GDAL]** (GDAL makes a `SimpleTriangle` a `TRIANGLE`) |
+| GML 3.3 `SimpleTrianglePatch` (`gmltin`) among a `Surface`'s patches | Polygon | A `Triangle` patch given by its corners (§8.4) |
+| GML 3.3 `SimpleArc`, `SimpleArcString`, `SimpleCircle`, `SimpleArcByCenterPoint`, `SimpleCircleByCenterPoint`, `SimpleArcByBulge`, `SimpleArcStringByBulge` | CircularString | Each is "logically equivalent" to a `Curve` of one `Arc`, `ArcString`, `Circle`, `ArcByCenterPoint`, … segment (§7.6–7.12), and is read as that curve, with that segment's rules. `radius`, `bulge` and the other parameters are in the `gmlce` namespace. GDAL doesn't read these |
+| GML 3.3 `SimpleMultiPoint` | MultiPoint | One point per position of its `posList` (§7.13). **[GDAL]** |
 
 Legacy elements are accepted in every version (lenient reading), for example
 GML 2's `MultiPolygon` inside a GML 3.2 document. Real data mixes versions.
+
+GML 3.3 keeps GML 3.2's namespace and elements and adds namespaces of its own
+(`…/gml/3.3/ce` for the compact encodings, `…/gml/3.3/tin`, …; 10-129r1 Table 1).
+A GML 3.3 document is therefore read like a GML 3.2 one. A compact encoding
+stands wherever the geometry it abbreviates can: a `SimplePolygon` as a
+`surfaceMember` or a property value, a `SimpleArc` as a `curveMember` of a
+`Ring`.
 
 ### Joining segments and members
 
@@ -307,7 +319,7 @@ one namespace and real files mix encodings:
 
 | GML 2 dialect | GML 3 dialect |
 |---|---|
-| `coordinates` or `coord` as the coordinate carrier, `outerBoundaryIs`/`innerBoundaryIs`, `Box`, GML 2 geometry properties | `pos`, `posList`, `pointProperty`, `exterior`/`interior`, `Curve`, `Surface`, `Envelope`, anything in the `…/gml/3.2` namespace |
+| `coordinates` or `coord` as the coordinate carrier, `outerBoundaryIs`/`innerBoundaryIs`, `Box`, GML 2 geometry properties | `pos`, `posList`, `pointProperty`, `exterior`/`interior`, `Curve`, `Surface`, `Envelope`, anything in the `…/gml/3.2` namespace or a GML 3.3 one |
 
 `gml:coordinates` inside a GML 3 structure (e.g. a `Polygon` with `exterior`)
 counts as **GML 3**. A deprecated coordinate encoding doesn't make the geometry
@@ -647,8 +659,9 @@ fallback when no PROJJSON is available.
 
 ## Empty, invalid and degenerate geometry
 
-- An empty geometry element, such as `<gml:Point/>` or `posList count="0"`, becomes
-  an empty geometry, not null.
+- An empty geometry element, such as `<gml:Point/>`, `<gmlce:SimpleArc/>` or
+  `posList count="0"`, becomes an empty geometry, not null. An empty curve segment
+  is an error: a segment is not a geometry of its own.
 - A missing geometry property becomes null.
 - GML's array properties (`gml:pointArrayProperty`, `curveArrayProperty`,
   `surfaceArrayProperty`) hold several geometries. Their value is the Multi
@@ -681,8 +694,9 @@ fallback when no PROJJSON is available.
 
 ### Unsupported geometry
 
-Solids, triangulated/polyhedral surfaces, splines, clothoids, geodesics, implicit
-geometry (grids), `xlink:href` geometry references and polygons with no exterior are
+Solids, triangulated/polyhedral surfaces (GML 3.3's `gmltin:TIN` too), splines,
+clothoids, geodesics, implicit geometry (grids, GML 3.3's referenceable grids too),
+`xlink:href` geometry references and polygons with no exterior are
 **geometry errors**, handled by `OnFeatureError` like any other (see
 [architecture.md](architecture.md#error-handling)): `Error` stops with the
 location, `Skip` drops the feature, and `NullGeometry` keeps the feature with a null

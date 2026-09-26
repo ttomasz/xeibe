@@ -6,6 +6,10 @@
 
 pub const GML: &str = "http://www.opengis.net/gml";
 pub const GML_32: &str = "http://www.opengis.net/gml/3.2";
+/// GML 3.3 compact encodings, prefix `gmlce` (OGC 10-129r1 Table 1).
+pub const GML_33_CE: &str = "http://www.opengis.net/gml/3.3/ce";
+/// GML 3.3 triangulated irregular networks, prefix `gmltin`.
+pub const GML_33_TIN: &str = "http://www.opengis.net/gml/3.3/tin";
 pub const WFS: &str = "http://www.opengis.net/wfs";
 pub const WFS_20: &str = "http://www.opengis.net/wfs/2.0";
 pub const XLINK: &str = "http://www.w3.org/1999/xlink";
@@ -39,6 +43,16 @@ pub fn gml32_collection_members(members: &[&str]) -> String {
          </gml:FeatureCollection>\n",
         decls(GML_32, "")
     )
+}
+
+/// A GML 3.3 collection: GML 3.2's, with the `gmlce` and `gmltin` prefixes
+/// declared on the root.
+pub fn gml33_collection(members: &[&str]) -> String {
+    collection(GML_32, "gml:featureMember", members, &gml33_decls(), "")
+}
+
+fn gml33_decls() -> String {
+    format!(r#" xmlns:gmlce="{GML_33_CE}" xmlns:gmltin="{GML_33_TIN}""#)
 }
 
 /// A GML 3.1 collection (GML 2 and 3.1 share the namespace).
@@ -138,4 +152,10 @@ pub fn geometry_document(geometry: &str) -> String {
 /// The same in the shared GML 2/3.1 namespace.
 pub fn geometry_document_gml31(geometry: &str) -> String {
     format!(r#"<app:geom {}>{geometry}</app:geom>"#, decls(GML, ""))
+}
+
+/// The same in GML 3.3: the GML 3.2 namespace, plus the `gmlce` and
+/// `gmltin` prefixes.
+pub fn geometry_document_gml33(geometry: &str) -> String {
+    format!(r#"<app:geom {}>{geometry}</app:geom>"#, decls(GML_32, &gml33_decls()))
 }

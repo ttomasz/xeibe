@@ -1,0 +1,111 @@
+
+Layer name: EcologicalFocusArea
+Geometry: Unknown (any)
+Feature Count: 3
+Extent: (630918.381042, 609997.955093) - (692729.458802, 614186.427351)
+Layer SRS WKT:
+PROJCRS["ETRS89 / Belgian Lambert 2008",
+    BASEGEOGCRS["ETRS89",
+        ENSEMBLE["European Terrestrial Reference System 1989 ensemble",
+            MEMBER["European Terrestrial Reference Frame 1989"],
+            MEMBER["European Terrestrial Reference Frame 1990"],
+            MEMBER["European Terrestrial Reference Frame 1991"],
+            MEMBER["European Terrestrial Reference Frame 1992"],
+            MEMBER["European Terrestrial Reference Frame 1993"],
+            MEMBER["European Terrestrial Reference Frame 1994"],
+            MEMBER["European Terrestrial Reference Frame 1996"],
+            MEMBER["European Terrestrial Reference Frame 1997"],
+            MEMBER["European Terrestrial Reference Frame 2000"],
+            MEMBER["European Terrestrial Reference Frame 2005"],
+            MEMBER["European Terrestrial Reference Frame 2014"],
+            MEMBER["European Terrestrial Reference Frame 2020"],
+            ELLIPSOID["GRS 1980",6378137,298.257222101,
+                LENGTHUNIT["metre",1]],
+            ENSEMBLEACCURACY[0.1]],
+        PRIMEM["Greenwich",0,
+            ANGLEUNIT["degree",0.0174532925199433]],
+        ID["EPSG",4258]],
+    CONVERSION["Belgian Lambert 2008",
+        METHOD["Lambert Conic Conformal (2SP)",
+            ID["EPSG",9802]],
+        PARAMETER["Latitude of false origin",50.797815,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8821]],
+        PARAMETER["Longitude of false origin",4.35921583333333,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8822]],
+        PARAMETER["Latitude of 1st standard parallel",49.8333333333333,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8823]],
+        PARAMETER["Latitude of 2nd standard parallel",51.1666666666667,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8824]],
+        PARAMETER["Easting at false origin",649328,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8826]],
+        PARAMETER["Northing at false origin",665262,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8827]]],
+    CS[Cartesian,2],
+        AXIS["easting (X)",east,
+            ORDER[1],
+            LENGTHUNIT["metre",1]],
+        AXIS["northing (Y)",north,
+            ORDER[2],
+            LENGTHUNIT["metre",1]],
+    USAGE[
+        SCOPE["Engineering survey, topographic mapping."],
+        AREA["Belgium - onshore."],
+        BBOX[49.5,2.5,51.51,6.4]],
+    ID["EPSG",3812]]
+Data axis to CRS axis mapping: 1,2
+Geometry Column = geometry
+gml_id: String (0.0) NOT NULL
+description: String (67.0)
+identifier: String (68.0)
+name: StringList (0.0)
+id: String (12.0)
+convertedArea: Real (0.0)
+convertedArea_uom: String (2.0)
+beginLifespanVersion: DateTime
+validFrom: Date
+validTo: Date
+OGRFeature(EcologicalFocusArea):1580068834
+  gml_id (String) = BEWA_LPIS_EcologicalFocusArea_2022.S_1580068834
+  description (String) = Surface d’intérêt écologique en Wallonie en 2022 - IACS - LPIS
+  identifier (String) = https://geodata.wallonie.be/id/lpis/ecologicalFocusArea/S_1580068834
+  name (StringList) = (3:SPW - BEWA Ecological Focus Area - 2022,BEWA.LPIS.EcologicalFocusArea.2022,Ecological focus area as registred in the LPIS)
+  id (String) = S_1580068834
+  convertedArea (Real) = 0.332123759983983
+  convertedArea_uom (String) = ha
+  beginLifespanVersion (DateTime) = 2024/11/18 13:03:30
+  validFrom (Date) = 2019/01/01
+  validTo (Date) = 2023/01/01
+  POLYGON ((692644.988266977 610424.130219649,692677.163416744 610386.344534169,692729.458802063 610424.65084662,692715.830740953 610447.699300509,692701.286543004 610466.614300406,692644.988266977 610424.130219649),(692657.708896453 610420.44233119,692696.455411832 610449.322009482,692712.458157067 610428.823844425,692673.711414883 610401.694171203,692657.708896453 610420.44233119))
+
+OGRFeature(EcologicalFocusArea):1580068835
+  gml_id (String) = BEWA_LPIS_EcologicalFocusArea_2022.P_8992
+  description (String) = Surface d’intérêt écologique en Wallonie en 2022 - IACS - LPIS
+  identifier (String) = https://geodata.wallonie.be/id/lpis/ecologicalFocusArea/P_8992
+  name (StringList) = (3:SPW - BEWA Ecological Focus Area - 2022,BEWA.LPIS.EcologicalFocusArea.2022,Ecological focus area as registred in the LPIS)
+  id (String) = P_8992
+  convertedArea (Real) = 0.003
+  convertedArea_uom (String) = ha
+  beginLifespanVersion (DateTime) = 2023/05/24 11:48:45
+  validFrom (Date) = 2015/01/01
+  validTo (Date) = 2023/01/01
+  POINT (663784.61703304 609997.955093183)
+
+OGRFeature(EcologicalFocusArea):1580068836
+  gml_id (String) = BEWA_LPIS_EcologicalFocusArea_2022.L_1106424
+  description (String) = Surface d’intérêt écologique en Wallonie en 2022 - IACS - LPIS
+  identifier (String) = https://geodata.wallonie.be/id/lpis/ecologicalFocusArea/L_1106424
+  name (StringList) = (3:SPW - BEWA Ecological Focus Area - 2022,BEWA.LPIS.EcologicalFocusArea.2022,Ecological focus area as registred in the LPIS)
+  id (String) = L_1106424
+  convertedArea (Real) = 0.0299176059359575
+  convertedArea_uom (String) = ha
+  beginLifespanVersion (DateTime) = 2022/03/09 03:07:08
+  validFrom (Date) = 2022/01/01
+  validTo (Date) = 2023/01/01
+  LINESTRING (630918.381041959 614157.104556859,630924.315918015 614186.427350571)
+

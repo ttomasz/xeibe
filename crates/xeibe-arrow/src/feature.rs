@@ -273,7 +273,7 @@ impl<'a> FeatureReader<'a> {
             match reader.next_event()? {
                 XmlEvent::Start { name, attrs } => {
                     had_children = true;
-                    if wants_geometry && name.is_gml() {
+                    if wants_geometry && (name.is_gml() || name.is_gml_33()) {
                         drop(attrs);
                         geometries += 1;
                         if geometries > 1 && !array {

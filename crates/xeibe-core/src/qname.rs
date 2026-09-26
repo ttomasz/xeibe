@@ -31,6 +31,12 @@ impl QName {
         self.is_gml() && &*self.local == local
     }
 
+    /// `true` if this element is in one of the GML 3.3 namespaces
+    /// ([`crate::ns::GML_33`]), which extend GML 3.2 without replacing it.
+    pub fn is_gml_33(&self) -> bool {
+        self.ns.as_deref().is_some_and(|ns| crate::ns::GML_33.contains(&ns))
+    }
+
     /// Clark notation: `{uri}local`.
     pub fn to_clark(&self) -> String {
         self.to_string()

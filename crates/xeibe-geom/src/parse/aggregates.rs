@@ -1,10 +1,11 @@
 //! `MultiPoint`, `MultiLineString`, `MultiCurve`, `MultiPolygon`,
-//! `MultiSurface`, `MultiGeometry` (single and plural member properties).
+//! `MultiSurface`, `MultiGeometry` (single and plural member properties), and
+//! GML 3.3's `SimpleMultiPoint`.
 
 use xeibe_core::reader::GmlReader;
 
 use super::{Elem, Parser, Scope};
-use crate::model::{GeometryCollection, Geometry, MultiCurve, MultiPoint, MultiSurface};
+use crate::model::{GeometryCollection, Geometry, MultiCurve, MultiPoint, MultiSurface, Point};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Members {
@@ -15,6 +16,19 @@ enum Members {
 }
 
 impl Parser<'_> {
+    /// GML 3.3's `SimpleMultiPoint` (OGC 10-129r1 §7.13): one point per
+    /// position of its `posList`. No positions: an empty MultiPoint.
+    pub(super) fn simple_multi_point(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: &Elem,
+        scope: Scope,
+    ) -> crate::Result<MultiPoint> {
+        let scope = self.enter(elem, scope);
+        let coords = self.positions(reader, scope, false)?;
+        Ok(MultiPoint(coords.positions().map(|position| Point { coord: Some(position.to_vec()) }).collect()))
+    }
+
     /// An aggregate. Any `…Member`/`…Members` property is read (lenient:
     /// real data mixes spellings); the member's kind must fit the aggregate.
     pub(super) fn aggregate(&mut self, reader: &mut GmlReader<'_>, elem: &Elem, scope: Scope) -> crate::Result<Geometry> {

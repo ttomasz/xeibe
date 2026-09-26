@@ -43,6 +43,44 @@ fn schema_location_distinguishes_gml_2_from_gml_3_1() {
 }
 
 #[test]
+fn gml_33_is_the_32_namespace_with_a_33_one() {
+    // GML 3.3 keeps the 3.2 namespace for the core (OGC 10-129r1 §5.2); a
+    // GML 3.3 namespace in scope, even one no element uses, makes it 3.3.
+    let declared = VersionHints {
+        gml_namespace: Some(ns::GML_32.to_string()),
+        gml_33: true,
+        ..VersionHints::default()
+    };
+    assert_eq!(declared.detect(), Some(GmlVersion::V3_3));
+
+    // A GML 3.3 schema in `xsi:schemaLocation`, next to the 3.2 one.
+    let located = VersionHints {
+        gml_namespace: Some(ns::GML_32.to_string()),
+        schema_location: Some(
+            "http://www.opengis.net/gml/3.2 http://schemas.opengis.net/gml/3.2.1/gml.xsd \
+             http://www.opengis.net/gml/3.3/ce http://schemas.opengis.net/gml/3.3/geometryCompact.xsd"
+                .into(),
+        ),
+        ..VersionHints::default()
+    };
+    assert_eq!(located.detect(), Some(GmlVersion::V3_3));
+
+    let format = VersionHints {
+        gml_namespace: Some(ns::GML_32.to_string()),
+        output_format: Some("application/gml+xml; version=3.3".into()),
+        ..VersionHints::default()
+    };
+    assert_eq!(format.detect(), Some(GmlVersion::V3_3));
+
+    // `3.3` is not read as some GML 3 (3.1).
+    let only_location = VersionHints {
+        schema_location: Some("http://schemas.opengis.net/gml/3.3/geometryCompact.xsd".into()),
+        ..VersionHints::default()
+    };
+    assert_eq!(only_location.detect(), Some(GmlVersion::V3_3));
+}
+
+#[test]
 fn the_wfs_version_and_output_format_are_used_for_responses() {
     let wfs10 = VersionHints {
         wfs_version: Some("1.0.0".into()),

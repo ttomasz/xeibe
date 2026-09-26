@@ -126,6 +126,7 @@ and a feature without a value for such a field is a feature error (see
 | `gml:identifier` + `@codeSpace` | `identifier: text` and `@codeSpace: text` (path `identifier/@codeSpace`). A constant codeSpace goes to metadata |
 | `gml:name` (repeatable, `@codeSpace`) | `name: text`, or `text[]` (path `name[]`) depending on observations |
 | `gml:description` | `description: text` |
+| `gmlxbt:description` (GML 3.3, `@xml:lang`) | `description: text` and `@lang: text` (path `description/@lang`) |
 | `gml:boundedBy` | dropped (`BoundedBy::Drop`) |
 | `xlink:href` | the href string. `#` is stripped for local references |
 | `xlink:href` **and** inline content on one property | Inline content is read, and the href is kept as a `<property>/@href` column. The standard says the link is authoritative and the content is a cached copy (07-036 §7.2.3.4), but we don't resolve links |
@@ -148,8 +149,9 @@ Every Arrow field carries metadata that records where it came from:
 | `gml:srs_name` | `EPSG:2180` | srsName as written (geometry columns) |
 | `gml:axis_swapped` | `true` | The reader swapped axes (geometry columns) |
 
-Schema-level metadata stores the GML version(s) and, optionally, the settings the
-read used (`gml:settings`).
+Schema-level metadata stores the GML version(s) (`gml:versions`, e.g. `3.2`, or
+`2,3.1` for a mixed input) and, optionally, the settings the read used
+(`gml:settings`).
 
 A schema given by the user (a settings file or an Arrow schema) needs none of these
 keys except `gml:path`, and that only when the column's name isn't its path (see

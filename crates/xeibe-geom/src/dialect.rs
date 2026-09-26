@@ -45,9 +45,12 @@ const GML3_ELEMENTS: &[&str] = &[
 /// Classify a geometry-related element. `None` if the element is neutral
 /// (e.g. `Point`, `LinearRing` without a coordinate child yet).
 ///
-/// Anything in the GML 3.2 namespace is GML 3; elements outside the GML
-/// namespaces are not classified.
+/// Anything in the GML 3.2 namespace, or in one of GML 3.3's, is GML 3;
+/// elements outside the GML namespaces are not classified.
 pub fn classify_element(name: &QName) -> Option<Dialect> {
+    if name.is_gml_33() {
+        return Some(Dialect::Gml3);
+    }
     match name.ns.as_deref() {
         Some(ns::GML_32) => Some(Dialect::Gml3),
         Some(ns::GML) => {

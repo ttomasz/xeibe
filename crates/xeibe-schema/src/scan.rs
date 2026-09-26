@@ -123,6 +123,7 @@ impl Scanner {
         let context = source_context(&header);
         let mut hints = VersionHints {
             gml_namespace: namespace_hint(&header.namespaces),
+            gml_33: declares_gml_33(&header.namespaces),
             schema_location: header.schema_location.clone(),
             wfs_version: context.wfs_version.clone(),
             ..VersionHints::default()
@@ -151,6 +152,7 @@ impl Scanner {
         let mut observation = scanned.observation;
         let mut hints = VersionHints {
             gml_namespace: namespace_hint(&chunk.namespaces),
+            gml_33: declares_gml_33(&chunk.namespaces),
             ..VersionHints::default()
         };
         scanned.hints.apply_to(&mut hints);
@@ -174,6 +176,7 @@ impl Scanner {
         let mut observation = scanned.observation;
         let mut hints = VersionHints {
             gml_namespace: namespace_hint(&chunk.namespaces),
+            gml_33: declares_gml_33(&chunk.namespaces),
             ..VersionHints::default()
         };
         scanned.hints.apply_to(&mut hints);
@@ -312,6 +315,8 @@ struct ChunkScan {
 struct ElementHints {
     saw_gml: bool,
     saw_gml32: bool,
+    /// An element in a GML 3.3 namespace.
+    saw_gml33: bool,
     saw_gml2_elements: bool,
     saw_gml3_elements: bool,
 }
@@ -327,6 +332,9 @@ const GML3_ELEMENTS: &[&str] = &[
 
 impl ElementHints {
     fn observe(&mut self, name: &QName) {
+        if name.is_gml_33() {
+            self.saw_gml33 = true;
+        }
         match name.ns.as_deref() {
             Some(ns::GML_32) => self.saw_gml32 = true,
             Some(ns::GML) => {
@@ -344,6 +352,7 @@ impl ElementHints {
     fn merge(&mut self, other: ElementHints) {
         self.saw_gml |= other.saw_gml;
         self.saw_gml32 |= other.saw_gml32;
+        self.saw_gml33 |= other.saw_gml33;
         self.saw_gml2_elements |= other.saw_gml2_elements;
         self.saw_gml3_elements |= other.saw_gml3_elements;
     }
@@ -354,9 +363,16 @@ impl ElementHints {
         } else if self.saw_gml && hints.gml_namespace.is_none() {
             hints.gml_namespace = Some(ns::GML.to_string());
         }
+        hints.gml_33 |= self.saw_gml33;
         hints.saw_gml2_elements |= self.saw_gml2_elements;
         hints.saw_gml3_elements |= self.saw_gml3_elements;
     }
+}
+
+/// A GML 3.3 namespace is declared in scope. Documents declare the ones
+/// their application schema imports, also when no element uses them.
+fn declares_gml_33(namespaces: &NamespaceContext) -> bool {
+    ns::GML_33.iter().any(|uri| namespaces.declares_uri(uri))
 }
 
 /// The GML namespace declared in scope, 3.2 first.
@@ -465,8 +481,9 @@ fn envelope_bbox(envelope: Option<&xeibe_geom::model::Envelope>) -> Option<[f64;
     union_bbox(Some([lower[0], lower[1], lower[0], lower[1]]), Some([upper[0], upper[1], upper[0], upper[1]]))
 }
 
+/// Also GML 3.3's geometry (compact encodings, TIN, referenceable grids).
 fn is_geometry_element(name: &QName) -> bool {
-    name.is_gml() && GEOMETRY_ELEMENTS.contains(&&*name.local)
+    (name.is_gml() && GEOMETRY_ELEMENTS.contains(&&*name.local)) || xeibe_geom::parse::is_gml_33_geometry(name)
 }
 
 /// Per-chunk tree builder: walks features, keeps per-parent child counters on
@@ -787,6 +804,7 @@ impl WalkState {
         feature_bounds: bool,
     ) -> crate::Result<xeibe_geom::sniff::GeometrySniff> {
         let sniff = sniff_geometry_in(reader, self.feature.srs_name.as_deref(), self.feature.srs_dimension)?;
+        self.hints.saw_gml33 |= sniff.gml_33;
         match sniff.dialect {
             Some(xeibe_core::Dialect::Gml2) => self.hints.saw_gml2_elements = true,
             Some(xeibe_core::Dialect::Gml3) if self.hints.saw_gml && !self.hints.saw_gml32 => {

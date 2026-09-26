@@ -37,6 +37,7 @@ UA = {"User-Agent": "Mozilla/5.0 (xeibe fetch_ogc_schemas)"}
 PDFS = [
     ("https://docs.ogc.org/is/02-069/02-069.pdf", "GML_2.1.2_02-069.pdf"),
     ("https://docs.ogc.org/is/07-036/07-036.pdf", "GML_3.2.1_07-036.pdf"),
+    ("https://docs.ogc.org/is/10-129r1/10-129r1.pdf", "GML_3.3_10-129r1.pdf"),
     ("https://docs.ogc.org/profile/10-100r3/10-100r3.pdf", "GML_Simple-features-profile-2.0_10-100r3.pdf"),
     ("https://docs.ogc.org/is/02-058/02-058.pdf", "WFS_1.0.0_02-058.pdf"),
     ("https://docs.ogc.org/is/04-094/04-094.pdf", "WFS_1.1.0_04-094.pdf"),

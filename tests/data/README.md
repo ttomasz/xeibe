@@ -17,7 +17,7 @@ Small samples committed to the repository.
 
 Rebuild after changing `samples.toml` (needs `example_data/` and Docker for GDAL):
 
-    scripts/corpus/reference_data.py          # once: PRG + Natural Earth boundaries (~390 MB)
+    scripts/corpus/reference_data.py          # once: PRG + Natural Earth boundaries (~400 MB)
     scripts/corpus/build_samples.py [--only NAME] [--no-validate] [--no-gdal]
 
 ## Axis order
@@ -29,7 +29,9 @@ position both ways and tests each reading against:
 - `crs_area` — the CRS's area of use (always checked);
 - `axis_places` — regions the features are known to lie in, justified by something other
   than the geometry (`why`): a TERYT code in the attributes or file name (PRG
-  voivodeship/powiat/gmina), or the publisher's country (Natural Earth, 5 km tolerance);
+  voivodeship/powiat/gmina), the publisher's country (Natural Earth, 5 km tolerance), or
+  its region (Natural Earth admin-1 units by ISO 3166-2 code, 5 km tolerance; `code` may
+  list several units, e.g. Wallonia's five provinces);
 - `axis_same_as` — another sample with the same features, e.g. the same WFS layer in
   another version.
 

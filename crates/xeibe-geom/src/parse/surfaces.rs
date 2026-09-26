@@ -1,11 +1,14 @@
 //! `Polygon`, `Surface` + patches (`PolygonPatch`, `Triangle`, `Rectangle`),
-//! `OrientableSurface`, `CompositeSurface`.
+//! `OrientableSurface`, `CompositeSurface`, and GML 3.3's compact polygons
+//! (`SimplePolygon`, `SimpleRectangle`, `SimpleTriangle`,
+//! `SimpleTrianglePatch`).
 
+use xeibe_core::ns;
 use xeibe_core::reader::GmlReader;
 
 use super::assemble::check_curve_ring;
-use super::{Elem, Parser, Scope};
-use crate::model::{Curve, CurvePolygon, Surface};
+use super::{COMPACT_SURFACES, Elem, Parser, Scope};
+use crate::model::{Curve, CurvePolygon, LineString, Polygon, Surface};
 
 impl Parser<'_> {
     /// `Polygon`, or a patch with the same content (`PolygonPatch`,
@@ -52,6 +55,39 @@ impl Parser<'_> {
         })
     }
 
+    /// A GML 3.3 compact polygon (`SimplePolygon`, `SimpleRectangle`,
+    /// `SimpleTriangle`, or a `gmltin:SimpleTrianglePatch` of a `Surface`):
+    /// the corners of its one ring, closed by repeating the first corner
+    /// unless it is repeated already (OGC 10-129r1 §7.3). As for the
+    /// `Rectangle` and `Triangle` patches, the number of corners is not
+    /// checked beyond a ring's minimum of 3. No corners: an empty polygon.
+    pub(super) fn simple_polygon(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: &Elem,
+        scope: Scope,
+    ) -> crate::Result<Surface> {
+        let scope = self.enter(elem, scope);
+        let mut coords = self.positions(reader, scope, true)?;
+        if coords.is_empty() {
+            return Ok(Surface::Polygon(Polygon::default()));
+        }
+        let corners = coords.len();
+        if !coords.is_closed() {
+            let first = coords.get(0).to_vec();
+            coords.push(&first);
+        }
+        if coords.len() < 4 {
+            let element = COMPACT_SURFACES
+                .iter()
+                .find(|local| **local == elem.local())
+                .copied()
+                .unwrap_or("SimpleTrianglePatch");
+            return Err(self.position_count(reader, element, corners, "at least 3 corners"));
+        }
+        Ok(Surface::Polygon(Polygon { exterior: Some(LineString { coords }), interiors: Vec::new() }))
+    }
+
     /// The content of `exterior`/`interior`: `LinearRing` or `Ring`, or
     /// leniently any curve (**[GDAL]**), which must then be closed like a `Ring`.
     fn ring_element(&mut self, reader: &mut GmlReader<'_>, elem: Elem, scope: Scope) -> crate::Result<Curve> {
@@ -77,6 +113,8 @@ impl Parser<'_> {
             while let Some(patch) = self.next_child(reader)? {
                 if patch.is("PolygonPatch") || patch.is("Triangle") || patch.is("Rectangle") {
                     surfaces.push(self.polygon(reader, &patch, scope)?);
+                } else if is_simple_triangle_patch(&patch) {
+                    surfaces.push(self.simple_polygon(reader, &patch, scope)?);
                 } else {
                     return Err(self.wrong_kind(reader, &patch, "a surface patch"));
                 }
@@ -134,4 +172,10 @@ impl Parser<'_> {
         }
         Ok(surfaces)
     }
+}
+
+/// GML 3.3's `gmltin:SimpleTrianglePatch` (OGC 10-129r1 §8.4): a `Triangle`
+/// patch given by its three corners.
+fn is_simple_triangle_patch(elem: &Elem) -> bool {
+    elem.name.ns.as_deref() == Some(ns::GML_33_TIN) && elem.local() == "SimpleTrianglePatch"
 }

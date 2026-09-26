@@ -165,6 +165,7 @@ fn version_name(version: &xeibe_core::GmlVersion) -> &'static str {
         xeibe_core::GmlVersion::V3_0 => "3.0",
         xeibe_core::GmlVersion::V3_1 => "3.1",
         xeibe_core::GmlVersion::V3_2 => "3.2",
+        xeibe_core::GmlVersion::V3_3 => "3.3",
     }
 }
 

@@ -17,8 +17,9 @@ orders, as written and swapped, and each reading is tested against the checks be
   crs_area   the area of use of the CRS named by srsName (PROJ database, 0.5° margin)
   place      each entry of `axis_places`: a region the features are known to lie in,
              taken from something other than the geometry (TERYT code in the
-             attributes, the file name, the publisher's country), looked up in
-             example_data/reference/axis_reference.gpkg (scripts/corpus/reference_data.py)
+             attributes, the file name, the publisher's country or region), looked up in
+             example_data/reference/axis_reference.gpkg (scripts/corpus/reference_data.py);
+             `code` may be a list, whose units together make the region
   same_as    `axis_same_as`: another sample with the same features (e.g. the same WFS
              in another version); its positions, read in its recorded order, must equal ours
 
@@ -52,7 +53,7 @@ REFERENCE = PROJECT / "example_data" / "reference" / "axis_reference.gpkg"
 GML_NS = ("http://www.opengis.net/gml", "http://www.opengis.net/gml/3.2")
 MAX_POSITIONS = 500
 # Natural Earth 1:10m coastlines are generalized by up to a few km (e.g. small islands, harbours)
-DEFAULT_TOLERANCE_M = {"countries": 5000}
+DEFAULT_TOLERANCE_M = {"countries": 5000, "admin1": 5000}
 # Share of positions inside: the recorded order must have >= PASS inside; the swapped reading is
 # rejected when more than 1 - REJECT of its positions fall outside (a genuine reading of a
 # dataset known to lie in the region cannot put a tenth of it elsewhere).
@@ -147,15 +148,22 @@ def subsample(items: list, n: int) -> list:
 
 
 class Region:
-    def __init__(self, layer: str, code: str):
+    """One unit of a reference layer, or the union of several (`code` a list)."""
+
+    def __init__(self, layer: str, code: str | list[str]):
         ds = ogr.Open(str(REFERENCE))
         lyr = ds.GetLayerByName(layer)
-        lyr.SetAttributeFilter(f"code = '{code}'")
-        feats = list(lyr)
-        if len(feats) != 1:
-            raise ValueError(f"{layer} code {code}: {len(feats)} matches in {REFERENCE.name}")
-        self.name = feats[0].GetField("name")
-        geom = feats[0].GetGeometryRef().Clone()
+        codes = [code] if isinstance(code, str) else code
+        geom, names = None, []
+        for c in codes:
+            lyr.SetAttributeFilter(f"code = '{c}'")
+            feats = list(lyr)
+            if len(feats) != 1:
+                raise ValueError(f"{layer} code {c}: {len(feats)} matches in {REFERENCE.name}")
+            names.append(feats[0].GetField("name"))
+            part = feats[0].GetGeometryRef().Clone()
+            geom = part if geom is None else geom.Union(part)
+        self.name = " + ".join(names)
         geom.AssignSpatialReference(lyr.GetSpatialRef())
         geom.GetSpatialReference().SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
         # metric working CRS: azimuthal equidistant around the region, so distances are in metres
@@ -257,7 +265,8 @@ def evaluate(sample: dict, by_name: dict) -> dict:
         tol = float(place.get("tolerance_m", DEFAULT_TOLERANCE_M.get(place["layer"], 0)))
         f_true, d_true = check_place(pos_features, true_reading, region, tol)
         f_other, d_other = check_place(pos_features, other, region, tol)
-        add("place", f"{region.name} ({place['layer']} {place['code']}"
+        codes = place["code"] if isinstance(place["code"], str) else ", ".join(place["code"])
+        add("place", f"{region.name} ({place['layer']} {codes}"
             + (f", tolerance {tol:g} m" if tol else "") + f"); expected because: {place['why']}",
             f_true, f_other, {"first_position_km_outside": {"recorded": d_true, "swapped": d_other}})
     if sample.get("axis_same_as"):
