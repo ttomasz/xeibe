@@ -9,7 +9,7 @@ use geoarrow_schema::{Crs, GeoArrowType, Metadata};
 use xeibe_core::{FeatureChunk, QName, SourceId, Sources};
 use indexmap::IndexMap;
 use xeibe_geom::axis::{AxisContext, decide};
-use xeibe_geom::{AxisKey, AxisOrderMode, AxisOrderOptions, CrsRef, SrsName};
+use xeibe_geom::{AxisKey, AxisOrderMode, AxisOrderOptions, SrsName};
 use xeibe_schema::rules::meta;
 use xeibe_schema::{
     DatasetObservation, ElementNode, InferenceOptions, LayerSchema, Merge, SampleOptions, ScanExtent,
@@ -254,25 +254,15 @@ fn has_crs(field: &Field) -> bool {
         .is_some_and(|typ| typ.metadata().crs().crs_value().is_some())
 }
 
-/// The geometry field with the CRS of `srs`: PROJJSON for an EPSG code,
-/// else `authority:code`, else the srsName as written (as the rule engine
-/// writes it for inferred schemas).
+/// The geometry field with the CRS of `srs`: PROJJSON for an EPSG code or a
+/// compound of them, else `authority:code`, else the srsName as written (as
+/// the rule engine writes it for inferred schemas).
 fn with_crs(field: &Field, srs: &str) -> crate::Result<Field> {
     let crs = match SrsName::parse(srs).crs {
-        Some(crs) => {
-            let projjson = match &crs {
-                CrsRef::Code { authority, code } if authority == "EPSG" => code
-                    .parse::<u32>()
-                    .ok()
-                    .and_then(xeibe_crs::projjson)
-                    .and_then(|json| serde_json::from_str(json).ok()),
-                _ => None,
-            };
-            match projjson {
-                Some(value) => Crs::from_projjson(value),
-                None => Crs::from_authority_code(crs.authority_code()),
-            }
-        }
+        Some(crs) => match crs.projjson() {
+            Some(value) => Crs::from_projjson(value),
+            None => Crs::from_authority_code(crs.authority_code()),
+        },
         None => Crs::from_unknown_crs_type(srs.to_string()),
     };
     let typ = geoarrow_type(field)?.with_metadata(Arc::new(Metadata::new(crs, None)));

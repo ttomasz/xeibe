@@ -359,8 +359,9 @@ mode, so neither needs a selector.
 | OGC HTTP URI | `http://www.opengis.net/def/crs/EPSG/0/2180` | 09-048r7, 11-135r2 | authority order |
 | HTTP URI, KVP form | `http://www.opengis.net/def/crs?authority=EPSG&version=0&code=4326` | 11-135r2 | authority order (P2) |
 | CRS84 / CRS83 / CRS27 | `urn:ogc:def:crs:OGC:1.3:CRS84`, `http://www.opengis.net/def/crs/OGC/1.3/CRS84` | 07-092r3 Table | lon/lat (x/y) in every mode except `YX` |
-| Compound URN | `urn:ogc:def:crs,crs:EPSG::4269,crs:EPSG::5713` | 07-092r3 §7.5 | horizontal part's order, plus height (P2) |
-| Compound URI | `http://www.opengis.net/def/crs-compound?1=…&2=…` | 11-135r2 | as compound URN (P2) |
+| Compound URN | `urn:ogc:def:crs,crs:EPSG::4269,crs:EPSG::5713` | 07-092r3 §7.5 | horizontal part's order; the height stays third |
+| Compound URI | `http://www.opengis.net/def/crs-compound?1=…&2=…` | 11-135r2 | as compound URN |
+| PROJ compound | `EPSG:25832+7837`, `EPSG:25832+EPSG:7837` | PROJ/GDAL; what `crs_override` users write, and the `authority_code` fallback | short form (x/y) |
 | AdV (German surveying) URN | `urn:adv:crs:ETRS89_UTM32` (→ EPSG:25832), `urn:adv:crs:ETRS89_UTM32*DE_DHHN2016_NH` (compound, `*` joins horizontal and vertical) | ALKIS/NAS, XPlanung (250 docs in corpus) | via a built-in AdV → EPSG mapping; authority order (all AdV UTM CRSs are easting-first) |
 | Bare EPSG code | `25833` | seen in corpus | treated as short form |
 | Other authority prefixes | `osgb:BNG` (→ EPSG:27700), `AUT-GK31-5` | seen in corpus | small alias table; otherwise unknown |
@@ -530,6 +531,13 @@ with `{ "crs": "EPSG:2180", "crs_type": "authority_code" }` only as GeoArrow's
 fallback when no PROJJSON is available.
 
 - CRS84 and similar are `OGC:CRS84`.
+- A compound CRS (horizontal + vertical, any of the compound srsName forms) gets
+  a PROJJSON `CompoundCRS` built from its parts' PROJJSON, as PROJ builds
+  `EPSG:25832+7837`: named `"A + B"`, components without `$schema`, and no `id`,
+  even when EPSG registers the same pair under a code of its own (EPSG:5555 is
+  `25832+5783`). The Parquet `GEOMETRY` type gets the PROJ spelling,
+  `EPSG:25832+7837`. If a part has no PROJJSON, the whole CRS falls back to
+  `authority_code` in that spelling.
 - The CRS comes from the data, not the schema: the srsName of the first geometry
   in the column (inherited as described above), seen before the first batch.
 - `crs_override` replaces the detected CRS.
@@ -589,8 +597,9 @@ fallback when no PROJJSON is available.
    EPSG at all (`404000`) still falls back to `authority_code`, and GeoParquet
    gets an explicit `null` plus an `UnknownCrs` report entry.
 
-5. **Compound CRSs** (`CrsRef::Compound`, P2): PROJJSON has `CompoundCRS`, but
-   `authority_code` can't express one. Depends on 4.
+5. ~~**Compound CRSs**~~ **Resolved.** PROJJSON `CompoundCRS` built from the
+   parts' PROJJSON (see [CRS metadata](#crs-metadata)); `authority_code` uses
+   PROJ's `EPSG:25832+7837`, which the srsName parser also reads.
 6. **`crs_type`**: always write it (`projjson` / `authority_code`), or omit it as
    GeoArrow advises when validity can't be guaranteed (e.g. an alias-table guess)?
 

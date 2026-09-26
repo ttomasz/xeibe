@@ -96,6 +96,43 @@ impl CrsRef {
             code => code,
         }
     }
+
+    /// PROJJSON from the built-in EPSG tables, or `None` when a part isn't
+    /// in them (another authority, or a code EPSG doesn't define).
+    ///
+    /// A compound CRS is a `CompoundCRS` built from its parts, the way PROJ
+    /// builds `EPSG:25832+7837`: named `"A + B"`, and without an `id`, even
+    /// when EPSG registers the same pair under a code of its own.
+    pub fn projjson(&self) -> Option<serde_json::Value> {
+        match self {
+            CrsRef::Code { authority, code } if authority.eq_ignore_ascii_case("EPSG") => {
+                serde_json::from_str(xeibe_crs::projjson(code.parse().ok()?)?).ok()
+            }
+            CrsRef::Code { .. } => None,
+            CrsRef::Compound(parts) if parts.len() < 2 => parts.first()?.projjson(),
+            CrsRef::Compound(parts) => {
+                let mut schema = serde_json::Value::Null;
+                let mut components = Vec::new();
+                for part in parts {
+                    let mut json = part.projjson()?;
+                    let object = json.as_object_mut()?;
+                    schema = object.remove("$schema").unwrap_or(schema);
+                    // The components of a compound CRS are single CRSs.
+                    match object.remove("components") {
+                        Some(serde_json::Value::Array(nested)) => components.extend(nested),
+                        _ => components.push(json),
+                    }
+                }
+                let names = components.iter().map(|c| c["name"].as_str()).collect::<Option<Vec<_>>>()?;
+                Some(serde_json::json!({
+                    "$schema": schema,
+                    "type": "CompoundCRS",
+                    "name": names.join(" + "),
+                    "components": components,
+                }))
+            }
+        }
+    }
 }
 
 /// A parsed srsName, keeping the original string.
@@ -158,9 +195,29 @@ fn parse_form(s: &str) -> Option<(SrsNameForm, Option<CrsRef>)> {
     // `EPSG:2180`; `EPSG::2180` is tolerated.
     let code = code.trim_start_matches(':');
     if authority.eq_ignore_ascii_case("EPSG") {
-        return Some((SrsNameForm::Short, Some(CrsRef::epsg(epsg_code(code)?))));
+        return Some((SrsNameForm::Short, Some(epsg_codes(code)?)));
     }
     None
+}
+
+/// `2180`, or PROJ's compound spelling `25832+7837` (also `25832+EPSG:7837`),
+/// which [`CrsRef::authority_code`] writes.
+fn epsg_codes(codes: &str) -> Option<CrsRef> {
+    let parts = codes
+        .split('+')
+        .map(|code| {
+            let code = code.trim();
+            epsg_code(strip_prefix_ci(code, "EPSG:").unwrap_or(code)).map(CrsRef::epsg)
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(one_or_compound(parts))
+}
+
+fn one_or_compound(parts: Vec<CrsRef>) -> CrsRef {
+    match <[CrsRef; 1]>::try_from(parts) {
+        Ok([single]) => single,
+        Err(parts) => CrsRef::Compound(parts),
+    }
 }
 
 /// `www.opengis.net/…` after `http://` or `https://`.
@@ -243,10 +300,7 @@ fn adv_crs(name: &str) -> Option<CrsRef> {
         .map(|part| ADV_CRS.iter().find(|(adv, _)| adv.eq_ignore_ascii_case(part.trim())))
         .map(|entry| entry.map(|(_, code)| CrsRef::epsg(*code)))
         .collect::<Option<Vec<_>>>()?;
-    match <[CrsRef; 1]>::try_from(parts) {
-        Ok([single]) => Some(single),
-        Err(parts) => Some(CrsRef::Compound(parts)),
-    }
+    Some(one_or_compound(parts))
 }
 
 /// The AdV CRS register entries seen in real data, and their EPSG codes.

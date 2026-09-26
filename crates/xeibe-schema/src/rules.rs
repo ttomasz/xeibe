@@ -19,7 +19,7 @@ use geoarrow_schema::{
 use indexmap::IndexMap;
 use xeibe_core::{QName, SourceId, ns};
 use xeibe_geom::options::{CurveMode, GeomEncoding};
-use xeibe_geom::{AxisKey, CrsRef, GeomKind, SrsName};
+use xeibe_geom::{AxisKey, GeomKind, SrsName};
 
 use crate::geometry_stats::GeometryStats;
 use crate::node::{Shape, is_gml_id};
@@ -872,28 +872,18 @@ impl Engine<'_> {
 
     // ---- geometry -----------------------------------------------------------
 
-    /// GeoArrow CRS metadata: PROJJSON for EPSG codes, else `authority:code`,
-    /// else the srsName as an opaque string.
+    /// GeoArrow CRS metadata: PROJJSON for EPSG codes and compounds of them,
+    /// else `authority:code`, else the srsName as an opaque string.
     fn crs_metadata(&self, stats: &GeometryStats) -> Metadata {
         let srs = self.options.geometry.crs_override.as_deref().or_else(|| stats.main_srs());
         let Some(srs) = srs else {
             return Metadata::default();
         };
         let crs = match SrsName::parse(srs).crs {
-            Some(crs) => {
-                let projjson = match &crs {
-                    CrsRef::Code { authority, code } if authority == "EPSG" => code
-                        .parse::<u32>()
-                        .ok()
-                        .and_then(xeibe_crs::projjson)
-                        .and_then(|json| serde_json::from_str(json).ok()),
-                    _ => None,
-                };
-                match projjson {
-                    Some(value) => Crs::from_projjson(value),
-                    None => Crs::from_authority_code(crs.authority_code()),
-                }
-            }
+            Some(crs) => match crs.projjson() {
+                Some(value) => Crs::from_projjson(value),
+                None => Crs::from_authority_code(crs.authority_code()),
+            },
             None => Crs::from_unknown_crs_type(srs.to_string()),
         };
         Metadata::new(crs, None)

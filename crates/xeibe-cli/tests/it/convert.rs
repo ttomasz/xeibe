@@ -475,3 +475,31 @@ fn a_bbox_column_name_that_is_taken_gets_a_suffix() {
     assert_eq!(names, ["@id", "geometria", "geometria_bbox_2", "geometria_bbox"]);
     assert_eq!(geo_metadata(&out)["columns"]["geometria"]["covering"]["bbox"]["xmin"], serde_json::json!(["geometria_bbox_2", "xmin"]));
 }
+
+#[test]
+fn a_compound_crs_is_written_as_compound_projjson() {
+    // `docs/geometry.md`, "CRS metadata": PROJJSON built from the parts, and
+    // the PROJ spelling for the Parquet GEOMETRY type. The CRS is 3D, so the
+    // position has a height without `srsDimension`.
+    let document = places(&[concat!(
+        "<app:pozycja><gml:Point srsName=\"urn:adv:crs:ETRS89_UTM32*DE_DHHN2016_NH\">",
+        "<gml:pos>566000 5934000 12.5</gml:pos></gml:Point></app:pozycja>"
+    )]);
+    let (out, _) = convert_places("compound_crs", &document, &[]);
+
+    let column = &geo_metadata(&out)["columns"]["pozycja"];
+    assert_eq!(column["geometry_types"], serde_json::json!(["Point Z"]));
+    let crs = &column["crs"];
+    assert_eq!(crs["type"], "CompoundCRS", "{crs}");
+    assert_eq!(crs["name"], "ETRS89 / UTM zone 32N + DHHN2016 height");
+    assert_eq!(crs["components"][0]["id"]["code"], 25832);
+    assert_eq!(crs["components"][1]["id"]["code"], 7837);
+
+    let reader = parquet_reader(&out);
+    let schema = reader.metadata().file_metadata().schema_descr();
+    let index = (0..schema.num_columns()).find(|&i| schema.column(i).name() == "pozycja").expect("a pozycja column");
+    match schema.column(index).logical_type_ref() {
+        Some(LogicalType::Geometry(geometry)) => assert_eq!(geometry.crs.as_deref(), Some("EPSG:25832+7837")),
+        other => panic!("expected the GEOMETRY logical type, got {other:?}"),
+    }
+}

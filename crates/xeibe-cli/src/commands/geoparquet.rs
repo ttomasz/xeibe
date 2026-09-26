@@ -300,39 +300,40 @@ fn crs_forms(crs_type: Option<CrsType>, value: Option<&Value>) -> (Value, Option
         return (Value::Null, None);
     };
     if crs_type == Some(CrsType::Projjson) || value.is_object() {
-        let id = &value["id"];
-        let code = match &id["code"] {
-            Value::String(code) => Some(code.clone()),
-            Value::Number(code) => Some(code.to_string()),
-            _ => None,
-        };
-        let parquet = match (id["authority"].as_str(), code) {
-            (Some(authority), Some(code)) => Some(format!("{authority}:{code}")),
-            _ => None,
-        };
+        let parquet = projjson_ref(value).map(|crs| crs.authority_code());
         return (value.clone(), parquet);
     }
     // `authority:code` or an srsName as written: PROJJSON from the EPSG tables.
     let Some(text) = value.as_str() else {
         return (Value::Null, None);
     };
-    let crs = if crs_type == Some(CrsType::AuthorityCode) {
-        text.split_once(':').map(|(authority, code)| CrsRef::Code { authority: authority.to_string(), code: code.to_string() })
-    } else {
-        SrsName::parse(text).crs
-    };
+    // `SrsName::parse` also reads the compound `EPSG:25832+7837`.
+    let mut crs = SrsName::parse(text).crs;
+    if crs.is_none() && crs_type == Some(CrsType::AuthorityCode) {
+        crs = text.split_once(':').map(|(authority, code)| CrsRef::Code { authority: authority.to_string(), code: code.to_string() });
+    }
     let Some(crs) = crs else {
         return (Value::Null, None);
     };
-    let projjson = match &crs {
-        CrsRef::Code { authority, code } if authority.eq_ignore_ascii_case("EPSG") => code
-            .parse::<u32>()
-            .ok()
-            .and_then(xeibe_crs::projjson)
-            .and_then(|json| serde_json::from_str(json).ok()),
+    (crs.projjson().unwrap_or(Value::Null), Some(crs.authority_code()))
+}
+
+/// The CRS a PROJJSON document identifies: its `id`, or for a compound CRS
+/// without one (as [`CrsRef::projjson`] builds them), its components' ids.
+fn projjson_ref(value: &Value) -> Option<CrsRef> {
+    let id = &value["id"];
+    let code = match &id["code"] {
+        Value::String(code) => Some(code.clone()),
+        Value::Number(code) => Some(code.to_string()),
         _ => None,
     };
-    (projjson.unwrap_or(Value::Null), Some(crs.authority_code()))
+    match (id["authority"].as_str(), code) {
+        (Some(authority), Some(code)) => Some(CrsRef::Code { authority: authority.to_string(), code }),
+        _ if value["type"] == "CompoundCRS" => {
+            value["components"].as_array()?.iter().map(projjson_ref).collect::<Option<_>>().map(CrsRef::Compound)
+        }
+        _ => None,
+    }
 }
 
 enum WkbIssue {

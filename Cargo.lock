@@ -4265,7 +4265,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "xeibe-core",
- "xeibe-crs",
  "xeibe-geom",
  "xeibe-schema",
  "xeibe-testkit",
@@ -4287,7 +4286,6 @@ dependencies = [
  "serde_json",
  "xeibe-arrow",
  "xeibe-core",
- "xeibe-crs",
  "xeibe-geom",
  "xeibe-io",
  "xeibe-schema",
@@ -4393,7 +4391,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "xeibe-core",
- "xeibe-crs",
  "xeibe-geom",
  "xeibe-testkit",
 ]

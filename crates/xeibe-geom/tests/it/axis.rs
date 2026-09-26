@@ -65,6 +65,23 @@ fn crs_mode_follows_the_authority_order_for_every_form() {
 }
 
 #[test]
+fn a_compound_crs_takes_the_axis_order_of_its_horizontal_part() {
+    // NAD83 is latitude-first; the height doesn't matter.
+    let nad83 = "urn:ogc:def:crs,crs:EPSG::4269,crs:EPSG::5713";
+    assert!(swaps(AxisOrderMode::Crs, nad83));
+    assert!(swaps(AxisOrderMode::CrsHeuristic, nad83));
+    assert!(swaps(
+        AxisOrderMode::CrsHeuristic,
+        "http://www.opengis.net/def/crs-compound?1=http://www.opengis.net/def/crs/EPSG/0/4269\
+         &2=http://www.opengis.net/def/crs/EPSG/0/5713"
+    ));
+    // The PROJ spelling is a short form: as written under `CrsHeuristic`.
+    assert!(!swaps(AxisOrderMode::CrsHeuristic, "EPSG:4269+5713"));
+    assert!(swaps(AxisOrderMode::Crs, "EPSG:4269+5713"));
+    assert!(!swaps(AxisOrderMode::Crs, "urn:adv:crs:ETRS89_UTM32*DE_DHHN2016_NH"));
+}
+
+#[test]
 fn an_unknown_crs_is_read_as_written_and_reported() {
     let decision = decide(
         &key("EPSG:98765", Dialect::Gml3),

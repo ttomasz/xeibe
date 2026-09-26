@@ -119,6 +119,58 @@ fn compound_urns_keep_their_components_in_order() {
 }
 
 #[test]
+fn compound_uris_keep_their_components_in_key_order() {
+    let parsed = SrsName::parse(
+        "http://www.opengis.net/def/crs-compound?2=http://www.opengis.net/def/crs/EPSG/0/7837\
+         &1=http://www.opengis.net/def/crs/EPSG/0/25832",
+    );
+    assert_eq!(parsed.form, SrsNameForm::CompoundUri);
+    assert_eq!(parsed.crs, Some(CrsRef::Compound(vec![epsg("25832"), epsg("7837")])));
+}
+
+#[test]
+fn the_proj_compound_spelling_is_a_short_form() {
+    // What `--crs` users write, and what `authority_code` writes back.
+    let compound = CrsRef::Compound(vec![epsg("25832"), epsg("7837")]);
+    for raw in ["EPSG:25832+7837", "EPSG:25832+EPSG:7837", "epsg:25832 + 7837"] {
+        let parsed = SrsName::parse(raw);
+        assert_eq!(parsed.form, SrsNameForm::Short, "{raw}");
+        assert_eq!(parsed.crs.as_ref(), Some(&compound), "{raw}");
+    }
+    let written = compound.authority_code();
+    assert_eq!(written, "EPSG:25832+7837");
+    assert_eq!(SrsName::parse(&written).crs.map(|crs| crs.authority_code()), Some(written));
+    assert_eq!(SrsName::parse("EPSG:25832+").crs, None);
+}
+
+#[test]
+fn a_compound_crs_gets_projjson_built_from_its_components() {
+    // As PROJ builds `EPSG:25832+7837`: "A + B", components without
+    // `$schema`, and no `id`, since the pair has no code of its own.
+    let srs = SrsName::parse("urn:adv:crs:ETRS89_UTM32*DE_DHHN2016_NH");
+    let json = srs.crs.unwrap().projjson().expect("PROJJSON");
+    assert_eq!(json["type"], "CompoundCRS");
+    assert_eq!(json["name"], "ETRS89 / UTM zone 32N + DHHN2016 height");
+    assert!(json["$schema"].as_str().is_some_and(|s| s.contains("projjson.schema.json")));
+    assert!(json.get("id").is_none());
+    let components = json["components"].as_array().unwrap();
+    assert_eq!(components.len(), 2);
+    assert_eq!(components[0]["type"], "ProjectedCRS");
+    assert_eq!(components[0]["id"]["code"], 25832);
+    assert_eq!(components[1]["type"], "VerticalCRS");
+    assert_eq!(components[1]["id"]["code"], 7837);
+    assert!(components.iter().all(|c| c.get("$schema").is_none()));
+}
+
+#[test]
+fn a_compound_crs_has_no_projjson_when_a_component_has_none() {
+    // Falls back to `authority_code`, like a single unknown code.
+    assert!(CrsRef::Compound(vec![epsg("25832"), epsg("98765")]).projjson().is_none());
+    assert!(epsg("98765").projjson().is_none());
+    assert_eq!(epsg("2180").projjson().unwrap()["id"]["code"], 2180);
+}
+
+#[test]
 fn unrecognised_srs_names_keep_the_raw_string() {
     // "Unknown srsName": read as written, with a warning in the read report.
     let parsed = SrsName::parse("AUT-GK31-5");

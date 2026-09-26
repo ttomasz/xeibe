@@ -17,7 +17,6 @@ path = "src/main.rs"
 
 [dependencies]
 xeibe-core.workspace = true
-xeibe-crs.workspace = true
 xeibe-geom.workspace = true
 xeibe-schema.workspace = true
 xeibe-arrow.workspace = true

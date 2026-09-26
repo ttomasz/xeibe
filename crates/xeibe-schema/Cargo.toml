@@ -10,7 +10,6 @@ publish.workspace = true
 [dependencies]
 xeibe-core.workspace = true
 xeibe-geom.workspace = true
-xeibe-crs.workspace = true
 arrow-schema.workspace = true
 geoarrow-schema.workspace = true
 indexmap.workspace = true
