@@ -244,6 +244,7 @@ pub(crate) fn geom_kind(name: &QName) -> GeomKind {
         "Surface" => GeomKind::Surface,
         "OrientableSurface" => GeomKind::OrientableSurface,
         "CompositeSurface" => GeomKind::CompositeSurface,
+        "PolygonPatch" | "Triangle" | "Rectangle" => GeomKind::Patch,
         "MultiPoint" => GeomKind::MultiPoint,
         "MultiLineString" => GeomKind::MultiLineString,
         "MultiCurve" => GeomKind::MultiCurve,
@@ -421,6 +422,12 @@ impl CrsDimensions {
     }
 }
 
+/// Bound on the elements open inside one geometry, root included. The parser
+/// recurses into members, so without it a deeply nested document (GML allows
+/// composites of composites without end) overflows the stack and aborts the
+/// process. Real geometry nests about a dozen elements deep.
+pub const MAX_DEPTH: usize = 128;
+
 /// State of one geometry parse.
 pub(crate) struct Parser<'p> {
     pub table: Cow<'p, CrsTable>,
@@ -538,8 +545,11 @@ impl<'p> Parser<'p> {
         loop {
             match reader.next_event()? {
                 XmlEvent::Start { name, attrs } => {
-                    let attrs = Attrs::read(&attrs);
                     self.depth += 1;
+                    if self.depth > MAX_DEPTH {
+                        return Err(self.invalid(reader, format!("nested more than {MAX_DEPTH} elements deep")));
+                    }
+                    let attrs = Attrs::read(&attrs);
                     self.dialect.observe(&name);
                     return Ok(Some(Elem { name, attrs }));
                 }
@@ -681,6 +691,10 @@ impl<'p> Parser<'p> {
             }
             "Polygon" | "Surface" | "OrientableSurface" => {
                 assemble::surfaces_to_geometry(self.surfaces(reader, elem, scope)?)
+            }
+            // A patch outside a `Surface` isn't schema-valid; GDAL reads it.
+            "PolygonPatch" | "Triangle" | "Rectangle" => {
+                assemble::surfaces_to_geometry(vec![self.polygon(reader, &elem, scope)?])
             }
             "CompositeSurface" => {
                 let surfaces = self.surfaces(reader, elem, scope)?;

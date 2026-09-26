@@ -1124,7 +1124,7 @@ fn native_kind(kinds: &BTreeSet<GeomKind>) -> Option<NativeKind> {
             | GeomKind::CompositeCurve
             | GeomKind::Ring => (Family::Line, false),
             GeomKind::MultiLineString | GeomKind::MultiCurve => (Family::Line, true),
-            GeomKind::Polygon | GeomKind::Envelope | GeomKind::Box => (Family::Area, false),
+            GeomKind::Polygon | GeomKind::Patch | GeomKind::Envelope | GeomKind::Box => (Family::Area, false),
             GeomKind::Surface
             | GeomKind::OrientableSurface
             | GeomKind::CompositeSurface

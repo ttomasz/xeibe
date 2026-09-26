@@ -74,6 +74,13 @@ that file with their reason, for example:
 
 Anything else that differs from GDAL fails the test, listing every case.
 
+`crates/xeibe-geom/tests/it/gml_madness.rs` covers the 25 ways of writing one
+square listed in Even Rouault's
+["GML madness"](https://erouault.blogspot.com/2014/04/gml-madness.html). The
+snippets are our own encodings of each structure, with one test per variant,
+numbered as in the post. `v24` (a GML 3.3 `SimpleRectangle`) fails until the
+compact encodings are implemented.
+
 ## Conventions
 
 - Test names are sentences: `an_unclosed_ring_is_a_warning_and_is_kept_as_written`.

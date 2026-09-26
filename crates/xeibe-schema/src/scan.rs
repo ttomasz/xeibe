@@ -435,6 +435,10 @@ const GEOMETRY_ELEMENTS: &[&str] = &[
     "Surface",
     "OrientableSurface",
     "CompositeSurface",
+    // Patches aren't geometries, but GDAL reads one outside a `Surface`.
+    "PolygonPatch",
+    "Triangle",
+    "Rectangle",
     "PolyhedralSurface",
     "TriangulatedSurface",
     "Tin",

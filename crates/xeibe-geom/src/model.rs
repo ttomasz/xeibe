@@ -758,6 +758,9 @@ pub enum GeomKind {
     Surface,
     OrientableSurface,
     CompositeSurface,
+    /// A surface patch (`PolygonPatch`, `Triangle`, `Rectangle`) outside a
+    /// `Surface`. Not valid as a property value, read as a polygon as GDAL does.
+    Patch,
     MultiPoint,
     MultiLineString,
     MultiCurve,
@@ -779,8 +782,8 @@ impl GeomKind {
             Point | MultiPoint => MultiPoint,
             LineString | LinearRing | Curve | OrientableCurve | CompositeCurve | Ring | MultiLineString
             | MultiCurve => MultiCurve,
-            Polygon | Surface | OrientableSurface | CompositeSurface | MultiPolygon | MultiSurface | Envelope
-            | Box => MultiSurface,
+            Polygon | Surface | OrientableSurface | CompositeSurface | Patch | MultiPolygon | MultiSurface
+            | Envelope | Box => MultiSurface,
             MultiGeometry => MultiGeometry,
             Unsupported => Unsupported,
         }

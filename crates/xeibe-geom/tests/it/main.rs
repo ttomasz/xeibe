@@ -12,6 +12,7 @@ mod dialect;
 mod envelope;
 mod epsg;
 mod gdal_cases;
+mod gml_madness;
 mod linearize;
 mod model;
 mod options;

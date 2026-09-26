@@ -97,6 +97,7 @@ Measures (`m`) are not part of GML simple geometry.
 | `Surface` with one `PolygonPatch` | Polygon / CurvePolygon | |
 | `Surface` with several patches | MultiPolygon / MultiSurface | The patches of one surface are "connected" (§10.5.10). They are kept as separate parts, not dissolved |
 | `Triangle`, `Rectangle` patches | Polygon | Ring of 4 and 5 positions respectively (§10.5.12.5–6) |
+| A patch (`PolygonPatch`, `Triangle`, `Rectangle`) outside a `Surface` | Polygon | Not schema-valid: a patch is not a geometry. **[GDAL]** Read as a polygon (GDAL makes a `Triangle` a `TRIANGLE`, which we don't have) |
 | `OrientableCurve` (`baseCurve`, `orientation`) | curve, reversed if `orientation="-"` | May nest (§10.4.6). A `baseCurve` given by `xlink:href` is unsupported (no resolution) |
 | `OrientableSurface` (`baseSurface`, `orientation`) | surface with reversed rings if `"-"` | May nest (§10.5.11) |
 | `CompositeCurve` | LineString (if linear) / CompoundCurve | Members form a sequence, each ending where the next begins (§11.2.2.2) |
@@ -673,6 +674,10 @@ fallback when no PROJJSON is available.
   the closing position loses nothing.
 - A LineString with fewer than 2 positions, or a LinearRing with fewer than 4, is a
   feature error.
+- A geometry nested more than 128 elements deep (`xeibe_geom::parse::MAX_DEPTH`)
+  is invalid. GML allows composites of composites without end, and the parser
+  recurses into members, so without a bound a small document could overflow the
+  stack and abort the process. Real geometry nests about a dozen elements deep.
 
 ### Unsupported geometry
 

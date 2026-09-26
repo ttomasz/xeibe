@@ -123,6 +123,21 @@ fn an_empty_geometry_element_is_an_empty_geometry_not_null() {
 }
 
 #[test]
+fn a_bare_surface_patch_is_a_polygon_column() {
+    // Not valid GML (a patch is not a geometry), but GDAL reads it, so the scan
+    // finds the column and the read gives polygons.
+    let document = gml::gml32_collection(&[
+        &parcel("p1", &format!("<app:shape><gml:Rectangle srsName=\"EPSG:2180\">{RING}</gml:Rectangle></app:shape>")),
+        &parcel("p2", &format!("<app:shape><gml:PolygonPatch srsName=\"EPSG:2180\">{RING}</gml:PolygonPatch></app:shape>")),
+    ]);
+    let (read, settings) = read_scanned(&document, "Parcel");
+    assert_eq!(scanned_type(&settings, "shape"), "geometry(Polygon)");
+    for shape in read.native_geometries("shape") {
+        assert_wkt(shape.as_ref().expect("a polygon"), "POLYGON ((0 0,1 0,1 1,0 0))");
+    }
+}
+
+#[test]
 fn mixed_2d_and_3d_in_one_column_is_xyz_with_a_nan_z() {
     let document = gml::gml32_collection(&[
         &parcel("p1", &format!("<app:geom>{}</app:geom>", point(1.0, 2.0))),
