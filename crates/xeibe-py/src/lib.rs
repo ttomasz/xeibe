@@ -153,6 +153,13 @@ impl Scan {
         self.inner.is_complete()
     }
 
+    /// Names of the sources skipped because they hold no feature collection
+    /// or feature member (ISO metadata next to the GML in a zip, say).
+    #[getter]
+    fn skipped_sources(&self) -> Vec<String> {
+        self.inner.skipped_sources().to_vec()
+    }
+
     /// `(xmin, ymin, xmax, ymax)` the collections declare in their
     /// `boundedBy`, as written, for all layers; `None` if none does.
     #[getter]

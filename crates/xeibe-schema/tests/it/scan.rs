@@ -146,6 +146,46 @@ fn several_sources_are_merged_into_one_observation() {
     assert_eq!(parcel_layer.root.children.len(), 2, "area and extra");
 }
 
+/// A source over a document held in memory.
+fn reader(name: &str, document: &str) -> Source {
+    Source::reader(name, Box::new(std::io::Cursor::new(document.as_bytes().to_vec())))
+}
+
+/// ISO metadata, as zips ship it next to the GML: a root, but no features.
+const ISO_METADATA: &str = r#"<gmd:MD_Metadata xmlns:gmd="http://www.isotc211.org/2005/gmd"><gmd:fileIdentifier/></gmd:MD_Metadata>"#;
+
+#[test]
+fn sources_without_features_are_skipped_and_listed() {
+    // The splitter finds out at the end of the input (metadata) or before
+    // the root (an empty file); both are skipped, full scan or sampled.
+    let document = gml::gml32_collection(&[&parcel("p1", "<app:area>1</app:area>")]);
+    for extent in [ScanExtent::Full, ScanExtent::Sample { max_features: 10 }] {
+        let sources = Sources::from(vec![
+            reader("metadata.xml", ISO_METADATA),
+            reader("parcels.gml", &document),
+            reader("empty.xml", ""),
+        ]);
+        let observation = Scanner::new(ScanOptions { extent, ..ScanOptions::default() })
+            .run(sources)
+            .unwrap_or_else(|e| panic!("{extent:?}: {e}"));
+        assert_eq!(observation.layers[&layer("Parcel")].feature_count, 1, "{extent:?}");
+        assert_eq!(observation.skipped_sources, ["metadata.xml", "empty.xml"], "{extent:?}");
+        assert_eq!(observation.source_context.len(), 3, "one context per source id");
+    }
+}
+
+#[test]
+fn a_scan_in_which_every_source_is_skipped_fails() {
+    let error = Scanner::new(ScanOptions::default())
+        .run(Sources::from(reader("metadata.xml", ISO_METADATA)))
+        .expect_err("nothing to scan");
+    assert_eq!(error.to_string(), "no feature collection or feature member found in metadata.xml");
+
+    let sources = Sources::from(vec![reader("a.xml", ISO_METADATA), reader("b.xml", "")]);
+    let error = Scanner::new(ScanOptions::default()).run(sources).expect_err("nothing to scan");
+    assert!(error.to_string().ends_with("found in any of the 2 sources"), "{error}");
+}
+
 #[test]
 fn observations_merge_the_same_way_whatever_the_order() {
     // This is what makes parallel scans and multi-page WFS reads possible.

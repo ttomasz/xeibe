@@ -7,7 +7,7 @@ use xeibe_core::reader::{Attributes, GmlReader, XmlEvent};
 use xeibe_core::splitter::DocumentHeader;
 use xeibe_core::version::VersionHints;
 use xeibe_core::{
-    FeatureChunk, FeatureSplitter, Location, NamespaceContext, QName, SourceId, Sources, ns,
+    FeatureChunk, FeatureSplitter, Location, NamespaceContext, QName, Source, SourceId, Sources, ns,
 };
 use xeibe_geom::ParseContext;
 use xeibe_geom::sniff::sniff_geometry_in;
@@ -68,49 +68,77 @@ impl Scanner {
     /// [`SourceContext`] at the same index. A full scan splits on the calling
     /// thread and scans chunks on `threads` workers; a sampled scan runs on
     /// the calling thread, because "the first N features" needs order.
+    ///
+    /// A source without a feature collection or feature member is skipped
+    /// and listed in [`DatasetObservation::skipped_sources`]; if every
+    /// source is, the scan fails with [`xeibe_core::Error::NoFeatures`].
     pub fn run(&self, sources: Sources) -> crate::Result<DatasetObservation> {
         let mut total = DatasetObservation::default();
         let mut budget = match self.options.extent {
             ScanExtent::Full => None,
             ScanExtent::Sample { max_features } => Some(max_features),
         };
+        let mut scanned = 0usize;
         for (index, source) in sources.enumerate() {
             let source = source?;
             let id = SourceId(u32::try_from(index).unwrap_or(u32::MAX));
-            let mut splitter_options = self.options.splitter.clone();
-            if self.options.layers.is_some() {
-                splitter_options.layers = self.options.layers.clone();
-            }
-            let mut splitter = FeatureSplitter::new(source.open()?, id, splitter_options);
-            let header = splitter.header()?.clone();
-
-            let mut observation = DatasetObservation::default();
-            note_prefixes(&mut observation, &header.namespaces);
-            let context = source_context(&header);
-            let mut hints = VersionHints {
-                gml_namespace: namespace_hint(&header.namespaces),
-                schema_location: header.schema_location.clone(),
-                wfs_version: context.wfs_version.clone(),
-                ..VersionHints::default()
-            };
-            observation.source_context.push(context);
-
-            let (element_hints, stopped) = if budget.is_some() || self.options.threads <= 1 {
-                self.scan_sequential(&mut splitter, &mut observation, &mut budget)?
-            } else {
-                (self.scan_parallel(splitter, &mut observation)?, false)
-            };
-            element_hints.apply_to(&mut hints);
-            if let Some(version) = hints.detect() {
-                observation.gml_versions.insert(version);
-            }
-            total.merge(observation);
-            if stopped {
-                total.sampled = true;
-                break;
+            match self.scan_source(&source, id, &mut budget) {
+                Ok((observation, stopped)) => {
+                    scanned += 1;
+                    total.merge(observation);
+                    if stopped {
+                        total.sampled = true;
+                        break;
+                    }
+                }
+                Err(crate::Error::Core(xeibe_core::Error::NoFeatures(_))) => {
+                    total.source_context.push(SourceContext::default());
+                    total.skipped_sources.push(source.name());
+                }
+                Err(error) => return Err(error),
             }
         }
+        if scanned == 0 && !total.skipped_sources.is_empty() {
+            return Err(xeibe_core::Error::no_features_in(&total.skipped_sources).into());
+        }
         Ok(total)
+    }
+
+    /// One source's observation, and whether a sampled scan stopped in it.
+    fn scan_source(
+        &self,
+        source: &Source,
+        id: SourceId,
+        budget: &mut Option<u64>,
+    ) -> crate::Result<(DatasetObservation, bool)> {
+        let mut splitter_options = self.options.splitter.clone();
+        if self.options.layers.is_some() {
+            splitter_options.layers = self.options.layers.clone();
+        }
+        let mut splitter = FeatureSplitter::new(source.open()?, id, splitter_options);
+        let header = splitter.header()?.clone();
+
+        let mut observation = DatasetObservation::default();
+        note_prefixes(&mut observation, &header.namespaces);
+        let context = source_context(&header);
+        let mut hints = VersionHints {
+            gml_namespace: namespace_hint(&header.namespaces),
+            schema_location: header.schema_location.clone(),
+            wfs_version: context.wfs_version.clone(),
+            ..VersionHints::default()
+        };
+        observation.source_context.push(context);
+
+        let (element_hints, stopped) = if budget.is_some() || self.options.threads <= 1 {
+            self.scan_sequential(&mut splitter, &mut observation, budget)?
+        } else {
+            (self.scan_parallel(splitter, &mut observation)?, false)
+        };
+        element_hints.apply_to(&mut hints);
+        if let Some(version) = hints.detect() {
+            observation.gml_versions.insert(version);
+        }
+        Ok((observation, stopped))
     }
 
     /// Scan one chunk into a partial observation (called from worker threads, and

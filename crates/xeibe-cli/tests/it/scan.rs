@@ -123,6 +123,33 @@ fn scan_reads_zip_members_selected_by_glob_or_path() {
 }
 
 #[test]
+fn zip_members_without_features_are_skipped() {
+    // As INSPIRE zips ship it: the GML plus its ISO metadata, which has a
+    // root but no features. Only a zip of nothing else is an error.
+    let dir = out_dir("scan_zip_metadata");
+    let metadata = br#"<gmd:MD_Metadata xmlns:gmd="http://www.isotc211.org/2005/gmd"/>"#.to_vec();
+    let archive = dir.join("with-metadata.zip");
+    let prg = std::fs::read(sample(PRG)).unwrap();
+    zip_bytes(&archive, &[("metadata.xml", metadata.clone()), ("prg.gml", prg)]);
+    let skipped = format!("warning: skipped {}!/metadata.xml: no feature collection or feature member", archive.display());
+
+    let scan = xeibe_ok(&["scan", path_str(&archive)]);
+    assert!(scan.stdout.contains("AD_PunktAdresowy"), "{}", scan.stdout);
+    assert!(scan.stderr.contains(&skipped), "{}", scan.stderr);
+
+    let out = dir.join("points.parquet");
+    let convert = xeibe_ok(&["convert", path_str(&archive), "--layer", "AD_PunktAdresowy", "-o", path_str(&out)]);
+    assert!(convert.stderr.contains("2 rows written"), "{}", convert.stderr);
+    assert!(convert.stderr.contains(&skipped), "{}", convert.stderr);
+
+    let only_metadata = dir.join("only-metadata.zip");
+    zip_bytes(&only_metadata, &[("metadata.xml", metadata)]);
+    let run = xeibe(&["scan", path_str(&only_metadata)]);
+    assert!(!run.success);
+    assert!(run.stderr.contains("no feature collection or feature member found in"), "{}", run.stderr);
+}
+
+#[test]
 fn scan_of_a_missing_file_fails() {
     let run = xeibe(&["scan", "does/not/exist.gml"]);
     assert!(!run.success);

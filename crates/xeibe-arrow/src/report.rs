@@ -33,6 +33,9 @@ pub enum WarningKind {
     UnclosedRing,
     NumArcMismatch,
     ReferencedMember,
+    /// A source without a feature collection or feature member (ISO metadata
+    /// next to the GML in a zip, say).
+    SkippedSource,
     Other,
 }
 

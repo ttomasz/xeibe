@@ -73,7 +73,7 @@ file. Not listed individually:
 | gzip input | ✅ Supported | P0 | Detected from magic bytes. `crates/xeibe-core/tests/it/decode.rs` |
 | zstd input | ✅ Supported | P1 | `crates/xeibe-core/tests/it/decode.rs` |
 | zip archives: stored/deflate/zip64 via the `zip` crate, one input per archive | ✅ Supported | P1 | Local files only. A remote zip is an error: download it first. `crates/xeibe-core/tests/it/archive.rs` |
-| Zip member selection by content (`.gml`/`.xml` candidates, non-feature XML skipped) | ✅ Supported | P1 | Most GML members in the corpus are named `.xml`. Candidates and `NoFeatures` are in `xeibe-core`; a read skips a member without features and lists it as a report warning. `crates/xeibe-arrow/tests/it/samples.rs` |
+| Zip member selection by content (`.gml`/`.xml` candidates, non-feature XML skipped) | ✅ Supported | P1 | Most GML members in the corpus are named `.xml`. Candidates and `NoFeatures` are in `xeibe-core`. A read or scan skips any source without a feature collection or feature member (a report warning, `ScanResult::skipped_sources`) and fails only if every source is skipped. `crates/xeibe-arrow/tests/it/api.rs`, `crates/xeibe-schema/tests/it/scan.rs`, `crates/xeibe-cli/tests/it/scan.rs` |
 | `archive.zip!/member` and `--member <glob>` | ✅ Supported | P1 | Both in `xeibe-core` (`archive.rs` tests); CLI: `crates/xeibe-cli/tests/it/scan.rs` |
 | Zips inside zips | ❌ Not planned | — | 29 in the corpus, none with GML |
 | Zip methods other than stored/deflate, encrypted zips | ❌ Not planned | — | Error naming the method |

@@ -27,6 +27,11 @@ pub struct DatasetObservation {
     /// extent the producer declares for the whole dataset, all layers.
     #[serde(default)]
     pub extent: Option<[f64; 4]>,
+    /// Sources in which the splitter found no feature collection or feature
+    /// member (ISO metadata next to the GML in a zip, say), by name. They
+    /// keep their index in `source_context`.
+    #[serde(default)]
+    pub skipped_sources: Vec<String>,
 }
 
 /// Bound on [`DatasetObservation::prefixes`].
@@ -120,6 +125,7 @@ impl Merge for DatasetObservation {
         self.sampled |= other.sampled;
         self.source_context.extend(other.source_context);
         self.extent = union_bbox(self.extent, other.extent);
+        self.skipped_sources.extend(other.skipped_sources);
         for (uri, prefix) in other.prefixes {
             self.note_prefix(&uri, &prefix);
         }

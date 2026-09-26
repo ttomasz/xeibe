@@ -402,6 +402,12 @@ impl ScanResult {
         &self.observation
     }
 
+    /// Sources skipped because they hold no feature collection or feature
+    /// member, by name.
+    pub fn skipped_sources(&self) -> &[String] {
+        &self.observation.skipped_sources
+    }
+
     /// `false` for a sampled scan: the layer list may be incomplete.
     pub fn is_complete(&self) -> bool {
         !self.observation.sampled

@@ -112,12 +112,17 @@ impl LayerSelector {
 /// sequence numbers that run on across sources.
 ///
 /// Each source gets `SourceId(i)` in order and one axis context at index `i`.
-/// A source in which the splitter finds no features (an ISO metadata member
-/// of a zip, say) is skipped with a warning.
+/// A source in which the splitter finds no feature collection or feature
+/// member (an ISO metadata member of a zip, say) is skipped with a warning;
+/// if every source is, the stream ends with [`xeibe_core::Error::NoFeatures`].
 pub struct ChunkStream {
     sources: Sources,
     options: xeibe_core::SplitterOptions,
-    current: Option<FeatureSplitter<Box<dyn Read + Send>>>,
+    /// The source being split, and its name.
+    current: Option<(FeatureSplitter<Box<dyn Read + Send>>, String)>,
+    /// Sources split to the end, and the names of those skipped.
+    read_sources: usize,
+    skipped: Vec<String>,
     next_source: u32,
     next_seq: u64,
     contexts: SharedContexts,
@@ -131,6 +136,8 @@ impl ChunkStream {
             sources,
             options,
             current: None,
+            read_sources: 0,
+            skipped: Vec::new(),
             next_source: 0,
             next_seq: 0,
             contexts,
@@ -155,22 +162,26 @@ impl ChunkStream {
         let mut splitter = FeatureSplitter::new(source.open()?, id, self.options.clone());
         let context = match splitter.header() {
             Ok(header) => Some(xeibe_schema::scan::source_context(header)),
-            Err(xeibe_core::Error::NoFeatures(name)) => {
-                lock(&self.warnings).push(Warning {
-                    kind: WarningKind::Other,
-                    location: None,
-                    message: format!("skipped {name}: no feature collection or feature member"),
-                });
-                None
-            }
+            Err(xeibe_core::Error::NoFeatures(_)) => None,
             Err(error) => return Err(error),
         };
         // One context per source id, also for a skipped source.
         lock(&self.contexts).push(context.clone().unwrap_or_default());
-        if context.is_some() {
-            self.current = Some(splitter);
+        match context {
+            Some(_) => self.current = Some((splitter, source.name())),
+            None => self.skip(source.name()),
         }
         Ok(true)
+    }
+
+    /// A source without a feature collection or feature member.
+    fn skip(&mut self, name: String) {
+        lock(&self.warnings).push(Warning {
+            kind: WarningKind::SkippedSource,
+            location: None,
+            message: format!("skipped {name}: no feature collection or feature member"),
+        });
+        self.skipped.push(name);
     }
 }
 
@@ -179,18 +190,25 @@ impl Iterator for ChunkStream {
 
     fn next(&mut self) -> Option<Self::Item> {
         while !self.finished {
-            if let Some(splitter) = &mut self.current {
+            if let Some((splitter, _)) = &mut self.current {
                 match splitter.next() {
                     Some(Ok(mut chunk)) => {
                         chunk.seq = self.next_seq;
                         self.next_seq += 1;
                         return Some(Ok(chunk));
                     }
+                    // Found at the end of the input: the root was read, but
+                    // nothing in it holds features.
+                    Some(Err(xeibe_core::Error::NoFeatures(_))) => {
+                        let (_, name) = self.current.take().expect("a current source");
+                        self.skip(name);
+                    }
                     Some(Err(error)) => {
                         self.finished = true;
                         return Some(Err(error));
                     }
                     None => {
+                        self.read_sources += 1;
                         let referenced = splitter.referenced_members();
                         if referenced > 0 {
                             lock(&self.warnings).push(Warning {
@@ -205,7 +223,12 @@ impl Iterator for ChunkStream {
             }
             match self.open_next() {
                 Ok(true) => {}
-                Ok(false) => self.finished = true,
+                Ok(false) => {
+                    self.finished = true;
+                    if self.read_sources == 0 && !self.skipped.is_empty() {
+                        return Some(Err(xeibe_core::Error::no_features_in(&self.skipped)));
+                    }
+                }
                 Err(error) => {
                     self.finished = true;
                     return Some(Err(error));

@@ -16,6 +16,9 @@ pub enum Error {
     #[error("document type declarations are not supported (at {0})")]
     DtdNotSupported(Location),
 
+    /// The splitter raises it with the [`crate::SourceId`]; a scan or read
+    /// of several sources skips such a source and raises it (with names,
+    /// see [`Error::no_features_in`]) only when every source was skipped.
     #[error("no feature collection or feature member found in {0}")]
     NoFeatures(String),
 
@@ -30,4 +33,15 @@ pub enum Error {
 
     #[error("no GML members found in zip archive {0}")]
     NoGmlMembers(String),
+}
+
+impl Error {
+    /// [`Error::NoFeatures`] for a scan or read in which every source, named
+    /// here, was skipped.
+    pub fn no_features_in(sources: &[String]) -> Self {
+        match sources {
+            [one] => Error::NoFeatures(one.clone()),
+            many => Error::NoFeatures(format!("any of the {} sources", many.len())),
+        }
+    }
 }

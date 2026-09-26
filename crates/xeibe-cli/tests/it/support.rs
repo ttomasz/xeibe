@@ -61,11 +61,20 @@ pub fn parquet_reader(path: &Path) -> SerializedFileReader<File> {
 
 /// A zip archive at `path` with the given members (name, sample).
 pub fn zip(path: &Path, members: &[(&str, &str)]) {
+    let members: Vec<(&str, Vec<u8>)> = members
+        .iter()
+        .map(|(name, relative)| (*name, std::fs::read(sample(relative)).unwrap()))
+        .collect();
+    zip_bytes(path, &members);
+}
+
+/// A zip archive at `path` with the given members (name, contents).
+pub fn zip_bytes(path: &Path, members: &[(&str, Vec<u8>)]) {
     let mut zip = zip::ZipWriter::new(File::create(path).unwrap());
-    for (name, relative) in members {
+    for (name, contents) in members {
         let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
         zip.start_file(*name, options).unwrap();
-        std::io::Write::write_all(&mut zip, &std::fs::read(sample(relative)).unwrap()).unwrap();
+        std::io::Write::write_all(&mut zip, contents).unwrap();
     }
     zip.finish().unwrap();
 }

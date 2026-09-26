@@ -23,6 +23,9 @@ pub fn run(
         None => ScanExtent::Full,
     };
     let scan = xeibe_arrow::scan(sources, extent, &settings.options)?;
+    for name in scan.skipped_sources() {
+        eprintln!("warning: skipped {name}: no feature collection or feature member");
+    }
 
     for (layer, key, decision) in scan.axis_decisions() {
         if decision.conflicts.is_empty() {

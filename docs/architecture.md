@@ -462,8 +462,12 @@ Spark, Polars) reads zip at all. Only GDAL does.
   user to download it first. Zips are never read from start to end.
 - **Member selection:** `.gml`, `.xml`, `.gml.gz` and `.xml.gz` members are
   candidates. A candidate in which the splitter finds no feature collection or
-  feature member (for example ISO metadata `gmd:MD_Metadata`) is skipped and listed
-  in the read report. In the test corpus, 333 of the GML members are named `.xml`,
+  feature member (for example ISO metadata `gmd:MD_Metadata`, or an empty NAS
+  extract) is skipped: a warning in the read report, `skipped_sources` in a scan.
+  The splitter can only tell at the end of the member, so the skip covers both a
+  member without a root and one whose root holds nothing. This applies to every
+  input of several sources (directories, globs), not only zips. If every source
+  is skipped, the read or scan fails with `NoFeatures`. In the test corpus, 333 of the GML members are named `.xml`,
   more than the 186 named `.gml`. Other members (shapefiles, PDFs, XSDs, …) are
   ignored. A zip with no GML member is an error.
 - All selected members of one archive form **one input**, like a directory.

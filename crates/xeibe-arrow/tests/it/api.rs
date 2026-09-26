@@ -362,3 +362,70 @@ fn a_timestamp_column_holds_the_instant_in_microseconds() {
     );
     assert_eq!(read.timestamps("t"), [Some(1_000_000)]);
 }
+
+/// ISO metadata, as zips ship it next to the GML: a root, but no features.
+const ISO_METADATA: &str = r#"<gmd:MD_Metadata xmlns:gmd="http://www.isotc211.org/2005/gmd"><gmd:fileIdentifier/></gmd:MD_Metadata>"#;
+
+/// Metadata, the document and an empty file, in that order.
+fn mixed_sources() -> xeibe_core::Sources {
+    let source = |name: &str, document: String| {
+        xeibe_core::Source::reader(name, Box::new(std::io::Cursor::new(document.into_bytes())))
+    };
+    xeibe_core::Sources::from(vec![
+        source("metadata.xml", ISO_METADATA.to_string()),
+        source("parcels.gml", document()),
+        source("empty.xml", String::new()),
+    ])
+}
+
+#[test]
+fn a_read_skips_sources_without_features_and_warns() {
+    // With a schema the chunks go straight to the workers; without one the
+    // layer is sampled first. Both skip the same sources.
+    let schema = scan_document(&document()).arrow_schema("Parcel").expect("a schema");
+    for schema in [None, Some(schema)] {
+        let sampled = schema.is_none();
+        let read = crate::support::collect(
+            read(mixed_sources(), "Parcel", schema, &ReadOptions::default()).expect("a reader"),
+        );
+        assert_eq!(read.rows(), 2, "sampled: {sampled}");
+        let skipped: Vec<&str> = read
+            .report
+            .warnings
+            .iter()
+            .filter(|warning| warning.kind == xeibe_arrow::report::WarningKind::SkippedSource)
+            .map(|warning| warning.message.as_str())
+            .collect();
+        assert_eq!(
+            skipped,
+            [
+                "skipped metadata.xml: no feature collection or feature member",
+                "skipped empty.xml: no feature collection or feature member",
+            ],
+            "sampled: {sampled}"
+        );
+    }
+}
+
+#[test]
+fn a_read_in_which_every_source_is_skipped_fails() {
+    let only_metadata = || {
+        xeibe_core::Sources::from(xeibe_core::Source::reader(
+            "metadata.xml",
+            Box::new(std::io::Cursor::new(ISO_METADATA.as_bytes().to_vec())),
+        ))
+    };
+    let Err(error) = read(only_metadata(), "Parcel", None, &ReadOptions::default()) else {
+        panic!("nothing to sample");
+    };
+    assert!(error.to_string().ends_with("found in metadata.xml"), "{error}");
+
+    // With a schema, the error comes from the sample `Auto` axis order
+    // takes, or else ends the batch stream.
+    let schema = scan_document(&document()).arrow_schema("Parcel").expect("a schema");
+    let error = match read(only_metadata(), "Parcel", Some(schema), &ReadOptions::default()) {
+        Err(error) => error.to_string(),
+        Ok(reader) => reader.into_iter().find_map(Result::err).expect("an error in the stream").to_string(),
+    };
+    assert!(error.to_string().ends_with("found in metadata.xml"), "{error}");
+}
