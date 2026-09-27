@@ -45,7 +45,8 @@ pub mod meta {
     /// `text`: a `text` column that takes an element's text with the markup
     /// removed (`MixedContent::TextOnly`) instead of its raw XML.
     pub const CONTENT: &str = "gml:content";
-    /// Schema-level: the settings a read used (optional).
+    /// The settings a read used: the key in an output file's own metadata
+    /// (Parquet key-value, IPC footer), not in an Arrow schema.
     pub const SETTINGS: &str = "gml:settings";
     /// Schema-level: the GML versions seen, e.g. `3.2` or `2,3.1`.
     pub const VERSIONS: &str = "gml:versions";

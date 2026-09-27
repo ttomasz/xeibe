@@ -152,8 +152,9 @@ Every Arrow field carries metadata that records where it came from:
 | `gml:content` | `text` | A `text` column that takes the element's text with the markup removed (`MixedContent::TextOnly`) instead of its raw XML |
 
 Schema-level metadata stores the GML version(s) (`gml:versions`, e.g. `3.2`, or
-`2,3.1` for a mixed input). The key `gml:settings`, for the settings a read used,
-is reserved but not written yet (see the open question in [README.md](README.md#open-questions)).
+`2,3.1` for a mixed input). The settings a read used are not part of the Arrow
+schema: `xeibe convert` writes them next to it, as `gml:settings` in the file's
+own metadata (see [architecture.md](architecture.md#settings-file)).
 
 A schema given by the user (a settings file or an Arrow schema) needs none of these
 keys except `gml:path`, and that only when the column's name isn't its path (see

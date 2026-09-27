@@ -84,7 +84,7 @@ async fn read_gml_uses_the_schema_of_a_settings_file() {
         .find(|columns| columns.contains_key("kodPocztowy"))
         .unwrap();
     columns.retain(|name, _| name == "kodPocztowy" || name == "georeferencja");
-    let file = temp_dir("settings").join("prg.gml.json");
+    let file = temp_dir("settings").join("prg.json");
     settings.save(&file).unwrap();
 
     for sql in [

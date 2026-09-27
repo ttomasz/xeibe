@@ -20,6 +20,7 @@ pub struct LayerReader {
     source_warnings: Arc<Mutex<Vec<Warning>>>,
     /// An error was returned; the reader is exhausted.
     failed: bool,
+    settings: crate::Settings,
 }
 
 impl LayerReader {
@@ -28,6 +29,7 @@ impl LayerReader {
         report: Arc<Mutex<ReadReport>>,
         plan: Arc<ReadPlan>,
         source_warnings: Arc<Mutex<Vec<Warning>>>,
+        settings: crate::Settings,
     ) -> Self {
         LayerReader {
             schema: plan.schema.clone(),
@@ -36,7 +38,16 @@ impl LayerReader {
             plan,
             source_warnings,
             failed: false,
+            settings,
         }
+    }
+
+    /// The settings this read uses, ready to save: its options, with the
+    /// axis-order decisions as a plain mode (as `xeibe scan` writes them),
+    /// and the layer's schema, given or inferred. Known before the first
+    /// batch. `xeibe convert` embeds it in its output as `gml:settings`.
+    pub fn settings(&self) -> &crate::Settings {
+        &self.settings
     }
 
     /// Report so far (complete once the reader is exhausted).

@@ -253,9 +253,9 @@ negligible.
   invalidation. It can be applied to any input with the same feature types (for
   example, one voivodeship's PRG scan for all 16). Content the schema doesn't
   describe is not read (see [6.3](#63-data-that-doesnt-fit)).
-- Embedding the settings a read used in the output's Parquet key-value metadata
-  (`gml:settings`), to record where it came from, is not implemented. Whether to
-  do it by default is an [open question](README.md#open-questions).
+- `xeibe convert` embeds the settings a read used in its output (`gml:settings`
+  in the Parquet key-value metadata or the IPC footer), to record where it came
+  from ([architecture.md](architecture.md#settings-file)).
 
 ### 2.8 GML version detection
 

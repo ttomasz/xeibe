@@ -132,5 +132,8 @@ Reference material:
 
 ## Open questions
 
-- The file extension for settings files (`*.gml.json`?), and whether reads embed
-  the settings in the Parquet metadata of the output by default.
+None at the moment. Decisions taken on former open questions are recorded where
+they apply: srsName normalisation, CRS names and `crs_type` in
+[geometry.md](geometry.md#open-questions-srsname--crs), the `DescribeFeatureType`
+hint in [wfs.md](wfs.md#schema-hint-from-describefeaturetype), HTTP inputs and
+settings files in [architecture.md](architecture.md).

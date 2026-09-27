@@ -38,7 +38,7 @@ def main() -> None:
     schema = scan.schema(LAYER)
     assert isinstance(schema, pa.Schema)
     assert "georeferencja" in scan.explain(LAYER)
-    settings = os.path.join(tempfile.mkdtemp(), "prg.gml.json")
+    settings = os.path.join(tempfile.mkdtemp(), "prg.json")
     scan.save(settings)
     assert not xeibe.scan([PRG], sample=1).is_complete
 

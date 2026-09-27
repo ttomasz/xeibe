@@ -33,10 +33,10 @@ There are two operations:
 // Scan once (full, or the first N features of the input), keep the result.
 let scan = xeibe_arrow::scan(sources, ScanExtent::Full, &options)?;
 for layer in scan.layers() { println!("{} {:?}", layer.name, layer.feature_count); }
-scan.to_settings()?.save("prg.gml.json")?;
+scan.to_settings()?.save("prg.json")?;
 
 // Read with a known schema: one pass, no inference.
-let settings = Settings::load("prg.gml.json")?;
+let settings = Settings::load("prg.json")?;
 let schema = settings.schema("AD_PunktAdresowy")?;
 let reader = xeibe_arrow::read(sources, "AD_PunktAdresowy", Some(schema), &settings.options)?;
 
@@ -116,6 +116,14 @@ both:
   columns by editing it.
 - CRS and axis order are **not** part of the schema. They come from the data
   (`srsName`) and from the options.
+- A settings file is plain JSON, named `*.json`. There is no special extension,
+  and nothing checks the name.
+- `xeibe convert` and `xeibe wfs convert` **embed the settings they read with** in
+  the output: the `gml:settings` key-value metadata of a Parquet file, or the
+  footer's custom metadata of an Arrow IPC file. It is a complete settings file
+  (`LayerReader::settings()`): the read options, with the axis-order decision as a
+  plain mode, and the schema of the one layer read. Saved as a `.json` file, it
+  reads the same data, or data of the same kind, the same way again.
 - In Rust, Python and DataFusion, a schema can be an ordinary Arrow `Schema` instead.
   The field name is the column name, and the field metadata `gml:path` is the path
   (without it, the name is the path). Geometry columns are recognized by their
@@ -520,7 +528,7 @@ Spark, Polars) reads zip at all. Only GDAL does.
 - We add no cache. Whatever caching DataFusion or SedonaDB configure applies.
 - Blocking work (parsing, `ByteSource` reads) runs in `spawn_blocking`, never on a
   tokio worker thread.
-- A table function: `read_gml('path/*.gml', 'AD_PunktAdresowy', 'settings=prg.gml.json')`.
+- A table function: `read_gml('path/*.gml', 'AD_PunktAdresowy', 'settings=prg.json')`.
   Options after the layer are `'key=value'` strings, because DataFusion's SQL
   planner passes no named arguments (`layer => …`) to table functions.
 - Projection pushdown means columns that aren't selected are skipped without being

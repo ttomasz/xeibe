@@ -8,6 +8,7 @@ use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::metadata::KeyValue;
 use parquet::file::properties::WriterProperties;
 use xeibe_arrow::{LayerReader, Settings};
+use xeibe_schema::rules::meta;
 
 use super::geoparquet::GeoColumns;
 use crate::args::{InputArgs, OutputArgs, OutputFormat, ReadArgs};
@@ -91,6 +92,10 @@ fn write_parquet(
     if let Some(metadata) = geo.metadata() {
         writer.append_key_value_metadata(KeyValue::new("geo".to_string(), metadata));
     }
+    writer.append_key_value_metadata(KeyValue::new(
+        meta::SETTINGS.to_string(),
+        embedded_settings(reader)?,
+    ));
     writer.close()?;
     Ok(rows)
 }
@@ -99,6 +104,7 @@ fn write_parquet(
 fn write_ipc(reader: &mut LayerReader, path: &Path) -> super::Result<u64> {
     let file = File::create(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut writer = arrow_ipc::writer::FileWriter::try_new(file, &reader.schema())?;
+    writer.write_metadata(meta::SETTINGS, embedded_settings(reader)?);
     let mut rows = 0;
     for batch in reader.by_ref() {
         let batch = batch?;
@@ -107,4 +113,12 @@ fn write_ipc(reader: &mut LayerReader, path: &Path) -> super::Result<u64> {
     }
     writer.finish()?;
     Ok(rows)
+}
+
+/// The settings the read used, as a settings file's JSON: stored in the
+/// output's metadata as `gml:settings` (`docs/architecture.md`, "Settings
+/// file"), so the file records how it was made and can be read again the same
+/// way.
+fn embedded_settings(reader: &LayerReader) -> super::Result<String> {
+    Ok(serde_json::to_string(reader.settings())?)
 }

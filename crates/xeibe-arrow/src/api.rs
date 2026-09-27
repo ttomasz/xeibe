@@ -176,12 +176,14 @@ pub fn read(
         })
         .collect();
 
+    // The settings this read uses: its options, with the axis decisions as a
+    // plain mode (as `xeibe scan` writes them), and the layer's schema.
+    let mut used = Settings::new(options.clone());
+    used.options.geometry.axis = plain_axis(observation, &options.geometry.axis);
+    used.set_schema(&display_name(observation, &qname), &layer_schema.schema)?;
     let mut report = ReadReport::default();
     if schema.is_none() {
-        let mut settings = Settings::new(options.clone());
-        settings.options.geometry.axis = plain_axis(observation, &options.geometry.axis);
-        settings.set_schema(&display_name(observation, &qname), &layer_schema.schema)?;
-        report.inferred = Some(settings);
+        report.inferred = Some(used.clone());
     }
     let report = Arc::new(Mutex::new(report));
 
@@ -202,7 +204,7 @@ pub fn read(
     let chunks: Box<dyn Iterator<Item = xeibe_core::Result<FeatureChunk>> + Send> =
         Box::new(buffered.into_iter().map(Ok).chain(stream));
     let receiver = Pipeline::new(options.clone(), plan.clone(), report.clone()).start(chunks);
-    Ok(LayerReader::new(receiver, report, plan, source_warnings))
+    Ok(LayerReader::new(receiver, report, plan, source_warnings, used))
 }
 
 /// The chunks buffered before the workers start, and what they showed.

@@ -156,6 +156,79 @@ fn convert_with_a_settings_file_uses_its_schema() {
 }
 
 #[test]
+fn the_output_embeds_the_settings_it_was_read_with() {
+    // `gml:settings`: the read options, with the axis decision as a plain
+    // mode, and the layer's schema (`docs/architecture.md`, "Settings file").
+    let dir = out_dir("convert_embedded_settings");
+    let out = dir.join("points.parquet");
+    xeibe_ok(&[
+        "convert",
+        &sample(PRG),
+        "--layer",
+        "AD_PunktAdresowy",
+        "-o",
+        path_str(&out),
+    ]);
+    let reader = parquet_reader(&out);
+    let text = reader
+        .metadata()
+        .file_metadata()
+        .key_value_metadata()
+        .and_then(|kv| kv.iter().find(|kv| kv.key == "gml:settings"))
+        .and_then(|kv| kv.value.clone())
+        .expect("`gml:settings` key-value metadata");
+    let settings: serde_json::Value = serde_json::from_str(&text).expect("JSON");
+    assert_eq!(settings["format_version"], 1);
+    assert_eq!(settings["options"]["geometry"]["axis"], "XY", "the decision, not Auto");
+    let layers = settings["layers"].as_object().expect("layers");
+    assert_eq!(layers.len(), 1, "only the layer read");
+    let (_, columns) = layers.iter().next().unwrap();
+    assert_eq!(columns["kodPocztowy"], "text");
+
+    // It is a settings file: reading with it again gives the same columns.
+    let file = dir.join("embedded.json");
+    std::fs::write(&file, &text).unwrap();
+    let again = dir.join("again.parquet");
+    xeibe_ok(&[
+        "convert",
+        &sample(PRG),
+        "--layer",
+        "AD_PunktAdresowy",
+        "--settings",
+        path_str(&file),
+        "-o",
+        path_str(&again),
+    ]);
+    let names = |path: &std::path::Path| -> Vec<String> {
+        ParquetRecordBatchReaderBuilder::try_new(File::open(path).unwrap())
+            .unwrap()
+            .schema()
+            .fields()
+            .iter()
+            .map(|f| f.name().clone())
+            .collect()
+    };
+    assert_eq!(names(&out), names(&again));
+
+    // Arrow IPC keeps it in the file footer's custom metadata.
+    let ipc = dir.join("points.arrow");
+    xeibe_ok(&[
+        "convert",
+        &sample(PRG),
+        "--layer",
+        "AD_PunktAdresowy",
+        "--format",
+        "ipc",
+        "-o",
+        path_str(&ipc),
+    ]);
+    let reader = arrow_ipc::reader::FileReader::try_new(File::open(&ipc).unwrap(), None).unwrap();
+    let embedded: serde_json::Value =
+        serde_json::from_str(&reader.custom_metadata()["gml:settings"]).expect("JSON");
+    assert_eq!(embedded["layers"], settings["layers"]);
+}
+
+#[test]
 fn convert_to_ipc_keeps_geoarrow_types() {
     let dir = out_dir("convert_ipc");
     // A sampled read makes `Auto` geometry WKB (`docs/schema-inference.md`
