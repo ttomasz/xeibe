@@ -666,8 +666,13 @@ fallback when no PROJJSON is available (a code EPSG doesn't have).
 5. ~~**Compound CRSs**~~ **Resolved.** PROJJSON `CompoundCRS` built from the
    parts' PROJJSON (see [CRS metadata](#crs-metadata)); `authority_code` uses
    PROJ's `EPSG:25832+7837`, which the srsName parser also reads.
-6. **`crs_type`**: always write it (`projjson` / `authority_code`), or omit it as
-   GeoArrow advises when validity can't be guaranteed (e.g. an alias-table guess)?
+6. ~~**`crs_type`**~~ **Resolved.** It describes the format of the value, not how
+   sure we are of the CRS, so it is always written when the value is in a known
+   form: `projjson` (EPSG codes, names and aliases, compounds) or
+   `authority_code` (a code EPSG doesn't have). It is omitted only for an srsName
+   that names no CRS, which is written as an opaque string. Aliases need no
+   exception: only aliases that name exactly one EPSG CRS are kept, and the
+   PROJJSON is EPSG's own for that code.
 
 ## Envelopes
 
