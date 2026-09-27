@@ -6,4 +6,5 @@
 mod convert;
 mod scan;
 mod support;
+mod version;
 mod wfs;

@@ -4239,6 +4239,7 @@ dependencies = [
  "serde_json",
  "xeibe-arrow",
  "xeibe-core",
+ "xeibe-crs",
  "xeibe-geom",
  "xeibe-io",
  "xeibe-schema",

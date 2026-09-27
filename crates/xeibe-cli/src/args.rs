@@ -1,12 +1,41 @@
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
+
+/// `-V` / `--version`: the build facts that change what xeibe outputs.
+fn version() -> &'static str {
+    static TEXT: LazyLock<String> = LazyLock::new(|| {
+        let mut features = Vec::new();
+        if cfg!(feature = "object-store") {
+            features.push("object-store");
+        }
+        let arrow =
+            parquet::file::properties::DEFAULT_CREATED_BY.trim_start_matches("parquet-rs version ");
+        let mut text = format!(
+            "{}\nEPSG dataset {} ({})\nfeatures: {}\narrow/parquet {arrow}",
+            env!("CARGO_PKG_VERSION"),
+            xeibe_crs::EPSG_VERSION,
+            xeibe_crs::EPSG_DATE,
+            if features.is_empty() {
+                "none".to_owned()
+            } else {
+                features.join(", ")
+            },
+        );
+        if let Some(commit) = option_env!("XEIBE_GIT_COMMIT") {
+            text += &format!("\ncommit {commit}");
+        }
+        text
+    });
+    &TEXT
+}
 
 #[derive(Debug, Parser)]
 #[command(
     name = "xeibe",
-    version,
+    version = version(),
     about = "Convert GML and WFS data to Arrow / Parquet"
 )]
 pub struct Cli {
