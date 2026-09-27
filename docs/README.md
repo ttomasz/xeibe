@@ -132,7 +132,5 @@ Reference material:
 
 ## Open questions
 
-- Whether to add a WebDAV-free directory listing for HTTP (e.g. parsing Apache or
-  nginx index pages), or to require explicit file URLs.
 - The file extension for settings files (`*.gml.json`?), and whether reads embed
   the settings in the Parquet metadata of the output by default.

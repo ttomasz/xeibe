@@ -294,7 +294,10 @@ pub trait ByteSource: Send + Sync + Debug {
 ```
 
 - **Local files** are opened with `File::open`.
-- **HTTP(S)** (`xeibe-io`, blocking `reqwest`) is one `GET`, read as it arrives. Retries
+- **HTTP(S)** (`xeibe-io`, blocking `reqwest`) is one `GET`, read as it arrives.
+  An HTTP URL names **one file**: there is no directory listing and no globbing
+  (index pages differ by server, and on data portals they mostly list zips,
+  which can't be read remotely). Pass several URLs for several files. Retries
   (5xx, 429 with `Retry-After`, network errors) happen only before the first byte
   was handed on. A connection that breaks mid-body fails the read, and the user
   reruns it.
