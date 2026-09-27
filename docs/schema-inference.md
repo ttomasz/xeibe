@@ -53,15 +53,19 @@ This design combines GDAL's full scan and flat columns with lists that stay alig
 ```rust
 /// Everything a scan observed. In memory only; the settings file stores schemas, not trees.
 pub struct DatasetObservation {
-    pub gml_versions: BTreeSet<GmlVersion>,     // V2 | V3_1 | V3_2 (see version detection)
+    pub gml_versions: BTreeSet<GmlVersion>,     // V2 | V3_0 | V3_1 | V3_2 | V3_3 (see version detection)
     pub layers: IndexMap<QName, LayerObservation>,
+    pub sampled: bool,                          // the scan stopped before the end of the input
     pub source_context: Vec<SourceContext>,     // producer, WFS request (axis-order evidence)
+    pub prefixes: IndexMap<Arc<str>, String>,   // namespace URI → first prefix, for readable `gml:path`s
+    pub extent: Option<[f64; 4]>,               // union of the collections' boundedBy, as written
+    pub skipped_sources: Vec<String>,           // sources with no feature collection or member
 }
 
 pub struct LayerObservation {
     pub feature_count: u64,
     pub root: ElementNode,                      // the feature element itself
-    pub extent: Option<Bbox>,                   // union of geometry bboxes, for listings
+    pub extent: Option<[f64; 4]>,               // union of geometry bboxes (as written), for listings
 }
 
 /// Namespace URI + local name. Never the prefix: prefixes differ between files/WFS pages.
@@ -81,16 +85,19 @@ pub struct ElementNode {
     // content shape
     pub text: Option<ValueStats>,       // non-whitespace text content
     pub mixed: bool,                    // text AND child elements in the same instance
+    pub single_child: u64,              // content was exactly one child element (type-wrapper detection)
     pub empty: u64,                     // <a/> or <a></a>
     pub nil: NilStats,                  // xsi:nil count + nilReason values (bounded set)
 
     // structure
     pub attributes: IndexMap<QName, ValueStats>,
     pub children: IndexMap<QName, ElementNode>,  // first-seen order → stable column order
+    pub first_seen: Option<(u32, u64)>,          // earliest (source, byte offset); orders children on merge
 
     // GML-specific
     pub geometry: Option<GeometryStats>, // set when this is a geometry property
     pub by_reference: u64,               // instances that only had xlink:href, no content
+    pub href_and_content: u64,           // instances with both xlink:href and content
     pub has_gml_id: u64,                 // instances with their own gml:id (nested object)
     pub name_shape: NameShape,           // UpperCamel (object/type) vs lowerCamel (property)
 
@@ -134,7 +141,7 @@ pub struct ValueStats {
     pub float_shape: Option<FloatShape>,   // max significant digits, max fractional scale
     pub temporal: Option<TemporalShape>,   // tz: Absent | Fixed(offset) | Mixed; max fraction digits
     pub max_len: u32,
-    pub distinct: BoundedSet<Arc<str>>,    // up to N (default 64) values; dropped on overflow
+    pub distinct: BoundedSet,              // up to N (default 64) values; dropped on overflow
 }
 
 bitflags! { pub struct TypeSet: u16 {
@@ -176,12 +183,12 @@ Only `distinct`, `max_len` and `count` are updated.
 ```rust
 pub struct GeometryStats {
     pub count: u64,
-    pub kinds: BTreeSet<GmlGeomKind>,   // Point, LineString, Curve, Polygon, Surface, MultiSurface, …
+    pub kinds: BTreeSet<GeomKind>,      // Point, LineString, Curve, Polygon, Surface, MultiSurface, …
     pub has_curves: bool,               // any arc/circle segment seen
     pub has_unsupported: bool,          // e.g. Solid, spline — see support-matrix
     pub dims: BTreeSet<u8>,             // effective srsDimension: 2, 3
-    pub srs: BTreeMap<Arc<str>, u64>,   // srsName (as written) → count
-    pub axis_evidence: BTreeMap<AxisKey, AxisEvidence>, // per (srsName, dialect):
+    pub srs: BTreeMap<String, u64>,     // srsName (as written) → count
+    pub axis_evidence: BTreeMap<ColumnAxisKey, AxisEvidence>, // per (source, srsName, dialect):
                                         //   as-written bbox of sampled positions,
                                         //   axisLabels seen, envelope bboxes
     pub by_reference: u64,              // geometry given only as xlink:href
@@ -246,8 +253,9 @@ negligible.
   invalidation. It can be applied to any input with the same feature types (for
   example, one voivodeship's PRG scan for all 16). Content the schema doesn't
   describe is not read (see [6.3](#63-data-that-doesnt-fit)).
-- A read can also embed the schema it used in the output's Parquet key-value
-  metadata (`gml:settings`), to record where it came from.
+- Embedding the settings a read used in the output's Parquet key-value metadata
+  (`gml:settings`), to record where it came from, is not implemented. Whether to
+  do it by default is an [open question](README.md#open-questions).
 
 ### 2.8 GML version detection
 
@@ -286,8 +294,9 @@ pub struct InferenceOptions {
     pub types: TypeOptions,
     pub gml: GmlOptions,
     pub geometry_encoding: GeomEncoding, // Auto (default) | Wkb, see geometry.md
+    pub geometry: GeometryOptions,       // copied from ReadOptions.geometry; not in the settings file's inference section
     pub overrides: Vec<(PathPattern, FieldOverride)>,
-    pub layers: Vec<(LayerSelector, InferenceOptionsPatch)>,   // per-layer adjustments
+    pub layers: Vec<(String, InferenceOptionsPatch)>,   // per-layer adjustments, by layer name in any notation; later entries win
     pub limits: Limits,
 }
 ```
@@ -432,7 +441,7 @@ pub struct TypeOptions {
     pub lossless: Lossless,            // Text | Value (default) | Lossy
     pub enabled: TypeSet,              // STRING only ⇒ GDAL's ALWAYS_STRING
     pub integers: IntWidth,            // Int64 (default) | Smallest
-    pub timestamps: TimestampOptions,  // unit (µs default), mixed-tz handling
+    pub timestamps: TimestampOptions,  // unit (µs default)
     pub empty_as_null: bool,           // default true
     pub all_null: AllNull,             // Utf8View (default) | Null type
     pub string_view: bool,             // Utf8View (default) vs Utf8
@@ -456,7 +465,7 @@ pub struct GmlOptions {
     pub strip_local_href_hash: bool,   // "#PL.X.1" → "PL.X.1" (default true)
     pub nil_reason: bool,              // keep nilReason as a `<path>/@nilReason` column (default true when seen)
     pub bounded_by: BoundedBy,         // Drop (default) | BoxStruct | Geometry
-    pub standard_props: StdProps,      // gml:name/description/identifier handling
+    pub drop_control_attributes: bool, // drop owns, remoteSchema, aggregationType, xlink:type/show/actuate (default true)
 }
 ```
 
@@ -472,7 +481,7 @@ pub struct GmlOptions {
 
 ```rust
 pub enum FieldOverride {
-    Type(DataType), Drop, AsRawXml, AsMap, List, Scalar, Geometry(GeometryOverride),
+    Type(DataType), Drop, AsRawXml, AsMap, List, Scalar,
 }
 
 pub struct Limits {

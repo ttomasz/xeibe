@@ -1,7 +1,7 @@
 //! Test support shared by the crates' test suites.
 //!
-//! Nothing here depends on the library crates, so it keeps working while their
-//! bodies are `todo!()`, and it can serve as an independent oracle:
+//! Nothing here depends on the library crates, so it serves as an independent
+//! oracle:
 //!
 //! - [`samples`]: the curated samples in `tests/data` (`samples.json`), with the
 //!   verified axis order of each one;

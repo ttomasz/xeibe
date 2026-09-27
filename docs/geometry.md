@@ -21,7 +21,7 @@ Those places are marked **[GDAL]**.
 ```mermaid
 flowchart LR
     xml(["GML geometry XML"]) --> parser["<b>xeibe-geom</b> parser"]
-    parser --> model["GmlGeometry<br/>(implements geo-traits)"]
+    parser --> model["Geometry (xeibe_geom::model)<br/>(implements geo-traits)"]
     model --> native["geoarrow native builders<br/>(point, linestring, …)"]
     model --> wkb["ISO WKB writer<br/>(geoarrow.wkb)"]
     model --> other["geo / other consumers"]
@@ -353,6 +353,7 @@ by the srsName exactly as written. That is all the scan ever writes:
 pub struct AxisOrderOptions {
     pub mode: AxisOrderMode,                           // applies to everything
     pub overrides: IndexMap<String, AxisOrderMode>,    // srsName → mode; usually empty
+    pub crs_table: Option<CrsTable>,                   // extra CRS facts; from code only, not in the settings file
 }
 ```
 
@@ -427,7 +428,7 @@ evidence wins:
 | 1 | User override matching the key | final | |
 | 2 | `axisLabels` on the geometry, e.g. `axisLabels="Lat Long"` or `"x y"` (07-036 §10.1.3.3) | decisive | Declares the order explicitly. Label table: `Lat`/`φ`/`N`/`Northing`/`y` first → y/x |
 | 3 | **Coordinate range check** against the CRS's valid area (from the EPSG area of use, projected into the CRS) | decisive only if *exactly one* of {as written, swapped} fits the sampled extent | Clear-cut for projected CRSs with a small area of use (EPSG:2180 → Poland). **Inconclusive** for projected CRSs whose easting and northing ranges overlap, and for EPSG:4326, whose area of use is the whole world: it then only rejects an ordinate above 90 |
-| 4 | Known producer quirks (fingerprint of the root element, namespaces, comments, WFS capabilities `ServiceIdentification`) | strong | FME → authority for short form (**[GDAL]**). More in a curated `producer_quirks` table, e.g. specific GeoServer/MapServer/ArcGIS versions |
+| 4 | Known producer quirks (fingerprint of the root element's namespaces) | strong | Two so far: FME (the root declares the FME namespace) → authority order for the short form (**[GDAL]**), and MapServer WFS 1.1 (`mapserver.gis.umn.edu` namespace) → authority order for the short form (see [below](#observed-in-real-services)). Other producers (ArcGIS, specific GeoServer versions) are not fingerprinted yet |
 | 5 | **GML 2 dialect** (the detection table above), whatever the srsName says | strong | GML 2 predates the authority-order policy: 02-069 has no axis-order concept and every GML 2 producer writes x/y. This is the `GmlVersion { gml2: XY, … }` rule used as evidence. It needs nothing but the geometry, so it is the only strong evidence available for a plain file |
 | 6 | WFS context: version and the srsName form *we requested* | strong | 1.0 → x/y; 1.1 with `EPSG:` → x/y; 1.1 with URN → authority; 2.0 → authority. Known on a live WFS read, which begins with `GetCapabilities` ([wfs.md](wfs.md#flow)). When a saved response is read as a file, take the version from `xsi:schemaLocation` (`…/wfs/1.0.0/…`, or the `VERSION=` of the `DescribeFeatureType` URL) — the WFS 1.0 and 1.1 namespaces are identical and neither response carries a `version` attribute |
 | 7 | Envelope consistency: the collection/feature `boundedBy` and the `BBOX` we sent must match the geometry under the chosen order | supporting | Only used to break ties and to raise warnings |
@@ -487,7 +488,7 @@ north/lat-first can show a difference (2180, 3301, 3035, 4326, 4258):
 | WFS **1.0** with **URN** `EPSG::4326` → **lon/lat** | `services.sandre.eaufrance.fr` | "URN means authority order" is false in 1.0 |
 | GeoServer WFS 1.0: legacy `epsg.xml#` URL → x/y | GeoServer | consistent with the convention |
 
-**GDAL 3.13 as a reference gets 4 of 17 axis-order samples wrong** (MapServer WFS 1.1 short
+**GDAL 3.13 as a reference gets 4 of 18 axis-order samples wrong** (MapServer WFS 1.1 short
 form, BfN WFS 1.0 short form lat/lon, Sandre WFS 1.0 URN lon/lat, GUGiK BU legacy URL lat/lon);
 see the axis-order lines in `tests/data/BOM.md`. Tests must assert against the verified
 `axis_order` in `tests/data/samples.toml`, not against GDAL's output.
@@ -508,8 +509,8 @@ which a naive "mapserver" substring match confuses with MapServer.
 
 What this means for `Auto`:
 - **WFS 1.1 + short form is ambiguous.** MapServer uses authority order, while the
-  GDAL-style convention says x/y. The producer-quirk table needs a MapServer entry
-  (detected from the namespace above): *WFS 1.1 short form → authority order*.
+  GDAL-style convention says x/y. The producer quirks (row 4) have a MapServer entry,
+  detected from the namespace above: *WFS 1.1 short form → authority order*.
 - **The range check is decisive for the `wfsBU` case** (swapped latitude 19.97° lies
   outside EPSG:4258's area of use) but **not for EPSG:2180** (easting and northing
   ranges overlap), so the MapServer case needs the quirk table or an override.
@@ -540,11 +541,14 @@ What this means for `Auto`:
 
 `Crs`, `CrsHeuristic` and `Auto` need to know which CRSs have northing/latitude as the
 first axis (the CRS's "authority" axis order).
-The plan:
-- Ship a compact **built-in table**, generated from the EPSG database at build time,
-  with, for each code: first-axis direction, dimension, and the area of use (for the
-  range check). This avoids a PROJ dependency.
-- Allow a user-supplied table for extra codes and other authorities.
+- A compact **built-in table** in `xeibe-crs`, generated from the EPSG Dataset by
+  `scripts/gen_crs_tables.py` and committed, with, for each code: first-axis
+  direction, dimension, units and the area of use (for the range check). There is
+  no PROJ dependency. See [open question 3](#open-questions-srsname--crs).
+- A user-supplied table for extra codes and other authorities
+  (`CrsTable::with_user_entries`, passed as `AxisOrderOptions::crs_table`). User
+  entries win over built-in ones. It can be set from code only, not from the
+  settings file or the CLI.
 
 Every applied decision is recorded in field metadata: `gml:axis_swapped` (true/false,
 or "mixed" when decision keys differ) and `gml:axis_decision` (mode and reason).
@@ -555,12 +559,13 @@ The three output formats accept different CRS forms (checked 2026-09-19):
 
 | Format | CRS value | Unknown CRS |
 |---|---|---|
-| GeoArrow extension metadata (`crs`, `crs_type`) | PROJJSON recommended ("for maximum compatibility, producers should write PROJJSON"). `authority_code` (`EPSG:2180`) is allowed but "should only be used as a last resort" | `crs` omitted |
+| GeoArrow extension metadata (`crs`, `crs_type`) | PROJJSON recommended ("for maximum compatibility, producers should write PROJJSON"). `authority_code` (`EPSG:2180`) is allowed but "should only be used as a last resort" | a code not in the table: `authority_code`. An srsName that names no CRS: the srsName as an opaque string, without `crs_type`. No srsName: `crs` omitted |
 | GeoParquet 1.1 `geo` metadata (also 2.0) | **MUST be PROJJSON**, or `null` | explicit `null`. A *missing* `crs` means OGC:CRS84, so it must never be left out for an unknown CRS |
 | Parquet `GEOMETRY` logical type | any string that identifies the CRS: `EPSG:2180`, PROJJSON, `projjson:<key>` (a key-value metadata entry), `srid:<n>` | `srid:0` |
 
 So **every known CRS needs a PROJJSON form** for GeoParquet output, which is P0.
-Where it comes from is an open question (below). Until then the plan is:
+It comes from `xeibe-crs`, for every EPSG CRS (see
+[open question 4](#open-questions-srsname--crs)):
 
 ```json
 { "crs": { "type": "ProjectedCRS", "name": "ETRF2000-PL / CS92", "id": { "authority": "EPSG", "code": 2180 }, … },
@@ -568,7 +573,7 @@ Where it comes from is an open question (below). Until then the plan is:
 ```
 
 with `{ "crs": "EPSG:2180", "crs_type": "authority_code" }` only as GeoArrow's
-fallback when no PROJJSON is available.
+fallback when no PROJJSON is available (a code EPSG doesn't have).
 
 - CRS84 and similar are `OGC:CRS84`.
 - A compound CRS (horizontal + vertical, any of the compound srsName forms) gets
@@ -742,14 +747,14 @@ end to end. Only the storage encoding changes. The `parquet` crate (feature
 `geospatial`, enabled in the workspace) maps a `geoarrow.wkb` field to the
 `GEOMETRY` logical type and computes the statistics on its own.
 
-Defaults for `xeibe convert --format geoparquet`:
+Defaults for `xeibe convert` and `xeibe wfs convert` with `--format parquet` (the default):
 
-- **`--parquet-geometry wkb` (default).** Every geometry column is written as WKB,
+- **WKB.** Every geometry column is written as WKB,
   even if it is a native GeoArrow type in memory. It gets the `GEOMETRY` logical
   type **and** GeoParquet 1.1 `geo` metadata (encoding `WKB`, `geometry_types`, CRS
   as PROJJSON or `null` (see [CRS metadata](#crs-metadata)), file bbox). New readers use the row-group statistics, and older
   readers still find the `geo` metadata.
-- `--parquet-geometry native`: GeoParquet 1.1 native encoding. There is no
+- `--parquet-geometry native` (📋 planned, P2): GeoParquet 1.1 native encoding. There is no
   `GEOMETRY` logical type. The x/y leaf columns get ordinary min/max statistics,
   which work like a covering.
 - `--bbox-column auto|always|never`: GeoParquet 1.1 `bbox` covering column. `auto`
@@ -801,7 +806,7 @@ The Parquet geometry types and GeoParquet's `geometry_types` both list only the
 seven simple-feature types. Many readers don't support ISO WKB curve types. The
 `parquet` crate's statistics code can't read curve WKB either: it drops the
 bbox statistics for a column chunk that contains one (checked in
-`parquet-geospatial` 59.3). So:
+`parquet-geospatial` 59.3).
 
 GeoParquet 1.1 forbids them outright: its WKB encoding allows only "the standard
 geometry types … non-linear geometry types are not yet supported." Curves are

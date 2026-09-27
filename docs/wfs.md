@@ -23,8 +23,10 @@ flowchart TD
     lazy --> read["read (one layer)"] --> out(["Arrow / Parquet"])
 ```
 
-- `xeibe_wfs::pages(endpoint, type_name, &options)` returns the pages as a lazy
-  sequence of sources (see [architecture.md](architecture.md#sources-and-remote-input)).
+- `WfsClient::new(endpoint, options)?.pages(type_name, progress)` returns the
+  pages as a lazy sequence of sources (see
+  [architecture.md](architecture.md#sources-and-remote-input)). `progress` is
+  called after every page with the counts so far and any new warnings.
   `read` pulls the next page when it needs more features. A scan pulls them too.
 - **A page is fetched completely into memory before it is parsed.** Pages are
   bounded by the page size (typically a few MB to tens of MB), and a whole page
@@ -46,11 +48,11 @@ What we read from `GetCapabilities`:
 | Item | WFS 2.0 | WFS 1.1 | WFS 1.0 | Used for |
 |---|---|---|---|---|
 | Feature types | `FeatureTypeList/FeatureType`: `Name`, `Title`, `DefaultCRS`, `OtherCRS`, `OutputFormats`, `ows:WGS84BoundingBox` | same, but `DefaultSRS`/`OtherSRS` | `Name`, `Title`, `SRS`, `LatLongBoundingBox` | `xeibe wfs layers`, default CRS, bbox checks |
-| KVP support | `KVPEncoding` constraint (Table 13) | assumed | assumed | Use `GET`, or fall back to `POST` |
+| KVP support | `KVPEncoding` constraint (Table 13) | assumed | assumed | Read, not used yet: requests are always `GET` (`POST` is planned, P2) |
 | Paging support | `ImplementsResultPaging` (Table 13) | — | — | Paging strategy |
 | Server page limit | `CountDefault` (Table 14) | — | — | Page size cap |
 | Paging consistency | `PagingIsTransactionSafe` (Table 14, default FALSE) | — | — | Warns that duplicates or skipped features are possible |
-| Page cache lifetime | `ResponseCacheTimeout` (Table 14, seconds) | — | — | Resume strategy for `next` links |
+| Page cache lifetime | `ResponseCacheTimeout` (Table 14, seconds) | — | — | Read, not used yet. Resuming after `ResponseCacheExpired` doesn't depend on it |
 | Output formats | `GetFeature` `outputFormat` parameter domain | same | `ResultFormat` (`GML2`) | Format negotiation |
 
 ## Paging
@@ -74,14 +76,19 @@ What we read from `GetCapabilities`:
 
 ### Strategies
 
-Chosen automatically in this order, and can be overridden:
+Chosen automatically, or forced with `WfsOptions::strategy`. Before the first
+request, a WFS 2.0 server with `ImplementsResultPaging = TRUE` gets `startIndex`
+paging and any other server a single request; when the first response carries a
+`next` link, the read follows `next` links from then on
+(`xeibe_wfs::paging::choose`). Without a page size from the user or a
+`CountDefault`, pages hold 5,000 features.
 
 | Strategy | Condition | Notes |
 |---|---|---|
 | **`next` link** | WFS 2.0 response has `next` | Follow it until there is none. On `ResponseCacheExpired`, switch to `startIndex` at the number of features fetched so far, if supported. Otherwise the read fails |
 | **`startIndex` + `count`** | WFS 2.0 with `ImplementsResultPaging = TRUE`, or forced | Page size = `min(user page size, CountDefault)`. Stops when `numberReturned < count` or the total reaches `numberMatched` |
 | **Vendor `startIndex` on 1.x** | WFS 1.1/1.0 on servers known to support it (GeoServer, some MapServer) | `maxFeatures` + `startIndex`. Enabled with an explicit flag |
-| **Spatial tiling** | No paging support | Split the bbox into tiles until each tile's `hits` count is below the server limit. Duplicates across tile edges are removed by `gml:id` within the run (🤔 Considering) |
+| **Spatial tiling** | No paging support | Split the bbox into tiles until each tile's `hits` count is below the server limit. Duplicates across tile edges are removed by `gml:id` within the run (🤔 Considering; forcing it is an `Unsupported` error) |
 | **Single request** | Small layers, or forced | Warns if `numberReturned < numberMatched` |
 
 ### Stable ordering and duplicates
@@ -89,13 +96,17 @@ Chosen automatically in this order, and can be overridden:
 Offset-based paging is only correct when the order is stable. The standard itself
 warns that pages may overlap or skip features without transactional consistency.
 
-- Default: send `SORTBY` on an identifier property when one can be found (configured
-  by the user or detected from the data). Syntax:
+- Send `SORTBY` on an identifier property. Today it is sent only when the user
+  configures one (`WfsOptions::sort_by`, `--sort-by`); detecting one from the data
+  is still to do. Syntax:
   - 2.0: `SORTBY=prop [ASC|DESC],…` (Table 8);
   - 1.1: `SORTBY=prop [A|D],…` (04-094 Table for GetFeature KVP).
-- Always: check `gml:id` for duplicates across pages and **report** them. Removing
-  duplicates is optional, because it needs a set of ids and memory proportional to
-  their count.
+- Always: check `gml:id` for duplicates across pages and **report** them. Each page
+  is compared with the previous one. Removing duplicates (`WfsOptions::dedupe`)
+  would need a set of ids and memory proportional to their count; it is not
+  implemented yet, and setting it fails the read.
+- A server that doesn't declare `PagingIsTransactionSafe = TRUE` gets a warning
+  under offset paging.
 - Compare `numberMatched` at the start and at the end. A changed count means the
   data changed during the read, and a warning is raised.
 
@@ -152,15 +163,17 @@ tools are still read correctly.
 | Truncated response | `wfs:truncatedResponse` (2.0), or no closing collection element | Retry with half the page size (up to N times) |
 | HTTP 5xx, 429, network errors | status | Exponential backoff. Respects `Retry-After` |
 | Changed `numberMatched` | start vs. end | Warning |
-| Duplicate `gml:id` | id set | Reported. Optionally removed |
+| Duplicate `gml:id` | compared with the previous page | Reported. Removal is planned |
 
 Also:
 - gzip/deflate `Content-Encoding`.
-- Configurable concurrency (default 1–2 requests in flight, to be polite to
-  servers). Rate limit option. Concurrent requests are only possible with
-  `startIndex` paging; `next` links can only be followed one after another.
-  Pages fetched ahead are held in memory and handed to the read in order.
-- Authentication: HTTP basic, bearer token, custom headers.
+- `WfsOptions::concurrency` (default 1) is the number of pages held at once:
+  the one being read plus the ones fetched ahead of it, in order. They are
+  fetched one request at a time. Parallel requests (possible only with
+  `startIndex` paging; `next` links can only be followed one after another) and
+  a rate limit are still to do.
+- Authentication: HTTP basic, bearer token, custom headers (`WfsOptions::auth`,
+  `headers`; library only, the CLI has no flags for them yet).
 
 ## Out of scope
 

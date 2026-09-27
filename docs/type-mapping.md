@@ -148,10 +148,12 @@ Every Arrow field carries metadata that records where it came from:
 | `gml:tz_offset` | `+02:00` | Time-zone offset shared by every value of a timestamp, date or time-of-day column |
 | `gml:srs_name` | `EPSG:2180` | srsName as written (geometry columns) |
 | `gml:axis_swapped` | `true` | The reader swapped axes (geometry columns) |
+| `gml:axis_decision` | mode and reason | How the axis order was decided (geometry columns; see [geometry.md](geometry.md#crs-metadata)) |
+| `gml:content` | `text` | A `text` column that takes the element's text with the markup removed (`MixedContent::TextOnly`) instead of its raw XML |
 
 Schema-level metadata stores the GML version(s) (`gml:versions`, e.g. `3.2`, or
-`2,3.1` for a mixed input) and, optionally, the settings the read used
-(`gml:settings`).
+`2,3.1` for a mixed input). The key `gml:settings`, for the settings a read used,
+is reserved but not written yet (see the open question in [README.md](README.md#open-questions)).
 
 A schema given by the user (a settings file or an Arrow schema) needs none of these
 keys except `gml:path`, and that only when the column's name isn't its path (see

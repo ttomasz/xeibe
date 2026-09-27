@@ -1,9 +1,9 @@
 # Testing
 
 The test suites are written against the design documents, not against the
-current code: the crates are still skeletons whose bodies are `todo!()`, so
-**almost every test fails today**. A failing test is a feature that is not
-implemented yet; the count that passes is the progress bar.
+current code. Every crate is implemented and **every suite is expected to pass**.
+A failing test is a regression, or a documented behaviour the code doesn't
+follow yet; either the code or the document is wrong.
 
 ```sh
 cargo test --workspace            # or: cargo nextest run --workspace
@@ -11,14 +11,14 @@ cargo test -p xeibe-geom          # one crate
 cargo test -p xeibe-geom parse_curves::   # one module
 ```
 
-Only `xeibe-testkit`'s own tests must pass at all times: they check the test
-oracles themselves against the files in `tests/data`.
+`xeibe-testkit`'s own tests check the test oracles themselves against the
+files in `tests/data`.
 
 ## Layout
 
 | Where | Contents |
 |---|---|
-| `crates/xeibe-testkit` | Test support: the sample manifest, GDAL reference output, independent WKT and WKB readers, builders for synthetic GML documents. Depends on no other crate of the project, so it keeps working while they are skeletons |
+| `crates/xeibe-testkit` | Test support: the sample manifest, GDAL reference output, independent WKT and WKB readers, builders for synthetic GML documents. Depends on no other crate of the project, so it stays an independent oracle |
 | `crates/<crate>/tests/it/` | One integration-test binary per crate, with a module per topic and a `support` module. Everything goes through the public API |
 | `crates/<crate>/tests/it/samples.rs` | The same crate tested against the real samples in `tests/data` |
 
@@ -32,7 +32,7 @@ cases below).
 (`xeibe_testkit::gml`) and assert on the result. They are the specification in
 executable form: one behaviour per test, with the documented rule in the name.
 
-**Sample-based tests** run against `tests/data/samples/**`, 17 files excerpted
+**Sample-based tests** run against `tests/data/samples/**`, 18 files excerpted
 from real data (see `tests/data/README.md`). Their expected values come from
 the generated manifest `samples.json`:
 
@@ -40,7 +40,7 @@ the generated manifest `samples.json`:
   (`*.gdal.txt`), which is reliable for those;
 - **the axis order** comes from `axis.expected_first_xy`, which
   `scripts/corpus/axis_evidence.py` verified against the CRS area of use and
-  regions the features are known to lie in. **GDAL reads 4 of the 17 samples in
+  regions the features are known to lie in. **GDAL reads 4 of the 18 samples in
   the wrong order**, so tests never take the axis order from GDAL
   (`geometry.md`, "Observed in real services").
 
@@ -87,7 +87,7 @@ compare a compact encoding with the GML 3.2 geometry the spec says it abbreviate
 
 ## Conventions
 
-- Test names are sentences: `an_unclosed_ring_is_a_warning_and_is_kept_as_written`.
+- Test names are sentences: `an_unclosed_ring_is_closed_with_a_warning`.
 - Prefer one behaviour per test; loop over the samples only where the list
   comes from the manifest, and name the sample in the failure message.
 - Reads in tests ask for `GeomEncoding::Wkb` when they compare geometry, so
