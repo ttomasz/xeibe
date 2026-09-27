@@ -458,7 +458,8 @@ impl Attrs {
         let mut out = Attrs::default();
         for (namespace, local, value) in attrs.iter_raw() {
             match (namespace, local) {
-                (None, "srsName") => out.srs_name = Some(value.into_owned()),
+                // Trimmed: decision keys, overrides and metadata see one spelling.
+                (None, "srsName") => out.srs_name = Some(value.trim().to_string()),
                 (None, "srsDimension") => out.srs_dimension = value.trim().parse().ok(),
                 (None, "dimension") => out.dimension = value.trim().parse().ok(),
                 (None, "count") => out.count = value.trim().parse().ok(),

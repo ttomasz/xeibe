@@ -196,6 +196,27 @@ fn overrides_are_keyed_by_the_srs_name_as_written() {
         !swap_for("urn:ogc:def:crs:EPSG::4326"),
         "matched on the srsName exactly as written, not on the CRS"
     );
+    assert!(!swap_for("epsg:4326"), "case matters: it is another spelling");
+}
+
+#[test]
+fn overrides_ignore_surrounding_whitespace() {
+    let options: AxisOrderOptions =
+        serde_json::from_str(r#"{"mode":"XY","overrides":{" EPSG:4326 ":"YX"}}"#)
+            .expect("mode with an srsName override");
+    let swap_for = |srs: &str| {
+        decide(
+            &key(srs, Dialect::Gml3),
+            None,
+            None,
+            &AxisEvidence::default(),
+            &AxisContext::default(),
+            &options,
+        )
+        .swap
+    };
+    assert!(swap_for("EPSG:4326"), "the override's key is trimmed");
+    assert!(swap_for("EPSG:4326\n"), "the srsName is trimmed");
 }
 
 #[test]

@@ -228,6 +228,18 @@ fn srs_name_is_inherited_from_the_enclosing_elements() {
 }
 
 #[test]
+fn an_srs_name_is_trimmed() {
+    // Decision keys, overrides and metadata then see one spelling
+    // (`docs/geometry.md`, "Decision key and scope").
+    let parsed = parse_in_context(
+        r#"<gml:Point srsName=" EPSG:2180 "><gml:pos>1 2</gml:pos></gml:Point>"#,
+        &ParseContext::default(),
+    )
+    .expect("a point");
+    assert_eq!(parsed.srs_name.as_deref(), Some("EPSG:2180"));
+}
+
+#[test]
 fn srs_dimension_is_inherited_by_the_positions() {
     let snippet = concat!(
         r#"<gml:LineString srsDimension="3">"#,

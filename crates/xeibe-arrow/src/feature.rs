@@ -516,7 +516,8 @@ impl<'a> FeatureReader<'a> {
 
     /// A column has one CRS: a geometry whose srsName resolves to another one
     /// is a geometry error (`docs/geometry.md`, "CRS metadata"). Spellings of
-    /// one CRS are the same; unknown srsNames are compared as written. With
+    /// one CRS are the same; unknown srsNames are compared trimmed and
+    /// ignoring case. With
     /// `crs_override`, the CRS doesn't come from the data.
     fn other_crs(
         &self,
@@ -534,7 +535,7 @@ impl<'a> FeatureReader<'a> {
         }
         let crs = |srs: &str| match SrsName::parse(srs).crs {
             Some(crs) => crs.authority_code(),
-            None => srs.to_string(),
+            None => srs.trim().to_lowercase(),
         };
         (crs(column_srs) != crs(srs_name)).then(|| {
             format!(

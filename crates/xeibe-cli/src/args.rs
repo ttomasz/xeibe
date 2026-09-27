@@ -149,8 +149,8 @@ pub struct ReadArgs {
     pub preset: Option<Preset>,
     #[arg(long, value_enum)]
     pub axis_order: Option<AxisMode>,
-    /// `srsName=mode`, e.g. `EPSG:4326=yx`, with the srsName exactly as
-    /// written (repeatable). Only needed when one input mixes srsNames that
+    /// `srsName=mode`, e.g. `EPSG:4326=yx`, with the srsName as written:
+    /// case matters, surrounding whitespace doesn't (repeatable). Only needed when one input mixes srsNames that
     /// must be read differently.
     #[arg(long = "axis-override")]
     pub axis_overrides: Vec<String>,

@@ -240,6 +240,15 @@ fn a_second_crs_in_one_column_is_a_geometry_error() {
     let read = read_with(&same, "Parcel", Some(schema.clone()), &options);
     assert_eq!(read.rows(), 2, "one CRS, two spellings");
 
+    let unknown = gml::gml32_collection(&[
+        &point("p1", "LOCAL:Grid"),
+        &point("p2", " local:grid "),
+    ]);
+    let read = read_with(&unknown, "Parcel", Some(schema.clone()), &options);
+    assert_eq!(read.rows(), 2, "unknown srsNames compare trimmed, ignoring case");
+    let unknown = gml::gml32_collection(&[&point("p1", "LOCAL:Grid"), &point("p2", "LOCAL:Other")]);
+    assert!(fails(&unknown, schema.clone(), &options), "two unknown CRSs");
+
     let mixed = gml::gml32_collection(&[&point("p1", "EPSG:2180"), &point("p2", "EPSG:4326")]);
     assert!(fails(&mixed, schema.clone(), &options));
     let null_geometry = ReadOptions {

@@ -132,8 +132,8 @@ Reference material:
 
 ## Open questions
 
-- Which srsName spellings count as the same CRS, and whether users can extend the
-  CRS name table: see [geometry.md](geometry.md#open-questions-srsname--crs).
+- Whether users can extend the CRS name table: see
+  [geometry.md](geometry.md#open-questions-srsname--crs).
 - Whether to use `DescribeFeatureType` as a *hint* for WFS schema inference, for
   example for columns that are always null.
 - Whether to add a WebDAV-free directory listing for HTTP (e.g. parsing Apache or

@@ -105,13 +105,14 @@ fn axis_mode(mode: AxisMode) -> AxisOrderMode {
     }
 }
 
-/// `srsName=mode` (`EPSG:4326=yx`): the srsName exactly as written. The mode
+/// `srsName=mode` (`EPSG:4326=yx`): the srsName as written, trimmed. The mode
 /// follows the last `=`, so srsNames (URLs) may contain `=`.
 fn axis_override(text: &str) -> Result<(String, AxisOrderMode)> {
     let error = |message: &str| format!("--axis-override {text:?}: {message}");
     let (srs_name, mode) = text
         .rsplit_once('=')
         .ok_or_else(|| error("expected srsName=mode, e.g. EPSG:4326=yx"))?;
+    let srs_name = srs_name.trim();
     if srs_name.is_empty() {
         return Err(error("the srsName is empty").into());
     }

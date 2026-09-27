@@ -253,7 +253,8 @@ dataset extent that a scan reports (`ScanResult::extent`, `xeibe scan`).
 ## CRS and axis order
 
 **Terminology.** *srsName* (in code `srs_name`, `SrsName`) is the attribute string
-exactly as written in the file, e.g. `EPSG:2180` or `urn:ogc:def:crs:EPSG::2180`.
+as written in the file, with surrounding whitespace trimmed, e.g. `EPSG:2180` or
+`urn:ogc:def:crs:EPSG::2180`.
 *CRS* is the coordinate reference system it resolves to (`CrsRef`, e.g. EPSG 2180).
 Different srsNames can resolve to the same CRS. Two cases are kept apart:
 
@@ -332,7 +333,7 @@ Decisions are made **per decision key**, never per feature. Flipping the order
 feature by feature would silently scramble data.
 
 ```
-decision key = (source, srsName string as written, dialect)
+decision key = (source, srsName string as written (trimmed), dialect)
 ```
 
 - *source* = one file, or one WFS endpoint + type name. All pages of one WFS
@@ -347,7 +348,10 @@ decision key = (source, srsName string as written, dialect)
   from the most common decision.
 
 **Overrides**, for inputs that mix srsNames needing different treatment, are keyed
-by the srsName exactly as written. That is all the scan ever writes:
+by the srsName as written: case and spelling matter, only surrounding whitespace
+is ignored (on the override's key as well). Matching by the resolved CRS instead
+would make it impossible to treat two spellings of one CRS differently, which is
+the case overrides exist for. That is all the scan ever writes:
 
 ```rust
 pub struct AxisOrderOptions {
@@ -591,16 +595,21 @@ fallback when no PROJJSON is available (a code EPSG doesn't have).
   the second CRS is a feature error. A column has one CRS, and there is no extra
   per-row CRS column (it would have no path in the schema). In the corpus, only 2
   of 1,575 documents mix CRSs. Different spellings of one CRS (`EPSG:4647` and
-  `urn:ogc:def:crs:EPSG:9.2:4647`) are not mixed. Unknown srsNames are compared as
-  strings. No reprojection is ever done.
+  `urn:ogc:def:crs:EPSG:9.2:4647`) are not mixed: srsNames are the same CRS when
+  the parser resolves them to the same one. Unknown srsNames are compared as
+  strings, trimmed and ignoring case (`LOCAL:Grid` and ` local:grid ` are one).
+  No reprojection is ever done.
 
 ### Open questions: srsName → CRS
 
-1. **Normalisation.** Which spellings count as the same CRS, for the mixed-CRS check and the
-   CRS table lookup: authority case (`epsg:2180`), surrounding whitespace, `EPSG::2180`
-   in a short form, `epsg.xml#2180` vs `#2180`, `http` vs `https`, trailing `/` on
-   HTTP URIs? And do axis overrides stay matched on the srsName *exactly as written*
-   (current assumption)?
+1. ~~**Normalisation.**~~ **Resolved.** Two srsNames are the same CRS when the
+   parser resolves them to the same one. The parser ignores authority and prefix
+   case (`epsg:2180`), surrounding whitespace, the doubled colon in `EPSG::2180`,
+   `http` vs `https` and a trailing `/` on HTTP URIs. Unknown srsNames are
+   compared trimmed and ignoring case. Axis-order decision keys and overrides stay
+   on the srsName as written, trimmed: different spellings of one CRS can be
+   decided differently ([Decision key and scope](#decision-key-and-scope)). A
+   bare `#2180` without `…/gml/srs/epsg.xml` is not recognised; no data uses it.
 2. **AdV mapping and alias table** (`urn:adv:crs:…`, `osgb:BNG`). *Partly resolved*:
    one name lookup serves every srsName form, from our list in `xeibe-geom` and
    EPSG's aliases generated into `xeibe-crs` ([CRS names](#crs-names)). Still

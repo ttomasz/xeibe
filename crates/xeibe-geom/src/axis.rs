@@ -37,7 +37,7 @@ pub enum AxisOrderMode {
 #[serde(from = "AxisOrderOptionsRepr", into = "AxisOrderOptionsRepr")]
 pub struct AxisOrderOptions {
     pub mode: AxisOrderMode,
-    /// srsName exactly as written → mode. Only needed when one input mixes
+    /// srsName as written (trimmed) → mode. Only needed when one input mixes
     /// srsNames that must be read differently.
     pub overrides: IndexMap<String, AxisOrderMode>,
     /// Extra CRS facts (codes missing from the built-in table, other
@@ -94,7 +94,7 @@ impl From<AxisOrderOptions> for AxisOrderOptionsRepr {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct AxisKey {
     pub source: SourceId,
-    /// srsName exactly as written (possibly inherited); `None` if missing.
+    /// srsName as written, trimmed (possibly inherited); `None` if missing.
     pub srs_name: Option<String>,
     pub dialect: Dialect,
 }
@@ -182,7 +182,7 @@ pub fn decide(
     let overridden = key
         .srs_name
         .as_deref()
-        .and_then(|srs| Some((srs, options.overrides.get(srs)?)));
+        .and_then(|srs| Some((srs, override_for(&options.overrides, srs)?)));
     let mut decision = match overridden {
         Some((srs, mode)) => {
             let mut decision = decider.apply(mode);
@@ -537,4 +537,19 @@ fn within((a, b): (f64, f64), lo: f64, hi: f64) -> bool {
         }
     };
     inside(a) && inside(b)
+}
+
+/// The override for an srsName as written. Surrounding whitespace is ignored
+/// on both sides, nothing else (`docs/geometry.md`, "Decision key and scope").
+fn override_for<'a>(
+    overrides: &'a IndexMap<String, AxisOrderMode>,
+    srs: &str,
+) -> Option<&'a AxisOrderMode> {
+    let srs = srs.trim();
+    overrides.get(srs).or_else(|| {
+        overrides
+            .iter()
+            .find(|(key, _)| key.trim() == srs)
+            .map(|(_, mode)| mode)
+    })
 }
