@@ -585,4 +585,5 @@ in memory, outside the bounds in [Memory](#memory).
 - No resolution of `xlink:href`, so no global id index. Links stay strings.
 - No CityGML. No support for solids beyond what is described in the
   [support matrix](support-matrix.md).
-- No XSD-driven mapping. XSDs may later be used only as hints.
+- No XSD-driven mapping. XSDs are used only as hints, and only a WFS
+  `DescribeFeatureType` (planned, see [wfs.md](wfs.md#schema-hint-from-describefeaturetype)).

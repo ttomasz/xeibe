@@ -132,8 +132,6 @@ Reference material:
 
 ## Open questions
 
-- Whether to use `DescribeFeatureType` as a *hint* for WFS schema inference, for
-  example for columns that are always null.
 - Whether to add a WebDAV-free directory listing for HTTP (e.g. parsing Apache or
   nginx index pages), or to require explicit file URLs.
 - The file extension for settings files (`*.gml.json`?), and whether reads embed

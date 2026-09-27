@@ -55,6 +55,33 @@ What we read from `GetCapabilities`:
 | Page cache lifetime | `ResponseCacheTimeout` (Table 14, seconds) | — | — | Read, not used yet. Resuming after `ResponseCacheExpired` doesn't depend on it |
 | Output formats | `GetFeature` `outputFormat` parameter domain | same | `ResultFormat` (`GML2`) | Format negotiation |
 
+## Schema hint from `DescribeFeatureType`
+
+📋 Planned (P2). A WFS read without a settings file samples its schema from the
+first pages. That leaves two gaps: a property null in every sampled feature
+becomes `text`, and a property that never appears in the sample has no column,
+so it is not read at all (the schema is the projection). The type's
+`DescribeFeatureType` XSD fills them, **as a hint only**:
+
+- Only the feature type's **direct properties with a simple type** are used:
+  `xs:string`, integer types, `xs:double`/`float`/`decimal` (→ `double`),
+  `xs:date`, `xs:dateTime`, `xs:time`, `xs:boolean`, and GML geometry property
+  types (`gml:PointPropertyType`, …, `gml:GeometryPropertyType` → `geometry`,
+  i.e. WKB). `maxOccurs > 1` makes a list.
+- It **types an all-null sampled column** with the declared type, and **adds a
+  column** for a declared property the sample never saw, after the sampled
+  columns in XSD order.
+- It **never overrides evidence**: a column the sample typed keeps its type,
+  whatever the XSD says. Declared types are not trusted over data.
+- Anything else is ignored: nested complex types, substitution groups, imports
+  beyond the response itself, `xs:any`. A `DescribeFeatureType` that fails or
+  can't be parsed is a warning, and the read goes on with the sample alone.
+- `--explain` names the XSD as the reason for every column it typed or added.
+
+This is not XSD-driven mapping, which stays a non-goal
+([architecture.md](architecture.md#non-goals-and-deliberate-limits)): the data
+decides, and the XSD only fills what the data couldn't show.
+
 ## Paging
 
 ### What the standard says (WFS 2.0.2 §7.7.4.4)
