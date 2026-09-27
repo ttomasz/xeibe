@@ -59,7 +59,10 @@ fn reads_attributes_by_qualified_name() {
     assert_eq!(attrs.get(&QName::new(Some(APP), "area")), None);
     assert_eq!(attrs.get(&QName::new(None, "missing")), None);
 
-    let listed: Vec<String> = attrs.iter().map(|(name, _)| name.local.to_string()).collect();
+    let listed: Vec<String> = attrs
+        .iter()
+        .map(|(name, _)| name.local.to_string())
+        .collect();
     assert!(listed.contains(&"id".to_string()), "{listed:?}");
     assert!(listed.contains(&"area".to_string()), "{listed:?}");
     // Namespace declarations are not attributes of the element.
@@ -150,8 +153,14 @@ fn skip_element_jumps_over_a_subtree() {
     let fragment = "<app:a><app:skipped><app:deep>x</app:deep></app:skipped><app:kept/></app:a>";
     let context = app_context(ns::GML_32);
     let mut reader = reader(fragment.as_bytes(), &context);
-    assert!(matches!(reader.next_event().unwrap(), XmlEvent::Start { .. })); // app:a
-    assert!(matches!(reader.next_event().unwrap(), XmlEvent::Start { .. })); // app:skipped
+    assert!(matches!(
+        reader.next_event().unwrap(),
+        XmlEvent::Start { .. }
+    )); // app:a
+    assert!(matches!(
+        reader.next_event().unwrap(),
+        XmlEvent::Start { .. }
+    )); // app:skipped
     reader.skip_element().unwrap();
     let XmlEvent::Start { name, .. } = reader.next_event().unwrap() else {
         panic!("expected app:kept after the skipped subtree");
@@ -166,8 +175,14 @@ fn capture_element_returns_the_raw_xml_of_a_subtree() {
     let fragment = r#"<app:a><app:note lang="pl">text <b>bold</b></app:note><app:kept/></app:a>"#;
     let context = app_context(ns::GML_32);
     let mut reader = reader(fragment.as_bytes(), &context);
-    assert!(matches!(reader.next_event().unwrap(), XmlEvent::Start { .. })); // app:a
-    assert!(matches!(reader.next_event().unwrap(), XmlEvent::Start { .. })); // app:note
+    assert!(matches!(
+        reader.next_event().unwrap(),
+        XmlEvent::Start { .. }
+    )); // app:a
+    assert!(matches!(
+        reader.next_event().unwrap(),
+        XmlEvent::Start { .. }
+    )); // app:note
     let raw = reader.capture_element().unwrap();
     assert!(raw.contains("text "), "{raw:?}");
     assert!(raw.contains("<b>bold</b>"), "{raw:?}");

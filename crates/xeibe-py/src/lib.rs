@@ -18,7 +18,12 @@ use xeibe_core::Source;
 use xeibe_io::IoOptions;
 use xeibe_schema::ScanExtent;
 
-create_exception!(xeibe, XeibeError, PyException, "A GML input could not be scanned or read.");
+create_exception!(
+    xeibe,
+    XeibeError,
+    PyException,
+    "A GML input could not be scanned or read."
+);
 
 fn error(error: impl std::fmt::Display) -> PyErr {
     XeibeError::new_err(error.to_string())
@@ -27,7 +32,12 @@ fn error(error: impl std::fmt::Display) -> PyErr {
 /// `scan(paths, sample=None, options=None) -> Scan`
 #[pyfunction]
 #[pyo3(signature = (paths, sample = None, options = None))]
-fn scan(py: Python<'_>, paths: Vec<String>, sample: Option<u64>, options: Option<Bound<'_, PyAny>>) -> PyResult<Scan> {
+fn scan(
+    py: Python<'_>,
+    paths: Vec<String>,
+    sample: Option<u64>,
+    options: Option<Bound<'_, PyAny>>,
+) -> PyResult<Scan> {
     let options = match &options {
         Some(options) => read_options(options)?,
         None => ReadOptions::default(),
@@ -79,7 +89,10 @@ fn read(
         let sources = resolve(&paths)?;
         xeibe_arrow::read(sources, layer, schema, &options).map_err(error)
     })?;
-    Ok(LayerStream { schema: reader.schema(), reader: Mutex::new(Some(reader)) })
+    Ok(LayerStream {
+        schema: reader.schema(),
+        reader: Mutex::new(Some(reader)),
+    })
 }
 
 fn resolve(paths: &[String]) -> PyResult<Vec<Source>> {
@@ -89,8 +102,13 @@ fn resolve(paths: &[String]) -> PyResult<Vec<Source>> {
 /// A dict (the `options` section of a settings file) or a settings-file path.
 fn read_options(options: &Bound<'_, PyAny>) -> PyResult<ReadOptions> {
     if options.is_instance_of::<PyDict>() {
-        let json: String = options.py().import("json")?.call_method1("dumps", (options,))?.extract()?;
-        return serde_json::from_str(&json).map_err(|e| PyValueError::new_err(format!("options: {e}")));
+        let json: String = options
+            .py()
+            .import("json")?
+            .call_method1("dumps", (options,))?
+            .extract()?;
+        return serde_json::from_str(&json)
+            .map_err(|e| PyValueError::new_err(format!("options: {e}")));
     }
     Ok(load_settings(options)?.options)
 }
@@ -178,7 +196,10 @@ impl Scan {
 
     /// Write the settings file.
     fn save(&self, path: PathBuf) -> PyResult<()> {
-        self.inner.to_settings().and_then(|settings| settings.save(&path)).map_err(error)
+        self.inner
+            .to_settings()
+            .and_then(|settings| settings.save(&path))
+            .map_err(error)
     }
 }
 

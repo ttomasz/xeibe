@@ -42,18 +42,31 @@ impl GmlTable {
             None => {
                 let runtime = state.runtime_env().clone();
                 let handle = Handle::current();
-                let (inputs, layer, options) = (sources.clone(), layer.to_string(), options.clone());
-                tokio::task::spawn_blocking(move || sample_schema(&runtime, &inputs, &layer, &options, Some(&handle)))
-                    .await
-                    .map_err(external)??
+                let (inputs, layer, options) =
+                    (sources.clone(), layer.to_string(), options.clone());
+                tokio::task::spawn_blocking(move || {
+                    sample_schema(&runtime, &inputs, &layer, &options, Some(&handle))
+                })
+                .await
+                .map_err(external)??
             }
         };
         Ok(Self::with_schema(sources, layer, schema, options))
     }
 
     /// A table with a known schema; nothing is read until a scan.
-    pub fn with_schema(sources: Vec<String>, layer: &str, schema: SchemaRef, options: ReadOptions) -> Self {
-        GmlTable { sources, layer: layer.to_string(), schema, options }
+    pub fn with_schema(
+        sources: Vec<String>,
+        layer: &str,
+        schema: SchemaRef,
+        options: ReadOptions,
+    ) -> Self {
+        GmlTable {
+            sources,
+            layer: layer.to_string(),
+            schema,
+            options,
+        }
     }
 
     pub fn layer(&self) -> &str {
@@ -75,7 +88,9 @@ pub(crate) fn sample_schema(
     options.projection = None;
     // The schema is known once `read` returns; dropping the reader stops it.
     let reader = xeibe_arrow::read(sources, layer, None, &options).map_err(external)?;
-    Ok(datafusion::arrow::record_batch::RecordBatchReader::schema(&reader))
+    Ok(datafusion::arrow::record_batch::RecordBatchReader::schema(
+        &reader,
+    ))
 }
 
 #[async_trait]
@@ -102,7 +117,13 @@ impl TableProvider for GmlTable {
             None => self.schema.clone(),
         };
         let mut options = self.options.clone();
-        options.projection = Some(schema.fields().iter().map(|field| field.name().clone()).collect());
+        options.projection = Some(
+            schema
+                .fields()
+                .iter()
+                .map(|field| field.name().clone())
+                .collect(),
+        );
 
         let sources = resolve_async(state.runtime_env().clone(), self.sources.clone()).await?;
         if sources.is_empty() {
@@ -111,8 +132,12 @@ impl TableProvider for GmlTable {
         let partitions = sources
             .into_iter()
             .map(|source| {
-                Arc::new(SourcePartition::new(source, &self.layer, self.schema.clone(), options.clone()))
-                    as Arc<dyn PartitionStream>
+                Arc::new(SourcePartition::new(
+                    source,
+                    &self.layer,
+                    self.schema.clone(),
+                    options.clone(),
+                )) as Arc<dyn PartitionStream>
             })
             .collect();
         let exec = StreamingTableExec::try_new(schema, partitions, None, Vec::new(), false, limit)

@@ -30,7 +30,11 @@ fn the_defaults_are_gdals() {
 fn an_arc_becomes_a_line_on_the_circle() {
     let line = linearize_circular(&quarter_circle(), &LinearizeOptions::default());
     let vertices = coords_to_vec(&line.coords);
-    assert!(vertices.len() >= 23, "90° / 4° steps, got {}", vertices.len());
+    assert!(
+        vertices.len() >= 23,
+        "90° / 4° steps, got {}",
+        vertices.len()
+    );
     for vertex in &vertices {
         let radius = (vertex[0] * vertex[0] + vertex[1] * vertex[1]).sqrt();
         assert!((radius - 1.0).abs() < 1e-9, "{vertex:?} is off the circle");
@@ -58,7 +62,11 @@ fn the_angle_step_bounds_the_turn_between_vertices() {
     };
     let line = linearize_circular(&quarter_circle(), &coarse);
     let vertices = coords_to_vec(&line.coords);
-    assert!(vertices.len() <= 6, "30° steps over 90°, got {}", vertices.len());
+    assert!(
+        vertices.len() <= 6,
+        "30° steps over 90°, got {}",
+        vertices.len()
+    );
     for pair in vertices.windows(2) {
         let angle = (pair[0][0] * pair[1][0] + pair[0][1] * pair[1][1])
             .clamp(-1.0, 1.0)
@@ -76,7 +84,8 @@ fn the_max_gap_bounds_the_distance_between_vertices() {
     };
     let line = linearize_circular(&quarter_circle(), &options);
     for pair in coords_to_vec(&line.coords).windows(2) {
-        let distance = ((pair[0][0] - pair[1][0]).powi(2) + (pair[0][1] - pair[1][1]).powi(2)).sqrt();
+        let distance =
+            ((pair[0][0] - pair[1][0]).powi(2) + (pair[0][1] - pair[1][1]).powi(2)).sqrt();
         assert!(distance <= 0.05 + 1e-9, "a gap of {distance} is too large");
     }
 }

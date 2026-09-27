@@ -201,7 +201,11 @@ impl Scanner {
         note_prefixes(&mut builder.observation, &chunk.namespaces);
         let stopped = builder.scan(chunk, budget)?;
         let hints = builder.state.hints;
-        Ok(ChunkScan { observation: builder.finish(), hints, stopped })
+        Ok(ChunkScan {
+            observation: builder.finish(),
+            hints,
+            stopped,
+        })
     }
 
     fn scan_sequential<R: Read>(
@@ -326,7 +330,14 @@ const GML2_ELEMENTS: &[&str] = &["coordinates", "coord", "outerBoundaryIs", "inn
 
 /// Elements that only GML 3 has.
 const GML3_ELEMENTS: &[&str] = &[
-    "pos", "posList", "exterior", "interior", "Curve", "Surface", "MultiCurve", "MultiSurface",
+    "pos",
+    "posList",
+    "exterior",
+    "interior",
+    "Curve",
+    "Surface",
+    "MultiCurve",
+    "MultiSurface",
     "Envelope",
 ];
 
@@ -432,9 +443,8 @@ fn wfs_version(header: &DocumentHeader) -> Option<String> {
                 .map(|version| if *version == "2.0" { "2.0.0" } else { version }.to_string())
         })
     });
-    from_location.or_else(|| {
-        (header.root.ns.as_deref() == Some(ns::WFS_20)).then(|| "2.0.0".to_string())
-    })
+    from_location
+        .or_else(|| (header.root.ns.as_deref() == Some(ns::WFS_20)).then(|| "2.0.0".to_string()))
 }
 
 /// GML geometry elements that can be the value of a property. The property
@@ -478,12 +488,16 @@ const GEOMETRY_ELEMENTS: &[&str] = &[
 fn envelope_bbox(envelope: Option<&xeibe_geom::model::Envelope>) -> Option<[f64; 4]> {
     let envelope = envelope.filter(|e| e.lower.len() >= 2 && e.upper.len() >= 2)?;
     let (lower, upper) = (&envelope.lower, &envelope.upper);
-    union_bbox(Some([lower[0], lower[1], lower[0], lower[1]]), Some([upper[0], upper[1], upper[0], upper[1]]))
+    union_bbox(
+        Some([lower[0], lower[1], lower[0], lower[1]]),
+        Some([upper[0], upper[1], upper[0], upper[1]]),
+    )
 }
 
 /// Also GML 3.3's geometry (compact encodings, TIN, referenceable grids).
 fn is_geometry_element(name: &QName) -> bool {
-    (name.is_gml() && GEOMETRY_ELEMENTS.contains(&&*name.local)) || xeibe_geom::parse::is_gml_33_geometry(name)
+    (name.is_gml() && GEOMETRY_ELEMENTS.contains(&&*name.local))
+        || xeibe_geom::parse::is_gml_33_geometry(name)
 }
 
 /// Per-chunk tree builder: walks features, keeps per-parent child counters on
@@ -606,7 +620,10 @@ impl<'o> TreeBuilder<'o> {
                     self.state.hints.observe(&name);
                     let instance = self.state.start(&mut layer.root, &attrs);
                     let offset = reader.location().byte_offset;
-                    layer.root.first_seen.get_or_insert((self.state.source, offset));
+                    layer
+                        .root
+                        .first_seen
+                        .get_or_insert((self.state.source, offset));
                     self.state.feature = FeatureState {
                         seq: chunk.first_feature_seq + index,
                         gml_id: instance.gml_id.clone(),
@@ -615,7 +632,8 @@ impl<'o> TreeBuilder<'o> {
                         ..FeatureState::default()
                     };
                     index += 1;
-                    self.state.content(&mut reader, &mut layer.root, 0, instance)?;
+                    self.state
+                        .content(&mut reader, &mut layer.root, 0, instance)?;
                     layer.extent = union_bbox(layer.extent, self.state.feature.extent.take());
                 }
                 XmlEvent::Text(_) | XmlEvent::End { .. } => {}
@@ -708,7 +726,8 @@ impl WalkState {
                     }
                     let known = node.children.get_index_of(&name);
                     if depth >= self.limits.max_depth
-                        || (known.is_none() && node.children.len() >= self.limits.max_children as usize)
+                        || (known.is_none()
+                            && node.children.len() >= self.limits.max_children as usize)
                     {
                         node.truncated = true;
                         reader.skip_element()?;
@@ -716,7 +735,11 @@ impl WalkState {
                     }
                     let index = match known {
                         Some(index) => index,
-                        None => node.children.insert_full(name.clone(), ElementNode::new(&name.local, None)).0,
+                        None => {
+                            node.children
+                                .insert_full(name.clone(), ElementNode::new(&name.local, None))
+                                .0
+                        }
                     };
                     let child = &mut node.children[index];
                     child.instances += 1;
@@ -724,7 +747,9 @@ impl WalkState {
                     child_instance.array = xeibe_geom::parse::is_array_property(&name);
                     child_instance.bounded_by = name.is_gml_named("boundedBy");
                     let location = reader.location();
-                    child.first_seen.get_or_insert((self.source, location.byte_offset));
+                    child
+                        .first_seen
+                        .get_or_insert((self.source, location.byte_offset));
                     match frame.child_counts.iter_mut().find(|(i, _, _)| *i == index) {
                         Some((_, count, second)) => {
                             *count += 1;
@@ -803,7 +828,11 @@ impl WalkState {
         reader: &mut GmlReader<'_>,
         feature_bounds: bool,
     ) -> crate::Result<xeibe_geom::sniff::GeometrySniff> {
-        let sniff = sniff_geometry_in(reader, self.feature.srs_name.as_deref(), self.feature.srs_dimension)?;
+        let sniff = sniff_geometry_in(
+            reader,
+            self.feature.srs_name.as_deref(),
+            self.feature.srs_dimension,
+        )?;
         self.hints.saw_gml33 |= sniff.gml_33;
         match sniff.dialect {
             Some(xeibe_core::Dialect::Gml2) => self.hints.saw_gml2_elements = true,

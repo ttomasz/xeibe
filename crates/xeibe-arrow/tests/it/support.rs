@@ -34,8 +34,7 @@ pub fn path(relative: &str) -> PathBuf {
 }
 
 pub fn scan_document(document: &str) -> ScanResult {
-    scan(sources(document), ScanExtent::Full, &ReadOptions::default())
-        .expect("the document scans")
+    scan(sources(document), ScanExtent::Full, &ReadOptions::default()).expect("the document scans")
 }
 
 /// Read one layer and collect everything: batches, schema and report.
@@ -81,7 +80,11 @@ impl Read {
     }
 
     pub fn column_names(&self) -> Vec<String> {
-        self.schema.fields().iter().map(|f| f.name().clone()).collect()
+        self.schema
+            .fields()
+            .iter()
+            .map(|f| f.name().clone())
+            .collect()
     }
 
     pub fn data_type(&self, name: &str) -> DataType {
@@ -184,8 +187,7 @@ impl Read {
                 let array = array.as_binary::<i32>();
                 (0..array.len())
                     .map(|i| {
-                        (!array.is_null(i))
-                            .then(|| wkb::decode(array.value(i)).expect("valid WKB"))
+                        (!array.is_null(i)).then(|| wkb::decode(array.value(i)).expect("valid WKB"))
                     })
                     .collect()
             }
@@ -193,8 +195,7 @@ impl Read {
                 let array = array.as_binary::<i64>();
                 (0..array.len())
                     .map(|i| {
-                        (!array.is_null(i))
-                            .then(|| wkb::decode(array.value(i)).expect("valid WKB"))
+                        (!array.is_null(i)).then(|| wkb::decode(array.value(i)).expect("valid WKB"))
                     })
                     .collect()
             }
@@ -202,14 +203,11 @@ impl Read {
                 let array = array.as_binary_view();
                 (0..array.len())
                     .map(|i| {
-                        (!array.is_null(i))
-                            .then(|| wkb::decode(array.value(i)).expect("valid WKB"))
+                        (!array.is_null(i)).then(|| wkb::decode(array.value(i)).expect("valid WKB"))
                     })
                     .collect()
             }
-            other => panic!(
-                "{name} is {other}; read with GeomEncoding::Wkb to compare geometry"
-            ),
+            other => panic!("{name} is {other}; read with GeomEncoding::Wkb to compare geometry"),
         })
     }
 
@@ -240,12 +238,16 @@ impl Read {
 
         let field = self.field(name);
         self.map_column(name, |array| {
-            let geometry = geoarrow_array::array::from_arrow_array(array, &field).expect("a GeoArrow column");
-            let wkb = geoarrow_array::cast::to_wkb::<i32>(geometry.as_ref()).expect("convertible to WKB");
+            let geometry =
+                geoarrow_array::array::from_arrow_array(array, &field).expect("a GeoArrow column");
+            let wkb =
+                geoarrow_array::cast::to_wkb::<i32>(geometry.as_ref()).expect("convertible to WKB");
             let binary = wkb.into_array_ref();
             let binary = binary.as_binary::<i32>();
             (0..binary.len())
-                .map(|i| (!binary.is_null(i)).then(|| wkb::decode(binary.value(i)).expect("valid WKB")))
+                .map(|i| {
+                    (!binary.is_null(i)).then(|| wkb::decode(binary.value(i)).expect("valid WKB"))
+                })
                 .collect()
         })
     }
@@ -319,7 +321,8 @@ pub fn extension_name(field: &arrow_schema::Field) -> Option<&str> {
 pub fn temp_dir(name: &str) -> PathBuf {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}-{}-{n}", std::process::id()));
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("{name}-{}-{n}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("creating the temporary directory");
     dir

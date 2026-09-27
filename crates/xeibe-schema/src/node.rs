@@ -1,6 +1,6 @@
-use xeibe_core::{Location, QName, ns};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use xeibe_core::{Location, QName, ns};
 
 use crate::geometry_stats::GeometryStats;
 use crate::{Merge, ValueStats};
@@ -174,7 +174,9 @@ impl ElementNode {
         {
             return false;
         }
-        let with_content = self.instances.saturating_sub(self.empty + self.by_reference);
+        let with_content = self
+            .instances
+            .saturating_sub(self.empty + self.by_reference);
         self.single_child == with_content
             && self.children.values().all(|child| {
                 child.name_shape == NameShape::UpperCamel
@@ -224,8 +226,9 @@ impl Merge for ElementNode {
         if reorder || other.first_seen < self.first_seen {
             // Children in order of first appearance, whatever the merge order.
             // `None` (never seen) sorts last.
-            self.children
-                .sort_by_cached_key(|_, child| child.first_seen.map_or((1, 0, 0), |(s, o)| (0, s, o)));
+            self.children.sort_by_cached_key(|_, child| {
+                child.first_seen.map_or((1, 0, 0), |(s, o)| (0, s, o))
+            });
         }
         self.first_seen = match (self.first_seen, other.first_seen) {
             (Some(a), Some(b)) => Some(a.min(b)),

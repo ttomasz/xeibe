@@ -85,6 +85,10 @@ impl Warning {
         } else {
             WarningKind::Other
         };
-        Warning { kind, location, message }
+        Warning {
+            kind,
+            location,
+            message,
+        }
     }
 }

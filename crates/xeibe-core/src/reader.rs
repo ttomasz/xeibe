@@ -60,7 +60,9 @@ impl<'a> Attributes<'a> {
                 PrefixDeclaration::Default => None,
                 PrefixDeclaration::Named(prefix) => Some(prefix),
             };
-            let Cow::Borrowed(uri) = attr.value else { return None };
+            let Cow::Borrowed(uri) = attr.value else {
+                return None;
+            };
             Some((prefix, uri))
         })
     }

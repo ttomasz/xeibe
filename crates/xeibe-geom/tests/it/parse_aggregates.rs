@@ -149,10 +149,8 @@ fn a_member_of_the_wrong_kind_is_an_error() {
 
 #[test]
 fn a_member_given_by_reference_is_not_resolved() {
-    let error = parse(
-        r##"<gml:MultiCurve><gml:curveMember xlink:href="#c1"/></gml:MultiCurve>"##,
-    )
-    .expect_err("a referenced member");
+    let error = parse(r##"<gml:MultiCurve><gml:curveMember xlink:href="#c1"/></gml:MultiCurve>"##)
+        .expect_err("a referenced member");
     assert!(
         matches!(
             error,

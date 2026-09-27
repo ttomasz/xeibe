@@ -109,12 +109,24 @@ fn page(ids: &[u32], matched: u32) -> String {
 fn wfs_layers_lists_feature_types() {
     let server = Server::start(vec![capabilities()]);
     let run = xeibe_ok(&["wfs", "layers", &server.base]);
-    assert!(run.stdout.contains("WFS 2.0.0: Test parcels"), "{}", run.stdout);
-    let line = run.stdout.lines().find(|line| line.starts_with("app:Parcel")).expect("a line for app:Parcel");
+    assert!(
+        run.stdout.contains("WFS 2.0.0: Test parcels"),
+        "{}",
+        run.stdout
+    );
+    let line = run
+        .stdout
+        .lines()
+        .find(|line| line.starts_with("app:Parcel"))
+        .expect("a line for app:Parcel");
     assert!(line.contains("Land parcels"), "{line}");
     assert!(line.contains("urn:ogc:def:crs:EPSG::2180"), "{line}");
     assert!(line.contains("14.1"), "{line}");
-    assert!(server.requests()[0].contains("GetCapabilities"), "{:?}", server.requests());
+    assert!(
+        server.requests()[0].contains("GetCapabilities"),
+        "{:?}",
+        server.requests()
+    );
 }
 
 #[test]
@@ -124,7 +136,10 @@ fn wfs_count_prints_number_matched() {
     let run = xeibe_ok(&["wfs", "count", &server.base, "--type-name", "app:Parcel"]);
     assert_eq!(run.stdout.trim(), "1234");
     let requests = server.requests();
-    assert!(requests[1].to_ascii_lowercase().contains("resulttype=hits"), "{requests:?}");
+    assert!(
+        requests[1].to_ascii_lowercase().contains("resulttype=hits"),
+        "{requests:?}"
+    );
 }
 
 #[test]
@@ -147,19 +162,35 @@ fn wfs_convert_streams_every_page_into_parquet() {
         path_str(&out),
     ]);
     assert!(run.stderr.contains("3 rows written"), "{}", run.stderr);
-    assert!(run.stderr.contains("page 2"), "progress per page: {}", run.stderr);
+    assert!(
+        run.stderr.contains("page 2"),
+        "progress per page: {}",
+        run.stderr
+    );
 
     let requests = server.requests();
     assert_eq!(requests.len(), 3, "{requests:?}");
-    assert!(requests[1].to_ascii_uppercase().contains("STARTINDEX=0"), "{requests:?}");
-    assert!(requests[2].to_ascii_uppercase().contains("STARTINDEX=2"), "{requests:?}");
+    assert!(
+        requests[1].to_ascii_uppercase().contains("STARTINDEX=0"),
+        "{requests:?}"
+    );
+    assert!(
+        requests[2].to_ascii_uppercase().contains("STARTINDEX=2"),
+        "{requests:?}"
+    );
 
-    assert_eq!(parquet_reader(&out).metadata().file_metadata().num_rows(), 3);
+    assert_eq!(
+        parquet_reader(&out).metadata().file_metadata().num_rows(),
+        3
+    );
     let geo = geo_metadata(&out);
     let column = &geo["columns"]["geom"];
     assert_eq!(column["geometry_types"], serde_json::json!(["Point"]));
     assert_eq!(column["crs"]["id"]["code"], 2180);
-    assert_eq!(column["bbox"], serde_json::json!([500001.0, 300001.0, 500003.0, 300003.0]));
+    assert_eq!(
+        column["bbox"],
+        serde_json::json!([500001.0, 300001.0, 500003.0, 300003.0])
+    );
 }
 
 #[test]
@@ -167,7 +198,15 @@ fn wfs_convert_of_an_unknown_type_fails() {
     let server = Server::start(vec![capabilities()]);
     let dir = out_dir("wfs_unknown");
     let out = dir.join("x.parquet");
-    let run = xeibe(&["wfs", "convert", &server.base, "--type-name", "app:Nothing", "-o", path_str(&out)]);
+    let run = xeibe(&[
+        "wfs",
+        "convert",
+        &server.base,
+        "--type-name",
+        "app:Nothing",
+        "-o",
+        path_str(&out),
+    ]);
     assert!(!run.success);
     assert!(run.stderr.contains("app:Nothing"), "{}", run.stderr);
     assert!(!out.exists());

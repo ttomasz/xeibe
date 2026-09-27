@@ -23,8 +23,16 @@ pub fn explain(schema: &LayerSchema) -> String {
         })
         .collect();
 
-    let name_width = rows.iter().map(|(name, _, _)| name.chars().count()).max().unwrap_or(0);
-    let type_width = rows.iter().map(|(_, t, _)| t.chars().count()).max().unwrap_or(0);
+    let name_width = rows
+        .iter()
+        .map(|(name, _, _)| name.chars().count())
+        .max()
+        .unwrap_or(0);
+    let type_width = rows
+        .iter()
+        .map(|(_, t, _)| t.chars().count())
+        .max()
+        .unwrap_or(0);
     let mut out = String::new();
     for (name, data_type, reasons) in rows {
         let first = reasons.first().map(String::as_str).unwrap_or("");
@@ -32,14 +40,20 @@ pub fn explain(schema: &LayerSchema) -> String {
         out.push_str(line.trim_end());
         out.push('\n');
         for reason in reasons.iter().skip(1) {
-            out.push_str(&format!("{:<name_width$}  {:<type_width$}  {reason}\n", "", ""));
+            out.push_str(&format!(
+                "{:<name_width$}  {:<type_width$}  {reason}\n",
+                "", ""
+            ));
         }
     }
     out
 }
 
 fn extension(field: &Field) -> Option<&str> {
-    field.metadata().get("ARROW:extension:name").map(String::as_str)
+    field
+        .metadata()
+        .get("ARROW:extension:name")
+        .map(String::as_str)
 }
 
 /// The type as `arrow-schema` prints it, but a GeoArrow column by its

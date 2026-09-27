@@ -93,16 +93,17 @@ fn analyze_number(value: &str, number: &Number<'_>, analysis: &mut Analysis) {
     let identifier = number.int_digits.len() > 1 && number.int_digits.starts_with('0');
 
     if number.is_integer()
-        && let Ok(int) = value.trim_start_matches('+').parse::<i64>() {
-            analysis.int = Some(int);
-            c.lossy |= TypeSet::INT;
-            if !identifier {
-                c.exact_value |= TypeSet::INT;
-                if int.to_string() == value {
-                    c.exact_text |= TypeSet::INT;
-                }
+        && let Ok(int) = value.trim_start_matches('+').parse::<i64>()
+    {
+        analysis.int = Some(int);
+        c.lossy |= TypeSet::INT;
+        if !identifier {
+            c.exact_value |= TypeSet::INT;
+            if int.to_string() == value {
+                c.exact_text |= TypeSet::INT;
             }
         }
+    }
 
     let Ok(float) = value.parse::<f64>() else {
         return;
@@ -260,9 +261,17 @@ impl Decimal {
         let trimmed = digits.trim_end_matches('0');
         exponent += (digits.len() - trimmed.len()) as i64;
         if trimmed.is_empty() {
-            return Decimal { negative: false, digits: String::new(), exponent: 0 };
+            return Decimal {
+                negative: false,
+                digits: String::new(),
+                exponent: 0,
+            };
         }
-        Decimal { negative, digits: trimmed.to_string(), exponent }
+        Decimal {
+            negative,
+            digits: trimmed.to_string(),
+            exponent,
+        }
     }
 
     /// The shortest decimal that round-trips to `value` (Rust's `{:e}`).
@@ -513,7 +522,9 @@ pub struct FloatShape {
 
 impl Merge for FloatShape {
     fn merge(&mut self, other: Self) {
-        self.max_significant_digits = self.max_significant_digits.max(other.max_significant_digits);
+        self.max_significant_digits = self
+            .max_significant_digits
+            .max(other.max_significant_digits);
         self.max_scale = self.max_scale.max(other.max_scale);
     }
 }

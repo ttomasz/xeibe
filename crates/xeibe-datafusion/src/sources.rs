@@ -17,22 +17,34 @@ use xeibe_io::IoOptions;
 ///
 /// `file://` URLs use the registry too (DataFusion registers a local store for
 /// them); a zip archive must be given as a plain path.
-pub fn resolve(runtime: &RuntimeEnv, inputs: &[String], handle: Option<&Handle>) -> Result<Vec<Source>> {
+pub fn resolve(
+    runtime: &RuntimeEnv,
+    inputs: &[String],
+    handle: Option<&Handle>,
+) -> Result<Vec<Source>> {
     let options = IoOptions::default();
     let mut sources = Vec::new();
     for input in inputs {
         let Some((base, key)) = split_url(input) else {
-            sources.extend(xeibe_core::source::expand_sources(std::slice::from_ref(input)).map_err(external)?);
+            sources.extend(
+                xeibe_core::source::expand_sources(std::slice::from_ref(input))
+                    .map_err(external)?,
+            );
             continue;
         };
         let handle = handle.ok_or_else(|| {
             DataFusionError::Plan(format!("{input}: object store inputs need a tokio runtime"))
         })?;
         let store = runtime.object_store(ObjectStoreUrl::parse(base)?)?;
-        sources.extend(xeibe_io::object_store::store_sources(store, base, key, handle, &options).map_err(external)?);
+        sources.extend(
+            xeibe_io::object_store::store_sources(store, base, key, handle, &options)
+                .map_err(external)?,
+        );
     }
     if sources.is_empty() {
-        return Err(DataFusionError::Plan(format!("no GML sources in {inputs:?}")));
+        return Err(DataFusionError::Plan(format!(
+            "no GML sources in {inputs:?}"
+        )));
     }
     Ok(sources)
 }
@@ -41,7 +53,10 @@ pub fn resolve(runtime: &RuntimeEnv, inputs: &[String], handle: Option<&Handle>)
 /// as written, so glob characters survive.
 fn split_url(input: &str) -> Option<(&str, &str)> {
     let scheme_end = input.find("://")?;
-    if !input[..scheme_end].chars().all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c)) {
+    if !input[..scheme_end]
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
+    {
         return None;
     }
     let authority = scheme_end + 3;
@@ -62,7 +77,10 @@ pub(crate) fn has_urls(inputs: &[String]) -> bool {
 ///
 /// On a current-thread runtime, the object store bodies could not make
 /// progress while that thread waits, so URL inputs are refused there.
-pub(crate) fn blocking<T: Send>(inputs: &[String], f: impl FnOnce(Option<&Handle>) -> Result<T> + Send) -> Result<T> {
+pub(crate) fn blocking<T: Send>(
+    inputs: &[String],
+    f: impl FnOnce(Option<&Handle>) -> Result<T> + Send,
+) -> Result<T> {
     match Handle::try_current() {
         Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::MultiThread => {
             tokio::task::block_in_place(|| f(Some(&handle)))
@@ -86,7 +104,10 @@ pub(crate) fn external(error: impl std::error::Error + Send + Sync + 'static) ->
 }
 
 /// Resolve inputs from async code.
-pub(crate) async fn resolve_async(runtime: Arc<RuntimeEnv>, inputs: Vec<String>) -> Result<Vec<Source>> {
+pub(crate) async fn resolve_async(
+    runtime: Arc<RuntimeEnv>,
+    inputs: Vec<String>,
+) -> Result<Vec<Source>> {
     let handle = Handle::current();
     tokio::task::spawn_blocking(move || resolve(&runtime, &inputs, Some(&handle)))
         .await
@@ -99,8 +120,14 @@ mod tests {
 
     #[test]
     fn urls_split_into_store_and_key() {
-        assert_eq!(split_url("s3://bucket/a/*.gml"), Some(("s3://bucket", "a/*.gml")));
-        assert_eq!(split_url("file:///data/x.gml"), Some(("file://", "data/x.gml")));
+        assert_eq!(
+            split_url("s3://bucket/a/*.gml"),
+            Some(("s3://bucket", "a/*.gml"))
+        );
+        assert_eq!(
+            split_url("file:///data/x.gml"),
+            Some(("file://", "data/x.gml"))
+        );
         assert_eq!(split_url("s3://bucket"), Some(("s3://bucket", "")));
         assert_eq!(split_url("data/x.gml"), None);
     }

@@ -54,7 +54,11 @@ fn later_patches_win() {
         ..Default::default()
     };
     let mut options = InferenceOptions::default();
-    options.layers.push(("Parcel".into(), patch(Lossless::Lossy)));
-    options.layers.push(("Parcel".into(), patch(Lossless::Text)));
+    options
+        .layers
+        .push(("Parcel".into(), patch(Lossless::Lossy)));
+    options
+        .layers
+        .push(("Parcel".into(), patch(Lossless::Text)));
     assert_eq!(options.for_layer("Parcel").types.lossless, Lossless::Text);
 }

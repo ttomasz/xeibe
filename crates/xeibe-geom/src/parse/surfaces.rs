@@ -14,7 +14,12 @@ impl Parser<'_> {
     /// `Polygon`, or a patch with the same content (`PolygonPatch`,
     /// `Triangle`, `Rectangle`): `exterior`/`interior`, or GML 2's
     /// `outerBoundaryIs`/`innerBoundaryIs`.
-    pub(super) fn polygon(&mut self, reader: &mut GmlReader<'_>, elem: &Elem, scope: Scope) -> crate::Result<Surface> {
+    pub(super) fn polygon(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: &Elem,
+        scope: Scope,
+    ) -> crate::Result<Surface> {
         let scope = self.enter(elem, scope);
         let mut exterior: Option<Curve> = None;
         let mut interiors = Vec::new();
@@ -38,7 +43,8 @@ impl Parser<'_> {
                     exterior = Some(ring);
                 } else {
                     if is_exterior {
-                        self.warnings.push("a second exterior ring is read as an interior ring".into());
+                        self.warnings
+                            .push("a second exterior ring is read as an interior ring".into());
                     }
                     interiors.push(ring);
                 }
@@ -46,9 +52,14 @@ impl Parser<'_> {
         }
         if exterior.is_none() && !interiors.is_empty() {
             // Allowed for "general manifold" surfaces (§10.5.5), not in WKB.
-            return Err(self.unsupported(reader, format!("{} with interior rings only", elem.local())));
+            return Err(
+                self.unsupported(reader, format!("{} with interior rings only", elem.local()))
+            );
         }
-        let polygon = CurvePolygon { exterior, interiors };
+        let polygon = CurvePolygon {
+            exterior,
+            interiors,
+        };
         Ok(match polygon.into_linear() {
             Ok(polygon) => Surface::Polygon(polygon),
             Err(polygon) => Surface::CurvePolygon(polygon),
@@ -85,12 +96,20 @@ impl Parser<'_> {
                 .unwrap_or("SimpleTrianglePatch");
             return Err(self.position_count(reader, element, corners, "at least 3 corners"));
         }
-        Ok(Surface::Polygon(Polygon { exterior: Some(LineString { coords }), interiors: Vec::new() }))
+        Ok(Surface::Polygon(Polygon {
+            exterior: Some(LineString { coords }),
+            interiors: Vec::new(),
+        }))
     }
 
     /// The content of `exterior`/`interior`: `LinearRing` or `Ring`, or
     /// leniently any curve (**[GDAL]**), which must then be closed like a `Ring`.
-    fn ring_element(&mut self, reader: &mut GmlReader<'_>, elem: Elem, scope: Scope) -> crate::Result<Curve> {
+    fn ring_element(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: Elem,
+        scope: Scope,
+    ) -> crate::Result<Curve> {
         let checked = elem.is("LinearRing") || elem.is("Ring");
         let mut curve = self.curve(reader, elem, scope)?;
         if !checked {
@@ -101,7 +120,12 @@ impl Parser<'_> {
     }
 
     /// `Surface`: one surface per patch, kept apart (§10.5.10).
-    pub(super) fn surface(&mut self, reader: &mut GmlReader<'_>, elem: &Elem, scope: Scope) -> crate::Result<Vec<Surface>> {
+    pub(super) fn surface(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: &Elem,
+        scope: Scope,
+    ) -> crate::Result<Vec<Surface>> {
         let scope = self.enter(elem, scope);
         let mut surfaces = Vec::new();
         while let Some(child) = self.next_child(reader)? {

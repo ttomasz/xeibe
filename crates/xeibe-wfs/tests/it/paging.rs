@@ -17,7 +17,11 @@ fn feature_type() -> FeatureTypeInfo {
     }
 }
 
-fn capabilities(version: WfsVersion, paging: Option<bool>, count_default: Option<u64>) -> Capabilities {
+fn capabilities(
+    version: WfsVersion,
+    paging: Option<bool>,
+    count_default: Option<u64>,
+) -> Capabilities {
     Capabilities {
         version,
         service_title: None,
@@ -95,7 +99,11 @@ fn a_1x_server_is_read_in_one_request_unless_told_otherwise() {
 fn a_next_link_is_followed_until_there_is_none() {
     let strategy = PagingStrategy::NextLink;
     assert_eq!(
-        next_page(&strategy, 2, &response(Some(2), Some(10), Some("https://example.com/p2"))),
+        next_page(
+            &strategy,
+            2,
+            &response(Some(2), Some(10), Some("https://example.com/p2"))
+        ),
         NextPage::Url("https://example.com/p2".into())
     );
     assert_eq!(
@@ -130,7 +138,11 @@ fn start_index_paging_stops_at_a_short_page() {
 #[test]
 fn a_single_request_never_asks_for_another_page() {
     assert_eq!(
-        next_page(&PagingStrategy::Single, 2, &response(Some(2), Some(2), None)),
+        next_page(
+            &PagingStrategy::Single,
+            2,
+            &response(Some(2), Some(2), None)
+        ),
         NextPage::Done
     );
 }

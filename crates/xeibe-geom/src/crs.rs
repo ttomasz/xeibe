@@ -46,7 +46,10 @@ pub enum CrsRef {
 
 impl CrsRef {
     pub fn epsg(code: impl Into<String>) -> Self {
-        CrsRef::Code { authority: "EPSG".into(), code: code.into() }
+        CrsRef::Code {
+            authority: "EPSG".into(),
+            code: code.into(),
+        }
     }
 
     /// `EPSG:2180`, `OGC:CRS84` — the value written to GeoArrow `crs`
@@ -67,7 +70,9 @@ impl CrsRef {
                         out.push('+');
                     }
                     match part {
-                        CrsRef::Code { authority, code } if previous_authority == Some(authority) => {
+                        CrsRef::Code { authority, code }
+                            if previous_authority == Some(authority) =>
+                        {
                             out.push_str(code);
                         }
                         CrsRef::Code { authority, .. } => {
@@ -128,7 +133,10 @@ impl CrsRef {
             }
             CrsRef::Code { .. } | CrsRef::Unresolved(_) => None,
             CrsRef::Compound(parts) => {
-                let known: Vec<&CrsRef> = parts.iter().filter(|p| !matches!(p, CrsRef::Unresolved(_))).collect();
+                let known: Vec<&CrsRef> = parts
+                    .iter()
+                    .filter(|p| !matches!(p, CrsRef::Unresolved(_)))
+                    .collect();
                 if known.len() < 2 {
                     return known.first()?.projjson();
                 }
@@ -144,7 +152,10 @@ impl CrsRef {
                         _ => components.push(json),
                     }
                 }
-                let names = components.iter().map(|c| c["name"].as_str()).collect::<Option<Vec<_>>>()?;
+                let names = components
+                    .iter()
+                    .map(|c| c["name"].as_str())
+                    .collect::<Option<Vec<_>>>()?;
                 Some(serde_json::json!({
                     "$schema": schema,
                     "type": "CompoundCRS",
@@ -171,8 +182,16 @@ impl SrsName {
     /// [`SrsNameForm::Unknown`] with no CRS.
     pub fn parse(raw: &str) -> Self {
         let (form, crs) = parse_form(raw.trim()).unwrap_or((SrsNameForm::Unknown, None));
-        let form = if crs.is_none() { SrsNameForm::Unknown } else { form };
-        SrsName { raw: raw.to_string(), form, crs }
+        let form = if crs.is_none() {
+            SrsNameForm::Unknown
+        } else {
+            form
+        };
+        SrsName {
+            raw: raw.to_string(),
+            form,
+            crs,
+        }
     }
 }
 
@@ -182,8 +201,13 @@ fn parse_form(s: &str) -> Option<(SrsNameForm, Option<CrsRef>)> {
     }
     if let Some(rest) = strip_prefix_ci(s, "urn:ogc:def:crs,") {
         // `crs:EPSG::4269,crs:EPSG::5713`
-        let parts = rest.split(',').map(|p| part(strip_prefix_ci(p.trim(), "crs:").unwrap_or(p.trim())));
-        return Some((SrsNameForm::CompoundUrn, compound(parts.collect::<Option<_>>()?)));
+        let parts = rest
+            .split(',')
+            .map(|p| part(strip_prefix_ci(p.trim(), "crs:").unwrap_or(p.trim())));
+        return Some((
+            SrsNameForm::CompoundUrn,
+            compound(parts.collect::<Option<_>>()?),
+        ));
     }
     if let Some(rest) = strip_prefix_ci(s, "urn:ogc:def:crs:") {
         return Some((SrsNameForm::OgcUrn, Some(ogc_urn_code(rest)?)));
@@ -193,7 +217,10 @@ fn parse_form(s: &str) -> Option<(SrsNameForm, Option<CrsRef>)> {
     }
     if let Some(rest) = strip_prefix_ci(s, "urn:adv:crs:") {
         // A `*` joins a horizontal and a vertical CRS.
-        return Some((SrsNameForm::AdvUrn, compound(rest.split('*').map(part).collect::<Option<_>>()?)));
+        return Some((
+            SrsNameForm::AdvUrn,
+            compound(rest.split('*').map(part).collect::<Option<_>>()?),
+        ));
     }
     if let Some(rest) = strip_prefix_ci(s, "urn:epsg:") {
         // `urn:EPSG:geographicCRS:4326`
@@ -224,8 +251,13 @@ fn parse_form(s: &str) -> Option<(SrsNameForm, Option<CrsRef>)> {
 fn epsg_codes(codes: &str) -> Option<CrsRef> {
     let mut codes = codes.split('+').map(str::trim);
     let first = CrsRef::epsg(epsg_code(codes.next()?)?);
-    let rest = codes.map(|code| epsg_code(code).map_or_else(|| part(code), |code| Some(CrsRef::epsg(code))));
-    compound(std::iter::once(Some(first)).chain(rest).collect::<Option<_>>()?)
+    let rest = codes
+        .map(|code| epsg_code(code).map_or_else(|| part(code), |code| Some(CrsRef::epsg(code))));
+    compound(
+        std::iter::once(Some(first))
+            .chain(rest)
+            .collect::<Option<_>>()?,
+    )
 }
 
 /// One part of a compound CRS: an srsName of its own, `AUTH:[VERSION]:CODE`
@@ -235,7 +267,9 @@ fn part(text: &str) -> Option<CrsRef> {
     if text.is_empty() {
         return None;
     }
-    let crs = parse_form(text).and_then(|(_, crs)| crs).or_else(|| ogc_urn_code(text));
+    let crs = parse_form(text)
+        .and_then(|(_, crs)| crs)
+        .or_else(|| ogc_urn_code(text));
     Some(crs.unwrap_or_else(|| CrsRef::Unresolved(text.to_string())))
 }
 
@@ -309,7 +343,10 @@ fn code_ref(authority: &str, code: &str) -> Option<CrsRef> {
     if authority == "EPSG" {
         return Some(CrsRef::epsg(epsg_code(code)?));
     }
-    Some(CrsRef::Code { authority, code: code.to_string() })
+    Some(CrsRef::Code {
+        authority,
+        code: code.to_string(),
+    })
 }
 
 /// An EPSG code is a positive integer; leading zeros are dropped.
@@ -326,8 +363,14 @@ fn epsg_code(code: &str) -> Option<String> {
 /// (`PL-1992` → EPSG:2180). Case is ignored.
 fn named(name: &str) -> Option<CrsRef> {
     let name = name.trim();
-    if let Some((_, authority, code)) = NAMES.iter().find(|(known, _, _)| known.eq_ignore_ascii_case(name)) {
-        return Some(CrsRef::Code { authority: (*authority).into(), code: (*code).into() });
+    if let Some((_, authority, code)) = NAMES
+        .iter()
+        .find(|(known, _, _)| known.eq_ignore_ascii_case(name))
+    {
+        return Some(CrsRef::Code {
+            authority: (*authority).into(),
+            code: (*code).into(),
+        });
     }
     xeibe_crs::alias(name).map(|code| CrsRef::epsg(code.to_string()))
 }
@@ -356,7 +399,8 @@ const NAMES: &[(&str, &str, &str)] = &[
 
 fn strip_prefix_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
     let head = s.get(..prefix.len())?;
-    head.eq_ignore_ascii_case(prefix).then(|| &s[prefix.len()..])
+    head.eq_ignore_ascii_case(prefix)
+        .then(|| &s[prefix.len()..])
 }
 
 fn strip_http(s: &str) -> Option<&str> {

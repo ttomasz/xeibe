@@ -678,7 +678,10 @@ impl<R: Read> FeatureSplitter<R> {
 
     /// The `boundedBy` of the innermost open collection that has one.
     fn collection_bounded_by(&self) -> Option<&Arc<RawElement>> {
-        self.stack.iter().rev().find_map(|frame| frame.bounded_by.as_ref())
+        self.stack
+            .iter()
+            .rev()
+            .find_map(|frame| frame.bounded_by.as_ref())
     }
 
     /// A collection's `boundedBy` that started at stream offset `start` ended

@@ -41,7 +41,9 @@ impl TableFunctionImpl for ReadGmlFunction {
         for (index, expr) in exprs.iter().enumerate().skip(2) {
             let option = string(expr)?;
             match option.split_once('=') {
-                Some((key, value)) => pairs.push((key.trim().to_string(), value.trim().to_string())),
+                Some((key, value)) => {
+                    pairs.push((key.trim().to_string(), value.trim().to_string()))
+                }
                 None if index == 2 => pairs.push(("settings".to_string(), option)),
                 None => return plan_err!("read_gml: expected 'key=value', got {option:?}"),
             }
@@ -52,7 +54,9 @@ impl TableFunctionImpl for ReadGmlFunction {
             Some(schema) => GmlTable::with_schema(paths, &layer, schema, options),
             None => {
                 let runtime = args.session().runtime_env().clone();
-                let schema = blocking(&paths, |handle| sample_schema(&runtime, &paths, &layer, &options, handle))?;
+                let schema = blocking(&paths, |handle| {
+                    sample_schema(&runtime, &paths, &layer, &options, handle)
+                })?;
                 GmlTable::with_schema(paths, &layer, schema, options)
             }
         };
@@ -62,7 +66,10 @@ impl TableFunctionImpl for ReadGmlFunction {
 
 /// The settings file's options (and the layer's schema, if it has one), then
 /// the other options over them.
-fn read_options(layer: &str, pairs: &[(String, String)]) -> Result<(Option<SchemaRef>, ReadOptions)> {
+fn read_options(
+    layer: &str,
+    pairs: &[(String, String)],
+) -> Result<(Option<SchemaRef>, ReadOptions)> {
     let mut schema = None;
     let mut options = ReadOptions::default();
     if let Some((_, path)) = pairs.iter().find(|(key, _)| key == "settings") {
@@ -100,7 +107,9 @@ fn read_options(layer: &str, pairs: &[(String, String)]) -> Result<(Option<Schem
                 }
             }
             "crs" => options.geometry.crs_override = Some(value.clone()),
-            "sample_features" => options.sample.features_per_layer = value.parse().map_err(|_| bad())?,
+            "sample_features" => {
+                options.sample.features_per_layer = value.parse().map_err(|_| bad())?
+            }
             "threads" => options.threads = value.parse().map_err(|_| bad())?,
             _ => return plan_err!("read_gml: unknown option {key:?}"),
         }
@@ -111,7 +120,9 @@ fn read_options(layer: &str, pairs: &[(String, String)]) -> Result<(Option<Schem
 fn string(expr: &Expr) -> Result<String> {
     match expr {
         Expr::Literal(
-            ScalarValue::Utf8(Some(value)) | ScalarValue::Utf8View(Some(value)) | ScalarValue::LargeUtf8(Some(value)),
+            ScalarValue::Utf8(Some(value))
+            | ScalarValue::Utf8View(Some(value))
+            | ScalarValue::LargeUtf8(Some(value)),
             _,
         ) => Ok(value.clone()),
         _ => plan_err!("read_gml: expected a string literal, got {expr}"),

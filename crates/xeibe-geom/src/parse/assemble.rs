@@ -8,8 +8,8 @@ use crate::arcs::circle_closing_midpoint;
 use crate::crs::{CrsRef, SrsName};
 use crate::epsg::CrsTable;
 use crate::model::{
-    CircularString, CompoundCurve, Coords, Curve, CurvePart, Geometry, LineString,
-    MultiSurface, Polygon, Surface, distance_xy,
+    CircularString, CompoundCurve, Coords, Curve, CurvePart, Geometry, LineString, MultiSurface,
+    Polygon, Surface, distance_xy,
 };
 
 /// Largest gap between a segment's start and the previous end that is joined,
@@ -75,13 +75,26 @@ impl CurveBuilder {
     }
 }
 
-fn join_piece(parts: &mut Vec<CurvePart>, mut piece: CurvePart, tolerance: f64, warnings: &mut Vec<String>) {
+fn join_piece(
+    parts: &mut Vec<CurvePart>,
+    mut piece: CurvePart,
+    tolerance: f64,
+    warnings: &mut Vec<String>,
+) {
     let Some(last) = parts.last_mut() else {
         parts.push(piece);
         return;
     };
-    let end = last.coords().last().expect("parts are never empty").to_vec();
-    let start = piece.coords().first().expect("empty pieces are skipped").to_vec();
+    let end = last
+        .coords()
+        .last()
+        .expect("parts are never empty")
+        .to_vec();
+    let start = piece
+        .coords()
+        .first()
+        .expect("empty pieces are skipped")
+        .to_vec();
     let distance = distance_xy(&end, &start);
 
     if distance > tolerance {
@@ -93,13 +106,19 @@ fn join_piece(parts: &mut Vec<CurvePart>, mut piece: CurvePart, tolerance: f64, 
         match (last, &mut piece) {
             (CurvePart::Linear(line), _) => line.coords.push(&start),
             (CurvePart::Circular(_), CurvePart::Linear(line)) => {
-                let mut coords = Coords { dim: line.coords.dim, values: Vec::new() };
+                let mut coords = Coords {
+                    dim: line.coords.dim,
+                    values: Vec::new(),
+                };
                 coords.push(&end);
                 coords.append_joined(&line.coords, 0.0);
                 line.coords = coords;
             }
             (CurvePart::Circular(_), CurvePart::Circular(_)) => {
-                let mut bridge = Coords { dim: piece.coords().dim, values: Vec::new() };
+                let mut bridge = Coords {
+                    dim: piece.coords().dim,
+                    values: Vec::new(),
+                };
                 bridge.push(&end);
                 bridge.push(&start);
                 parts.push(CurvePart::Linear(LineString { coords: bridge }));
@@ -117,7 +136,11 @@ fn join_piece(parts: &mut Vec<CurvePart>, mut piece: CurvePart, tolerance: f64, 
     // Stored coordinates win over computed ones.
     let end_computed = is_last_computed(last);
     let start_computed = is_first_computed(&piece);
-    let kept = if end_computed && !start_computed { start } else { end };
+    let kept = if end_computed && !start_computed {
+        start
+    } else {
+        end
+    };
     set_last(last, &kept);
     set_first(&mut piece, &kept);
     merge_or_push(parts, piece);
@@ -138,7 +161,8 @@ fn merge_or_push(parts: &mut Vec<CurvePart>, piece: CurvePart) {
         (Some(CurvePart::Circular(last)), CurvePart::Circular(arc)) if shares_start => {
             let offset = last.coords.len() - 1;
             last.coords.append_joined(&arc.coords, 0.0);
-            last.computed.extend(arc.computed.iter().filter(|&&i| i > 0).map(|i| i + offset));
+            last.computed
+                .extend(arc.computed.iter().filter(|&&i| i > 0).map(|i| i + offset));
         }
         (_, piece) => parts.push(piece),
     }
@@ -186,7 +210,12 @@ fn overwrite(target: &mut [f64], source: &[f64]) {
 
 /// The larger of the width and height of the positions' bounding box.
 pub(crate) fn extent<'a>(coords: impl Iterator<Item = &'a Coords>) -> f64 {
-    let mut bbox = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+    let mut bbox = [
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    ];
     for c in coords {
         c.extend_bbox(&mut bbox);
     }
@@ -219,7 +248,10 @@ pub(crate) fn check_linear_ring(coords: &mut Coords) -> Result<Vec<String>, Stri
         warnings.push("unclosed ring closed".into());
     }
     if coords.len() < 4 {
-        return Err(format!("a LinearRing needs at least 4 positions, found {}", coords.len()));
+        return Err(format!(
+            "a LinearRing needs at least 4 positions, found {}",
+            coords.len()
+        ));
     }
     Ok(warnings)
 }
@@ -235,7 +267,10 @@ pub(crate) fn check_curve_ring(curve: &mut Curve) -> Vec<String> {
         Curve::Linear(line) => line.coords.push(&start),
         Curve::Circular(arc) => {
             let end = arc.coords.last().expect("not empty").to_vec();
-            let mut closing = Coords { dim: arc.coords.dim, values: Vec::new() };
+            let mut closing = Coords {
+                dim: arc.coords.dim,
+                values: Vec::new(),
+            };
             closing.push(&end);
             closing.push(&start);
             *curve = Curve::Compound(CompoundCurve {
@@ -249,10 +284,15 @@ pub(crate) fn check_curve_ring(curve: &mut Curve) -> Vec<String> {
             Some(CurvePart::Linear(line)) => line.coords.push(&start),
             Some(CurvePart::Circular(arc)) => {
                 let end = arc.coords.last().expect("not empty").to_vec();
-                let mut closing = Coords { dim: arc.coords.dim, values: Vec::new() };
+                let mut closing = Coords {
+                    dim: arc.coords.dim,
+                    values: Vec::new(),
+                };
                 closing.push(&end);
                 closing.push(&start);
-                compound.parts.push(CurvePart::Linear(LineString { coords: closing }));
+                compound
+                    .parts
+                    .push(CurvePart::Linear(LineString { coords: closing }));
             }
             None => {}
         },
@@ -263,9 +303,14 @@ pub(crate) fn check_curve_ring(curve: &mut Curve) -> Vec<String> {
 /// `ArcString`/`Arc`: `2 × numArc + 1` positions (§10.4.7.5). **[GDAL]** any
 /// odd count ≥ 3 is accepted for `Arc` too. A `numArc` that doesn't match is
 /// a warning; the positions are used.
-pub(crate) fn check_arc_positions(found: usize, num_arc: Option<usize>) -> Result<Option<String>, String> {
+pub(crate) fn check_arc_positions(
+    found: usize,
+    num_arc: Option<usize>,
+) -> Result<Option<String>, String> {
     if found < 3 || found.is_multiple_of(2) {
-        return Err(format!("{found} positions (an odd number of at least 3 expected)"));
+        return Err(format!(
+            "{found} positions (an odd number of at least 3 expected)"
+        ));
     }
     Ok(num_arc.filter(|n| 2 * n + 1 != found).map(|n| {
         format!("numArc=\"{n}\" does not match {found} positions; the positions are used")
@@ -277,12 +322,18 @@ pub(crate) fn check_arc_positions(found: usize, num_arc: Option<usize>) -> Resul
 /// is computed. A 3D `m` takes the mean Z of `p3` and `p1`.
 pub(crate) fn circle_from_points(coords: &Coords) -> Result<CircularString, String> {
     if coords.len() != 3 {
-        return Err(format!("a Circle needs 3 positions, found {}", coords.len()));
+        return Err(format!(
+            "a Circle needs 3 positions, found {}",
+            coords.len()
+        ));
     }
     let (p1, p2, p3) = (coords.get(0), coords.get(1), coords.get(2));
     let m = circle_closing_midpoint([p1[0], p1[1]], [p2[0], p2[1]], [p3[0], p3[1]])
         .ok_or("the 3 positions of a Circle are collinear or not distinct")?;
-    let mut out = Coords { dim: coords.dim, values: Vec::with_capacity(coords.values.len() + 2 * coords.size()) };
+    let mut out = Coords {
+        dim: coords.dim,
+        values: Vec::with_capacity(coords.values.len() + 2 * coords.size()),
+    };
     out.push(p1);
     out.push(p2);
     out.push(p3);
@@ -291,7 +342,10 @@ pub(crate) fn circle_from_points(coords: &Coords) -> Result<CircularString, Stri
         _ => out.push(&m),
     }
     out.push(p1);
-    Ok(CircularString { coords: out, computed: vec![3] })
+    Ok(CircularString {
+        coords: out,
+        computed: vec![3],
+    })
 }
 
 /// Surfaces of one geometry → the output type: one surface is a Polygon or
@@ -337,7 +391,10 @@ pub(crate) struct DimensionInputs {
 
 /// The effective dimension for `values` numbers, plus a warning when the
 /// default of 2 was used although the values look 3D.
-pub(crate) fn effective_dimension(inputs: DimensionInputs, values: usize) -> (usize, Option<String>) {
+pub(crate) fn effective_dimension(
+    inputs: DimensionInputs,
+    values: usize,
+) -> (usize, Option<String>) {
     if let Some(dim) = inputs.own.or(inputs.inherited).or(inputs.crs) {
         return (usize::from(dim), None);
     }
@@ -348,7 +405,9 @@ pub(crate) fn effective_dimension(inputs: DimensionInputs, values: usize) -> (us
         return (values / count, None);
     }
     let warning = (!values.is_multiple_of(2) && values.is_multiple_of(3)).then(|| {
-        format!("{values} values without srsDimension are not divisible by 2 but are by 3; read as 2D")
+        format!(
+            "{values} values without srsDimension are not divisible by 2 but are by 3; read as 2D"
+        )
     });
     (2, warning)
 }
@@ -361,7 +420,11 @@ pub(crate) fn crs_dimension(srs_name: &str, table: &CrsTable) -> Option<u8> {
     fn of(crs: &CrsRef, table: &CrsTable) -> Option<u8> {
         match crs {
             CrsRef::Code { authority, code } if authority == "OGC" => {
-                Some(if code.eq_ignore_ascii_case("CRS84h") { 3 } else { 2 })
+                Some(if code.eq_ignore_ascii_case("CRS84h") {
+                    3
+                } else {
+                    2
+                })
             }
             CrsRef::Code { authority, code } => Some(table.get(authority, code)?.dimension),
             CrsRef::Compound(parts) => parts

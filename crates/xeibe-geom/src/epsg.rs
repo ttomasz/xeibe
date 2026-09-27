@@ -46,9 +46,12 @@ impl CrsTable {
     pub fn get(&self, authority: &str, code: &str) -> Option<CrsInfo> {
         // A user entry wins over the built-in one, and later entries win over
         // earlier ones, so search from the back.
-        if let Some((_, _, info)) = self.user.iter().rev().find(|(a, c, _)| {
-            a.eq_ignore_ascii_case(authority) && c == code
-        }) {
+        if let Some((_, _, info)) = self
+            .user
+            .iter()
+            .rev()
+            .find(|(a, c, _)| a.eq_ignore_ascii_case(authority) && c == code)
+        {
             return Some(info.clone());
         }
         if !authority.eq_ignore_ascii_case("EPSG") {
@@ -72,9 +75,7 @@ impl CrsInfo {
             // coordinates as written, and EPSG publishes the area of use in
             // degrees. Reprojecting it into a projected CRS's units would need
             // a projection engine, so there the check abstains instead.
-            area_of_use: record
-                .area_in_axis_order()
-                .map(|area| area.map(f64::from)),
+            area_of_use: record.area_in_axis_order().map(|area| area.map(f64::from)),
             linear_unit_m: record.linear_unit_m,
         }
     }

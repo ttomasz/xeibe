@@ -25,13 +25,13 @@ use xeibe_core::reader::{Attributes, GmlReader, XmlEvent};
 use xeibe_core::{Dialect, QName, RawElement, ns};
 
 use crate::axis::AxisDecision;
+use crate::crs::SrsName;
 use crate::dialect::DialectTracker;
 use crate::epsg::{CrsInfo, CrsTable};
 use crate::error::Error;
 use crate::linearize::linearize;
 use crate::model::{Envelope, GeomKind, Geometry, Surface};
 use crate::options::{CurveMode, GeometryOptions};
-use crate::crs::SrsName;
 
 /// Values inherited from enclosing elements.
 #[derive(Debug, Clone, Default)]
@@ -70,7 +70,10 @@ pub struct GeometryParser<'o> {
 
 impl<'o> GeometryParser<'o> {
     pub fn new(options: &'o GeometryOptions) -> Self {
-        GeometryParser { options, dimensions: CrsDimensions::default() }
+        GeometryParser {
+            options,
+            dimensions: CrsDimensions::default(),
+        }
     }
 
     /// Parse the geometry element whose `Start` event the reader has just
@@ -91,7 +94,11 @@ impl<'o> GeometryParser<'o> {
         let root = current_element(reader)?;
         let source_kind = geom_kind(&root.name);
         let mut parser = Parser::new(self.options, Some(axis), context, &self.dimensions);
-        parser.srs_name = root.attrs.srs_name.clone().or_else(|| context.srs_name.clone());
+        parser.srs_name = root
+            .attrs
+            .srs_name
+            .clone()
+            .or_else(|| context.srs_name.clone());
         parser.dialect.observe(&root.name);
         let scope = parser.root_scope(context);
 
@@ -150,11 +157,17 @@ impl<'o> GeometryParser<'o> {
         let result = (|| {
             let mut envelope = None;
             if is_envelope(&first.name) {
-                envelope = Some((parser.envelope(reader, &first, scope)?, first.attrs.srs_dimension));
+                envelope = Some((
+                    parser.envelope(reader, &first, scope)?,
+                    first.attrs.srs_dimension,
+                ));
             } else {
                 while let Some(child) = parser.next_child(reader)? {
                     if envelope.is_none() && is_envelope(&child.name) {
-                        envelope = Some((parser.envelope(reader, &child, scope)?, child.attrs.srs_dimension));
+                        envelope = Some((
+                            parser.envelope(reader, &child, scope)?,
+                            child.attrs.srs_dimension,
+                        ));
                     } else {
                         parser.skip(reader)?;
                     }
@@ -195,7 +208,8 @@ impl<'o> GeometryParser<'o> {
 /// srsName and srsDimension). An envelope whose corners can't be read still
 /// hands down its srsName and srsDimension; `gml:Null` hands down nothing.
 pub fn collection_bounded_by(raw: &RawElement) -> crate::Result<(Option<Envelope>, ParseContext)> {
-    let mut reader = GmlReader::new(&raw.bytes, &raw.namespaces, raw.byte_offset).with_source(raw.source);
+    let mut reader =
+        GmlReader::new(&raw.bytes, &raw.namespaces, raw.byte_offset).with_source(raw.source);
     let mut depth = 0;
     let attrs = loop {
         match reader.next_event()? {
@@ -213,9 +227,15 @@ pub fn collection_bounded_by(raw: &RawElement) -> crate::Result<(Option<Envelope
             XmlEvent::Text(_) => {}
         }
     };
-    let context = ParseContext { srs_name: attrs.srs_name, srs_dimension: attrs.srs_dimension, axis: None };
+    let context = ParseContext {
+        srs_name: attrs.srs_name,
+        srs_dimension: attrs.srs_dimension,
+        axis: None,
+    };
     let options = GeometryOptions::default();
-    let envelope = match GeometryParser::new(&options).parse_bounded_by(&mut reader, &ParseContext::default()) {
+    let envelope = match GeometryParser::new(&options)
+        .parse_bounded_by(&mut reader, &ParseContext::default())
+    {
         Ok(envelope) => envelope,
         Err(Error::Core(error)) => return Err(Error::Core(error)),
         Err(_) => None,
@@ -224,7 +244,9 @@ pub fn collection_bounded_by(raw: &RawElement) -> crate::Result<(Option<Envelope
 }
 
 fn is_envelope(name: &QName) -> bool {
-    name.is_gml_named("Envelope") || name.is_gml_named("EnvelopeWithTimePeriod") || name.is_gml_named("Box")
+    name.is_gml_named("Envelope")
+        || name.is_gml_named("EnvelopeWithTimePeriod")
+        || name.is_gml_named("Box")
 }
 
 /// The source kind of a geometry element. A GML 3.3 compact encoding has
@@ -272,9 +294,14 @@ pub(crate) fn geom_kind(name: &QName) -> GeomKind {
 /// which hold several geometries of one kind: read as one Multi geometry
 /// ([`crate::Geometry::from_parts`]). Any other property holds one geometry.
 pub fn is_array_property(name: &QName) -> bool {
-    ["pointArrayProperty", "curveArrayProperty", "surfaceArrayProperty", "solidArrayProperty"]
-        .iter()
-        .any(|local| name.is_gml_named(local))
+    [
+        "pointArrayProperty",
+        "curveArrayProperty",
+        "surfaceArrayProperty",
+        "solidArrayProperty",
+    ]
+    .iter()
+    .any(|local| name.is_gml_named(local))
 }
 
 /// GML 3.3 compact encodings of surfaces (OGC 10-129r1 §7.3–7.5): a polygon
@@ -318,7 +345,10 @@ pub(crate) fn is_compact_surface(name: &QName) -> bool {
 /// A GML 3.3 compact curve (`gmlce:SimpleArc`, …) and the GML 3.2 segment it
 /// abbreviates.
 pub(crate) fn compact_curve(name: &QName) -> Option<(&'static str, &'static str)> {
-    COMPACT_CURVES.iter().copied().find(|(local, _)| is_ce(name, local))
+    COMPACT_CURVES
+        .iter()
+        .copied()
+        .find(|(local, _)| is_ce(name, local))
 }
 
 /// A GML 3.3 geometry element: a compact encoding, which is read, or a
@@ -456,7 +486,10 @@ pub(crate) fn current_element(reader: &GmlReader<'_>) -> crate::Result<Elem> {
             message: "the geometry parser must be called right after a start element".into(),
         })
     })?;
-    Ok(Elem { attrs: Attrs::read(&attrs), name })
+    Ok(Elem {
+        attrs: Attrs::read(&attrs),
+        name,
+    })
 }
 
 /// Inherited values for the dimension rule (`docs/geometry.md`, "Dimension").
@@ -587,8 +620,10 @@ impl<'p> Parser<'p> {
             return false;
         };
         let dialect = self.dialect.result();
-        if let Some((_, _, swap)) =
-            self.decisions.iter().find(|(srs, d, _)| *srs == self.srs_name && *d == dialect)
+        if let Some((_, _, swap)) = self
+            .decisions
+            .iter()
+            .find(|(srs, d, _)| *srs == self.srs_name && *d == dialect)
         {
             return *swap;
         }
@@ -616,7 +651,10 @@ impl<'p> Parser<'p> {
                 XmlEvent::Start { name, attrs } => {
                     self.depth += 1;
                     if self.depth > MAX_DEPTH {
-                        return Err(self.invalid(reader, format!("nested more than {MAX_DEPTH} elements deep")));
+                        return Err(self.invalid(
+                            reader,
+                            format!("nested more than {MAX_DEPTH} elements deep"),
+                        ));
                     }
                     let attrs = Attrs::read(&attrs);
                     self.dialect.observe(&name);
@@ -649,7 +687,11 @@ impl<'p> Parser<'p> {
 
     /// Append the numbers in the current element's text to `out`, up to its
     /// end tag. Child elements are skipped.
-    pub fn read_numbers(&mut self, reader: &mut GmlReader<'_>, out: &mut Vec<f64>) -> crate::Result<()> {
+    pub fn read_numbers(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        out: &mut Vec<f64>,
+    ) -> crate::Result<()> {
         loop {
             let result = match reader.next_event()? {
                 XmlEvent::Text(text) => coords::parse_numbers(&text, out),
@@ -706,7 +748,9 @@ impl<'p> Parser<'p> {
             count += 1;
         }
         if count == 0 && property.attrs.href {
-            return Err(Error::ByReference { location: reader.location() });
+            return Err(Error::ByReference {
+                location: reader.location(),
+            });
         }
         Ok(count)
     }
@@ -714,11 +758,17 @@ impl<'p> Parser<'p> {
     // ------------------------------------------------------------ errors
 
     pub fn unsupported(&self, reader: &GmlReader<'_>, element: impl Into<String>) -> Error {
-        Error::Unsupported { element: element.into(), location: reader.location() }
+        Error::Unsupported {
+            element: element.into(),
+            location: reader.location(),
+        }
     }
 
     pub fn invalid(&self, reader: &GmlReader<'_>, message: impl Into<String>) -> Error {
-        Error::InvalidGeometry { message: message.into(), location: reader.location() }
+        Error::InvalidGeometry {
+            message: message.into(),
+            location: reader.location(),
+        }
     }
 
     pub fn position_count(
@@ -728,7 +778,12 @@ impl<'p> Parser<'p> {
         found: usize,
         expected: impl Into<String>,
     ) -> Error {
-        Error::PositionCount { element, location: reader.location(), found, expected: expected.into() }
+        Error::PositionCount {
+            element,
+            location: reader.location(),
+            found,
+            expected: expected.into(),
+        }
     }
 
     /// The error for an element that is not a geometry of the expected kind:
@@ -749,7 +804,12 @@ impl<'p> Parser<'p> {
     // ------------------------------------------------------------ dispatch
 
     /// Any geometry element, consumed up to its end tag.
-    pub fn geometry(&mut self, reader: &mut GmlReader<'_>, elem: Elem, scope: Scope) -> crate::Result<Geometry> {
+    pub fn geometry(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: Elem,
+        scope: Scope,
+    ) -> crate::Result<Geometry> {
         let href = elem.attrs.href;
         let geometry = if is_compact_surface(&elem.name) {
             assemble::surfaces_to_geometry(vec![self.simple_polygon(reader, &elem, scope)?])
@@ -761,13 +821,20 @@ impl<'p> Parser<'p> {
             self.gml_geometry(reader, elem, scope)?
         };
         if href && geometry.dim().is_none() {
-            return Err(Error::ByReference { location: reader.location() });
+            return Err(Error::ByReference {
+                location: reader.location(),
+            });
         }
         Ok(geometry)
     }
 
     /// A geometry element in one of the GML namespaces (2/3.1 or 3.2).
-    fn gml_geometry(&mut self, reader: &mut GmlReader<'_>, elem: Elem, scope: Scope) -> crate::Result<Geometry> {
+    fn gml_geometry(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: Elem,
+        scope: Scope,
+    ) -> crate::Result<Geometry> {
         if !elem.name.is_gml() {
             return Err(self.unsupported(reader, elem.name.to_clark()));
         }
@@ -801,17 +868,28 @@ impl<'p> Parser<'p> {
     /// A surface element (`Polygon`, `Surface`, `OrientableSurface`,
     /// `CompositeSurface`, or a GML 3.3 `SimplePolygon`, `SimpleRectangle`,
     /// `SimpleTriangle`) as its surfaces.
-    pub fn surfaces(&mut self, reader: &mut GmlReader<'_>, elem: Elem, scope: Scope) -> crate::Result<Vec<Surface>> {
+    pub fn surfaces(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: Elem,
+        scope: Scope,
+    ) -> crate::Result<Vec<Surface>> {
         let surfaces = match elem.local() {
             _ if is_compact_surface(&elem.name) => vec![self.simple_polygon(reader, &elem, scope)?],
             "Polygon" if elem.name.is_gml() => vec![self.polygon(reader, &elem, scope)?],
             "Surface" if elem.name.is_gml() => self.surface(reader, &elem, scope)?,
-            "OrientableSurface" if elem.name.is_gml() => self.orientable_surface(reader, &elem, scope)?,
-            "CompositeSurface" if elem.name.is_gml() => self.composite_surface(reader, &elem, scope)?,
+            "OrientableSurface" if elem.name.is_gml() => {
+                self.orientable_surface(reader, &elem, scope)?
+            }
+            "CompositeSurface" if elem.name.is_gml() => {
+                self.composite_surface(reader, &elem, scope)?
+            }
             _ => return Err(self.wrong_kind(reader, &elem, "a surface")),
         };
         if elem.attrs.href && surfaces.iter().all(|s| s.dim().is_none()) {
-            return Err(Error::ByReference { location: reader.location() });
+            return Err(Error::ByReference {
+                location: reader.location(),
+            });
         }
         Ok(surfaces)
     }
@@ -854,7 +932,11 @@ pub(crate) fn swap_geometry(geometry: &mut Geometry) {
     fn surface(surface: &mut Surface) {
         match surface {
             Surface::Polygon(p) => polygon(p),
-            Surface::CurvePolygon(p) => p.exterior.iter_mut().chain(&mut p.interiors).for_each(curve),
+            Surface::CurvePolygon(p) => p
+                .exterior
+                .iter_mut()
+                .chain(&mut p.interiors)
+                .for_each(curve),
         }
     }
     match geometry {
@@ -873,7 +955,11 @@ pub(crate) fn swap_geometry(geometry: &mut Geometry) {
                 *compound = swapped;
             }
         }
-        Geometry::CurvePolygon(p) => p.exterior.iter_mut().chain(&mut p.interiors).for_each(curve),
+        Geometry::CurvePolygon(p) => p
+            .exterior
+            .iter_mut()
+            .chain(&mut p.interiors)
+            .for_each(curve),
         Geometry::MultiCurve(curves) => curves.0.iter_mut().for_each(curve),
         Geometry::MultiSurface(surfaces) => surfaces.0.iter_mut().for_each(surface),
     }

@@ -69,7 +69,10 @@ fn apply(read: &ReadArgs, options: &mut ReadOptions) -> Result {
     }
     if let Some(step) = read.linearize {
         if step.is_nan() || step <= 0.0 {
-            return Err(format!("--linearize: the step must be a positive number of degrees, not {step}").into());
+            return Err(format!(
+                "--linearize: the step must be a positive number of degrees, not {step}"
+            )
+            .into());
         }
         geometry.curves = CurveMode::Linearize(LinearizeOptions {
             max_angle_step_deg: step,
@@ -106,7 +109,9 @@ fn axis_mode(mode: AxisMode) -> AxisOrderMode {
 /// follows the last `=`, so srsNames (URLs) may contain `=`.
 fn axis_override(text: &str) -> Result<(String, AxisOrderMode)> {
     let error = |message: &str| format!("--axis-override {text:?}: {message}");
-    let (srs_name, mode) = text.rsplit_once('=').ok_or_else(|| error("expected srsName=mode, e.g. EPSG:4326=yx"))?;
+    let (srs_name, mode) = text
+        .rsplit_once('=')
+        .ok_or_else(|| error("expected srsName=mode, e.g. EPSG:4326=yx"))?;
     if srs_name.is_empty() {
         return Err(error("the srsName is empty").into());
     }
@@ -174,7 +179,10 @@ pub(crate) fn sources(input: &InputArgs) -> Result<Vec<Source>> {
         if is_zip && !input.member.is_empty() {
             sources.extend(xeibe_core::archive::expand(path, &input.member)?);
         } else {
-            sources.extend(xeibe_io::resolve_sources(std::slice::from_ref(item), &options)?);
+            sources.extend(xeibe_io::resolve_sources(
+                std::slice::from_ref(item),
+                &options,
+            )?);
         }
     }
     if sources.is_empty() {

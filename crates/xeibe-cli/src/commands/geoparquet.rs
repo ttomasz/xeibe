@@ -9,7 +9,9 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
-use arrow_array::{Array, ArrayRef, BinaryArray, Float64Array, RecordBatch, StructArray, cast::AsArray};
+use arrow_array::{
+    Array, ArrayRef, BinaryArray, Float64Array, RecordBatch, StructArray, cast::AsArray,
+};
 use arrow_buffer::NullBuffer;
 use arrow_schema::{DataType, Field, Fields, Schema, SchemaRef};
 use geoarrow_array::GeoArrowArray;
@@ -43,7 +45,10 @@ struct GeoColumn {
 const BBOX_FIELDS: [&str; 4] = ["xmin", "ymin", "xmax", "ymax"];
 
 fn bbox_fields() -> Fields {
-    BBOX_FIELDS.iter().map(|name| Field::new(*name, DataType::Float64, false)).collect()
+    BBOX_FIELDS
+        .iter()
+        .map(|name| Field::new(*name, DataType::Float64, false))
+        .collect()
 }
 
 impl GeoColumns {
@@ -59,7 +64,11 @@ impl GeoColumns {
     ) -> super::Result<Self> {
         let mut columns = Vec::new();
         let mut fields = Vec::new();
-        let mut names: HashSet<String> = schema.fields().iter().map(|field| field.name().clone()).collect();
+        let mut names: HashSet<String> = schema
+            .fields()
+            .iter()
+            .map(|field| field.name().clone())
+            .collect();
         for (index, field) in schema.fields().iter().enumerate() {
             let Some(typ) = GeoArrowType::from_extension_field(field)? else {
                 fields.push(field.clone());
@@ -93,12 +102,18 @@ impl GeoColumns {
             let covered = match bbox {
                 BboxColumn::Always => true,
                 BboxColumn::Never => false,
-                BboxColumn::Auto => !holds_points(&typ, field, first.map(|batch| batch.column(index)))?,
+                BboxColumn::Auto => {
+                    !holds_points(&typ, field, first.map(|batch| batch.column(index)))?
+                }
             };
             let covering = covered.then(|| {
                 let name = unique_name(&format!("{}_bbox", field.name()), &names);
                 names.insert(name.clone());
-                fields.push(Arc::new(Field::new(&name, DataType::Struct(bbox_fields()), true)));
+                fields.push(Arc::new(Field::new(
+                    &name,
+                    DataType::Struct(bbox_fields()),
+                    true,
+                )));
                 name
             });
             columns.push(GeoColumn {
@@ -115,7 +130,12 @@ impl GeoColumns {
             .map(str::to_string)
             .or_else(|| columns.first().map(|column| column.name.clone()));
         let output = Arc::new(Schema::new_with_metadata(fields, schema.metadata().clone()));
-        Ok(GeoColumns { layer: layer.to_string(), columns, primary, output })
+        Ok(GeoColumns {
+            layer: layer.to_string(),
+            columns,
+            primary,
+            output,
+        })
     }
 
     pub(crate) fn schema(&self) -> SchemaRef {
@@ -131,7 +151,10 @@ impl GeoColumns {
         let schema = batch.schema();
         for column in &mut self.columns {
             let wkb = to_wkb(batch.column(column.index), schema.field(column.index))?;
-            let mut boxes = column.covering.as_ref().map(|_| Boxes::with_capacity(wkb.len()));
+            let mut boxes = column
+                .covering
+                .as_ref()
+                .map(|_| Boxes::with_capacity(wkb.len()));
             for (row, value) in wkb.as_binary::<i32>().iter().enumerate() {
                 let Some(value) = value else {
                     if let Some(boxes) = &mut boxes {
@@ -140,7 +163,11 @@ impl GeoColumns {
                     continue;
                 };
                 let mut row_bbox = None;
-                let mut reader = WkbReader { buf: value, pos: 0, bbox: &mut row_bbox };
+                let mut reader = WkbReader {
+                    buf: value,
+                    pos: 0,
+                    bbox: &mut row_bbox,
+                };
                 let result = reader.geometry(true);
                 column.bbox = union(column.bbox, row_bbox);
                 if let Some(boxes) = &mut boxes {
@@ -169,7 +196,11 @@ impl GeoColumns {
                         .into());
                     }
                     Err(WkbIssue::Malformed) => {
-                        return Err(format!("layer {}, column {}: malformed WKB in batch row {row}", self.layer, column.name).into());
+                        return Err(format!(
+                            "layer {}, column {}: malformed WKB in batch row {row}",
+                            self.layer, column.name
+                        )
+                        .into());
                     }
                 }
             }
@@ -203,8 +234,10 @@ impl GeoColumns {
                     entry["bbox"] = json!(bbox);
                 }
                 if let Some(covering) = &column.covering {
-                    let paths: serde_json::Map<String, Value> =
-                        BBOX_FIELDS.iter().map(|field| (field.to_string(), json!([covering, field]))).collect();
+                    let paths: serde_json::Map<String, Value> = BBOX_FIELDS
+                        .iter()
+                        .map(|field| (field.to_string(), json!([covering, field])))
+                        .collect();
                     entry["covering"] = json!({ "bbox": paths });
                 }
                 (column.name.clone(), entry)
@@ -225,7 +258,11 @@ fn to_wkb(array: &ArrayRef, field: &Field) -> super::Result<ArrayRef> {
 /// `geoarrow.point`, or a WKB (or WKT, or mixed) column whose values in the
 /// first batch are all points. A column that holds no value there counts as
 /// not points.
-fn holds_points(typ: &GeoArrowType, field: &Field, first: Option<&ArrayRef>) -> super::Result<bool> {
+fn holds_points(
+    typ: &GeoArrowType,
+    field: &Field,
+    first: Option<&ArrayRef>,
+) -> super::Result<bool> {
     use GeoArrowType::*;
     match typ {
         Point(_) => Ok(true),
@@ -242,7 +279,9 @@ fn holds_points(typ: &GeoArrowType, field: &Field, first: Option<&ArrayRef>) -> 
 
 /// The WKB value is a Point (ISO or EWKB, any dimension).
 fn is_wkb_point(value: &[u8]) -> bool {
-    let Some(code) = value.get(1..5) else { return false };
+    let Some(code) = value.get(1..5) else {
+        return false;
+    };
     let code: [u8; 4] = code.try_into().expect("4 bytes");
     let code = match value[0] {
         0 => u32::from_be_bytes(code),
@@ -256,12 +295,17 @@ fn unique_name(name: &str, taken: &HashSet<String>) -> String {
     if !taken.contains(name) {
         return name.to_string();
     }
-    (2..).map(|n| format!("{name}_{n}")).find(|candidate| !taken.contains(candidate)).expect("a free name")
+    (2..)
+        .map(|n| format!("{name}_{n}"))
+        .find(|candidate| !taken.contains(candidate))
+        .expect("a free name")
 }
 
 fn union(a: Option<[f64; 4]>, b: Option<[f64; 4]>) -> Option<[f64; 4]> {
     match (a, b) {
-        (Some([x0, y0, x1, y1]), Some([u0, v0, u1, v1])) => Some([x0.min(u0), y0.min(v0), x1.max(u1), y1.max(v1)]),
+        (Some([x0, y0, x1, y1]), Some([u0, v0, u1, v1])) => {
+            Some([x0.min(u0), y0.min(v0), x1.max(u1), y1.max(v1)])
+        }
         (a, b) => a.or(b),
     }
 }
@@ -275,7 +319,10 @@ struct Boxes {
 
 impl Boxes {
     fn with_capacity(rows: usize) -> Self {
-        Boxes { ordinates: std::array::from_fn(|_| Vec::with_capacity(rows)), valid: Vec::with_capacity(rows) }
+        Boxes {
+            ordinates: std::array::from_fn(|_| Vec::with_capacity(rows)),
+            valid: Vec::with_capacity(rows),
+        }
     }
 
     fn push(&mut self, bbox: Option<[f64; 4]>) {
@@ -288,9 +335,18 @@ impl Boxes {
     }
 
     fn finish(self) -> super::Result<ArrayRef> {
-        let nulls = self.valid.contains(&false).then(|| NullBuffer::from(self.valid));
-        let arrays = self.ordinates.map(|ordinates| Arc::new(Float64Array::from(ordinates)) as ArrayRef);
-        Ok(Arc::new(StructArray::try_new(bbox_fields(), arrays.to_vec(), nulls)?))
+        let nulls = self
+            .valid
+            .contains(&false)
+            .then(|| NullBuffer::from(self.valid));
+        let arrays = self
+            .ordinates
+            .map(|ordinates| Arc::new(Float64Array::from(ordinates)) as ArrayRef);
+        Ok(Arc::new(StructArray::try_new(
+            bbox_fields(),
+            arrays.to_vec(),
+            nulls,
+        )?))
     }
 }
 
@@ -310,7 +366,10 @@ fn crs_forms(crs_type: Option<CrsType>, value: Option<&Value>) -> (Value, Option
     // `SrsName::parse` also reads the compound `EPSG:25832+7837`.
     let mut crs = SrsName::parse(text).crs;
     if crs.is_none() && crs_type == Some(CrsType::AuthorityCode) {
-        crs = text.split_once(':').map(|(authority, code)| CrsRef::Code { authority: authority.to_string(), code: code.to_string() });
+        crs = text.split_once(':').map(|(authority, code)| CrsRef::Code {
+            authority: authority.to_string(),
+            code: code.to_string(),
+        });
     }
     let Some(crs) = crs else {
         return (Value::Null, None);
@@ -335,10 +394,16 @@ fn projjson_ref(value: &Value) -> Option<CrsRef> {
         _ => None,
     };
     match (id["authority"].as_str(), code) {
-        (Some(authority), Some(code)) => Some(CrsRef::Code { authority: authority.to_string(), code }),
-        _ if value["type"] == "CompoundCRS" => {
-            value["components"].as_array()?.iter().map(projjson_ref).collect::<Option<_>>().map(CrsRef::Compound)
-        }
+        (Some(authority), Some(code)) => Some(CrsRef::Code {
+            authority: authority.to_string(),
+            code,
+        }),
+        _ if value["type"] == "CompoundCRS" => value["components"]
+            .as_array()?
+            .iter()
+            .map(projjson_ref)
+            .collect::<Option<_>>()
+            .map(CrsRef::Compound),
         _ => None,
     }
 }
@@ -413,9 +478,24 @@ impl WkbReader<'_> {
         if !top {
             return Ok("");
         }
-        const NAMES: [&str; 7] = ["Point", "LineString", "Polygon", "MultiPoint", "MultiLineString", "MultiPolygon", "GeometryCollection"];
-        const NAMES_Z: [&str; 7] =
-            ["Point Z", "LineString Z", "Polygon Z", "MultiPoint Z", "MultiLineString Z", "MultiPolygon Z", "GeometryCollection Z"];
+        const NAMES: [&str; 7] = [
+            "Point",
+            "LineString",
+            "Polygon",
+            "MultiPoint",
+            "MultiLineString",
+            "MultiPolygon",
+            "GeometryCollection",
+        ];
+        const NAMES_Z: [&str; 7] = [
+            "Point Z",
+            "LineString Z",
+            "Polygon Z",
+            "MultiPoint Z",
+            "MultiLineString Z",
+            "MultiPolygon Z",
+            "GeometryCollection Z",
+        ];
         let index = base as usize - 1;
         Ok(if z { NAMES_Z[index] } else { NAMES[index] })
     }
@@ -440,7 +520,10 @@ impl WkbReader<'_> {
     }
 
     fn take<const N: usize>(&mut self) -> Result<[u8; N], WkbIssue> {
-        let bytes = self.buf.get(self.pos..self.pos + N).ok_or(WkbIssue::Malformed)?;
+        let bytes = self
+            .buf
+            .get(self.pos..self.pos + N)
+            .ok_or(WkbIssue::Malformed)?;
         self.pos += N;
         Ok(bytes.try_into().expect("N bytes"))
     }
@@ -451,11 +534,19 @@ impl WkbReader<'_> {
 
     fn u32(&mut self, little: bool) -> Result<u32, WkbIssue> {
         let bytes = self.take::<4>()?;
-        Ok(if little { u32::from_le_bytes(bytes) } else { u32::from_be_bytes(bytes) })
+        Ok(if little {
+            u32::from_le_bytes(bytes)
+        } else {
+            u32::from_be_bytes(bytes)
+        })
     }
 
     fn f64(&mut self, little: bool) -> Result<f64, WkbIssue> {
         let bytes = self.take::<8>()?;
-        Ok(if little { f64::from_le_bytes(bytes) } else { f64::from_be_bytes(bytes) })
+        Ok(if little {
+            f64::from_le_bytes(bytes)
+        } else {
+            f64::from_be_bytes(bytes)
+        })
     }
 }

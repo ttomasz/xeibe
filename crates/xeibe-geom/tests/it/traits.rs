@@ -18,7 +18,10 @@ fn coordinate_count(geometry: &impl GeometryTrait<T = f64>) -> usize {
         GeometryType::LineString(line) => line.num_coords(),
         GeometryType::Polygon(polygon) => {
             polygon.exterior().map_or(0, |ring| ring.num_coords())
-                + polygon.interiors().map(|ring| ring.num_coords()).sum::<usize>()
+                + polygon
+                    .interiors()
+                    .map(|ring| ring.num_coords())
+                    .sum::<usize>()
         }
         GeometryType::MultiPolygon(multi) => multi
             .polygons()
@@ -99,10 +102,7 @@ fn aggregates_expose_their_members() {
         "<gml:posList>4 0 5 0 5 1 4 0</gml:posList>",
         "</gml:LinearRing></gml:exterior></gml:Polygon></gml:surfaceMember></gml:MultiSurface>"
     ));
-    assert!(matches!(
-        multi.as_type(),
-        GeometryType::MultiPolygon(_)
-    ));
+    assert!(matches!(multi.as_type(), GeometryType::MultiPolygon(_)));
     assert_eq!(coordinate_count(&multi), 8);
 }
 

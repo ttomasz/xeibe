@@ -105,8 +105,14 @@ fn geometry_statistics_are_collected_without_building_geometry() {
 #[test]
 fn the_extent_of_a_layer_is_the_union_of_its_geometries() {
     let document = gml::gml32_collection(&[
-        &parcel("p1", "<app:geom><gml:Point><gml:pos>0 0</gml:pos></gml:Point></app:geom>"),
-        &parcel("p2", "<app:geom><gml:Point><gml:pos>10 20</gml:pos></gml:Point></app:geom>"),
+        &parcel(
+            "p1",
+            "<app:geom><gml:Point><gml:pos>0 0</gml:pos></gml:Point></app:geom>",
+        ),
+        &parcel(
+            "p2",
+            "<app:geom><gml:Point><gml:pos>10 20</gml:pos></gml:Point></app:geom>",
+        ),
     ]);
     let observation = scan(&document);
     assert_eq!(
@@ -150,13 +156,19 @@ fn a_sampled_scan_can_miss_layers_that_start_later() {
             ..ScanOptions::default()
         },
     );
-    assert!(sampled.layer("Road").is_err(), "Road starts after the sample");
+    assert!(
+        sampled.layer("Road").is_err(),
+        "Road starts after the sample"
+    );
 }
 
 #[test]
 fn several_sources_are_merged_into_one_observation() {
     let first = gml::gml32_collection(&[&parcel("p1", "<app:area>1</app:area>")]);
-    let second = gml::gml32_collection(&[&parcel("p2", "<app:area>2</app:area><app:extra>x</app:extra>")]);
+    let second = gml::gml32_collection(&[&parcel(
+        "p2",
+        "<app:area>2</app:area><app:extra>x</app:extra>",
+    )]);
     let sources = Sources::from(vec![
         Source::reader("a.gml", Box::new(std::io::Cursor::new(first.into_bytes()))),
         Source::reader("b.gml", Box::new(std::io::Cursor::new(second.into_bytes()))),
@@ -171,7 +183,10 @@ fn several_sources_are_merged_into_one_observation() {
 
 /// A source over a document held in memory.
 fn reader(name: &str, document: &str) -> Source {
-    Source::reader(name, Box::new(std::io::Cursor::new(document.as_bytes().to_vec())))
+    Source::reader(
+        name,
+        Box::new(std::io::Cursor::new(document.as_bytes().to_vec())),
+    )
 }
 
 /// ISO metadata, as zips ship it next to the GML: a root, but no features.
@@ -188,12 +203,27 @@ fn sources_without_features_are_skipped_and_listed() {
             reader("parcels.gml", &document),
             reader("empty.xml", ""),
         ]);
-        let observation = Scanner::new(ScanOptions { extent, ..ScanOptions::default() })
-            .run(sources)
-            .unwrap_or_else(|e| panic!("{extent:?}: {e}"));
-        assert_eq!(observation.layers[&layer("Parcel")].feature_count, 1, "{extent:?}");
-        assert_eq!(observation.skipped_sources, ["metadata.xml", "empty.xml"], "{extent:?}");
-        assert_eq!(observation.source_context.len(), 3, "one context per source id");
+        let observation = Scanner::new(ScanOptions {
+            extent,
+            ..ScanOptions::default()
+        })
+        .run(sources)
+        .unwrap_or_else(|e| panic!("{extent:?}: {e}"));
+        assert_eq!(
+            observation.layers[&layer("Parcel")].feature_count,
+            1,
+            "{extent:?}"
+        );
+        assert_eq!(
+            observation.skipped_sources,
+            ["metadata.xml", "empty.xml"],
+            "{extent:?}"
+        );
+        assert_eq!(
+            observation.source_context.len(),
+            3,
+            "one context per source id"
+        );
     }
 }
 
@@ -202,17 +232,28 @@ fn a_scan_in_which_every_source_is_skipped_fails() {
     let error = Scanner::new(ScanOptions::default())
         .run(Sources::from(reader("metadata.xml", ISO_METADATA)))
         .expect_err("nothing to scan");
-    assert_eq!(error.to_string(), "no feature collection or feature member found in metadata.xml");
+    assert_eq!(
+        error.to_string(),
+        "no feature collection or feature member found in metadata.xml"
+    );
 
     let sources = Sources::from(vec![reader("a.xml", ISO_METADATA), reader("b.xml", "")]);
-    let error = Scanner::new(ScanOptions::default()).run(sources).expect_err("nothing to scan");
-    assert!(error.to_string().ends_with("found in any of the 2 sources"), "{error}");
+    let error = Scanner::new(ScanOptions::default())
+        .run(sources)
+        .expect_err("nothing to scan");
+    assert!(
+        error.to_string().ends_with("found in any of the 2 sources"),
+        "{error}"
+    );
 }
 
 #[test]
 fn observations_merge_the_same_way_whatever_the_order() {
     // This is what makes parallel scans and multi-page WFS reads possible.
-    let first = scan(&gml::gml32_collection(&[&parcel("p1", "<app:area>1</app:area>")]));
+    let first = scan(&gml::gml32_collection(&[&parcel(
+        "p1",
+        "<app:area>1</app:area>",
+    )]));
     let second = scan(&gml::gml32_collection(&[&gml::feature("Road", "r1", "")]));
 
     let mut forwards = first.clone();
@@ -294,7 +335,9 @@ fn geometries_inherit_the_collection_bounded_by() {
     // Collection `boundedBy` → feature `boundedBy` → geometry: the nearest
     // srsName and srsDimension win (`docs/geometry.md`, "srsName inheritance").
     let line = |coordinates: &str| {
-        format!("<app:geom><gml:LineString><gml:posList>{coordinates}</gml:posList></gml:LineString></app:geom>")
+        format!(
+            "<app:geom><gml:LineString><gml:posList>{coordinates}</gml:posList></gml:LineString></app:geom>"
+        )
     };
     let document = gml::collection(
         gml::GML_32,
@@ -330,8 +373,16 @@ fn geometries_inherit_the_collection_bounded_by() {
         .expect("a geometry column");
     assert_eq!(geom.srs.get("EPSG:2180"), Some(&1), "{:?}", geom.srs);
     assert_eq!(geom.srs.get("EPSG:2176"), Some(&1), "{:?}", geom.srs);
-    assert!(geom.dims.contains(&3), "the collection's srsDimension: {:?}", geom.dims);
-    assert!(geom.dims.contains(&2), "the feature's srsDimension: {:?}", geom.dims);
+    assert!(
+        geom.dims.contains(&3),
+        "the collection's srsDimension: {:?}",
+        geom.dims
+    );
+    assert!(
+        geom.dims.contains(&2),
+        "the feature's srsDimension: {:?}",
+        geom.dims
+    );
     // The collection's envelope is the dataset's declared extent.
     assert_eq!(observation.extent, Some([0.0, 0.0, 10.0, 20.0]));
 }

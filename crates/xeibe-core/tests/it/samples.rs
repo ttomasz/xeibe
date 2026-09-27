@@ -9,7 +9,10 @@ use xeibe_testkit::samples::{sample, samples};
 
 use crate::support::{feature_names, features, one_feature_per_chunk};
 
-fn split_sample(sample: &xeibe_testkit::samples::Sample, options: SplitterOptions) -> Vec<xeibe_core::FeatureChunk> {
+fn split_sample(
+    sample: &xeibe_testkit::samples::Sample,
+    options: SplitterOptions,
+) -> Vec<xeibe_core::FeatureChunk> {
     let source = Source::file(sample.path()).expect("a file source");
     let reader = source.open().expect("the sample opens");
     xeibe_core::FeatureSplitter::new(reader, xeibe_core::SourceId(0), options)

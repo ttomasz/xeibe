@@ -22,12 +22,20 @@ pub enum Endianness {
 pub fn write_wkb(geometry: &Geometry, endianness: Endianness, out: &mut Vec<u8>) {
     out.reserve(wkb_size(geometry));
     let dim = geometry.dim().unwrap_or(Dim::Xy);
-    Writer { out, endianness, dim }.geometry(geometry);
+    Writer {
+        out,
+        endianness,
+        dim,
+    }
+    .geometry(geometry);
 }
 
 pub fn wkb_size(geometry: &Geometry) -> usize {
     let dim = geometry.dim().unwrap_or(Dim::Xy);
-    Sizer { position: 8 * dim.size() }.geometry(geometry)
+    Sizer {
+        position: 8 * dim.size(),
+    }
+    .geometry(geometry)
 }
 
 // ISO base type codes.
@@ -220,11 +228,22 @@ impl Sizer {
     }
 
     fn polygon(&self, polygon: &Polygon) -> usize {
-        HEADER + COUNT + polygon.rings().map(|ring| self.coords(&ring.coords)).sum::<usize>()
+        HEADER
+            + COUNT
+            + polygon
+                .rings()
+                .map(|ring| self.coords(&ring.coords))
+                .sum::<usize>()
     }
 
     fn compound_curve(&self, curve: &CompoundCurve) -> usize {
-        HEADER + COUNT + curve.parts.iter().map(|part| HEADER + self.coords(part.coords())).sum::<usize>()
+        HEADER
+            + COUNT
+            + curve
+                .parts
+                .iter()
+                .map(|part| HEADER + self.coords(part.coords()))
+                .sum::<usize>()
     }
 
     fn curve(&self, curve: &Curve) -> usize {

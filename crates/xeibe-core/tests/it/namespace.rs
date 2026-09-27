@@ -31,7 +31,12 @@ fn qname_recognises_both_gml_namespaces() {
 fn qname_recognises_the_gml_33_namespaces() {
     // GML 3.3 adds namespaces next to 3.2's instead of replacing it
     // (OGC 10-129r1 Table 1); they are not "the GML namespace".
-    for uri in [ns::GML_33_CE, ns::GML_33_TIN, "http://www.opengis.net/gml/3.3/xbt", "http://www.opengis.net/gml/3.3/lr"] {
+    for uri in [
+        ns::GML_33_CE,
+        ns::GML_33_TIN,
+        "http://www.opengis.net/gml/3.3/xbt",
+        "http://www.opengis.net/gml/3.3/lr",
+    ] {
         let name = QName::new(Some(uri), "Anything");
         assert!(name.is_gml_33(), "{uri}");
         assert!(!name.is_gml(), "{uri}");

@@ -5,7 +5,7 @@
 use xeibe_core::reader::GmlReader;
 
 use super::{Elem, Parser, Scope};
-use crate::model::{GeometryCollection, Geometry, MultiCurve, MultiPoint, MultiSurface, Point};
+use crate::model::{Geometry, GeometryCollection, MultiCurve, MultiPoint, MultiSurface, Point};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Members {
@@ -26,12 +26,24 @@ impl Parser<'_> {
     ) -> crate::Result<MultiPoint> {
         let scope = self.enter(elem, scope);
         let coords = self.positions(reader, scope, false)?;
-        Ok(MultiPoint(coords.positions().map(|position| Point { coord: Some(position.to_vec()) }).collect()))
+        Ok(MultiPoint(
+            coords
+                .positions()
+                .map(|position| Point {
+                    coord: Some(position.to_vec()),
+                })
+                .collect(),
+        ))
     }
 
     /// An aggregate. Any `…Member`/`…Members` property is read (lenient:
     /// real data mixes spellings); the member's kind must fit the aggregate.
-    pub(super) fn aggregate(&mut self, reader: &mut GmlReader<'_>, elem: &Elem, scope: Scope) -> crate::Result<Geometry> {
+    pub(super) fn aggregate(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: &Elem,
+        scope: Scope,
+    ) -> crate::Result<Geometry> {
         let scope = self.enter(elem, scope);
         let kind = match elem.local() {
             "MultiPoint" => Members::Points,
@@ -56,7 +68,9 @@ impl Parser<'_> {
                     return parser.skip(reader);
                 }
                 match kind {
-                    Members::Points if member.is("Point") => points.push(parser.point(reader, &member, scope)?),
+                    Members::Points if member.is("Point") => {
+                        points.push(parser.point(reader, &member, scope)?)
+                    }
                     Members::Points => return Err(parser.wrong_kind(reader, &member, "a point")),
                     Members::Curves => curves.push(parser.curve(reader, member, scope)?),
                     Members::Surfaces => surfaces.extend(parser.surfaces(reader, member, scope)?),

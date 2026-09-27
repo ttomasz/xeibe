@@ -34,7 +34,10 @@ pub struct LinearizeOptions {
 
 impl Default for LinearizeOptions {
     fn default() -> Self {
-        LinearizeOptions { max_angle_step_deg: 4.0, max_gap: None }
+        LinearizeOptions {
+            max_angle_step_deg: 4.0,
+            max_gap: None,
+        }
     }
 }
 

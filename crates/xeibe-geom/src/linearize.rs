@@ -18,14 +18,23 @@ use crate::options::LinearizeOptions;
 pub fn linearize_circular(arc: &CircularString, options: &LinearizeOptions) -> LineString {
     let coords = &arc.coords;
     let n = coords.len();
-    let mut out = Coords { dim: coords.dim, values: Vec::with_capacity(coords.values.len()) };
+    let mut out = Coords {
+        dim: coords.dim,
+        values: Vec::with_capacity(coords.values.len()),
+    };
     if n == 0 {
         return LineString { coords: out };
     }
     out.push(coords.get(0));
     let mut i = 0;
     while i + 2 < n {
-        linearize_arc(coords.get(i), coords.get(i + 1), coords.get(i + 2), options, &mut out);
+        linearize_arc(
+            coords.get(i),
+            coords.get(i + 1),
+            coords.get(i + 2),
+            options,
+            &mut out,
+        );
         i += 2;
     }
     // Positions that complete no arc (invalid input) are kept as they are.
@@ -43,7 +52,11 @@ pub fn linearize(geometry: Geometry, options: &LinearizeOptions) -> Geometry {
         }
         Geometry::CurvePolygon(polygon) => Geometry::Polygon(linearize_polygon(polygon, options)),
         Geometry::MultiCurve(curves) => Geometry::MultiLineString(MultiLineString(
-            curves.0.into_iter().map(|c| linearize_curve(c, options)).collect(),
+            curves
+                .0
+                .into_iter()
+                .map(|c| linearize_curve(c, options))
+                .collect(),
         )),
         Geometry::MultiSurface(surfaces) => Geometry::MultiPolygon(MultiPolygon(
             surfaces
@@ -56,7 +69,11 @@ pub fn linearize(geometry: Geometry, options: &LinearizeOptions) -> Geometry {
                 .collect(),
         )),
         Geometry::GeometryCollection(mut members) => {
-            members.0 = members.0.into_iter().map(|g| linearize(g, options)).collect();
+            members.0 = members
+                .0
+                .into_iter()
+                .map(|g| linearize(g, options))
+                .collect();
             Geometry::GeometryCollection(members)
         }
         simple => simple,
@@ -85,7 +102,11 @@ pub fn linearize_curve(curve: Curve, options: &LinearizeOptions) -> LineString {
 fn linearize_polygon(polygon: CurvePolygon, options: &LinearizeOptions) -> Polygon {
     Polygon {
         exterior: polygon.exterior.map(|ring| linearize_curve(ring, options)),
-        interiors: polygon.interiors.into_iter().map(|ring| linearize_curve(ring, options)).collect(),
+        interiors: polygon
+            .interiors
+            .into_iter()
+            .map(|ring| linearize_curve(ring, options))
+            .collect(),
     }
 }
 
@@ -100,8 +121,16 @@ fn linearize_arc(p0: &[f64], p1: &[f64], p2: &[f64], options: &LinearizeOptions,
     let a0 = circle.angle_of([p0[0], p0[1]]);
     let a1 = circle.angle_of([p1[0], p1[1]]);
     let a2 = circle.angle_of([p2[0], p2[1]]);
-    let first = if p0 == p2 { TAU / 2.0 * sign(circle.ccw) } else { circle.sweep(a0, a1) };
-    let second = if p0 == p2 { TAU / 2.0 * sign(circle.ccw) } else { circle.sweep(a1, a2) };
+    let first = if p0 == p2 {
+        TAU / 2.0 * sign(circle.ccw)
+    } else {
+        circle.sweep(a0, a1)
+    };
+    let second = if p0 == p2 {
+        TAU / 2.0 * sign(circle.ccw)
+    } else {
+        circle.sweep(a1, a2)
+    };
     subdivide(&circle, a0, first, p0, p1, max_step, out);
     subdivide(&circle, a1, second, p1, p2, max_step, out);
 }

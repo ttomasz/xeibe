@@ -41,7 +41,10 @@ pub struct Coords {
 
 impl Coords {
     pub fn new(dim: Dim) -> Self {
-        Coords { dim: Some(dim), values: Vec::new() }
+        Coords {
+            dim: Some(dim),
+            values: Vec::new(),
+        }
     }
 
     /// Ordinates per position (2 while the dimension is still unknown).
@@ -274,7 +277,9 @@ pub struct CompoundCurve {
 
 impl CompoundCurve {
     pub fn is_linear(&self) -> bool {
-        self.parts.iter().all(|part| matches!(part, CurvePart::Linear(_)))
+        self.parts
+            .iter()
+            .all(|part| matches!(part, CurvePart::Linear(_)))
     }
 
     /// See [`Curve::into_linear`].
@@ -350,7 +355,9 @@ impl Curve {
         match self {
             Curve::Linear(line) => line.coords.last(),
             Curve::Circular(arc) => arc.coords.last(),
-            Curve::Compound(compound) => compound.parts.iter().rev().find_map(|p| p.coords().last()),
+            Curve::Compound(compound) => {
+                compound.parts.iter().rev().find_map(|p| p.coords().last())
+            }
         }
     }
 
@@ -545,7 +552,9 @@ impl Geometry {
     /// (MultiPoint; MultiLineString, or MultiCurve with arcs; MultiPolygon, or
     /// MultiSurface with arcs), else a GeometryCollection.
     pub fn from_parts(parts: Vec<Geometry>) -> Geometry {
-        let points = parts.iter().all(|part| matches!(part, Geometry::Point(_) | Geometry::MultiPoint(_)));
+        let points = parts
+            .iter()
+            .all(|part| matches!(part, Geometry::Point(_) | Geometry::MultiPoint(_)));
         let curves = parts.iter().all(|part| {
             matches!(
                 part,
@@ -559,7 +568,10 @@ impl Geometry {
         let surfaces = parts.iter().all(|part| {
             matches!(
                 part,
-                Geometry::Polygon(_) | Geometry::CurvePolygon(_) | Geometry::MultiPolygon(_) | Geometry::MultiSurface(_)
+                Geometry::Polygon(_)
+                    | Geometry::CurvePolygon(_)
+                    | Geometry::MultiPolygon(_)
+                    | Geometry::MultiSurface(_)
             )
         });
         if points {
@@ -580,7 +592,9 @@ impl Geometry {
                     Geometry::LineString(line) => all.push(Curve::Linear(line)),
                     Geometry::CircularString(arc) => all.push(Curve::Circular(arc)),
                     Geometry::CompoundCurve(compound) => all.push(Curve::Compound(compound)),
-                    Geometry::MultiLineString(lines) => all.extend(lines.0.into_iter().map(Curve::Linear)),
+                    Geometry::MultiLineString(lines) => {
+                        all.extend(lines.0.into_iter().map(Curve::Linear))
+                    }
                     Geometry::MultiCurve(multi) => all.extend(multi.0),
                     _ => unreachable!("checked above"),
                 }
@@ -593,7 +607,9 @@ impl Geometry {
                 match part {
                     Geometry::Polygon(polygon) => all.push(Surface::Polygon(polygon)),
                     Geometry::CurvePolygon(polygon) => all.push(Surface::CurvePolygon(polygon)),
-                    Geometry::MultiPolygon(polygons) => all.extend(polygons.0.into_iter().map(Surface::Polygon)),
+                    Geometry::MultiPolygon(polygons) => {
+                        all.extend(polygons.0.into_iter().map(Surface::Polygon))
+                    }
                     Geometry::MultiSurface(multi) => all.extend(multi.0),
                     _ => unreachable!("checked above"),
                 }
@@ -676,17 +692,31 @@ impl Geometry {
             },
             Geometry::MultiCurve(curves) if curves.0.iter().all(Curve::is_linear) => {
                 Geometry::MultiLineString(MultiLineString(
-                    curves.0.into_iter().map(|c| c.into_linear().unwrap_or_default()).collect(),
+                    curves
+                        .0
+                        .into_iter()
+                        .map(|c| c.into_linear().unwrap_or_default())
+                        .collect(),
                 ))
             }
             Geometry::MultiSurface(surfaces) if surfaces.0.iter().all(Surface::is_linear) => {
                 Geometry::MultiPolygon(MultiPolygon(
-                    surfaces.0.into_iter().map(|s| s.into_linear().unwrap_or_default()).collect(),
+                    surfaces
+                        .0
+                        .into_iter()
+                        .map(|s| s.into_linear().unwrap_or_default())
+                        .collect(),
                 ))
             }
-            Geometry::GeometryCollection(members) => Geometry::GeometryCollection(
-                GeometryCollection(members.0.into_iter().map(Geometry::simplify_types).collect()),
-            ),
+            Geometry::GeometryCollection(members) => {
+                Geometry::GeometryCollection(GeometryCollection(
+                    members
+                        .0
+                        .into_iter()
+                        .map(Geometry::simplify_types)
+                        .collect(),
+                ))
+            }
             other => other,
         }
     }
@@ -694,7 +724,12 @@ impl Geometry {
     /// `[min_x, min_y, max_x, max_y]` over every part; `None` if empty. Arcs
     /// count with their full extent, not just their control points.
     pub fn bbox(&self) -> Option<[f64; 4]> {
-        let mut bbox = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+        let mut bbox = [
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NEG_INFINITY,
+        ];
         self.extend_bbox(&mut bbox);
         (bbox[0] <= bbox[2] && bbox[1] <= bbox[3]).then_some(bbox)
     }
@@ -711,7 +746,10 @@ impl Geometry {
             Geometry::Polygon(polygon) => polygon.extend_bbox(bbox),
             Geometry::MultiPoint(points) => points.0.iter().for_each(|p| point(bbox, p)),
             Geometry::MultiLineString(lines) => {
-                lines.0.iter().for_each(|line| line.coords.extend_bbox(bbox));
+                lines
+                    .0
+                    .iter()
+                    .for_each(|line| line.coords.extend_bbox(bbox));
             }
             Geometry::MultiPolygon(polygons) => polygons.0.iter().for_each(|p| p.extend_bbox(bbox)),
             Geometry::GeometryCollection(members) => {
@@ -780,10 +818,10 @@ impl GeomKind {
         use GeomKind::*;
         match self {
             Point | MultiPoint => MultiPoint,
-            LineString | LinearRing | Curve | OrientableCurve | CompositeCurve | Ring | MultiLineString
-            | MultiCurve => MultiCurve,
-            Polygon | Surface | OrientableSurface | CompositeSurface | Patch | MultiPolygon | MultiSurface
-            | Envelope | Box => MultiSurface,
+            LineString | LinearRing | Curve | OrientableCurve | CompositeCurve | Ring
+            | MultiLineString | MultiCurve => MultiCurve,
+            Polygon | Surface | OrientableSurface | CompositeSurface | Patch | MultiPolygon
+            | MultiSurface | Envelope | Box => MultiSurface,
             MultiGeometry => MultiGeometry,
             Unsupported => Unsupported,
         }

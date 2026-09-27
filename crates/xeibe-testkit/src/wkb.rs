@@ -49,7 +49,10 @@ impl Reader<'_> {
 
     fn u32(&mut self, big_endian: bool) -> Result<u32, String> {
         let end = self.pos + 4;
-        let slice = self.bytes.get(self.pos..end).ok_or("unexpected end of WKB")?;
+        let slice = self
+            .bytes
+            .get(self.pos..end)
+            .ok_or("unexpected end of WKB")?;
         let array: [u8; 4] = slice.try_into().unwrap();
         self.pos = end;
         Ok(if big_endian {
@@ -61,7 +64,10 @@ impl Reader<'_> {
 
     fn f64(&mut self, big_endian: bool) -> Result<f64, String> {
         let end = self.pos + 8;
-        let slice = self.bytes.get(self.pos..end).ok_or("unexpected end of WKB")?;
+        let slice = self
+            .bytes
+            .get(self.pos..end)
+            .ok_or("unexpected end of WKB")?;
         let array: [u8; 8] = slice.try_into().unwrap();
         self.pos = end;
         Ok(if big_endian {
@@ -77,7 +83,9 @@ impl Reader<'_> {
 
     fn coords(&mut self, big_endian: bool, ordinates: usize) -> Result<Vec<Coord>, String> {
         let count = self.u32(big_endian)? as usize;
-        (0..count).map(|_| self.coord(big_endian, ordinates)).collect()
+        (0..count)
+            .map(|_| self.coord(big_endian, ordinates))
+            .collect()
     }
 
     fn members(&mut self, big_endian: bool) -> Result<Vec<G>, String> {
@@ -89,12 +97,14 @@ impl Reader<'_> {
         let big_endian = self.byte_order()?;
         let code = self.u32(big_endian)?;
         if code & 0xE000_0000 != 0 {
-            return Err(format!("EWKB flags set in type code {code:#x}; expected ISO WKB"));
+            return Err(format!(
+                "EWKB flags set in type code {code:#x}; expected ISO WKB"
+            ));
         }
         let base = code % 1000;
         let ordinates = match code / 1000 {
             0 => 2,
-            1 => 3,             // Z
+            1 => 3, // Z
             2 => return Err("M geometries are not produced by this project".into()),
             3 => return Err("ZM geometries are not produced by this project".into()),
             other => return Err(format!("unknown dimension {other} in type code {code}")),

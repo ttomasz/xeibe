@@ -20,8 +20,7 @@ fn point(x: f64, y: f64) -> String {
     format!("<gml:Point srsName=\"EPSG:2180\"><gml:pos>{x} {y}</gml:pos></gml:Point>")
 }
 
-const RING: &str =
-    "<gml:exterior><gml:LinearRing><gml:posList>0 0 1 0 1 1 0 0</gml:posList></gml:LinearRing></gml:exterior>";
+const RING: &str = "<gml:exterior><gml:LinearRing><gml:posList>0 0 1 0 1 1 0 0</gml:posList></gml:LinearRing></gml:exterior>";
 
 /// Read with the schema of a full scan: `Auto` picks native types there,
 /// where a read's own sample makes WKB.
@@ -29,7 +28,10 @@ fn read_scanned(document: &str, layer: &str) -> (Read, Settings) {
     let scan = scan(sources(document), ScanExtent::Full, &ReadOptions::default()).expect("a scan");
     let schema = scan.arrow_schema(layer).expect("a schema");
     let settings = scan.to_settings().expect("settings");
-    (read_with(document, layer, Some(schema), &ReadOptions::default()), settings)
+    (
+        read_with(document, layer, Some(schema), &ReadOptions::default()),
+        settings,
+    )
 }
 
 /// The settings-file type the scan wrote for a column.
@@ -67,10 +69,16 @@ fn native_columns_from_a_full_scan_hold_the_geometries() {
 
     // A kind and its Multi form: the Multi type, so the Polygon reads as a
     // one-part MultiPolygon (`docs/geometry.md`, "Column encoding").
-    assert_eq!(extension_name(&read.field("shape")), Some("geoarrow.multipolygon"));
+    assert_eq!(
+        extension_name(&read.field("shape")),
+        Some("geoarrow.multipolygon")
+    );
     let shapes = read.native_geometries("shape");
     for shape in &shapes {
-        assert_wkt(shape.as_ref().expect("a shape"), "MULTIPOLYGON (((0 0,1 0,1 1,0 0)))");
+        assert_wkt(
+            shape.as_ref().expect("a shape"),
+            "MULTIPOLYGON (((0 0,1 0,1 1,0 0)))",
+        );
     }
 }
 
@@ -92,7 +100,9 @@ fn several_geometry_properties_stay_separate_columns() {
         ),
         &parcel(
             "p2",
-            &format!("<app:geometria><gml:Polygon srsName=\"EPSG:2180\">{RING}</gml:Polygon></app:geometria>"),
+            &format!(
+                "<app:geometria><gml:Polygon srsName=\"EPSG:2180\">{RING}</gml:Polygon></app:geometria>"
+            ),
         ),
     ]);
     let read = read_document(&document, "Parcel");
@@ -105,19 +115,28 @@ fn several_geometry_properties_stay_separate_columns() {
     assert!(areas.iter().all(Option::is_some), "{areas:?}");
     let points = read.geometries("pozycja");
     assert!(points[0].is_some());
-    assert_eq!(points[1], None, "null where the feature has no such property");
+    assert_eq!(
+        points[1], None,
+        "null where the feature has no such property"
+    );
 }
 
 #[test]
 fn an_empty_geometry_element_is_an_empty_geometry_not_null() {
     let document = gml::gml32_collection(&[
-        &parcel("p1", "<app:geom><gml:Point srsName=\"EPSG:2180\"/></app:geom>"),
+        &parcel(
+            "p1",
+            "<app:geom><gml:Point srsName=\"EPSG:2180\"/></app:geom>",
+        ),
         &parcel("p2", &format!("<app:geom>{}</app:geom>", point(1.0, 2.0))),
         &parcel("p3", ""),
     ]);
     let read = read_document(&document, "Parcel");
     let geometries = read.geometries("geom");
-    assert_wkt(geometries[0].as_ref().expect("an empty point, not null"), "POINT EMPTY");
+    assert_wkt(
+        geometries[0].as_ref().expect("an empty point, not null"),
+        "POINT EMPTY",
+    );
     assert_wkt(geometries[1].as_ref().expect("a point"), "POINT (1 2)");
     assert_eq!(geometries[2], None, "a missing property is null");
 }
@@ -127,13 +146,26 @@ fn a_bare_surface_patch_is_a_polygon_column() {
     // Not valid GML (a patch is not a geometry), but GDAL reads it, so the scan
     // finds the column and the read gives polygons.
     let document = gml::gml32_collection(&[
-        &parcel("p1", &format!("<app:shape><gml:Rectangle srsName=\"EPSG:2180\">{RING}</gml:Rectangle></app:shape>")),
-        &parcel("p2", &format!("<app:shape><gml:PolygonPatch srsName=\"EPSG:2180\">{RING}</gml:PolygonPatch></app:shape>")),
+        &parcel(
+            "p1",
+            &format!(
+                "<app:shape><gml:Rectangle srsName=\"EPSG:2180\">{RING}</gml:Rectangle></app:shape>"
+            ),
+        ),
+        &parcel(
+            "p2",
+            &format!(
+                "<app:shape><gml:PolygonPatch srsName=\"EPSG:2180\">{RING}</gml:PolygonPatch></app:shape>"
+            ),
+        ),
     ]);
     let (read, settings) = read_scanned(&document, "Parcel");
     assert_eq!(scanned_type(&settings, "shape"), "geometry(Polygon)");
     for shape in read.native_geometries("shape") {
-        assert_wkt(shape.as_ref().expect("a polygon"), "POLYGON ((0 0,1 0,1 1,0 0))");
+        assert_wkt(
+            shape.as_ref().expect("a polygon"),
+            "POLYGON ((0 0,1 0,1 1,0 0))",
+        );
     }
 }
 
@@ -149,7 +181,11 @@ fn mixed_2d_and_3d_in_one_column_is_xyz_with_a_nan_z() {
     let (read, settings) = read_scanned(&document, "Parcel");
     assert_eq!(scanned_type(&settings, "geom"), "geometry(Point, XYZ)");
     let points = read.native_geometries("geom");
-    let first = points[0].as_ref().expect("a point").first_vertex().expect("a vertex");
+    let first = points[0]
+        .as_ref()
+        .expect("a point")
+        .first_vertex()
+        .expect("a vertex");
     assert_eq!(first[..2], [1.0, 2.0]);
     assert!(first[2].is_nan(), "a 2D value gets a NaN Z: {first:?}");
     assert_wkt(points[1].as_ref().expect("a point"), "POINT Z (3 4 5)");
@@ -167,13 +203,21 @@ fn a_z_value_in_an_xy_column_is_a_geometry_error() {
     )
     .expect("settings");
     let schema = settings.schema("Parcel").expect("a schema");
-    let failed = match read(sources(&document), "Parcel", Some(schema.clone()), &ReadOptions::default()) {
+    let failed = match read(
+        sources(&document),
+        "Parcel",
+        Some(schema.clone()),
+        &ReadOptions::default(),
+    ) {
         Err(_) => true,
         Ok(reader) => reader.into_iter().any(|batch| batch.is_err()),
     };
     assert!(failed, "the default policy stops the read");
 
-    let null_geometry = ReadOptions { on_feature_error: OnFeatureError::NullGeometry, ..ReadOptions::default() };
+    let null_geometry = ReadOptions {
+        on_feature_error: OnFeatureError::NullGeometry,
+        ..ReadOptions::default()
+    };
     let read = read_with(&document, "Parcel", Some(schema), &null_geometry);
     assert_eq!(read.i64s("area"), [Some(1)]);
     assert_eq!(read.native_geometries("geom"), [None]);
@@ -190,9 +234,16 @@ fn gml_2_generic_geometry_properties_are_geometry_columns() {
         "</app:Parcel>"
     )]);
     let read = read_document(&document, "Parcel");
-    assert_wkt(read.geometries("pointProperty")[0].as_ref().expect("a point"), "POINT (1 2)");
     assert_wkt(
-        read.geometries("polygonProperty")[0].as_ref().expect("a polygon"),
+        read.geometries("pointProperty")[0]
+            .as_ref()
+            .expect("a point"),
+        "POINT (1 2)",
+    );
+    assert_wkt(
+        read.geometries("polygonProperty")[0]
+            .as_ref()
+            .expect("a polygon"),
         "POLYGON ((0 0,1 0,1 1,0 0))",
     );
 }
@@ -206,13 +257,28 @@ fn a_bounded_by_box_column_holds_the_envelope() {
         "<gml:lowerCorner>10 20</gml:lowerCorner><gml:upperCorner>30 40</gml:upperCorner>",
         "</gml:Envelope></gml:boundedBy>"
     );
-    let document = gml::gml32_collection(&[&parcel("p1", &format!("{envelope}<app:area>1</app:area>"))]);
+    let document =
+        gml::gml32_collection(&[&parcel("p1", &format!("{envelope}<app:area>1</app:area>"))]);
     let read = crate::support::read_with(&document, "Parcel", None, &options);
-    assert_eq!(extension_name(&read.field("boundedBy")), Some("geoarrow.box"));
-    let column = read.batches[0].column_by_name("boundedBy").expect("a box column");
+    assert_eq!(
+        extension_name(&read.field("boundedBy")),
+        Some("geoarrow.box")
+    );
+    let column = read.batches[0]
+        .column_by_name("boundedBy")
+        .expect("a box column");
     let boxes = column.as_struct();
-    let value = |name: &str| boxes.column_by_name(name).expect(name).as_primitive::<Float64Type>().value(0);
-    assert_eq!([value("xmin"), value("ymin"), value("xmax"), value("ymax")], [10.0, 20.0, 30.0, 40.0]);
+    let value = |name: &str| {
+        boxes
+            .column_by_name(name)
+            .expect(name)
+            .as_primitive::<Float64Type>()
+            .value(0)
+    };
+    assert_eq!(
+        [value("xmin"), value("ymin"), value("xmax"), value("ymax")],
+        [10.0, 20.0, 30.0, 40.0]
+    );
     assert!(!boxes.is_null(0));
 }
 
@@ -225,15 +291,34 @@ fn a_crs_without_projjson_is_written_as_an_authority_code() {
         "<app:geom><gml:Point srsName=\"urn:ogc:def:crs:OGC:1.3:CRS84\"><gml:pos>21 52</gml:pos></gml:Point></app:geom>",
     )]);
     let (read, _) = read_scanned(&document, "Parcel");
-    let metadata = read.field("geom").metadata().get("ARROW:extension:metadata").cloned().unwrap_or_default();
-    assert!(metadata.contains("authority_code") && metadata.contains("OGC:CRS84"), "{metadata}");
+    let metadata = read
+        .field("geom")
+        .metadata()
+        .get("ARROW:extension:metadata")
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        metadata.contains("authority_code") && metadata.contains("OGC:CRS84"),
+        "{metadata}"
+    );
 
     let (read, _) = read_scanned(
-        &gml::gml32_collection(&[&parcel("p1", &format!("<app:geom>{}</app:geom>", point(1.0, 2.0)))]),
+        &gml::gml32_collection(&[&parcel(
+            "p1",
+            &format!("<app:geom>{}</app:geom>", point(1.0, 2.0)),
+        )]),
         "Parcel",
     );
-    let metadata = read.field("geom").metadata().get("ARROW:extension:metadata").cloned().unwrap_or_default();
-    assert!(metadata.contains("projjson"), "EPSG codes get PROJJSON: {metadata}");
+    let metadata = read
+        .field("geom")
+        .metadata()
+        .get("ARROW:extension:metadata")
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        metadata.contains("projjson"),
+        "EPSG codes get PROJJSON: {metadata}"
+    );
 }
 
 #[test]
@@ -243,10 +328,17 @@ fn a_compound_crs_with_an_unknown_part_is_its_known_part_and_reported() {
     let srs = "urn:ogc:def:crs,crs:EPSG::2180,crs:PL-XYZ";
     let document = gml::gml32_collection(&[&parcel(
         "p1",
-        &format!("<app:geom><gml:Point srsName=\"{srs}\"><gml:pos>2 1 5</gml:pos></gml:Point></app:geom>"),
+        &format!(
+            "<app:geom><gml:Point srsName=\"{srs}\"><gml:pos>2 1 5</gml:pos></gml:Point></app:geom>"
+        ),
     )]);
     let (read, _) = read_scanned(&document, "Parcel");
-    let metadata = read.field("geom").metadata().get("ARROW:extension:metadata").cloned().unwrap_or_default();
+    let metadata = read
+        .field("geom")
+        .metadata()
+        .get("ARROW:extension:metadata")
+        .cloned()
+        .unwrap_or_default();
     let metadata: serde_json::Value = serde_json::from_str(&metadata).expect("JSON metadata");
     assert_eq!(metadata["crs"]["id"]["code"], 2180, "{metadata}");
     let unknown: Vec<&str> = read
@@ -256,7 +348,10 @@ fn a_compound_crs_with_an_unknown_part_is_its_known_part_and_reported() {
         .filter(|warning| warning.kind == xeibe_arrow::report::WarningKind::UnknownCrs)
         .map(|warning| warning.message.as_str())
         .collect();
-    assert!(unknown.iter().any(|message| message.contains("\"PL-XYZ\"")), "{unknown:?}");
+    assert!(
+        unknown.iter().any(|message| message.contains("\"PL-XYZ\"")),
+        "{unknown:?}"
+    );
 }
 
 #[test]
@@ -264,7 +359,11 @@ fn an_array_property_is_read_as_the_matching_multi_geometry() {
     // `gml:pointArrayProperty`, `curveArrayProperty` and `surfaceArrayProperty`
     // hold several geometries: one value of the Multi kind, also for one part
     // (`docs/geometry.md`, "Empty, invalid and degenerate geometry").
-    let line = |a: &str| format!("<gml:LineString srsName=\"EPSG:2180\"><gml:posList>{a}</gml:posList></gml:LineString>");
+    let line = |a: &str| {
+        format!(
+            "<gml:LineString srsName=\"EPSG:2180\"><gml:posList>{a}</gml:posList></gml:LineString>"
+        )
+    };
     let polygon = format!("<gml:Polygon srsName=\"EPSG:2180\">{RING}</gml:Polygon>");
     let document = gml::gml32_collection(&[
         &parcel(
@@ -284,31 +383,56 @@ fn an_array_property_is_read_as_the_matching_multi_geometry() {
                 polygon
             ),
         ),
-        &parcel("p2", &format!("<gml:pointArrayProperty>{}</gml:pointArrayProperty>", point(7.0, 8.0))),
+        &parcel(
+            "p2",
+            &format!(
+                "<gml:pointArrayProperty>{}</gml:pointArrayProperty>",
+                point(7.0, 8.0)
+            ),
+        ),
     ]);
 
     // A read's own sample: WKB.
     let read = read_document(&document, "Parcel");
     let points = read.geometries("pointArrayProperty");
-    assert_wkt(points[0].as_ref().expect("points"), "MULTIPOINT ((1 2),(3 4),(5 6))");
+    assert_wkt(
+        points[0].as_ref().expect("points"),
+        "MULTIPOINT ((1 2),(3 4),(5 6))",
+    );
     assert_wkt(points[1].as_ref().expect("points"), "MULTIPOINT ((7 8))");
     assert_wkt(
-        read.geometries("curveArrayProperty")[0].as_ref().expect("curves"),
+        read.geometries("curveArrayProperty")[0]
+            .as_ref()
+            .expect("curves"),
         "MULTILINESTRING ((0 0,1 1),(2 2,3 3))",
     );
     assert_wkt(
-        read.geometries("surfaceArrayProperty")[0].as_ref().expect("surfaces"),
+        read.geometries("surfaceArrayProperty")[0]
+            .as_ref()
+            .expect("surfaces"),
         "MULTIPOLYGON (((0 0,1 0,1 1,0 0)),((0 0,1 0,1 1,0 0)))",
     );
 
     // A full scan types an array property by its Multi kind: a native Multi
     // column.
     let (read, settings) = read_scanned(&document, "Parcel");
-    assert_eq!(scanned_type(&settings, "pointArrayProperty"), "geometry(MultiPoint)");
-    assert_eq!(scanned_type(&settings, "curveArrayProperty"), "geometry(MultiLineString)");
-    assert_eq!(scanned_type(&settings, "surfaceArrayProperty"), "geometry(MultiPolygon)");
+    assert_eq!(
+        scanned_type(&settings, "pointArrayProperty"),
+        "geometry(MultiPoint)"
+    );
+    assert_eq!(
+        scanned_type(&settings, "curveArrayProperty"),
+        "geometry(MultiLineString)"
+    );
+    assert_eq!(
+        scanned_type(&settings, "surfaceArrayProperty"),
+        "geometry(MultiPolygon)"
+    );
     let points = read.native_geometries("pointArrayProperty");
-    assert_wkt(points[0].as_ref().expect("points"), "MULTIPOINT ((1 2),(3 4),(5 6))");
+    assert_wkt(
+        points[0].as_ref().expect("points"),
+        "MULTIPOINT ((1 2),(3 4),(5 6))",
+    );
     assert_wkt(points[1].as_ref().expect("points"), "MULTIPOINT ((7 8))");
 }
 
@@ -319,20 +443,37 @@ fn a_second_geometry_in_an_ordinary_property_is_a_feature_error() {
     // geometry error, so `NullGeometry` doesn't keep the feature.
     let document = gml::gml32_collection(&[
         &parcel("p1", &format!("<app:geom>{}</app:geom>", point(1.0, 2.0))),
-        &parcel("p2", &format!("<app:geom>{}{}</app:geom>", point(3.0, 4.0), point(5.0, 6.0))),
+        &parcel(
+            "p2",
+            &format!(
+                "<app:geom>{}{}</app:geom>",
+                point(3.0, 4.0),
+                point(5.0, 6.0)
+            ),
+        ),
     ]);
     for policy in [OnFeatureError::Error, OnFeatureError::NullGeometry] {
-        let options = ReadOptions { on_feature_error: policy, ..ReadOptions::default() };
+        let options = ReadOptions {
+            on_feature_error: policy,
+            ..ReadOptions::default()
+        };
         let failed = match read(sources(&document), "Parcel", None, &options) {
             Err(_) => true,
             Ok(reader) => reader.into_iter().any(|batch| batch.is_err()),
         };
         assert!(failed, "{policy:?} stops the read");
     }
-    let skipping = ReadOptions { on_feature_error: OnFeatureError::Skip, ..ReadOptions::default() };
+    let skipping = ReadOptions {
+        on_feature_error: OnFeatureError::Skip,
+        ..ReadOptions::default()
+    };
     let read = read_with(&document, "Parcel", None, &skipping);
     assert_eq!(read.rows(), 1);
-    assert!(read.report.skipped[0].1.contains("second geometry"), "{:?}", read.report.skipped);
+    assert!(
+        read.report.skipped[0].1.contains("second geometry"),
+        "{:?}",
+        read.report.skipped
+    );
 }
 
 #[test]
@@ -346,7 +487,10 @@ fn a_broken_part_nulls_the_whole_array() {
             point(1.0, 2.0)
         ),
     )]);
-    let options = ReadOptions { on_feature_error: OnFeatureError::NullGeometry, ..ReadOptions::default() };
+    let options = ReadOptions {
+        on_feature_error: OnFeatureError::NullGeometry,
+        ..ReadOptions::default()
+    };
     let read = read_with(&document, "Parcel", None, &options);
     assert_eq!(read.i64s("area"), [Some(1)]);
     assert_eq!(read.geometries("pointArrayProperty"), [None]);
@@ -370,11 +514,23 @@ fn geometries_inherit_the_collection_s_srs_name_and_dimension() {
         r#"srsName="EPSG:2180" srsDimension="3""#,
         "0 0 0",
         "10 10 10",
-        &[&parcel("p1", "<app:geom><gml:LineString><gml:posList>0 0 1 1 1 2</gml:posList></gml:LineString></app:geom>")],
+        &[&parcel(
+            "p1",
+            "<app:geom><gml:LineString><gml:posList>0 0 1 1 1 2</gml:posList></gml:LineString></app:geom>",
+        )],
     );
     let read = read_document(&document, "Parcel");
-    assert_eq!(read.field("geom").metadata().get(meta::SRS_NAME).map(String::as_str), Some("EPSG:2180"));
-    assert_wkt(read.geometries("geom")[0].as_ref().expect("a line"), "LINESTRING Z (0 0 1,1 1 2)");
+    assert_eq!(
+        read.field("geom")
+            .metadata()
+            .get(meta::SRS_NAME)
+            .map(String::as_str),
+        Some("EPSG:2180")
+    );
+    assert_wkt(
+        read.geometries("geom")[0].as_ref().expect("a line"),
+        "LINESTRING Z (0 0 1,1 1 2)",
+    );
 }
 
 #[test]
@@ -385,11 +541,23 @@ fn the_inherited_srs_name_decides_the_axis_order() {
         r#"srsName="urn:ogc:def:crs:EPSG::4326""#,
         "49 14",
         "55 24",
-        &[&parcel("p1", "<app:geom><gml:Point><gml:pos>52 21</gml:pos></gml:Point></app:geom>")],
+        &[&parcel(
+            "p1",
+            "<app:geom><gml:Point><gml:pos>52 21</gml:pos></gml:Point></app:geom>",
+        )],
     );
     let read = read_document(&document, "Parcel");
-    assert_eq!(read.field("geom").metadata().get(meta::AXIS_SWAPPED).map(String::as_str), Some("true"));
-    assert_wkt(read.geometries("geom")[0].as_ref().expect("a point"), "POINT (21 52)");
+    assert_eq!(
+        read.field("geom")
+            .metadata()
+            .get(meta::AXIS_SWAPPED)
+            .map(String::as_str),
+        Some("true")
+    );
+    assert_wkt(
+        read.geometries("geom")[0].as_ref().expect("a point"),
+        "POINT (21 52)",
+    );
 }
 
 #[test]
@@ -408,8 +576,17 @@ fn a_feature_s_bounded_by_comes_before_the_collection_s() {
         )],
     );
     let read = read_document(&document, "Parcel");
-    assert_eq!(read.field("geom").metadata().get(meta::SRS_NAME).map(String::as_str), Some("EPSG:2176"));
-    assert_wkt(read.geometries("geom")[0].as_ref().expect("a point"), "POINT (1 2)");
+    assert_eq!(
+        read.field("geom")
+            .metadata()
+            .get(meta::SRS_NAME)
+            .map(String::as_str),
+        Some("EPSG:2176")
+    );
+    assert_wkt(
+        read.geometries("geom")[0].as_ref().expect("a point"),
+        "POINT (1 2)",
+    );
 }
 
 #[test]
@@ -418,12 +595,24 @@ fn a_scan_reports_the_extent_the_collection_declares() {
         r#"srsName="EPSG:2180""#,
         "100 200",
         "300 400",
-        &[&parcel("p1", &format!("<app:geom>{}</app:geom>", point(150.0, 250.0)))],
+        &[&parcel(
+            "p1",
+            &format!("<app:geom>{}</app:geom>", point(150.0, 250.0)),
+        )],
     );
-    let declared = scan(sources(&document), ScanExtent::Full, &ReadOptions::default()).expect("a scan");
+    let declared = scan(
+        sources(&document),
+        ScanExtent::Full,
+        &ReadOptions::default(),
+    )
+    .expect("a scan");
     assert_eq!(declared.extent(), Some([100.0, 200.0, 300.0, 400.0]));
-    let plain = gml::gml32_collection(&[&parcel("p1", &format!("<app:geom>{}</app:geom>", point(150.0, 250.0)))]);
-    let undeclared = scan(sources(&plain), ScanExtent::Full, &ReadOptions::default()).expect("a scan");
+    let plain = gml::gml32_collection(&[&parcel(
+        "p1",
+        &format!("<app:geom>{}</app:geom>", point(150.0, 250.0)),
+    )]);
+    let undeclared =
+        scan(sources(&plain), ScanExtent::Full, &ReadOptions::default()).expect("a scan");
     assert_eq!(undeclared.extent(), None);
 }
 
@@ -442,15 +631,29 @@ fn gml_33_compact_encodings_read_as_the_geometry_they_abbreviate() {
             r#"<app:geom><gmlce:SimpleTriangle srsName="EPSG:2180"><gml:posList>5 5 6 5 6 6</gml:posList></gmlce:SimpleTriangle></app:geom>"#,
         ),
     ]);
-    let scanned = scan(sources(&document), ScanExtent::Full, &ReadOptions::default()).expect("a scan");
+    let scanned = scan(
+        sources(&document),
+        ScanExtent::Full,
+        &ReadOptions::default(),
+    )
+    .expect("a scan");
     let schema = scanned.arrow_schema("Parcel").expect("a schema");
-    assert_eq!(schema.metadata().get(meta::VERSIONS).map(String::as_str), Some("3.3"));
+    assert_eq!(
+        schema.metadata().get(meta::VERSIONS).map(String::as_str),
+        Some("3.3")
+    );
 
     let (read, settings) = read_scanned(&document, "Parcel");
     assert_eq!(scanned_type(&settings, "geom"), "geometry(Polygon)");
     let polygons = read.native_geometries("geom");
-    assert_wkt(polygons[0].as_ref().expect("a polygon"), "POLYGON ((0 0,1 0,1 1,0 1,0 0))");
-    assert_wkt(polygons[1].as_ref().expect("a polygon"), "POLYGON ((5 5,6 5,6 6,5 5))");
+    assert_wkt(
+        polygons[0].as_ref().expect("a polygon"),
+        "POLYGON ((0 0,1 0,1 1,0 1,0 0))",
+    );
+    assert_wkt(
+        polygons[1].as_ref().expect("a polygon"),
+        "POLYGON ((5 5,6 5,6 6,5 5))",
+    );
 }
 
 #[test]
@@ -472,8 +675,14 @@ fn gml_33_compact_curves_keep_their_arcs() {
     let read = read_document(&document, "Parcel");
     assert_eq!(extension_name(&read.field("geom")), Some("geoarrow.wkb"));
     let curves = read.geometries("geom");
-    assert_wkt(curves[0].as_ref().expect("an arc"), "CIRCULARSTRING (0 0,1 1,2 0)");
-    assert_wkt(curves[1].as_ref().expect("a circle"), "MULTICURVE (CIRCULARSTRING (0 0,1 1,2 0,1 -1,0 0))");
+    assert_wkt(
+        curves[0].as_ref().expect("an arc"),
+        "CIRCULARSTRING (0 0,1 1,2 0)",
+    );
+    assert_wkt(
+        curves[1].as_ref().expect("a circle"),
+        "MULTICURVE (CIRCULARSTRING (0 0,1 1,2 0,1 -1,0 0))",
+    );
 }
 
 #[test]
@@ -486,7 +695,10 @@ fn a_gml_33_tin_is_a_geometry_error() {
             "<gml:posList>0 0 0 1 1 1</gml:posList></gmltin:SimpleTrianglePatch></gml:patches></gmltin:TIN></app:geom>"
         ),
     )]);
-    let options = ReadOptions { on_feature_error: OnFeatureError::NullGeometry, ..ReadOptions::default() };
+    let options = ReadOptions {
+        on_feature_error: OnFeatureError::NullGeometry,
+        ..ReadOptions::default()
+    };
     let read = read_with(&document, "Parcel", None, &options);
     assert_eq!(read.i64s("area"), [Some(1)], "the feature is kept");
     assert_eq!(read.geometries("geom"), [None]);

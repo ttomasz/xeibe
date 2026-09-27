@@ -134,7 +134,12 @@ fn a_given_schema_is_used_as_it_is() {
         Field::new("@id", DataType::Utf8View, true),
         Field::new("area", DataType::Float64, true),
     ]);
-    let read = read_with(&document(), "Parcel", Some(schema.clone()), &ReadOptions::default());
+    let read = read_with(
+        &document(),
+        "Parcel",
+        Some(schema.clone()),
+        &ReadOptions::default(),
+    );
     assert_eq!(
         read.column_names(),
         ["@id", "area"],
@@ -237,7 +242,10 @@ fn batch_size_bounds_the_batches() {
     assert!(
         read.batches.iter().all(|batch| batch.num_rows() <= 4),
         "batch sizes: {:?}",
-        read.batches.iter().map(|b| b.num_rows()).collect::<Vec<_>>()
+        read.batches
+            .iter()
+            .map(|b| b.num_rows())
+            .collect::<Vec<_>>()
     );
 }
 
@@ -374,10 +382,8 @@ fn the_defaults_match_the_documented_ones() {
 
 #[test]
 fn a_timestamp_column_holds_the_instant_in_microseconds() {
-    let document = gml::gml32_collection(&[&parcel(
-        "p1",
-        "<app:t>1970-01-01T00:00:01+00:00</app:t>",
-    )]);
+    let document =
+        gml::gml32_collection(&[&parcel("p1", "<app:t>1970-01-01T00:00:01+00:00</app:t>")]);
     let read = read_document(&document, "Parcel");
     assert_eq!(
         read.data_type("t"),
@@ -405,7 +411,9 @@ fn mixed_sources() -> xeibe_core::Sources {
 fn a_read_skips_sources_without_features_and_warns() {
     // With a schema the chunks go straight to the workers; without one the
     // layer is sampled first. Both skip the same sources.
-    let schema = scan_document(&document()).arrow_schema("Parcel").expect("a schema");
+    let schema = scan_document(&document())
+        .arrow_schema("Parcel")
+        .expect("a schema");
     for schema in [None, Some(schema)] {
         let sampled = schema.is_none();
         let read = crate::support::collect(
@@ -441,14 +449,31 @@ fn a_read_in_which_every_source_is_skipped_fails() {
     let Err(error) = read(only_metadata(), "Parcel", None, &ReadOptions::default()) else {
         panic!("nothing to sample");
     };
-    assert!(error.to_string().ends_with("found in metadata.xml"), "{error}");
+    assert!(
+        error.to_string().ends_with("found in metadata.xml"),
+        "{error}"
+    );
 
     // With a schema, the error comes from the sample `Auto` axis order
     // takes, or else ends the batch stream.
-    let schema = scan_document(&document()).arrow_schema("Parcel").expect("a schema");
-    let error = match read(only_metadata(), "Parcel", Some(schema), &ReadOptions::default()) {
+    let schema = scan_document(&document())
+        .arrow_schema("Parcel")
+        .expect("a schema");
+    let error = match read(
+        only_metadata(),
+        "Parcel",
+        Some(schema),
+        &ReadOptions::default(),
+    ) {
         Err(error) => error.to_string(),
-        Ok(reader) => reader.into_iter().find_map(Result::err).expect("an error in the stream").to_string(),
+        Ok(reader) => reader
+            .into_iter()
+            .find_map(Result::err)
+            .expect("an error in the stream")
+            .to_string(),
     };
-    assert!(error.to_string().ends_with("found in metadata.xml"), "{error}");
+    assert!(
+        error.to_string().ends_with("found in metadata.xml"),
+        "{error}"
+    );
 }

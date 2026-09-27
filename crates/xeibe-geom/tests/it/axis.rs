@@ -78,10 +78,19 @@ fn a_compound_crs_takes_the_axis_order_of_its_horizontal_part() {
     // The PROJ spelling is a short form: as written under `CrsHeuristic`.
     assert!(!swaps(AxisOrderMode::CrsHeuristic, "EPSG:4269+5713"));
     assert!(swaps(AxisOrderMode::Crs, "EPSG:4269+5713"));
-    assert!(!swaps(AxisOrderMode::Crs, "urn:adv:crs:ETRS89_UTM32*DE_DHHN2016_NH"));
+    assert!(!swaps(
+        AxisOrderMode::Crs,
+        "urn:adv:crs:ETRS89_UTM32*DE_DHHN2016_NH"
+    ));
     // An unknown height doesn't matter either; an unknown horizontal part does.
-    assert!(swaps(AxisOrderMode::Crs, "urn:ogc:def:crs,crs:EPSG::2180,crs:PL-XYZ"));
-    assert!(!swaps(AxisOrderMode::Crs, "urn:ogc:def:crs,crs:PL-XYZ,crs:EPSG::9651"));
+    assert!(swaps(
+        AxisOrderMode::Crs,
+        "urn:ogc:def:crs,crs:EPSG::2180,crs:PL-XYZ"
+    ));
+    assert!(!swaps(
+        AxisOrderMode::Crs,
+        "urn:ogc:def:crs,crs:PL-XYZ,crs:EPSG::9651"
+    ));
 }
 
 #[test]
@@ -111,9 +120,18 @@ fn crs_heuristic_decides_by_the_srs_name_form() {
         "http://www.opengis.net/gml/srs/epsg.xml#4326"
     ));
     assert!(!swaps(AxisOrderMode::CrsHeuristic, "25833"));
-    assert!(swaps(AxisOrderMode::CrsHeuristic, "urn:ogc:def:crs:EPSG::4326"));
-    assert!(swaps(AxisOrderMode::CrsHeuristic, "urn:x-ogc:def:crs:EPSG:3301"));
-    assert!(swaps(AxisOrderMode::CrsHeuristic, "urn:EPSG:geographicCRS:4326"));
+    assert!(swaps(
+        AxisOrderMode::CrsHeuristic,
+        "urn:ogc:def:crs:EPSG::4326"
+    ));
+    assert!(swaps(
+        AxisOrderMode::CrsHeuristic,
+        "urn:x-ogc:def:crs:EPSG:3301"
+    ));
+    assert!(swaps(
+        AxisOrderMode::CrsHeuristic,
+        "urn:EPSG:geographicCRS:4326"
+    ));
     assert!(swaps(
         AxisOrderMode::CrsHeuristic,
         "http://www.opengis.net/def/crs/EPSG/0/4258"
@@ -124,7 +142,10 @@ fn crs_heuristic_decides_by_the_srs_name_form() {
         "http://www.opengis.net/def/crs/EPSG/0/3812"
     ));
     // AdV URNs are easting-first.
-    assert!(!swaps(AxisOrderMode::CrsHeuristic, "urn:adv:crs:ETRS89_UTM32"));
+    assert!(!swaps(
+        AxisOrderMode::CrsHeuristic,
+        "urn:adv:crs:ETRS89_UTM32"
+    ));
     // An unknown srsName is read as written.
     assert!(!swaps(AxisOrderMode::CrsHeuristic, "AUT-GK31-5"));
 }
@@ -389,7 +410,10 @@ fn auto_has_no_evidence_switches() {
     let with_switches = serde_json::from_str::<AxisOrderOptions>(
         r#"{"mode":"Auto","auto":{"use_axis_labels":false}}"#,
     );
-    assert!(with_switches.is_err(), "unknown key accepted: {with_switches:?}");
+    assert!(
+        with_switches.is_err(),
+        "unknown key accepted: {with_switches:?}"
+    );
 }
 
 #[test]
@@ -428,7 +452,12 @@ fn evidence_merges_associatively() {
     });
     assert_eq!(first.samples, 5);
     assert_eq!(first.sampled_bbox, Some([-5.0, 0.0, 10.0, 20.0]));
-    assert_eq!(first.axis_labels.len(), 2, "labels are a set: {:?}", first.axis_labels);
+    assert_eq!(
+        first.axis_labels.len(),
+        2,
+        "labels are a set: {:?}",
+        first.axis_labels
+    );
     assert_eq!(first.envelope_bbox, Some([0.0, 0.0, 1.0, 1.0]));
 }
 
@@ -481,7 +510,11 @@ fn auto_reports_envelopes_and_request_boxes_in_the_other_order() {
         &options(AxisOrderMode::XY),
     );
     assert!(!decision.swap, "a fixed mode decides");
-    assert!(decision.conflicts.is_empty(), "only `Auto` weighs evidence: {:?}", decision.conflicts);
+    assert!(
+        decision.conflicts.is_empty(),
+        "only `Auto` weighs evidence: {:?}",
+        decision.conflicts
+    );
 
     let decision = decide(
         &key("EPSG:2180", Dialect::Gml3),

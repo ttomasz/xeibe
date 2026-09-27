@@ -131,44 +131,51 @@ const AHEAD_BLOCKS: usize = 8;
 /// consumer, so that decompression overlaps with the splitter, the one
 /// sequential stage of a read. Where there are no threads (WebAssembly),
 /// `reader` itself.
-pub(crate) fn read_ahead(mut reader: Box<dyn Read + Send>) -> std::io::Result<Box<dyn Read + Send>> {
+pub(crate) fn read_ahead(
+    mut reader: Box<dyn Read + Send>,
+) -> std::io::Result<Box<dyn Read + Send>> {
     if cfg!(target_family = "wasm") {
         return Ok(reader);
     }
     let (sender, blocks) = std::sync::mpsc::sync_channel(AHEAD_BLOCKS);
     std::thread::Builder::new()
         .name("xeibe-decode".into())
-        .spawn(move || loop {
-            let mut block = vec![0; AHEAD_BLOCK];
-            let mut len = 0;
-            let error = loop {
-                match reader.read(&mut block[len..]) {
-                    Ok(0) => break None,
-                    Ok(n) => {
-                        len += n;
-                        if len == block.len() {
-                            break None;
+        .spawn(move || {
+            loop {
+                let mut block = vec![0; AHEAD_BLOCK];
+                let mut len = 0;
+                let error = loop {
+                    match reader.read(&mut block[len..]) {
+                        Ok(0) => break None,
+                        Ok(n) => {
+                            len += n;
+                            if len == block.len() {
+                                break None;
+                            }
                         }
+                        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                        Err(e) => break Some(e),
                     }
-                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
-                    Err(e) => break Some(e),
+                };
+                // A short block: the end of input, or an error.
+                let last = len < block.len();
+                block.truncate(len);
+                // A failed send: the consumer is gone.
+                if len > 0 && sender.send(Ok(block)).is_err() {
+                    return;
                 }
-            };
-            // A short block: the end of input, or an error.
-            let last = len < block.len();
-            block.truncate(len);
-            // A failed send: the consumer is gone.
-            if len > 0 && sender.send(Ok(block)).is_err() {
-                return;
-            }
-            if let Some(error) = error {
-                let _ = sender.send(Err(error));
-            }
-            if last {
-                return;
+                if let Some(error) = error {
+                    let _ = sender.send(Err(error));
+                }
+                if last {
+                    return;
+                }
             }
         })?;
-    Ok(Box::new(ReadAhead { blocks, current: Cursor::new(Vec::new()) }))
+    Ok(Box::new(ReadAhead {
+        blocks,
+        current: Cursor::new(Vec::new()),
+    }))
 }
 
 /// The consumer's end of [`read_ahead`].

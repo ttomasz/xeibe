@@ -21,8 +21,12 @@ fn parcel(id: &str, body: &str) -> String {
 }
 
 fn list_column(name: &str, item: DataType, path: &str) -> Field {
-    Field::new(name, DataType::List(Arc::new(Field::new("item", item, true))), true)
-        .with_metadata(HashMap::from([(meta::PATH.to_string(), path.to_string())]))
+    Field::new(
+        name,
+        DataType::List(Arc::new(Field::new("item", item, true))),
+        true,
+    )
+    .with_metadata(HashMap::from([(meta::PATH.to_string(), path.to_string())]))
 }
 
 fn s(text: &str) -> Option<String> {
@@ -60,8 +64,14 @@ fn a_value_missing_from_the_first_occurrences_gets_leading_nulls() {
         ),
     )]);
     let read = read_with(&document, "Parcel", Some(schema), &ReadOptions::default());
-    assert_eq!(read.string_lists("ulica"), [Some(vec![None, None, s("Polna")])]);
-    assert_eq!(read.string_lists("numer"), [Some(vec![s("1"), s("2"), s("3")])]);
+    assert_eq!(
+        read.string_lists("ulica"),
+        [Some(vec![None, None, s("Polna")])]
+    );
+    assert_eq!(
+        read.string_lists("numer"),
+        [Some(vec![s("1"), s("2"), s("3")])]
+    );
 }
 
 #[test]
@@ -79,7 +89,10 @@ fn a_value_missing_from_the_last_occurrences_gets_trailing_nulls() {
         ),
     )]);
     let read = read_with(&document, "Parcel", Some(schema), &ReadOptions::default());
-    assert_eq!(read.string_lists("ulica"), [Some(vec![s("Polna"), None, None])]);
+    assert_eq!(
+        read.string_lists("ulica"),
+        [Some(vec![s("Polna"), None, None])]
+    );
     assert_eq!(
         read.string_lists("numer"),
         [Some(vec![s("1"), s("2"), None])],
@@ -100,13 +113,23 @@ fn an_attribute_of_the_anchor_is_aligned_with_its_text() {
         r#"<app:name>Warsaw</app:name><app:name codeSpace="PRNG">Warszawa</app:name>"#,
     )]);
     let read = read_with(&document, "Parcel", Some(schema), &ReadOptions::default());
-    assert_eq!(read.string_lists("name"), [Some(vec![s("Warsaw"), s("Warszawa")])]);
-    assert_eq!(read.string_lists("@codeSpace"), [Some(vec![None, s("PRNG")])]);
+    assert_eq!(
+        read.string_lists("name"),
+        [Some(vec![s("Warsaw"), s("Warszawa")])]
+    );
+    assert_eq!(
+        read.string_lists("@codeSpace"),
+        [Some(vec![None, s("PRNG")])]
+    );
 }
 
 #[test]
 fn a_feature_without_the_anchor_gets_null_not_an_empty_list() {
-    let schema = schema_of(vec![list_column("numer", DataType::Utf8View, "adres[]/numer")]);
+    let schema = schema_of(vec![list_column(
+        "numer",
+        DataType::Utf8View,
+        "adres[]/numer",
+    )]);
     let document = gml::gml32_collection(&[
         &parcel("p1", "<app:adres><app:numer>1</app:numer></app:adres>"),
         &parcel("p2", "<app:other>x</app:other>"),
@@ -117,12 +140,24 @@ fn a_feature_without_the_anchor_gets_null_not_an_empty_list() {
 
 #[test]
 fn a_second_value_within_one_occurrence_is_a_feature_error() {
-    let schema = schema_of(vec![list_column("numer", DataType::Utf8View, "adres[]/numer")]);
+    let schema = schema_of(vec![list_column(
+        "numer",
+        DataType::Utf8View,
+        "adres[]/numer",
+    )]);
     let document = gml::gml32_collection(&[
-        &parcel("p1", "<app:adres><app:numer>1</app:numer><app:numer>2</app:numer></app:adres>"),
+        &parcel(
+            "p1",
+            "<app:adres><app:numer>1</app:numer><app:numer>2</app:numer></app:adres>",
+        ),
         &parcel("p2", "<app:adres><app:numer>3</app:numer></app:adres>"),
     ]);
-    let failed = match read(sources(&document), "Parcel", Some(schema.clone()), &ReadOptions::default()) {
+    let failed = match read(
+        sources(&document),
+        "Parcel",
+        Some(schema.clone()),
+        &ReadOptions::default(),
+    ) {
         Err(_) => true,
         Ok(reader) => reader.into_iter().any(|batch| batch.is_err()),
     };
@@ -168,12 +203,18 @@ fn an_inner_anchor_counts_across_the_outer_occurrences() {
         ),
     )]);
     let read = read_document(&document, "Parcel");
-    assert_eq!(read.string_lists("language"), [Some(vec![s("pol"), s("deu")])]);
+    assert_eq!(
+        read.string_lists("language"),
+        [Some(vec![s("pol"), s("deu")])]
+    );
     assert_eq!(
         read.string_lists("text"),
         [Some(vec![s("Łódź"), s("Lodz"), s("Lodsch")])]
     );
-    assert_eq!(read.string_lists("script"), [Some(vec![s("Latn"), None, None])]);
+    assert_eq!(
+        read.string_lists("script"),
+        [Some(vec![s("Latn"), None, None])]
+    );
 }
 
 #[test]
@@ -196,7 +237,11 @@ fn a_geometry_below_a_repeated_element_is_a_list_of_wkb() {
     assert_eq!(read.string_lists("foo"), [Some(vec![s("bar"), s("baz")])]);
     let geometries = read.geometry_lists("geometry");
     let row = geometries[0].as_ref().expect("a list");
-    assert_eq!(row.len(), 2, "one geometry per `content`, aligned with `foo`");
+    assert_eq!(
+        row.len(),
+        2,
+        "one geometry per `content`, aligned with `foo`"
+    );
     assert_wkt(row[0].as_ref().expect("a geometry"), "POINT (10 2)");
     assert_wkt(row[1].as_ref().expect("a geometry"), "POINT (20 2)");
 }
@@ -230,7 +275,13 @@ fn bytea_columns_hold_the_geometry_as_plain_wkb() {
     .expect("settings");
     let schema = settings.schema("Parcel").expect("a schema");
     assert_eq!(schema.field(0).data_type(), &DataType::Binary);
-    assert!(schema.field(0).metadata().get("ARROW:extension:name").is_none());
+    assert!(
+        schema
+            .field(0)
+            .metadata()
+            .get("ARROW:extension:name")
+            .is_none()
+    );
 
     let read = read_with(&document, "Parcel", Some(schema), &ReadOptions::default());
     let geometries = read.geometries("geom");

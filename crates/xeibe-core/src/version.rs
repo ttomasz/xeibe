@@ -84,7 +84,10 @@ impl VersionHints {
 fn from_schema_location(location: &str) -> Option<GmlVersion> {
     location
         .split_ascii_whitespace()
-        .filter_map(|url| url.split_once("/gml/").and_then(|(_, rest)| version_prefix(rest)))
+        .filter_map(|url| {
+            url.split_once("/gml/")
+                .and_then(|(_, rest)| version_prefix(rest))
+        })
         .max()
 }
 

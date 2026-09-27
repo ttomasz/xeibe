@@ -40,12 +40,23 @@ fn skipping() -> ReadOptions {
 fn content_outside_the_schema_is_not_read() {
     let document = gml::gml32_collection(&[
         &parcel("p1", "<app:area>1</app:area><app:extra>x</app:extra>"),
-        &parcel("p2", "<app:area>2</app:area><app:deep><app:x>1</app:x></app:deep>"),
+        &parcel(
+            "p2",
+            "<app:area>2</app:area><app:deep><app:x>1</app:x></app:deep>",
+        ),
     ]);
-    let read = read_with(&document, "Parcel", Some(area_schema()), &ReadOptions::default());
+    let read = read_with(
+        &document,
+        "Parcel",
+        Some(area_schema()),
+        &ReadOptions::default(),
+    );
     assert_eq!(read.column_names(), ["area"], "no overflow column");
     assert_eq!(read.i64s("area"), [Some(1), Some(2)]);
-    assert!(read.report.skipped.is_empty(), "skipping content is not an error");
+    assert!(
+        read.report.skipped.is_empty(),
+        "skipping content is not an error"
+    );
     assert!(
         read.report.warnings.is_empty(),
         "and it is not reported: {:?}",
@@ -64,7 +75,11 @@ fn a_value_that_does_not_parse_is_a_feature_error() {
         "the default policy stops the read"
     );
     let read = read_with(&document, "Parcel", Some(area_schema()), &skipping());
-    assert_eq!(read.i64s("area"), [Some(1)], "the feature is skipped, not nulled");
+    assert_eq!(
+        read.i64s("area"),
+        [Some(1)],
+        "the feature is skipped, not nulled"
+    );
     assert_eq!(read.report.skipped.len(), 1);
 }
 
@@ -117,8 +132,14 @@ fn a_geometry_kind_the_column_cannot_hold_is_a_geometry_error() {
         layers: [(
             "Parcel".to_string(),
             [
-                ("area".to_string(), xeibe_arrow::ColumnSpec::Type("bigint".into())),
-                ("geom".to_string(), xeibe_arrow::ColumnSpec::Type("geometry(Polygon)".into())),
+                (
+                    "area".to_string(),
+                    xeibe_arrow::ColumnSpec::Type("bigint".into()),
+                ),
+                (
+                    "geom".to_string(),
+                    xeibe_arrow::ColumnSpec::Type("geometry(Polygon)".into()),
+                ),
             ]
             .into_iter()
             .collect(),
@@ -174,9 +195,12 @@ fn a_text_column_at_an_element_with_children_gets_its_raw_xml() {
         "p1",
         "<app:geom><gml:Point srsName=\"EPSG:2180\"><gml:pos>1 2</gml:pos></gml:Point></app:geom>",
     )]);
-    let schema = schema_of(vec![Field::new("geom_gml", DataType::Utf8View, true).with_metadata(
-        HashMap::from([(meta::PATH.to_string(), "geom".to_string())]),
-    )]);
+    let schema = schema_of(vec![
+        Field::new("geom_gml", DataType::Utf8View, true).with_metadata(HashMap::from([(
+            meta::PATH.to_string(),
+            "geom".to_string(),
+        )])),
+    ]);
     let read = read_with(&document, "Parcel", Some(schema), &ReadOptions::default());
     let xml = read.strings("geom_gml")[0].clone().expect("the raw XML");
     assert!(xml.contains("Point") && xml.contains("1 2"), "{xml}");
@@ -218,7 +242,10 @@ fn a_second_crs_in_one_column_is_a_geometry_error() {
 
     let mixed = gml::gml32_collection(&[&point("p1", "EPSG:2180"), &point("p2", "EPSG:4326")]);
     assert!(fails(&mixed, schema.clone(), &options));
-    let null_geometry = ReadOptions { on_feature_error: OnFeatureError::NullGeometry, ..options };
+    let null_geometry = ReadOptions {
+        on_feature_error: OnFeatureError::NullGeometry,
+        ..options
+    };
     let read = read_with(&mixed, "Parcel", Some(schema), &null_geometry);
     assert_eq!(read.i64s("area"), [Some(1), Some(1)]);
     assert!(read.geometries("geom")[0].is_some());

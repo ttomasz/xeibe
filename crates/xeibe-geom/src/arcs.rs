@@ -115,7 +115,11 @@ pub fn angle_to_degrees(value: f64, uom: Option<&str>) -> Option<f64> {
     match uom.map(str::trim) {
         None
         | Some(
-            "deg" | "degree" | "degrees" | "°" | "urn:ogc:def:uom:EPSG::9102"
+            "deg"
+            | "degree"
+            | "degrees"
+            | "°"
+            | "urn:ogc:def:uom:EPSG::9102"
             | "urn:ogc:def:uom:EPSG::9122",
         ) => Some(value),
         Some("rad" | "radian" | "radians" | "urn:ogc:def:uom:EPSG::9101") => {
@@ -173,7 +177,11 @@ impl Circle {
             }
             let center = [(p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0];
             let radius = (p1[0] - center[0]).hypot(p1[1] - center[1]);
-            return Some(Circle { center, radius, ccw: true });
+            return Some(Circle {
+                center,
+                radius,
+                ccw: true,
+            });
         }
         // Work relative to p1 for precision with large projected coordinates.
         let (bx, by) = (p2[0] - p1[0], p2[1] - p1[1]);
@@ -232,12 +240,18 @@ pub(crate) fn extend_bbox_with_arc(bbox: &mut [f64; 4], p1: [f64; 2], p2: [f64; 
     let total = if p1 == p3 {
         TAU
     } else {
-        circle.sweep(start, circle.angle_of(p2)) + circle.sweep(circle.angle_of(p2), circle.angle_of(p3))
+        circle.sweep(start, circle.angle_of(p2))
+            + circle.sweep(circle.angle_of(p2), circle.angle_of(p3))
     };
     let [cx, cy] = circle.center;
     let r = circle.radius;
     // The axis extremes, written exactly rather than through cos/sin.
-    let extremes = [(0.0, [cx + r, cy]), (PI / 2.0, [cx, cy + r]), (PI, [cx - r, cy]), (-PI / 2.0, [cx, cy - r])];
+    let extremes = [
+        (0.0, [cx + r, cy]),
+        (PI / 2.0, [cx, cy + r]),
+        (PI, [cx - r, cy]),
+        (-PI / 2.0, [cx, cy - r]),
+    ];
     for (angle, point) in extremes {
         let reached = if total > 0.0 {
             (angle - start).rem_euclid(TAU) <= total

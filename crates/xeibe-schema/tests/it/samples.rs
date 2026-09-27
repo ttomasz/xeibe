@@ -166,14 +166,26 @@ fn the_wallonia_lpis_sample_is_gml_33() {
     // Its root declares GML 3.3's encoding-rule namespace (`gmlexr`), which
     // no element uses: the application schema was built with GML 3.3's rule.
     let observation = scan_file(&sample("be-wallonia-lpis-gml33").file);
-    assert_eq!(observation.gml_versions.iter().copied().collect::<Vec<_>>(), [xeibe_core::GmlVersion::V3_3]);
+    assert_eq!(
+        observation.gml_versions.iter().copied().collect::<Vec<_>>(),
+        [xeibe_core::GmlVersion::V3_3]
+    );
     let (name, _) = observation.layer("EcologicalFocusArea").expect("the layer");
     let schema = xeibe_schema::infer_schema(&observation, name, &InferenceOptions::default(), None)
         .expect("a schema")
         .schema;
-    assert_eq!(schema.metadata().get(xeibe_schema::rules::meta::VERSIONS).map(String::as_str), Some("3.3"));
+    assert_eq!(
+        schema
+            .metadata()
+            .get(xeibe_schema::rules::meta::VERSIONS)
+            .map(String::as_str),
+        Some("3.3")
+    );
     // A surface, a line and a point in one property.
-    assert_eq!(extension_name(field(&schema, "geometry")), Some("geoarrow.wkb"));
+    assert_eq!(
+        extension_name(field(&schema, "geometry")),
+        Some("geoarrow.wkb")
+    );
 }
 
 #[test]
@@ -203,5 +215,9 @@ fn a_sampled_scan_of_a_sample_stops_early() {
     .run(xeibe_core::Sources::from(source))
     .expect("the sample scans");
     assert!(observation.sampled);
-    assert_eq!(observation.layers.len(), 1, "only AD_Miejscowosc is reached");
+    assert_eq!(
+        observation.layers.len(),
+        1,
+        "only AD_Miejscowosc is reached"
+    );
 }

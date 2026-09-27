@@ -7,12 +7,11 @@ use std::sync::Arc;
 
 use arrow_array::builder::{
     ArrayBuilder, BooleanBuilder, Date32Builder, Date64Builder, Float32Builder, Float64Builder,
-    Int8Builder, Int16Builder, Int32Builder, Int64Builder, LargeStringBuilder,
-    NullBuilder,
+    Int8Builder, Int16Builder, Int32Builder, Int64Builder, LargeStringBuilder, NullBuilder,
     StringBuilder, StringViewBuilder, Time32MillisecondBuilder, Time32SecondBuilder,
     Time64MicrosecondBuilder, Time64NanosecondBuilder, TimestampMicrosecondBuilder,
-    TimestampMillisecondBuilder, TimestampNanosecondBuilder, TimestampSecondBuilder,
-    UInt8Builder, UInt16Builder, UInt32Builder, UInt64Builder,
+    TimestampMillisecondBuilder, TimestampNanosecondBuilder, TimestampSecondBuilder, UInt8Builder,
+    UInt16Builder, UInt32Builder, UInt64Builder,
 };
 use arrow_array::{
     ArrayRef, LargeListArray, LargeStringArray, ListArray, MapArray, RecordBatch,
@@ -157,7 +156,9 @@ impl ScalarBuilder {
             DataType::Float32 => Inner::Float32(Float32Builder::with_capacity(capacity)),
             DataType::Float64 => Inner::Float64(Float64Builder::with_capacity(capacity)),
             DataType::Utf8 => Inner::Utf8(StringBuilder::with_capacity(capacity, capacity * 8)),
-            DataType::LargeUtf8 => Inner::LargeUtf8(LargeStringBuilder::with_capacity(capacity, capacity * 8)),
+            DataType::LargeUtf8 => {
+                Inner::LargeUtf8(LargeStringBuilder::with_capacity(capacity, capacity * 8))
+            }
             DataType::Utf8View => Inner::Utf8View(StringViewBuilder::with_capacity(capacity)),
             DataType::Date32 => Inner::Date32(Date32Builder::with_capacity(capacity)),
             DataType::Date64 => Inner::Date64(Date64Builder::with_capacity(capacity)),
@@ -165,15 +166,20 @@ impl ScalarBuilder {
                 TimestampSecondBuilder::with_capacity(capacity).with_timezone_opt(tz(&data_type)),
             ),
             DataType::Timestamp(TimeUnit::Millisecond, _) => Inner::TimestampMillisecond(
-                TimestampMillisecondBuilder::with_capacity(capacity).with_timezone_opt(tz(&data_type)),
+                TimestampMillisecondBuilder::with_capacity(capacity)
+                    .with_timezone_opt(tz(&data_type)),
             ),
             DataType::Timestamp(TimeUnit::Microsecond, _) => Inner::TimestampMicrosecond(
-                TimestampMicrosecondBuilder::with_capacity(capacity).with_timezone_opt(tz(&data_type)),
+                TimestampMicrosecondBuilder::with_capacity(capacity)
+                    .with_timezone_opt(tz(&data_type)),
             ),
             DataType::Timestamp(TimeUnit::Nanosecond, _) => Inner::TimestampNanosecond(
-                TimestampNanosecondBuilder::with_capacity(capacity).with_timezone_opt(tz(&data_type)),
+                TimestampNanosecondBuilder::with_capacity(capacity)
+                    .with_timezone_opt(tz(&data_type)),
             ),
-            DataType::Time32(TimeUnit::Second) => Inner::Time32Second(Time32SecondBuilder::with_capacity(capacity)),
+            DataType::Time32(TimeUnit::Second) => {
+                Inner::Time32Second(Time32SecondBuilder::with_capacity(capacity))
+            }
             DataType::Time32(TimeUnit::Millisecond) => {
                 Inner::Time32Millisecond(Time32MillisecondBuilder::with_capacity(capacity))
             }
@@ -308,10 +314,18 @@ pub fn is_scalar_type(data_type: &DataType) -> bool {
 impl ColumnBuilder {
     /// The builder for `field`: GeoArrow extension types first, then by data type.
     pub fn for_field(field: &arrow_schema::Field, capacity: usize) -> crate::Result<Self> {
-        match field.metadata().get("ARROW:extension:name").map(String::as_str) {
-            Some("geoarrow.box") => return Ok(ColumnBuilder::Box(BoxColumnBuilder::for_field(field)?)),
+        match field
+            .metadata()
+            .get("ARROW:extension:name")
+            .map(String::as_str)
+        {
+            Some("geoarrow.box") => {
+                return Ok(ColumnBuilder::Box(BoxColumnBuilder::for_field(field)?));
+            }
             Some(name) if name.starts_with("geoarrow.") => {
-                return Ok(ColumnBuilder::Geometry(GeometryColumnBuilder::for_field(field, capacity)?));
+                return Ok(ColumnBuilder::Geometry(GeometryColumnBuilder::for_field(
+                    field, capacity,
+                )?));
             }
             _ => {}
         }
@@ -350,8 +364,9 @@ impl ColumnBuilder {
     pub fn len(&self) -> usize {
         match self {
             ColumnBuilder::Scalar(b) => b.len(),
-            ColumnBuilder::List { validity, .. }
-            | ColumnBuilder::Map { validity, .. } => validity.len(),
+            ColumnBuilder::List { validity, .. } | ColumnBuilder::Map { validity, .. } => {
+                validity.len()
+            }
             ColumnBuilder::Geometry(b) => b.len(),
             ColumnBuilder::Box(b) => b.len(),
         }
@@ -366,7 +381,15 @@ impl ColumnBuilder {
         match (self, value) {
             (ColumnBuilder::Scalar(b), Value::Scalar(scalar)) => b.append(scalar),
             (ColumnBuilder::Scalar(b), _) => b.append_null(),
-            (ColumnBuilder::List { item, offsets, validity, .. }, Value::List(items)) => {
+            (
+                ColumnBuilder::List {
+                    item,
+                    offsets,
+                    validity,
+                    ..
+                },
+                Value::List(items),
+            ) => {
                 let count = items.len() as i64;
                 for value in items {
                     item.append(value)?;
@@ -374,11 +397,25 @@ impl ColumnBuilder {
                 offsets.push(offsets.last().copied().unwrap_or(0) + count);
                 validity.push(true);
             }
-            (ColumnBuilder::List { offsets, validity, .. }, _) => {
+            (
+                ColumnBuilder::List {
+                    offsets, validity, ..
+                },
+                _,
+            ) => {
                 offsets.push(offsets.last().copied().unwrap_or(0));
                 validity.push(false);
             }
-            (ColumnBuilder::Map { keys, values, offsets, validity, .. }, Value::Map(pairs)) => {
+            (
+                ColumnBuilder::Map {
+                    keys,
+                    values,
+                    offsets,
+                    validity,
+                    ..
+                },
+                Value::Map(pairs),
+            ) => {
                 let count = pairs.len() as i32;
                 for (key, value) in pairs {
                     keys.push(key);
@@ -387,7 +424,12 @@ impl ColumnBuilder {
                 offsets.push(offsets.last().copied().unwrap_or(0) + count);
                 validity.push(true);
             }
-            (ColumnBuilder::Map { offsets, validity, .. }, _) => {
+            (
+                ColumnBuilder::Map {
+                    offsets, validity, ..
+                },
+                _,
+            ) => {
                 offsets.push(offsets.last().copied().unwrap_or(0));
                 validity.push(false);
             }
@@ -403,31 +445,65 @@ impl ColumnBuilder {
     pub fn finish(&mut self) -> crate::Result<ArrayRef> {
         Ok(match self {
             ColumnBuilder::Scalar(b) => b.finish(),
-            ColumnBuilder::List { item_field, large, item, offsets, validity } => {
+            ColumnBuilder::List {
+                item_field,
+                large,
+                item,
+                offsets,
+                validity,
+            } => {
                 let values = item.finish()?;
                 let nulls = nulls(std::mem::take(validity));
                 let offsets = std::mem::replace(offsets, vec![0]);
                 if *large {
                     let offsets = OffsetBuffer::new(ScalarBuffer::from(offsets));
-                    Arc::new(LargeListArray::try_new(item_field.clone(), offsets, values, nulls)?)
+                    Arc::new(LargeListArray::try_new(
+                        item_field.clone(),
+                        offsets,
+                        values,
+                        nulls,
+                    )?)
                 } else {
                     let offsets: Vec<i32> = offsets.into_iter().map(|o| o as i32).collect();
                     let offsets = OffsetBuffer::new(ScalarBuffer::from(offsets));
-                    Arc::new(ListArray::try_new(item_field.clone(), offsets, values, nulls)?)
+                    Arc::new(ListArray::try_new(
+                        item_field.clone(),
+                        offsets,
+                        values,
+                        nulls,
+                    )?)
                 }
             }
-            ColumnBuilder::Map { entries, sorted, keys, values, offsets, validity } => {
+            ColumnBuilder::Map {
+                entries,
+                sorted,
+                keys,
+                values,
+                offsets,
+                validity,
+            } => {
                 let DataType::Struct(entry_fields) = entries.data_type() else {
-                    return Err(ArrowError::InvalidArgumentError("map entries must be a struct".into()).into());
+                    return Err(ArrowError::InvalidArgumentError(
+                        "map entries must be a struct".into(),
+                    )
+                    .into());
                 };
                 let key_type = entry_fields[0].data_type();
                 let value_type = entry_fields[1].data_type();
                 let key_array = string_array(key_type, std::mem::take(keys))?;
                 let value_array = string_array(value_type, std::mem::take(values))?;
-                let entries_array = StructArray::try_new(entry_fields.clone(), vec![key_array, value_array], None)?;
-                let offsets = OffsetBuffer::new(ScalarBuffer::from(std::mem::replace(offsets, vec![0])));
+                let entries_array =
+                    StructArray::try_new(entry_fields.clone(), vec![key_array, value_array], None)?;
+                let offsets =
+                    OffsetBuffer::new(ScalarBuffer::from(std::mem::replace(offsets, vec![0])));
                 let nulls = nulls(std::mem::take(validity));
-                Arc::new(MapArray::try_new(entries.clone(), offsets, entries_array, nulls, *sorted)?)
+                Arc::new(MapArray::try_new(
+                    entries.clone(),
+                    offsets,
+                    entries_array,
+                    nulls,
+                    *sorted,
+                )?)
             }
             ColumnBuilder::Geometry(b) => b.finish(),
             ColumnBuilder::Box(b) => b.finish()?,
@@ -465,7 +541,11 @@ impl LayerBatchBuilder {
             .iter()
             .map(|field| ColumnBuilder::for_field(field, capacity))
             .collect::<crate::Result<_>>()?;
-        Ok(LayerBatchBuilder { schema, columns, rows: 0 })
+        Ok(LayerBatchBuilder {
+            schema,
+            columns,
+            rows: 0,
+        })
     }
 
     pub fn len(&self) -> usize {
@@ -494,6 +574,10 @@ impl LayerBatchBuilder {
             .collect::<crate::Result<Vec<_>>>()?;
         let options = RecordBatchOptions::new().with_row_count(Some(self.rows));
         self.rows = 0;
-        Ok(RecordBatch::try_new_with_options(self.schema.clone(), columns, &options)?)
+        Ok(RecordBatch::try_new_with_options(
+            self.schema.clone(),
+            columns,
+            &options,
+        )?)
     }
 }

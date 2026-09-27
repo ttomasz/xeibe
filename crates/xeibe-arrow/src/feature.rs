@@ -80,7 +80,11 @@ impl RowState {
 
     /// What the geometries of the feature inherit.
     fn inherited(&self) -> ParseContext {
-        ParseContext { srs_name: self.srs_name.clone(), srs_dimension: self.srs_dimension, axis: None }
+        ParseContext {
+            srs_name: self.srs_name.clone(),
+            srs_dimension: self.srs_dimension,
+            axis: None,
+        }
     }
 
     /// The feature's (first) `boundedBy` hands `inherited` down.
@@ -95,7 +99,12 @@ impl RowState {
 
 impl<'a> FeatureReader<'a> {
     pub fn new(plan: &'a ReadPlan, geometry: GeometryParser<'a>, axis: Vec<AxisDecisions>) -> Self {
-        FeatureReader { plan, geometry, axis, inherited: ParseContext::default() }
+        FeatureReader {
+            plan,
+            geometry,
+            axis,
+            inherited: ParseContext::default(),
+        }
     }
 
     /// The features are in a collection whose `boundedBy` hands `inherited`
@@ -129,18 +138,30 @@ impl<'a> FeatureReader<'a> {
         };
         let nodes = [&routes.root];
         let nil = {
-            let (_, attrs) = reader.current_start().ok_or_else(|| xeibe_core::Error::Xml {
-                location: reader.location(),
-                message: "no feature start".into(),
-            })?;
+            let (_, attrs) = reader
+                .current_start()
+                .ok_or_else(|| xeibe_core::Error::Xml {
+                    location: reader.location(),
+                    message: "no feature start".into(),
+                })?;
             self.start(&nodes, &attrs, &mut state)
         };
-        let opened = Opened { depth: 0, nil, content_start: reader.position(), array: false };
+        let opened = Opened {
+            depth: 0,
+            nil,
+            content_start: reader.position(),
+            array: false,
+        };
         self.content(reader, &nodes, opened, &mut state)?;
         self.commit(state, out, report)
     }
 
-    fn commit(&self, mut state: RowState, out: &mut LayerBatchBuilder, report: &mut ReadReport) -> crate::Result<FeatureOutcome> {
+    fn commit(
+        &self,
+        mut state: RowState,
+        out: &mut LayerBatchBuilder,
+        report: &mut ReadReport,
+    ) -> crate::Result<FeatureOutcome> {
         let plan = self.plan;
         for warning in state.warnings.drain(..) {
             report.warn(warning);
@@ -151,7 +172,10 @@ impl<'a> FeatureReader<'a> {
             Ok(FeatureOutcome::Skipped)
         };
         if let Some(message) = state.error.take() {
-            let error = crate::Error::Feature { location: location.clone(), message };
+            let error = crate::Error::Feature {
+                location: location.clone(),
+                message,
+            };
             // `NullGeometry` only helps with geometry errors.
             return match plan.on_feature_error {
                 OnFeatureError::Skip => skip(report, error),
@@ -159,7 +183,10 @@ impl<'a> FeatureReader<'a> {
             };
         }
         if let Some(message) = state.geometry_error.take() {
-            let error = crate::Error::Feature { location: location.clone(), message };
+            let error = crate::Error::Feature {
+                location: location.clone(),
+                message,
+            };
             match plan.on_feature_error {
                 OnFeatureError::Error => return Err(error),
                 OnFeatureError::Skip => return skip(report, error),
@@ -182,11 +209,16 @@ impl<'a> FeatureReader<'a> {
         for (column, value) in plan.routes.columns.iter().zip(&state.row) {
             let missing = match value {
                 Value::Null => !column.nullable,
-                Value::List(items) => !column.item_nullable && items.iter().any(|item| matches!(item, Value::Null)),
+                Value::List(items) => {
+                    !column.item_nullable && items.iter().any(|item| matches!(item, Value::Null))
+                }
                 _ => false,
             };
             if missing {
-                let error = crate::Error::MissingValue { location: location.clone(), column: column.name.clone() };
+                let error = crate::Error::MissingValue {
+                    location: location.clone(),
+                    column: column.name.clone(),
+                };
                 return match plan.on_feature_error {
                     OnFeatureError::Skip => skip(report, error),
                     OnFeatureError::Error | OnFeatureError::NullGeometry => Err(error),
@@ -244,14 +276,22 @@ impl<'a> FeatureReader<'a> {
         opened: Opened,
         state: &mut RowState,
     ) -> crate::Result<()> {
-        let Opened { depth, nil, content_start, array } = opened;
+        let Opened {
+            depth,
+            nil,
+            content_start,
+            array,
+        } = opened;
         let targets = || nodes.iter().flat_map(|node| node.targets.iter().copied());
         if nil {
             // Null: whatever it holds is not read.
             return reader.skip_element().map_err(Into::into);
         }
         let whole = targets().find(|target| {
-            matches!(target.value, RouteValue::Map | RouteValue::InnerText | RouteValue::BoundingBox)
+            matches!(
+                target.value,
+                RouteValue::Map | RouteValue::InnerText | RouteValue::BoundingBox
+            )
         });
         if let Some(target) = whole {
             return self.whole(reader, target, depth, state);
@@ -279,7 +319,9 @@ impl<'a> FeatureReader<'a> {
                         if geometries > 1 && !array {
                             // A second value where the column holds one.
                             let column = geometry_targets(nodes).next().map(|target| target.column);
-                            let name = column.map_or("", |column| self.plan.routes.columns[column].name.as_str());
+                            let name = column.map_or("", |column| {
+                                self.plan.routes.columns[column].name.as_str()
+                            });
                             state.fail(format!(
                                 "column {name}: a second geometry in one property; only GML's array properties \
                                  (pointArrayProperty, …) hold several"
@@ -328,11 +370,19 @@ impl<'a> FeatureReader<'a> {
             }
         }
         if let Some(mut parts) = parts.filter(|parts| !parts.is_empty()) {
-            let geometry = if array { Geometry::from_parts(parts) } else { parts.remove(0) };
+            let geometry = if array {
+                Geometry::from_parts(parts)
+            } else {
+                parts.remove(0)
+            };
             self.put_geometry(nodes, geometry, state);
         }
         if wants_text {
-            let raw = if had_children { Some(inner_raw(&reader.raw_since(content_start))) } else { None };
+            let raw = if had_children {
+                Some(inner_raw(&reader.raw_since(content_start)))
+            } else {
+                None
+            };
             for target in targets().filter(|target| target.value == RouteValue::Text) {
                 self.text(target, &text, raw.as_deref(), state);
             }
@@ -359,7 +409,13 @@ impl<'a> FeatureReader<'a> {
 
     /// A target that takes the element whole: a map, the text without its
     /// markup, or a box.
-    fn whole(&self, reader: &mut GmlReader<'_>, target: Target, depth: usize, state: &mut RowState) -> crate::Result<()> {
+    fn whole(
+        &self,
+        reader: &mut GmlReader<'_>,
+        target: Target,
+        depth: usize,
+        state: &mut RowState,
+    ) -> crate::Result<()> {
         match target.value {
             RouteValue::Map => {
                 let pairs = subtree_map(reader)?;
@@ -392,18 +448,29 @@ impl<'a> FeatureReader<'a> {
     ) -> crate::Result<Option<Geometry>> {
         let columns = &self.plan.routes.columns;
         let mut targets = geometry_targets(nodes);
-        let Some(Item::Geometry(_, axis)) = targets.next().map(|target| &columns[target.column].item) else {
+        let Some(Item::Geometry(_, axis)) =
+            targets.next().map(|target| &columns[target.column].item)
+        else {
             reader.skip_element()?;
             return Ok(None);
         };
-        let context = ParseContext { srs_name: state.srs_name.clone(), srs_dimension: state.srs_dimension, axis: None };
+        let context = ParseContext {
+            srs_name: state.srs_name.clone(),
+            srs_dimension: state.srs_dimension,
+            axis: None,
+        };
         match self.geometry.parse(reader, &context, &self.axis[*axis]) {
             Ok(parsed) => {
                 for warning in parsed.warnings {
-                    state.warnings.push(Warning::from_geometry(warning, Some(state.location.clone())));
+                    state.warnings.push(Warning::from_geometry(
+                        warning,
+                        Some(state.location.clone()),
+                    ));
                 }
                 for target in geometry_targets(nodes) {
-                    if let Some(message) = self.other_crs(&columns[target.column], parsed.srs_name.as_deref()) {
+                    if let Some(message) =
+                        self.other_crs(&columns[target.column], parsed.srs_name.as_deref())
+                    {
                         state.geometry_error.get_or_insert(message);
                         return Ok(None);
                     }
@@ -425,7 +492,9 @@ impl<'a> FeatureReader<'a> {
         let columns = &self.plan.routes.columns;
         for target in geometry_targets(nodes) {
             let column = &columns[target.column];
-            let Item::Geometry(spec, _) = &column.item else { continue };
+            let Item::Geometry(spec, _) = &column.item else {
+                continue;
+            };
             match spec.prepare(geometry.clone()) {
                 Ok(geometry) => self.put(target.column, Value::Geometry(geometry), state),
                 Err(geometry) => {
@@ -433,7 +502,11 @@ impl<'a> FeatureReader<'a> {
                         "column {}: a {:?}{} doesn't fit {}",
                         column.name,
                         geometry.kind(),
-                        if geometry.dim() == Some(xeibe_geom::Dim::Xyz) { " with Z" } else { "" },
+                        if geometry.dim() == Some(xeibe_geom::Dim::Xyz) {
+                            " with Z"
+                        } else {
+                            ""
+                        },
                         spec.describe()
                     ));
                 }
@@ -445,7 +518,11 @@ impl<'a> FeatureReader<'a> {
     /// is a geometry error (`docs/geometry.md`, "CRS metadata"). Spellings of
     /// one CRS are the same; unknown srsNames are compared as written. With
     /// `crs_override`, the CRS doesn't come from the data.
-    fn other_crs(&self, column: &crate::route::ColumnPlan, srs_name: Option<&str>) -> Option<String> {
+    fn other_crs(
+        &self,
+        column: &crate::route::ColumnPlan,
+        srs_name: Option<&str>,
+    ) -> Option<String> {
         if self.plan.geometry.crs_override.is_some() {
             return None;
         }
@@ -468,7 +545,13 @@ impl<'a> FeatureReader<'a> {
     }
 
     /// A `boundedBy` routed to a box column.
-    fn bounding_box(&self, reader: &mut GmlReader<'_>, target: Target, depth: usize, state: &mut RowState) -> crate::Result<()> {
+    fn bounding_box(
+        &self,
+        reader: &mut GmlReader<'_>,
+        target: Target,
+        depth: usize,
+        state: &mut RowState,
+    ) -> crate::Result<()> {
         let context = state.inherited();
         match self.geometry.parse_bounded_by_inherited(reader, &context) {
             Ok((Some(mut envelope), inherited)) => {
@@ -476,13 +559,16 @@ impl<'a> FeatureReader<'a> {
                     state.bounded_by(inherited);
                 }
                 if let Item::Box(axis) = &self.plan.routes.columns[target.column].item
-                    && self.axis[*axis].resolve(envelope.srs_name.as_deref(), Dialect::Gml3).swap {
-                        for corner in [&mut envelope.lower, &mut envelope.upper] {
-                            if corner.len() >= 2 {
-                                corner.swap(0, 1);
-                            }
+                    && self.axis[*axis]
+                        .resolve(envelope.srs_name.as_deref(), Dialect::Gml3)
+                        .swap
+                {
+                    for corner in [&mut envelope.lower, &mut envelope.upper] {
+                        if corner.len() >= 2 {
+                            corner.swap(0, 1);
                         }
                     }
+                }
                 self.put(target.column, Value::Box(envelope), state);
                 Ok(())
             }
@@ -496,8 +582,15 @@ impl<'a> FeatureReader<'a> {
     }
 
     /// Read a feature's `boundedBy` only for what it hands down.
-    fn bounded_by_srs(&self, reader: &mut GmlReader<'_>, state: &mut RowState) -> crate::Result<()> {
-        match self.geometry.parse_bounded_by_inherited(reader, &state.inherited()) {
+    fn bounded_by_srs(
+        &self,
+        reader: &mut GmlReader<'_>,
+        state: &mut RowState,
+    ) -> crate::Result<()> {
+        match self
+            .geometry
+            .parse_bounded_by_inherited(reader, &state.inherited())
+        {
             Ok((_, inherited)) => {
                 state.bounded_by(inherited);
                 Ok(())
@@ -522,7 +615,10 @@ impl<'a> FeatureReader<'a> {
         }
         match parse_scalar(data_type, text) {
             Some(scalar) => self.put(target.column, Value::Scalar(scalar), state),
-            None => state.fail(format!("column {}: {text:?} is not a valid {data_type}", column.name)),
+            None => state.fail(format!(
+                "column {}: {text:?} is not a valid {data_type}",
+                column.name
+            )),
         }
     }
 
@@ -535,7 +631,10 @@ impl<'a> FeatureReader<'a> {
             if matches!(slot, Value::Null) {
                 *slot = value;
             } else {
-                state.fail(format!("column {}: a second value, but the column holds one per feature", plan.name));
+                state.fail(format!(
+                    "column {}: a second value, but the column holds one per feature",
+                    plan.name
+                ));
             }
             return;
         }
@@ -544,7 +643,9 @@ impl<'a> FeatureReader<'a> {
         if !matches!(slot, Value::List(_)) {
             *slot = Value::List(Vec::new());
         }
-        let Value::List(items) = slot else { unreachable!("just made a list") };
+        let Value::List(items) = slot else {
+            unreachable!("just made a list")
+        };
         if items.len() >= count {
             state.fail(format!(
                 "column {}: a second value within one occurrence of the list's anchor",
@@ -567,7 +668,10 @@ fn geometry_targets<'n>(nodes: &'n [&RouteNode]) -> impl Iterator<Item = Target>
 
 fn is_string(data_type: &arrow_schema::DataType) -> bool {
     use arrow_schema::DataType;
-    matches!(data_type, DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View)
+    matches!(
+        data_type,
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View
+    )
 }
 
 /// An element's raw XML (from its content to its end tag) without the end tag.
@@ -616,7 +720,11 @@ fn subtree_map(reader: &mut GmlReader<'_>) -> crate::Result<Vec<(String, String)
                 let (path, text) = stack.pop().expect("inside the element");
                 let text = text.trim();
                 if !text.is_empty() {
-                    let path = if path.is_empty() { "#text".to_string() } else { path };
+                    let path = if path.is_empty() {
+                        "#text".to_string()
+                    } else {
+                        path
+                    };
                     pairs.push((path, text.to_string()));
                 }
                 if stack.is_empty() {
@@ -630,7 +738,11 @@ fn subtree_map(reader: &mut GmlReader<'_>) -> crate::Result<Vec<(String, String)
 
 /// `parent/child`, or `child` at the top.
 fn join_path(parent: &str, child: &QName) -> String {
-    if parent.is_empty() { child.local.to_string() } else { format!("{parent}/{}", child.local) }
+    if parent.is_empty() {
+        child.local.to_string()
+    } else {
+        format!("{parent}/{}", child.local)
+    }
 }
 
 fn unexpected_eof(reader: &GmlReader<'_>) -> xeibe_core::Error {

@@ -5,7 +5,7 @@
 use xeibe_core::Dialect;
 use xeibe_geom::model::GeomKind;
 use xeibe_geom::parse::ParseContext;
-use xeibe_geom::{GeometryOptions, Error};
+use xeibe_geom::{Error, GeometryOptions};
 use xeibe_testkit::wkt::assert_wkt;
 
 use crate::support::{
@@ -15,7 +15,10 @@ use crate::support::{
 
 #[test]
 fn point_from_pos_and_coordinates() {
-    assert_geometry("<gml:Point><gml:pos>1 2</gml:pos></gml:Point>", "POINT (1 2)");
+    assert_geometry(
+        "<gml:Point><gml:pos>1 2</gml:pos></gml:Point>",
+        "POINT (1 2)",
+    );
     assert_geometry(
         "<gml:Point srsDimension=\"3\"><gml:pos>31 29 16</gml:pos></gml:Point>",
         "POINT Z (31 29 16)",
@@ -144,9 +147,10 @@ fn the_axis_decision_is_applied_to_every_position() {
     );
 
     // Z stays in place.
-    let snippet3d = r#"<gml:Point srsName="EPSG:4979" srsDimension="3"><gml:pos>1 2 3</gml:pos></gml:Point>"#;
-    let parsed = parse_with(snippet3d, &GeometryOptions::default(), &FixedAxis::swap())
-        .expect("a point");
+    let snippet3d =
+        r#"<gml:Point srsName="EPSG:4979" srsDimension="3"><gml:pos>1 2 3</gml:pos></gml:Point>"#;
+    let parsed =
+        parse_with(snippet3d, &GeometryOptions::default(), &FixedAxis::swap()).expect("a point");
     assert_wkt(
         &crate::support::to_g(&parsed.geometry.unwrap()),
         "POINT Z (2 1 3)",
@@ -313,7 +317,9 @@ fn without_srs_dimension_the_crs_gives_the_dimension() {
         "urn:ogc:def:crs,crs:EPSG::25832,crs:DE_XYZ",
     ] {
         assert_geometry(
-            &format!(r#"<gml:LineString srsName="{srs}"><gml:posList>1 2 3 4 5 6</gml:posList></gml:LineString>"#),
+            &format!(
+                r#"<gml:LineString srsName="{srs}"><gml:posList>1 2 3 4 5 6</gml:posList></gml:LineString>"#
+            ),
             "LINESTRING Z (1 2 3,4 5 6)",
         );
     }

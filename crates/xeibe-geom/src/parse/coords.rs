@@ -17,7 +17,11 @@ pub struct CoordinatesFormat {
 
 impl Default for CoordinatesFormat {
     fn default() -> Self {
-        CoordinatesFormat { decimal: ".".into(), cs: ",".into(), ts: " ".into() }
+        CoordinatesFormat {
+            decimal: ".".into(),
+            cs: ",".into(),
+            ts: " ".into(),
+        }
     }
 }
 
@@ -34,7 +38,11 @@ impl CoordinatesFormat {
                 ))),
             }
         };
-        Ok((single(&self.decimal, "decimal")?, single(&self.cs, "cs")?, single(&self.ts, "ts")?))
+        Ok((
+            single(&self.decimal, "decimal")?,
+            single(&self.cs, "cs")?,
+            single(&self.ts, "ts")?,
+        ))
     }
 }
 
@@ -45,7 +53,9 @@ impl CoordinatesFormat {
 /// an empty sequence.
 pub fn parse_pos_list(text: &str, dimension: usize, count: Option<usize>) -> crate::Result<Coords> {
     let dim = Dim::from_size(dimension).ok_or_else(|| {
-        Error::invalid_coordinates(format!("unsupported dimension {dimension} (2 or 3 expected)"))
+        Error::invalid_coordinates(format!(
+            "unsupported dimension {dimension} (2 or 3 expected)"
+        ))
     })?;
     let mut values = Vec::new();
     for token in text.split_ascii_whitespace() {
@@ -63,7 +73,10 @@ pub fn parse_pos_list(text: &str, dimension: usize, count: Option<usize>) -> cra
             "count=\"{count}\" but {positions} positions given"
         )));
     }
-    Ok(Coords { dim: Some(dim), values })
+    Ok(Coords {
+        dim: Some(dim),
+        values,
+    })
 }
 
 /// Parse `gml:coordinates` text: tuples separated by `ts`, ordinates by `cs`,
@@ -96,7 +109,11 @@ pub fn parse_coordinates(text: &str, format: &CoordinatesFormat) -> crate::Resul
             push_tuple(&mut coords, tuple, cs, decimal)?;
         }
     } else {
-        for tuple in text.split(ts).map(str::trim).filter(|tuple| !tuple.is_empty()) {
+        for tuple in text
+            .split(ts)
+            .map(str::trim)
+            .filter(|tuple| !tuple.is_empty())
+        {
             push_tuple(&mut coords, tuple, cs, decimal)?;
         }
     }
@@ -172,5 +189,8 @@ fn parse_values(values: Vec<f64>, dimension: usize) -> crate::Result<Coords> {
             values.len()
         )));
     }
-    Ok(Coords { dim: Dim::from_size(dimension), values })
+    Ok(Coords {
+        dim: Dim::from_size(dimension),
+        values,
+    })
 }

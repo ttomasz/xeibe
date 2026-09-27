@@ -40,7 +40,11 @@ fn round_trip(snippet: &str, expected_wkt: &str, expected_code: u32) {
 
 #[test]
 fn writes_the_simple_feature_types() {
-    round_trip("<gml:Point><gml:pos>1 2</gml:pos></gml:Point>", "POINT (1 2)", 1);
+    round_trip(
+        "<gml:Point><gml:pos>1 2</gml:pos></gml:Point>",
+        "POINT (1 2)",
+        1,
+    );
     round_trip(
         "<gml:LineString><gml:posList>1 2 3 4</gml:posList></gml:LineString>",
         "LINESTRING (1 2,3 4)",
@@ -75,7 +79,8 @@ fn writes_the_simple_feature_types() {
 
 #[test]
 fn writes_the_iso_curve_types() {
-    let curve = |segments: &str| format!("<gml:Curve><gml:segments>{segments}</gml:segments></gml:Curve>");
+    let curve =
+        |segments: &str| format!("<gml:Curve><gml:segments>{segments}</gml:segments></gml:Curve>");
     round_trip(
         &curve("<gml:Arc><gml:posList>0 0 1 1 2 0</gml:posList></gml:Arc>"),
         "CIRCULARSTRING (0 0,1 1,2 0)",
@@ -143,7 +148,10 @@ fn big_endian_output_is_byte_swapped() {
     write_wkb(&geometry, Endianness::Big, &mut out);
     assert_eq!(out[0], 0, "0 marks big endian");
     assert_eq!(oracle::type_code(&out).unwrap(), 1);
-    assert_wkt(&oracle::decode(&out).expect("the WKB decodes"), "POINT (1 2)");
+    assert_wkt(
+        &oracle::decode(&out).expect("the WKB decodes"),
+        "POINT (1 2)",
+    );
 }
 
 #[test]

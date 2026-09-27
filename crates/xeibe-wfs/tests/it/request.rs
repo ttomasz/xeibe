@@ -74,10 +74,7 @@ fn the_older_versions_use_maxfeatures() {
 #[test]
 fn namespaces_are_declared_the_way_each_version_wants() {
     let mut request = get_feature(WfsVersion::V2_0_0);
-    request.namespace = Some((
-        "ms".into(),
-        "http://mapserver.gis.umn.edu/mapserver".into(),
-    ));
+    request.namespace = Some(("ms".into(), "http://mapserver.gis.umn.edu/mapserver".into()));
     let url = request.to_url(&base()).expect("a URL");
     assert_eq!(
         value(&url, "NAMESPACES").as_deref(),
@@ -85,10 +82,7 @@ fn namespaces_are_declared_the_way_each_version_wants() {
     );
 
     let mut request = get_feature(WfsVersion::V1_1_0);
-    request.namespace = Some((
-        "ms".into(),
-        "http://mapserver.gis.umn.edu/mapserver".into(),
-    ));
+    request.namespace = Some(("ms".into(), "http://mapserver.gis.umn.edu/mapserver".into()));
     let url = request.to_url(&base()).expect("a URL");
     assert_eq!(
         value(&url, "NAMESPACE").as_deref(),
@@ -171,14 +165,19 @@ fn vendor_parameters_and_filters_are_sent_as_given() {
     assert_eq!(value(&url, "FILTER").as_deref(), Some("<fes:Filter/>"));
     assert_eq!(value(&url, "CQL_FILTER").as_deref(), Some("area > 10"));
     // The query string is escaped.
-    assert!(url.as_str().contains("CQL_FILTER=area%20%3E%2010") || url.as_str().contains("CQL_FILTER=area+%3E+10"),
-        "{url}");
+    assert!(
+        url.as_str().contains("CQL_FILTER=area%20%3E%2010")
+            || url.as_str().contains("CQL_FILTER=area+%3E+10"),
+        "{url}"
+    );
 }
 
 #[test]
 fn a_base_url_that_already_has_a_query_keeps_it() {
     let base = Url::parse("https://example.com/wfs?map=/data/x.map").expect("a URL");
-    let url = get_feature(WfsVersion::V2_0_0).to_url(&base).expect("a URL");
+    let url = get_feature(WfsVersion::V2_0_0)
+        .to_url(&base)
+        .expect("a URL");
     assert_eq!(value(&url, "MAP").as_deref(), Some("/data/x.map"));
     assert_eq!(value(&url, "REQUEST").as_deref(), Some("GetFeature"));
 }

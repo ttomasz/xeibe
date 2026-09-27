@@ -105,7 +105,11 @@ fn curves_know_whether_they_are_linear() {
     });
     assert!(compound.is_linear());
     let flattened = compound.into_linear().expect("a line string");
-    assert_eq!(flattened.coords.len(), 3, "the shared position appears once");
+    assert_eq!(
+        flattened.coords.len(),
+        3,
+        "the shared position appears once"
+    );
 }
 
 #[test]
@@ -162,9 +166,8 @@ fn curve_free_curve_types_simplify_to_simple_features() {
         OutputKind::MultiPolygon
     );
 
-    let multi_curve = Geometry::MultiCurve(MultiCurve(vec![Curve::Linear(line(&[
-        0.0, 0.0, 1.0, 1.0,
-    ]))]));
+    let multi_curve =
+        Geometry::MultiCurve(MultiCurve(vec![Curve::Linear(line(&[0.0, 0.0, 1.0, 1.0]))]));
     assert_eq!(
         multi_curve.simplify_types().kind(),
         OutputKind::MultiLineString
@@ -205,7 +208,11 @@ fn the_parts_of_an_array_property_become_the_multi_geometry_of_their_family() {
     // `gml:pointArrayProperty`, `curveArrayProperty`, `surfaceArrayProperty`
     // hold several geometries (`docs/geometry.md`, "Empty, invalid and
     // degenerate geometry").
-    let point = |x: f64| Geometry::Point(Point { coord: Some(vec![x, 0.0]) });
+    let point = |x: f64| {
+        Geometry::Point(Point {
+            coord: Some(vec![x, 0.0]),
+        })
+    };
     assert!(
         matches!(Geometry::from_parts(vec![point(1.0)]), Geometry::MultiPoint(points) if points.0.len() == 1),
         "one part is a one-part Multi: the type doesn't depend on the count"
@@ -215,17 +222,37 @@ fn the_parts_of_an_array_property_become_the_multi_geometry_of_their_family() {
         Geometry::MultiPoint(points) if points.0.len() == 2
     ));
 
-    let lines = Geometry::from_parts(vec![Geometry::LineString(line(&[0.0, 0.0, 1.0, 1.0])), Geometry::LineString(ring())]);
+    let lines = Geometry::from_parts(vec![
+        Geometry::LineString(line(&[0.0, 0.0, 1.0, 1.0])),
+        Geometry::LineString(ring()),
+    ]);
     assert!(matches!(lines, Geometry::MultiLineString(lines) if lines.0.len() == 2));
-    let with_arc = Geometry::from_parts(vec![Geometry::LineString(ring()), Geometry::CircularString(arc())]);
-    assert!(matches!(with_arc, Geometry::MultiCurve(curves) if curves.0.len() == 2), "arcs stay curves");
+    let with_arc = Geometry::from_parts(vec![
+        Geometry::LineString(ring()),
+        Geometry::CircularString(arc()),
+    ]);
+    assert!(
+        matches!(with_arc, Geometry::MultiCurve(curves) if curves.0.len() == 2),
+        "arcs stay curves"
+    );
 
-    let polygon = || Geometry::Polygon(Polygon { exterior: Some(ring()), interiors: Vec::new() });
+    let polygon = || {
+        Geometry::Polygon(Polygon {
+            exterior: Some(ring()),
+            interiors: Vec::new(),
+        })
+    };
     let surfaces = Geometry::from_parts(vec![
         polygon(),
-        Geometry::MultiPolygon(MultiPolygon(vec![Polygon { exterior: Some(ring()), interiors: Vec::new() }])),
+        Geometry::MultiPolygon(MultiPolygon(vec![Polygon {
+            exterior: Some(ring()),
+            interiors: Vec::new(),
+        }])),
     ]);
-    assert!(matches!(surfaces, Geometry::MultiPolygon(polygons) if polygons.0.len() == 2), "Multi parts are flattened");
+    assert!(
+        matches!(surfaces, Geometry::MultiPolygon(polygons) if polygons.0.len() == 2),
+        "Multi parts are flattened"
+    );
 
     let mixed = Geometry::from_parts(vec![point(1.0), polygon()]);
     assert!(matches!(mixed, Geometry::GeometryCollection(members) if members.0.len() == 2));

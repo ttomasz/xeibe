@@ -11,7 +11,8 @@ use xeibe_core::{ByteSource, Error, Source, archive};
 
 use crate::support::{read_to_string, temp_dir};
 
-const DOC: &str = r#"<?xml version="1.0"?><gml:FeatureCollection xmlns:gml="http://www.opengis.net/gml/3.2"/>"#;
+const DOC: &str =
+    r#"<?xml version="1.0"?><gml:FeatureCollection xmlns:gml="http://www.opengis.net/gml/3.2"/>"#;
 
 /// An archive with GML members, a non-GML member and a nested zip.
 fn build_archive(dir: &Path) -> PathBuf {

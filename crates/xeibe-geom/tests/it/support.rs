@@ -91,7 +91,10 @@ pub fn parse_gml33(snippet: &str) -> xeibe_geom::Result<ParsedGeometry> {
     parse_gml33_with(snippet, &FixedAxis::no_swap())
 }
 
-pub fn parse_gml33_with(snippet: &str, axis: &dyn AxisResolver) -> xeibe_geom::Result<ParsedGeometry> {
+pub fn parse_gml33_with(
+    snippet: &str,
+    axis: &dyn AxisResolver,
+) -> xeibe_geom::Result<ParsedGeometry> {
     parse_in(
         &gml::geometry_document_gml33(snippet),
         &GeometryOptions::default(),

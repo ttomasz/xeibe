@@ -83,13 +83,23 @@ impl AxisDecisions {
 
     /// Every decision made so far.
     pub fn decisions(&self) -> Vec<(AxisKey, AxisDecision)> {
-        let decisions = self.decisions.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        decisions.iter().map(|(key, decision)| (key.clone(), decision.clone())).collect()
+        let decisions = self
+            .decisions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        decisions
+            .iter()
+            .map(|(key, decision)| (key.clone(), decision.clone()))
+            .collect()
     }
 
     /// `UnknownSrs` / `UnknownCrs` / `AxisConflict` warnings, one per key decided.
     pub fn warnings(&self) -> Vec<Warning> {
-        let table = self.options.crs_table.clone().unwrap_or_else(CrsTable::builtin);
+        let table = self
+            .options
+            .crs_table
+            .clone()
+            .unwrap_or_else(CrsTable::builtin);
         let mut warnings = Vec::new();
         for (key, decision) in self.decisions() {
             let srs = key.srs_name.as_deref().map(SrsName::parse);
@@ -98,8 +108,13 @@ impl AxisDecisions {
                     kind: WarningKind::UnknownSrs,
                     location: None,
                     message: match &key.srs_name {
-                        Some(srs) => format!("{}: srsName {srs:?} not recognised; read as written", key.source),
-                        None => format!("{}: geometry without srsName; read as written", key.source),
+                        Some(srs) => format!(
+                            "{}: srsName {srs:?} not recognised; read as written",
+                            key.source
+                        ),
+                        None => {
+                            format!("{}: geometry without srsName; read as written", key.source)
+                        }
                     },
                 }),
                 Some(crs) => {
@@ -115,8 +130,10 @@ impl AxisDecisions {
                         });
                     }
                     if let CrsRef::Code { authority, code } = crs.horizontal()
-                        && !crs.is_lon_lat_by_definition() && table.get(authority, code).is_none() {
-                            warnings.push(Warning {
+                        && !crs.is_lon_lat_by_definition()
+                        && table.get(authority, code).is_none()
+                    {
+                        warnings.push(Warning {
                                 kind: WarningKind::UnknownCrs,
                                 location: None,
                                 message: format!(
@@ -124,7 +141,7 @@ impl AxisDecisions {
                                     key.source
                                 ),
                             });
-                        }
+                    }
                 }
             }
             if !decision.conflicts.is_empty() {
@@ -145,7 +162,10 @@ impl AxisDecisions {
     }
 
     fn context(&self, source: SourceId) -> AxisContext {
-        let contexts = self.contexts.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let contexts = self
+            .contexts
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let Some(context) = contexts.get(source.0 as usize) else {
             return AxisContext::default();
         };
@@ -162,23 +182,40 @@ impl AxisDecisions {
 
 impl AxisResolver for AxisDecisions {
     fn resolve(&self, srs_name: Option<&str>, dialect: Dialect) -> AxisDecision {
-        let mut local = self.local.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut local = self
+            .local
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some((_, _, decision)) = local
             .iter()
             .find(|(srs, d, _)| srs.as_deref() == srs_name && *d == dialect)
         {
             return decision.clone();
         }
-        let key = AxisKey { source: self.source, srs_name: srs_name.map(str::to_string), dialect };
+        let key = AxisKey {
+            source: self.source,
+            srs_name: srs_name.map(str::to_string),
+            dialect,
+        };
         let decision = {
-            let mut decisions = self.decisions.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut decisions = self
+                .decisions
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             match decisions.get(&key) {
                 Some(decision) => decision.clone(),
                 None => {
                     let empty = AxisEvidence::default();
                     let evidence = self.evidence.get(&key).unwrap_or(&empty);
                     let context = self.context(self.source);
-                    let decision = decide(&key, Some(&self.layer), Some(&self.column), evidence, &context, &self.options);
+                    let decision = decide(
+                        &key,
+                        Some(&self.layer),
+                        Some(&self.column),
+                        evidence,
+                        &context,
+                        &self.options,
+                    );
                     decisions.insert(key, decision.clone());
                     decision
                 }

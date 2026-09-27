@@ -31,10 +31,20 @@ pub fn run(
         if decision.conflicts.is_empty() {
             continue;
         }
-        let source = names.get(key.source.0 as usize).cloned().unwrap_or_else(|| format!("source #{}", key.source.0));
+        let source = names
+            .get(key.source.0 as usize)
+            .cloned()
+            .unwrap_or_else(|| format!("source #{}", key.source.0));
         let srs = key.srs_name.as_deref().unwrap_or("(no srsName)");
-        let order = if decision.swap { "y/x (swapped)" } else { "x/y" };
-        eprintln!("axis-order conflict: {source}, layer {}, srsName {srs} ({:?}):", layer.local, key.dialect);
+        let order = if decision.swap {
+            "y/x (swapped)"
+        } else {
+            "x/y"
+        };
+        eprintln!(
+            "axis-order conflict: {source}, layer {}, srsName {srs} ({:?}):",
+            layer.local, key.dialect
+        );
         eprintln!("  decided {order}: {}", decision.reason);
         for conflict in &decision.conflicts {
             eprintln!("  against: {conflict}");
@@ -48,10 +58,16 @@ pub fn run(
         writeln!(out, "no layers found")?;
     }
     if !scan.is_complete() {
-        writeln!(out, "sampled scan: layers starting after the sample are missing; counts are lower bounds")?;
+        writeln!(
+            out,
+            "sampled scan: layers starting after the sample are missing; counts are lower bounds"
+        )?;
     }
     if let Some([x0, y0, x1, y1]) = scan.extent() {
-        writeln!(out, "dataset extent ({x0}, {y0}) - ({x1}, {y1}) as the collection declares it")?;
+        writeln!(
+            out,
+            "dataset extent ({x0}, {y0}) - ({x1}, {y1}) as the collection declares it"
+        )?;
     }
     for (info, (name, columns)) in layers.iter().zip(&saved.layers) {
         let mut line = format!("{name}: {} features", info.feature_count);
@@ -70,10 +86,16 @@ pub fn run(
                 writeln!(out, "  {row}")?;
             }
         } else {
-            let width = columns.keys().map(|column| column.chars().count()).max().unwrap_or(0);
+            let width = columns
+                .keys()
+                .map(|column| column.chars().count())
+                .max()
+                .unwrap_or(0);
             for (column, spec) in columns {
                 let data_type = match spec {
-                    ColumnSpec::Type(data_type) | ColumnSpec::Detailed { data_type, .. } => data_type,
+                    ColumnSpec::Type(data_type) | ColumnSpec::Detailed { data_type, .. } => {
+                        data_type
+                    }
                 };
                 writeln!(out, "  {column:<width$}  {data_type}")?;
             }

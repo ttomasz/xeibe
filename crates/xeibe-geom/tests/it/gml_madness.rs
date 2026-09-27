@@ -85,7 +85,10 @@ fn v03_linear_ring_of_inline_point_properties() {
             format!("<gml:pointProperty><gml:Point><gml:pos>{pos}</gml:pos></gml:Point></gml:pointProperty>")
         })
         .collect();
-    assert_square(&polygon(&format!("<gml:LinearRing>{points}</gml:LinearRing>")), SQUARE);
+    assert_square(
+        &polygon(&format!("<gml:LinearRing>{points}</gml:LinearRing>")),
+        SQUARE,
+    );
 }
 
 #[test]
@@ -103,7 +106,8 @@ fn v04_the_closing_point_given_by_reference_is_not_resolved() {
 #[test]
 fn v05_linear_ring_with_gml_2_coordinates() {
     // `coordinates` is deprecated in 3.2 but still read in every version.
-    let ring = "<gml:LinearRing><gml:coordinates>0,0 0,1 1,1 1,0 0,0</gml:coordinates></gml:LinearRing>";
+    let ring =
+        "<gml:LinearRing><gml:coordinates>0,0 0,1 1,1 1,0 0,0</gml:coordinates></gml:LinearRing>";
     assert_square(&polygon(ring), SQUARE);
     // A deprecated carrier inside `exterior` doesn't make the geometry GML 2
     // (`docs/geometry.md`, "Axis order": the dialect table).
@@ -151,7 +155,12 @@ fn v08_ring_of_one_line_string_with_pos() {
 
 #[test]
 fn v09_ring_of_one_line_string_per_edge() {
-    let edges = [line("0 0 0 1"), line("0 1 1 1"), line("1 1 1 0"), line("1 0 0 0")];
+    let edges = [
+        line("0 0 0 1"),
+        line("0 1 1 1"),
+        line("1 1 1 0"),
+        line("1 0 0 0"),
+    ];
     let edges: Vec<&str> = edges.iter().map(String::as_str).collect();
     assert_square(&ring_polygon(&edges), SQUARE);
 }
@@ -171,7 +180,9 @@ fn v11_ring_of_a_curve_with_one_segment_per_edge() {
     let segments: String = ["0 0 0 1", "0 1 1 1", "1 1 1 0", "1 0 0 0"]
         .iter()
         .map(|edge| {
-            format!("<gml:LineStringSegment><gml:posList>{edge}</gml:posList></gml:LineStringSegment>")
+            format!(
+                "<gml:LineStringSegment><gml:posList>{edge}</gml:posList></gml:LineStringSegment>"
+            )
         })
         .collect();
     let curve = format!("<gml:Curve><gml:segments>{segments}</gml:segments></gml:Curve>");
@@ -244,7 +255,10 @@ fn nesting_deeper_than_the_limit_is_a_geometry_error_not_a_crash() {
         );
     }
     let error = parse(&composite).expect_err("too deep");
-    assert!(matches!(error, Error::InvalidGeometry { .. }), "got {error:?}");
+    assert!(
+        matches!(error, Error::InvalidGeometry { .. }),
+        "got {error:?}"
+    );
 
     // Just within the limit still parses: 2 elements per level, plus the
     // line string and its `posList`.

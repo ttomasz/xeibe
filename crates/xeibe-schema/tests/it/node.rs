@@ -153,7 +153,11 @@ fn merging_nodes_adds_counts_and_keeps_the_widest_shape() {
     assert_eq!(area.max_occurs, 2, "the maximum, not the sum");
     assert_eq!(child(&merged, "extra").instances, 1);
     assert_eq!(
-        merged.children.keys().map(|k| k.local.to_string()).collect::<Vec<_>>(),
+        merged
+            .children
+            .keys()
+            .map(|k| k.local.to_string())
+            .collect::<Vec<_>>(),
         ["area", "extra"],
         "children keep their first-seen order"
     );

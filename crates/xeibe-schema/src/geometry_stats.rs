@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use serde::{Deserialize, Serialize};
 use xeibe_core::Dialect;
 use xeibe_geom::sniff::GeometrySniff;
 use xeibe_geom::{AxisEvidence, GeomKind};
-use serde::{Deserialize, Serialize};
 
 use crate::Merge;
 
@@ -56,8 +56,8 @@ impl GeometryStats {
             self.kinds.insert(*kind);
         }
         self.has_curves |= sniff.has_curves;
-        self.has_unsupported |= sniff.has_unsupported
-            || sniff.kinds.contains(&GeomKind::Unsupported);
+        self.has_unsupported |=
+            sniff.has_unsupported || sniff.kinds.contains(&GeomKind::Unsupported);
         if sniff.by_reference {
             self.by_reference += 1;
         }
@@ -84,9 +84,10 @@ impl GeometryStats {
         };
         let evidence = self.axis_evidence.entry(key).or_default();
         if let Some(labels) = &sniff.axis_labels
-            && !evidence.axis_labels.contains(labels) {
-                evidence.axis_labels.push(labels.clone());
-            }
+            && !evidence.axis_labels.contains(labels)
+        {
+            evidence.axis_labels.push(labels.clone());
+        }
         if let Some(p) = position {
             let point = Some([p[0], p[1], p[0], p[1]]);
             if is_envelope(sniff) {
@@ -110,12 +111,20 @@ impl GeometryStats {
 /// `true` for an envelope (`boundedBy`): its corners are envelope evidence,
 /// not geometry positions.
 pub(crate) fn is_envelope(sniff: &GeometrySniff) -> bool {
-    matches!(sniff.kinds.first(), Some(GeomKind::Envelope | GeomKind::Box))
+    matches!(
+        sniff.kinds.first(),
+        Some(GeomKind::Envelope | GeomKind::Box)
+    )
 }
 
 pub(crate) fn union_bbox(a: Option<[f64; 4]>, b: Option<[f64; 4]>) -> Option<[f64; 4]> {
     match (a, b) {
-        (Some(a), Some(b)) => Some([a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])]),
+        (Some(a), Some(b)) => Some([
+            a[0].min(b[0]),
+            a[1].min(b[1]),
+            a[2].max(b[2]),
+            a[3].max(b[3]),
+        ]),
         (a, b) => a.or(b),
     }
 }

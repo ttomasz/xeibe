@@ -42,7 +42,13 @@ impl SourcePartition {
             }
             None => schema.clone(),
         };
-        SourcePartition { source, layer: layer.to_string(), table_schema: schema, schema: output, options }
+        SourcePartition {
+            source,
+            layer: layer.to_string(),
+            table_schema: schema,
+            schema: output,
+            options,
+        }
     }
 }
 
@@ -61,11 +67,20 @@ impl PartitionStream for SourcePartition {
         let table_schema = self.table_schema.clone();
         let schema = self.schema.clone();
         let mut options = self.options.clone();
-        options.projection = Some(schema.fields().iter().map(|field| field.name().clone()).collect());
+        options.projection = Some(
+            schema
+                .fields()
+                .iter()
+                .map(|field| field.name().clone())
+                .collect(),
+        );
         builder.spawn_blocking(move || {
-            let reader = xeibe_arrow::read(source, &layer, Some(table_schema), &options).map_err(external)?;
+            let reader = xeibe_arrow::read(source, &layer, Some(table_schema), &options)
+                .map_err(external)?;
             for batch in reader {
-                let batch = batch.map_err(DataFusionError::from).and_then(|batch| conform(batch, &schema));
+                let batch = batch
+                    .map_err(DataFusionError::from)
+                    .and_then(|batch| conform(batch, &schema));
                 let failed = batch.is_err();
                 if sender.blocking_send(batch).is_err() || failed {
                     // The consumer is gone, or the error has been handed on.
@@ -86,10 +101,17 @@ fn conform(batch: RecordBatch, schema: &SchemaRef) -> Result<RecordBatch> {
         .iter()
         .map(|field| {
             batch.column_by_name(field.name()).cloned().ok_or_else(|| {
-                DataFusionError::Execution(format!("the GML reader returned no column {:?}", field.name()))
+                DataFusionError::Execution(format!(
+                    "the GML reader returned no column {:?}",
+                    field.name()
+                ))
             })
         })
         .collect::<Result<Vec<_>>>()?;
     let options = RecordBatchOptions::new().with_row_count(Some(batch.num_rows()));
-    Ok(RecordBatch::try_new_with_options(schema.clone(), columns, &options)?)
+    Ok(RecordBatch::try_new_with_options(
+        schema.clone(),
+        columns,
+        &options,
+    )?)
 }

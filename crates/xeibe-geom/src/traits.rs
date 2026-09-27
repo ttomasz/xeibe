@@ -194,9 +194,9 @@ simple_geometry_trait!(MultiLineString, MultiLineString, |g| crate::model::max_d
 simple_geometry_trait!(MultiPolygon, MultiPolygon, |g| crate::model::max_dim(
     g.0.iter().map(Polygon::dim)
 ));
-simple_geometry_trait!(GeometryCollection, GeometryCollection, |g| crate::model::max_dim(
-    g.0.iter().map(Geometry::dim)
-));
+simple_geometry_trait!(GeometryCollection, GeometryCollection, |g| {
+    crate::model::max_dim(g.0.iter().map(Geometry::dim))
+});
 
 /// Implement a `geo-traits` trait for a model type and a reference to it.
 macro_rules! for_both {

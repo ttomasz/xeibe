@@ -79,12 +79,17 @@ pub fn sampled_schema(document: &str, local: &str, sample: &SampleOptions) -> Sc
 /// A field by name, or a helpful panic listing what there is.
 #[track_caller]
 pub fn field<'a>(schema: &'a Schema, name: &str) -> &'a Field {
-    schema.fields().iter().find(|f| f.name() == name).map(|f| f.as_ref()).unwrap_or_else(|| {
-        panic!(
-            "no column {name:?}; the schema has {:?}",
-            column_names(schema)
-        )
-    })
+    schema
+        .fields()
+        .iter()
+        .find(|f| f.name() == name)
+        .map(|f| f.as_ref())
+        .unwrap_or_else(|| {
+            panic!(
+                "no column {name:?}; the schema has {:?}",
+                column_names(schema)
+            )
+        })
 }
 
 #[track_caller]

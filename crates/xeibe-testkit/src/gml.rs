@@ -157,5 +157,8 @@ pub fn geometry_document_gml31(geometry: &str) -> String {
 /// The same in GML 3.3: the GML 3.2 namespace, plus the `gmlce` and
 /// `gmltin` prefixes.
 pub fn geometry_document_gml33(geometry: &str) -> String {
-    format!(r#"<app:geom {}>{geometry}</app:geom>"#, decls(GML_32, &gml33_decls()))
+    format!(
+        r#"<app:geom {}>{geometry}</app:geom>"#,
+        decls(GML_32, &gml33_decls())
+    )
 }

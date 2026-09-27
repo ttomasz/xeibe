@@ -39,7 +39,10 @@ impl Error {
     /// (e.g. [`crate::parse::parse_pos_list`]); its location is a placeholder
     /// until [`Error::at`] sets the real one.
     pub(crate) fn invalid_coordinates(message: impl Into<String>) -> Self {
-        Error::InvalidCoordinates { location: unlocated(), message: message.into() }
+        Error::InvalidCoordinates {
+            location: unlocated(),
+            message: message.into(),
+        }
     }
 
     /// Replace the location of a located error (the parser knows where the
@@ -59,5 +62,10 @@ impl Error {
 
 /// Placeholder location for errors raised without access to the reader.
 pub(crate) fn unlocated() -> Location {
-    Location { source: SourceId(0), byte_offset: 0, feature_seq: None, gml_id: None }
+    Location {
+        source: SourceId(0),
+        byte_offset: 0,
+        feature_seq: None,
+        gml_id: None,
+    }
 }

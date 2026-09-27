@@ -23,7 +23,8 @@ fn bind(schema: Schema) -> xeibe_schema::Result<xeibe_schema::LayerSchema> {
 }
 
 fn with_path(name: &str, data_type: DataType, path: &str) -> Field {
-    field(name, data_type).with_metadata(HashMap::from([(meta::PATH.to_string(), path.to_string())]))
+    field(name, data_type)
+        .with_metadata(HashMap::from([(meta::PATH.to_string(), path.to_string())]))
 }
 
 /// The source path a column is bound to, as local names (`*` for a wildcard
@@ -61,7 +62,11 @@ fn without_a_path_the_name_is_the_path() {
     assert_eq!(route(&bound, "area"), ["area"]);
     assert_eq!(route(&bound, "@id"), ["@id"], "the feature's gml:id");
     assert_eq!(route(&bound, "owner/name"), ["owner", "name"]);
-    assert_eq!(bound.schema.fields().len(), 3, "the schema is used as it is");
+    assert_eq!(
+        bound.schema.fields().len(),
+        3,
+        "the schema is used as it is"
+    );
     assert_eq!(
         bound.layer.ns.as_deref(),
         Some(APP),
@@ -87,8 +92,11 @@ fn a_type_wrapper_is_a_wildcard_step() {
 #[test]
 fn a_dotted_name_is_not_a_path() {
     // Names are free; only `/` separates steps, and nothing is looked through.
-    let bound = bind(Schema::new(vec![field("idIIP.lokalnyId", DataType::Utf8View)]))
-        .expect("the schema binds");
+    let bound = bind(Schema::new(vec![field(
+        "idIIP.lokalnyId",
+        DataType::Utf8View,
+    )]))
+    .expect("the schema binds");
     assert_eq!(route(&bound, "idIIP.lokalnyId"), ["idIIP.lokalnyId"]);
 }
 
@@ -107,7 +115,11 @@ fn an_attribute_is_the_last_step() {
 fn the_anchor_marker_is_not_a_step() {
     let bound = bind(Schema::new(vec![with_path(
         "datum",
-        DataType::List(std::sync::Arc::new(Field::new("item", DataType::Date32, true))),
+        DataType::List(std::sync::Arc::new(Field::new(
+            "item",
+            DataType::Date32,
+            true,
+        ))),
         "externeReferenz[]/*/datum",
     )]))
     .expect("the schema binds");
@@ -118,7 +130,11 @@ fn the_anchor_marker_is_not_a_step() {
 fn a_path_may_have_one_anchor_only() {
     let bad = Schema::new(vec![with_path(
         "text",
-        DataType::List(std::sync::Arc::new(Field::new("item", DataType::Utf8View, true))),
+        DataType::List(std::sync::Arc::new(Field::new(
+            "item",
+            DataType::Utf8View,
+            true,
+        ))),
         "name[]/spelling[]/text",
     )]);
     assert!(bind(bad).is_err(), "no lists of lists");
@@ -157,8 +173,11 @@ fn a_path_in_the_metadata_renames_a_column() {
 #[test]
 fn columns_that_never_match_stay_null() {
     // A settings file may describe data this input does not have.
-    let bound = bind(Schema::new(vec![field("nothing_like_this", DataType::Int64)]))
-        .expect("an unmatched column is not an error");
+    let bound = bind(Schema::new(vec![field(
+        "nothing_like_this",
+        DataType::Int64,
+    )]))
+    .expect("an unmatched column is not an error");
     assert_eq!(bound.schema.fields().len(), 1);
 }
 
@@ -178,7 +197,12 @@ fn a_geometry_column_keeps_its_extension_type() {
     )]));
     let bound = bind(Schema::new(vec![geometry])).expect("the schema binds");
     assert_eq!(
-        bound.schema.field(0).metadata().get("ARROW:extension:name").map(String::as_str),
+        bound
+            .schema
+            .field(0)
+            .metadata()
+            .get("ARROW:extension:name")
+            .map(String::as_str),
         Some("geoarrow.wkb")
     );
 }
@@ -196,9 +220,6 @@ fn a_struct_column_is_an_error() {
 #[test]
 fn an_unusable_type_is_an_error() {
     // Binding fails when a column cannot be filled from XML at all.
-    let bad = Schema::new(vec![field(
-        "area",
-        DataType::FixedSizeBinary(16),
-    )]);
+    let bad = Schema::new(vec![field("area", DataType::FixedSizeBinary(16))]);
     assert!(bind(bad).is_err());
 }

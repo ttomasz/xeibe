@@ -142,7 +142,10 @@ pub fn infer_schema(
         let path = engine.path_string(&col);
         let (field, reasons) = col.into_field(&name, path);
         fields.push(field);
-        decisions.push(FieldDecision { field: name, reasons });
+        decisions.push(FieldDecision {
+            field: name,
+            reasons,
+        });
     }
 
     let mut metadata = HashMap::new();
@@ -151,7 +154,10 @@ pub fn infer_schema(
         metadata.insert(meta::VERSIONS.to_string(), versions.join(","));
     }
     if !namespaces.is_empty() {
-        metadata.insert(meta::NS.to_string(), serde_json::Value::Object(namespaces).to_string());
+        metadata.insert(
+            meta::NS.to_string(),
+            serde_json::Value::Object(namespaces).to_string(),
+        );
     }
     let schema = Schema::new_with_metadata(fields, metadata);
     let mut bound = crate::bind_schema(layer, &schema, &options)?;
@@ -238,7 +244,11 @@ impl Col {
     /// property given only by reference.
     fn name_steps(&self, prefixes: &Prefixes) -> Vec<String> {
         let display = |name: &QName, prefixed: bool| {
-            if prefixed { prefixes.prefixed(name) } else { name.local.to_string() }
+            if prefixed {
+                prefixes.prefixed(name)
+            } else {
+                name.local.to_string()
+            }
         };
         let mut steps: Vec<String> = self
             .steps
@@ -266,7 +276,12 @@ impl Col {
 /// left takes one more from the front. Columns that are still alike (their
 /// steps are the same) are told apart by a number.
 fn column_names(cols: &[Col], prefixes: &Prefixes) -> Vec<String> {
-    column_names_of(&cols.iter().map(|col| col.name_steps(prefixes)).collect::<Vec<_>>())
+    column_names_of(
+        &cols
+            .iter()
+            .map(|col| col.name_steps(prefixes))
+            .collect::<Vec<_>>(),
+    )
 }
 
 fn column_names_of(steps: &[Vec<String>]) -> Vec<String> {
@@ -294,7 +309,11 @@ fn column_names_of(steps: &[Vec<String>]) -> Vec<String> {
                 .map(|name| {
                     let count = seen.entry(name.clone()).or_default();
                     *count += 1;
-                    if *count == 1 { name } else { format!("{name}#{count}") }
+                    if *count == 1 {
+                        name
+                    } else {
+                        format!("{name}#{count}")
+                    }
                 })
                 .collect();
         }
@@ -374,7 +393,11 @@ impl Engine<'_> {
             })
             .collect();
         if let Some((attribute, prefixed)) = &col.attribute {
-            let name = if *prefixed { self.prefixes.prefixed(attribute) } else { attribute.local.to_string() };
+            let name = if *prefixed {
+                self.prefixes.prefixed(attribute)
+            } else {
+                attribute.local.to_string()
+            };
             parts.push(format!("@{name}"));
         }
         parts.join("/")
@@ -382,8 +405,16 @@ impl Engine<'_> {
 
     /// `(prefix, uri)` of the prefixed steps of a column's path.
     fn prefixes_used(&self, col: &Col) -> Vec<(String, String)> {
-        let steps = col.steps.iter().filter(|step| step.prefixed && !step.wrapper).map(|step| &step.name);
-        let attribute = col.attribute.iter().filter(|(_, prefixed)| *prefixed).map(|(name, _)| name);
+        let steps = col
+            .steps
+            .iter()
+            .filter(|step| step.prefixed && !step.wrapper)
+            .map(|step| &step.name);
+        let attribute = col
+            .attribute
+            .iter()
+            .filter(|(_, prefixed)| *prefixed)
+            .map(|(name, _)| name);
         steps
             .chain(attribute)
             .filter_map(|name| {
@@ -427,7 +458,8 @@ impl Engine<'_> {
             .collect();
         overrides.sort_by_key(|(pattern, _)| pattern.specificity());
         for (pattern, action) in overrides {
-            plan.reasons.push(format!("override {}: {action:?}", pattern.raw));
+            plan.reasons
+                .push(format!("override {}: {action:?}", pattern.raw));
             match action {
                 FieldOverride::Type(data_type) => plan.data_type = Some(data_type.clone()),
                 FieldOverride::Drop => plan.drop = true,
@@ -444,7 +476,8 @@ impl Engine<'_> {
 
     fn keep_attribute(&self, name: &QName) -> bool {
         let gml = &self.options.gml;
-        if name.ns.as_deref() == Some(ns::XSI) || (name.ns.is_none() && &*name.local == "nilReason") {
+        if name.ns.as_deref() == Some(ns::XSI) || (name.ns.is_none() && &*name.local == "nilReason")
+        {
             return false;
         }
         if is_gml_id(name) {
@@ -465,7 +498,9 @@ impl Engine<'_> {
         let listed = |list: &[String]| {
             list.iter().any(|entry| {
                 let entry = entry.strip_prefix('@').unwrap_or(entry);
-                entry == &*name.local || entry == name.to_clark() || entry == self.prefixes.prefixed(name)
+                entry == &*name.local
+                    || entry == name.to_clark()
+                    || entry == self.prefixes.prefixed(name)
             })
         };
         match &self.options.structure.xml_attributes {
@@ -478,11 +513,22 @@ impl Engine<'_> {
 
     /// Columns for the attributes of `node` (at `steps`), and the constant
     /// attributes that can move into the element's own column's metadata.
-    fn attributes(&self, node: &ElementNode, steps: &[Step], anchor: Option<usize>) -> AttributeCols {
-        let kept: Vec<(&QName, &ValueStats)> =
-            node.attributes.iter().filter(|(name, _)| self.keep_attribute(name)).collect();
+    fn attributes(
+        &self,
+        node: &ElementNode,
+        steps: &[Step],
+        anchor: Option<usize>,
+    ) -> AttributeCols {
+        let kept: Vec<(&QName, &ValueStats)> = node
+            .attributes
+            .iter()
+            .filter(|(name, _)| self.keep_attribute(name))
+            .collect();
         let shared = shared_locals(kept.iter().map(|(name, _)| *name));
-        let mut out = AttributeCols { cols: Vec::new(), constants: Vec::new() };
+        let mut out = AttributeCols {
+            cols: Vec::new(),
+            constants: Vec::new(),
+        };
         for (name, stats) in kept {
             let plan = self.plan(steps, Some(name));
             if plan.drop {
@@ -490,7 +536,11 @@ impl Engine<'_> {
             }
             let prefixed = shared.contains(&*name.local);
             let scalar = self.scalar(Some(stats));
-            let mut col = Col::new(steps, anchor, plan.data_type.clone().unwrap_or(scalar.data_type));
+            let mut col = Col::new(
+                steps,
+                anchor,
+                plan.data_type.clone().unwrap_or(scalar.data_type),
+            );
             col.attribute = Some((name.clone(), prefixed));
             col.by_reference = is_href(name) && node.shape() == Shape::ByReferenceOnly;
             // GML 2 writes the feature's id as `fid`: it is `@id` too, unless the
@@ -503,11 +553,17 @@ impl Engine<'_> {
             col.reasons = plan.reasons;
             col.reasons.extend(scalar.reasons);
             if col.feature_id {
-                col.reasons.insert(0, "the feature's GML 2 id (fid)".to_string());
+                col.reasons
+                    .insert(0, "the feature's GML 2 id (fid)".to_string());
             }
             if col.by_reference {
-                let strip = if self.options.gml.strip_local_href_hash { ", '#' stripped" } else { "" };
-                col.reasons.insert(0, format!("by-reference only (xlink:href){strip}"));
+                let strip = if self.options.gml.strip_local_href_hash {
+                    ", '#' stripped"
+                } else {
+                    ""
+                };
+                col.reasons
+                    .insert(0, format!("by-reference only (xlink:href){strip}"));
             }
             let constant = self.options.structure.constant_attrs == ConstantAttrs::ToFieldMetadata
                 && !is_gml_id(name)
@@ -517,8 +573,16 @@ impl Engine<'_> {
                 && plan.data_type.is_none();
             match stats.distinct.single().filter(|_| constant) {
                 Some(value) => {
-                    let key = if prefixed { self.prefixes.prefixed(name) } else { name.local.to_string() };
-                    out.constants.push((format!("{}{key}", meta::ATTR_PREFIX), value.to_string(), col));
+                    let key = if prefixed {
+                        self.prefixes.prefixed(name)
+                    } else {
+                        name.local.to_string()
+                    };
+                    out.constants.push((
+                        format!("{}{key}", meta::ATTR_PREFIX),
+                        value.to_string(),
+                        col,
+                    ));
                 }
                 None => out.cols.push(col),
             }
@@ -528,7 +592,13 @@ impl Engine<'_> {
 
     /// `<path>/@nilReason`, when nil values had a reason (or the attribute
     /// was seen) and `nil_reason` is on.
-    fn nil_reason(&self, node: &ElementNode, steps: &[Step], anchor: Option<usize>, out: &mut Vec<Col>) {
+    fn nil_reason(
+        &self,
+        node: &ElementNode,
+        steps: &[Step],
+        anchor: Option<usize>,
+        out: &mut Vec<Col>,
+    ) {
         let attribute = QName::new(None, "nilReason");
         let seen = node.attributes.contains_key(&attribute);
         if !self.options.gml.nil_reason || (node.nil.reasons.is_empty() && !seen) {
@@ -536,17 +606,28 @@ impl Engine<'_> {
         }
         let mut col = Col::new(steps, anchor, self.string());
         col.attribute = Some((attribute, false));
-        col.reasons.push(format!("nilReason of {} nil values", node.nil.count));
+        col.reasons
+            .push(format!("nilReason of {} nil values", node.nil.count));
         out.push(col);
     }
 
     // ---- elements -----------------------------------------------------------
 
     /// Columns for the element children of `node` (at `steps`).
-    fn children(&self, node: &ElementNode, steps: &[Step], anchor: Option<usize>, out: &mut Vec<Col>) {
+    fn children(
+        &self,
+        node: &ElementNode,
+        steps: &[Step],
+        anchor: Option<usize>,
+        out: &mut Vec<Col>,
+    ) {
         let shared = shared_locals(node.children.keys());
         for (name, child) in &node.children {
-            let step = Step { name: name.clone(), wrapper: false, prefixed: shared.contains(&*name.local) };
+            let step = Step {
+                name: name.clone(),
+                wrapper: false,
+                prefixed: shared.contains(&*name.local),
+            };
             let child_steps = Self::with_step(steps, step);
             if steps.is_empty() && name.is_gml_named("boundedBy") {
                 self.bounded_by(child, &child_steps, out);
@@ -571,10 +652,15 @@ impl Engine<'_> {
         }
         let mut reasons = plan.reasons.clone();
         if node.parents_with < parent_instances {
-            reasons.push(format!("present in {} of {} parents", node.parents_with, parent_instances));
+            reasons.push(format!(
+                "present in {} of {} parents",
+                node.parents_with, parent_instances
+            ));
         }
         let repeated = node.max_occurs > 1;
-        let list = plan.list.unwrap_or(repeated && self.options.structure.lists == ListRule::Infer);
+        let list = plan
+            .list
+            .unwrap_or(repeated && self.options.structure.lists == ListRule::Infer);
         let anchor = if list {
             let at = node
                 .first_multi
@@ -582,11 +668,17 @@ impl Engine<'_> {
                 .map(|location| format!(" (first at {location})"))
                 .unwrap_or_default();
             let name = &steps.last().expect("an element step").name.local;
-            reasons.push(format!("list anchored on {name}: max_occurs={}{at}", node.max_occurs));
+            reasons.push(format!(
+                "list anchored on {name}: max_occurs={}{at}",
+                node.max_occurs
+            ));
             Some(steps.len() - 1)
         } else {
             if repeated {
-                reasons.push(format!("repeated (max_occurs={}), but not a list: a repetition is a feature error", node.max_occurs));
+                reasons.push(format!(
+                    "repeated (max_occurs={}), but not a list: a repetition is a feature error",
+                    node.max_occurs
+                ));
             }
             anchor
         };
@@ -598,7 +690,14 @@ impl Engine<'_> {
     }
 
     /// The columns of an element's content.
-    fn content(&self, node: &ElementNode, steps: &[Step], anchor: Option<usize>, plan: &Plan, out: &mut Vec<Col>) {
+    fn content(
+        &self,
+        node: &ElementNode,
+        steps: &[Step],
+        anchor: Option<usize>,
+        plan: &Plan,
+        out: &mut Vec<Col>,
+    ) {
         let string = self.string();
         let leaf = |data_type: DataType, reason: &str| {
             let mut col = Col::new(steps, anchor, data_type);
@@ -615,13 +714,18 @@ impl Engine<'_> {
         }
         if let Some(stats) = &node.geometry {
             match &plan.data_type {
-                Some(data_type) => out.push(leaf(data_type.clone(), "geometry, type given by override")),
+                Some(data_type) => {
+                    out.push(leaf(data_type.clone(), "geometry, type given by override"))
+                }
                 None => out.push(self.geometry_col(stats, steps, anchor)),
             }
             return;
         }
         if node.truncated {
-            out.push(leaf(map_type(&string), "too deep or too many distinct child names: map of path → text"));
+            out.push(leaf(
+                map_type(&string),
+                "too deep or too many distinct child names: map of path → text",
+            ));
             return;
         }
         let name = &steps.last().expect("an element step").name;
@@ -639,7 +743,13 @@ impl Engine<'_> {
     /// A type wrapper: the property's attributes (`xlink:href`, `nilReason`),
     /// then the content of its child, `*` in the path. Several wrapper types
     /// are merged first.
-    fn wrapper(&self, node: &ElementNode, steps: &[Step], anchor: Option<usize>, out: &mut Vec<Col>) {
+    fn wrapper(
+        &self,
+        node: &ElementNode,
+        steps: &[Step],
+        anchor: Option<usize>,
+        out: &mut Vec<Col>,
+    ) {
         let attributes = self.attributes(node, steps, anchor);
         out.extend(attributes.cols);
         out.extend(attributes.constants.into_iter().map(|(_, _, col)| col));
@@ -653,7 +763,11 @@ impl Engine<'_> {
             merged.merge(other.clone());
             names.push(name.local.to_string());
         }
-        let step = Step { name: first_name.clone(), wrapper: true, prefixed: false };
+        let step = Step {
+            name: first_name.clone(),
+            wrapper: true,
+            prefixed: false,
+        };
         let wrapper_steps = Self::with_step(steps, step);
         let first = out.len();
         self.own_content(&merged, &wrapper_steps, anchor, &Plan::default(), out);
@@ -667,13 +781,24 @@ impl Engine<'_> {
     }
 
     /// An element's own text and attributes, then its children.
-    fn own_content(&self, node: &ElementNode, steps: &[Step], anchor: Option<usize>, plan: &Plan, out: &mut Vec<Col>) {
+    fn own_content(
+        &self,
+        node: &ElementNode,
+        steps: &[Step],
+        anchor: Option<usize>,
+        plan: &Plan,
+        out: &mut Vec<Col>,
+    ) {
         let attributes = self.attributes(node, steps, anchor);
         // The element's own column, if it has one.
         let own = match node.shape() {
             Shape::TextOnly | Shape::TextAndAttributes => {
                 let scalar = self.scalar(node.text.as_ref());
-                let mut col = Col::new(steps, anchor, plan.data_type.clone().unwrap_or(scalar.data_type));
+                let mut col = Col::new(
+                    steps,
+                    anchor,
+                    plan.data_type.clone().unwrap_or(scalar.data_type),
+                );
                 col.metadata.extend(scalar.metadata);
                 col.reasons = scalar.reasons;
                 Some(col)
@@ -686,7 +811,8 @@ impl Engine<'_> {
                 }
                 MixedContent::TextOnly => {
                     let mut col = Col::new(steps, anchor, self.string());
-                    col.metadata.insert(meta::CONTENT.to_string(), "text".to_string());
+                    col.metadata
+                        .insert(meta::CONTENT.to_string(), "text".to_string());
                     col.reasons.push("mixed content: text only".to_string());
                     Some(col)
                 }
@@ -695,7 +821,11 @@ impl Engine<'_> {
             // An element that never had a value is a column only if nothing
             // else is: no attribute columns and no children.
             Shape::Empty if attributes.cols.is_empty() => {
-                let mut col = Col::new(steps, anchor, plan.data_type.clone().unwrap_or_else(|| self.all_null()));
+                let mut col = Col::new(
+                    steps,
+                    anchor,
+                    plan.data_type.clone().unwrap_or_else(|| self.all_null()),
+                );
                 col.reasons.push("never had a value".to_string());
                 Some(col)
             }
@@ -704,7 +834,9 @@ impl Engine<'_> {
         match own {
             Some(mut col) => {
                 for (key, value, _) in attributes.constants {
-                    col.reasons.push(format!("constant attribute moved to field metadata: {key} = {value:?}"));
+                    col.reasons.push(format!(
+                        "constant attribute moved to field metadata: {key} = {value:?}"
+                    ));
                     col.metadata.insert(key, value);
                 }
                 out.push(col);
@@ -728,10 +860,12 @@ impl Engine<'_> {
             BoundedBy::Geometry => out.push(self.geometry_col(stats, steps, None)),
             BoundedBy::BoxStruct => {
                 let dimension = dimension(stats);
-                let field = BoxType::new(dimension, Arc::new(self.crs_metadata(stats))).to_field("boundedBy", true);
+                let field = BoxType::new(dimension, Arc::new(self.crs_metadata(stats)))
+                    .to_field("boundedBy", true);
                 let mut col = Col::new(steps, None, DataType::Null);
                 col.kind = ColKind::Field(field);
-                col.reasons.push("gml:boundedBy as a box (BoxStruct)".to_string());
+                col.reasons
+                    .push("gml:boundedBy as a box (BoxStruct)".to_string());
                 out.push(col);
             }
         }
@@ -754,13 +888,15 @@ impl Engine<'_> {
         let lossy = types.lossless == Lossless::Lossy;
         let mut set = (stats.types(types.lossless) & types.enabled) | TypeSet::STRING;
         if let Some(sample) = self.sampled
-            && stats.count < sample.min_typed_values && set != TypeSet::STRING {
-                scalar.reasons.push(format!(
-                    "only {} values in the sample (fewer than {}): kept as text",
-                    stats.count, sample.min_typed_values
-                ));
-                set = TypeSet::STRING;
-            }
+            && stats.count < sample.min_typed_values
+            && set != TypeSet::STRING
+        {
+            scalar.reasons.push(format!(
+                "only {} values in the sample (fewer than {}): kept as text",
+                stats.count, sample.min_typed_values
+            ));
+            set = TypeSet::STRING;
+        }
         let temporal = stats.temporal.unwrap_or_default();
         let unit = types.timestamps.unit;
         let fraction_fits = temporal.max_fraction_digits <= unit_digits(unit);
@@ -781,7 +917,9 @@ impl Engine<'_> {
                 TypeSet::INT => Some(self.int_type(stats)),
                 TypeSet::FLOAT => {
                     if let Some(shape) = stats.float_shape {
-                        scalar.metadata.push((meta::MAX_SCALE.to_string(), shape.max_scale.to_string()));
+                        scalar
+                            .metadata
+                            .push((meta::MAX_SCALE.to_string(), shape.max_scale.to_string()));
                     }
                     Some(DataType::Float64)
                 }
@@ -794,22 +932,30 @@ impl Engine<'_> {
                         DataType::Time64(unit)
                     };
                     if candidate == TypeSet::TIME && !fraction_fits && !lossy {
-                        scalar.reasons.push("more fractional digits than the time unit holds".to_string());
+                        scalar
+                            .reasons
+                            .push("more fractional digits than the time unit holds".to_string());
                         None
                     } else {
                         match temporal.tz {
                             TzShape::Absent => Some(data_type),
                             TzShape::Fixed(offset) => {
-                                scalar.metadata.push((meta::TZ_OFFSET.to_string(), format_offset(offset)));
+                                scalar
+                                    .metadata
+                                    .push((meta::TZ_OFFSET.to_string(), format_offset(offset)));
                                 Some(data_type)
                             }
                             _ if lossy => Some(data_type),
                             TzShape::Mixed => {
-                                scalar.reasons.push("different time zones can't share a column: text".to_string());
+                                scalar.reasons.push(
+                                    "different time zones can't share a column: text".to_string(),
+                                );
                                 None
                             }
                             TzShape::Inconsistent => {
-                                scalar.reasons.push("some values have a time zone, some don't: text".to_string());
+                                scalar.reasons.push(
+                                    "some values have a time zone, some don't: text".to_string(),
+                                );
                                 None
                             }
                         }
@@ -817,13 +963,17 @@ impl Engine<'_> {
                 }
                 TypeSet::DATETIME => {
                     if !fraction_fits && !lossy {
-                        scalar.reasons.push("more fractional digits than the timestamp unit holds".to_string());
+                        scalar.reasons.push(
+                            "more fractional digits than the timestamp unit holds".to_string(),
+                        );
                         None
                     } else {
                         match temporal.tz {
                             TzShape::Absent => Some(DataType::Timestamp(unit, None)),
                             TzShape::Fixed(offset) => {
-                                scalar.metadata.push((meta::TZ_OFFSET.to_string(), format_offset(offset)));
+                                scalar
+                                    .metadata
+                                    .push((meta::TZ_OFFSET.to_string(), format_offset(offset)));
                                 Some(DataType::Timestamp(unit, Some("UTC".into())))
                             }
                             TzShape::Mixed => {
@@ -833,7 +983,9 @@ impl Engine<'_> {
                                 Some(DataType::Timestamp(unit, Some("UTC".into())))
                             }
                             TzShape::Inconsistent => {
-                                scalar.reasons.push("some values have a time zone, some don't: text".to_string());
+                                scalar.reasons.push(
+                                    "some values have a time zone, some don't: text".to_string(),
+                                );
                                 None
                             }
                         }
@@ -842,16 +994,26 @@ impl Engine<'_> {
                 _ => None,
             };
             if let Some(data_type) = chosen {
-                scalar.reasons.insert(0, format!("{} values, candidates {}", stats.count, type_names(set)));
+                scalar.reasons.insert(
+                    0,
+                    format!("{} values, candidates {}", stats.count, type_names(set)),
+                );
                 scalar.data_type = data_type;
                 return scalar;
             }
         }
-        scalar.reasons.insert(0, format!("{} values, candidates {}", stats.count, type_names(set)));
+        scalar.reasons.insert(
+            0,
+            format!("{} values, candidates {}", stats.count, type_names(set)),
+        );
         if let Some(example) = stats.distinct.values.first()
-            && set == TypeSet::STRING && stats.types(Lossless::Lossy) != TypeSet::STRING {
-                scalar.reasons.push(format!("typed values rejected (e.g. {example:?})"));
-            }
+            && set == TypeSet::STRING
+            && stats.types(Lossless::Lossy) != TypeSet::STRING
+        {
+            scalar
+                .reasons
+                .push(format!("typed values rejected (e.g. {example:?})"));
+        }
         scalar
     }
 
@@ -876,7 +1038,12 @@ impl Engine<'_> {
     /// GeoArrow CRS metadata: PROJJSON for EPSG codes and compounds of them,
     /// else `authority:code`, else the srsName as an opaque string.
     fn crs_metadata(&self, stats: &GeometryStats) -> Metadata {
-        let srs = self.options.geometry.crs_override.as_deref().or_else(|| stats.main_srs());
+        let srs = self
+            .options
+            .geometry
+            .crs_override
+            .as_deref()
+            .or_else(|| stats.main_srs());
         let Some(srs) = srs else {
             return Metadata::default();
         };
@@ -897,7 +1064,12 @@ impl Engine<'_> {
         let mut reasons = vec![format!(
             "geometry: {} values, kinds={{{}}}, dims={:?}",
             stats.count,
-            stats.kinds.iter().map(|k| format!("{k:?}")).collect::<Vec<_>>().join(", "),
+            stats
+                .kinds
+                .iter()
+                .map(|k| format!("{k:?}"))
+                .collect::<Vec<_>>()
+                .join(", "),
             stats.dims,
         )];
         let linearize = matches!(geometry.curves, CurveMode::Linearize(_));
@@ -911,7 +1083,10 @@ impl Engine<'_> {
                     None
                 }
                 GeomEncoding::Auto if self.sampled.is_some() => {
-                    reasons.push("encoding Auto, sampled: WKB (later features may have other kinds)".to_string());
+                    reasons.push(
+                        "encoding Auto, sampled: WKB (later features may have other kinds)"
+                            .to_string(),
+                    );
                     None
                 }
                 GeomEncoding::Auto if stats.has_curves && !linearize => {
@@ -932,7 +1107,9 @@ impl Engine<'_> {
                         Some(kind)
                     }
                     None => {
-                        reasons.push("encoding Auto: no native type holds every kind → WKB".to_string());
+                        reasons.push(
+                            "encoding Auto: no native type holds every kind → WKB".to_string(),
+                        );
                         None
                     }
                 },
@@ -944,23 +1121,38 @@ impl Engine<'_> {
         let coord_type = CoordType::Separated;
         let name = "geometry";
         let field = match native {
-            None => Field::new(name, DataType::Binary, true).with_extension_type(WkbType::new(metadata)),
-            Some(NativeKind::Point) => PointType::new(dimension, metadata).with_coord_type(coord_type).to_field(name, true),
-            Some(NativeKind::LineString) => LineStringType::new(dimension, metadata).with_coord_type(coord_type).to_field(name, true),
-            Some(NativeKind::Polygon) => PolygonType::new(dimension, metadata).with_coord_type(coord_type).to_field(name, true),
-            Some(NativeKind::MultiPoint) => MultiPointType::new(dimension, metadata).with_coord_type(coord_type).to_field(name, true),
-            Some(NativeKind::MultiLineString) => {
-                MultiLineStringType::new(dimension, metadata).with_coord_type(coord_type).to_field(name, true)
+            None => {
+                Field::new(name, DataType::Binary, true).with_extension_type(WkbType::new(metadata))
             }
-            Some(NativeKind::MultiPolygon) => {
-                MultiPolygonType::new(dimension, metadata).with_coord_type(coord_type).to_field(name, true)
-            }
+            Some(NativeKind::Point) => PointType::new(dimension, metadata)
+                .with_coord_type(coord_type)
+                .to_field(name, true),
+            Some(NativeKind::LineString) => LineStringType::new(dimension, metadata)
+                .with_coord_type(coord_type)
+                .to_field(name, true),
+            Some(NativeKind::Polygon) => PolygonType::new(dimension, metadata)
+                .with_coord_type(coord_type)
+                .to_field(name, true),
+            Some(NativeKind::MultiPoint) => MultiPointType::new(dimension, metadata)
+                .with_coord_type(coord_type)
+                .to_field(name, true),
+            Some(NativeKind::MultiLineString) => MultiLineStringType::new(dimension, metadata)
+                .with_coord_type(coord_type)
+                .to_field(name, true),
+            Some(NativeKind::MultiPolygon) => MultiPolygonType::new(dimension, metadata)
+                .with_coord_type(coord_type)
+                .to_field(name, true),
         };
 
         let mut col = Col::new(steps, anchor, DataType::Null);
         col.kind = ColKind::Field(field);
-        if let Some(srs) = geometry.crs_override.as_deref().or_else(|| stats.main_srs()) {
-            col.metadata.insert(meta::SRS_NAME.to_string(), srs.to_string());
+        if let Some(srs) = geometry
+            .crs_override
+            .as_deref()
+            .or_else(|| stats.main_srs())
+        {
+            col.metadata
+                .insert(meta::SRS_NAME.to_string(), srs.to_string());
             let spellings = stats.srs.len();
             if spellings > 1 {
                 reasons.push(format!("{spellings} srsNames; column CRS from {srs:?}"));
@@ -969,7 +1161,8 @@ impl Engine<'_> {
         let column = steps.last().map_or("", |step| &*step.name.local);
         let (swapped, decision) = self.axis(column, stats);
         col.metadata.insert(meta::AXIS_SWAPPED.to_string(), swapped);
-        col.metadata.insert(meta::AXIS_DECISION.to_string(), decision.clone());
+        col.metadata
+            .insert(meta::AXIS_DECISION.to_string(), decision.clone());
         reasons.push(format!("axis: {decision}"));
         col.reasons = reasons;
         col
@@ -1007,7 +1200,11 @@ impl Engine<'_> {
             (true, false) => "true",
             _ => "false",
         };
-        let decision = if reasons.is_empty() { "no coordinates seen".to_string() } else { reasons.join("; ") };
+        let decision = if reasons.is_empty() {
+            "no coordinates seen".to_string()
+        } else {
+            reasons.join("; ")
+        };
         (swapped.to_string(), decision)
     }
 
@@ -1032,7 +1229,11 @@ fn shared_locals<'n>(names: impl Iterator<Item = &'n QName>) -> BTreeSet<String>
     for name in names {
         *counts.entry(&name.local).or_default() += 1;
     }
-    counts.into_iter().filter(|(_, count)| *count > 1).map(|(local, _)| local.to_string()).collect()
+    counts
+        .into_iter()
+        .filter(|(_, count)| *count > 1)
+        .map(|(local, _)| local.to_string())
+        .collect()
 }
 
 fn is_href(name: &QName) -> bool {
@@ -1041,7 +1242,11 @@ fn is_href(name: &QName) -> bool {
 
 /// `xyz` if any geometry had three dimensions (2D values then get a NaN Z).
 fn dimension(stats: &GeometryStats) -> Dimension {
-    if stats.dims.iter().any(|&d| d >= 3) { Dimension::XYZ } else { Dimension::XY }
+    if stats.dims.iter().any(|&d| d >= 3) {
+        Dimension::XYZ
+    } else {
+        Dimension::XY
+    }
 }
 
 /// `Map(Utf8View → Utf8View)`, with Arrow's required non-null entries and keys.
@@ -1125,7 +1330,9 @@ fn native_kind(kinds: &BTreeSet<GeomKind>) -> Option<NativeKind> {
             | GeomKind::CompositeCurve
             | GeomKind::Ring => (Family::Line, false),
             GeomKind::MultiLineString | GeomKind::MultiCurve => (Family::Line, true),
-            GeomKind::Polygon | GeomKind::Patch | GeomKind::Envelope | GeomKind::Box => (Family::Area, false),
+            GeomKind::Polygon | GeomKind::Patch | GeomKind::Envelope | GeomKind::Box => {
+                (Family::Area, false)
+            }
             GeomKind::Surface
             | GeomKind::OrientableSurface
             | GeomKind::CompositeSurface
@@ -1212,4 +1419,3 @@ fn collect_namespaces(node: &ElementNode, uris: &mut IndexMap<Arc<str>, ()>) {
         collect_namespaces(child, uris);
     }
 }
-

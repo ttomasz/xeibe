@@ -17,8 +17,18 @@ fn gml32(local: &str) -> QName {
 
 #[test]
 fn gml_2_carriers_and_structure() {
-    for local in ["coordinates", "coord", "outerBoundaryIs", "innerBoundaryIs", "Box"] {
-        assert_eq!(classify_element(&gml(local)), Some(Dialect::Gml2), "{local}");
+    for local in [
+        "coordinates",
+        "coord",
+        "outerBoundaryIs",
+        "innerBoundaryIs",
+        "Box",
+    ] {
+        assert_eq!(
+            classify_element(&gml(local)),
+            Some(Dialect::Gml2),
+            "{local}"
+        );
     }
 }
 
@@ -34,7 +44,11 @@ fn gml_3_carriers_and_structure() {
         "Surface",
         "Envelope",
     ] {
-        assert_eq!(classify_element(&gml(local)), Some(Dialect::Gml3), "{local}");
+        assert_eq!(
+            classify_element(&gml(local)),
+            Some(Dialect::Gml3),
+            "{local}"
+        );
     }
     // Anything in the GML 3.2 namespace is GML 3.
     assert_eq!(classify_element(&gml32("Point")), Some(Dialect::Gml3));

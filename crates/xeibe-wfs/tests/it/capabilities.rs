@@ -79,10 +79,15 @@ fn reads_a_wfs_20_capabilities_document() {
     assert_eq!(capabilities.service_title.as_deref(), Some("Test service"));
     assert_eq!(capabilities.get_feature_url, "https://example.com/wfs?");
     assert_eq!(capabilities.constraints.kvp_encoding, Some(true));
-    assert_eq!(capabilities.constraints.implements_result_paging, Some(true));
+    assert_eq!(
+        capabilities.constraints.implements_result_paging,
+        Some(true)
+    );
     assert_eq!(capabilities.constraints.count_default, Some(5000));
 
-    let feature_type = capabilities.feature_type("ms:AD.Address").expect("the type");
+    let feature_type = capabilities
+        .feature_type("ms:AD.Address")
+        .expect("the type");
     assert_eq!(feature_type.title.as_deref(), Some("Addresses"));
     assert_eq!(
         feature_type.default_crs.as_deref(),
@@ -117,7 +122,11 @@ fn reads_the_older_versions_spellings() {
     let feature_type = wfs10
         .feature_type("ogdwien:SCOOTERABSTELLOGD")
         .expect("the type");
-    assert_eq!(feature_type.default_crs.as_deref(), Some("EPSG:31256"), "SRS in 1.0");
+    assert_eq!(
+        feature_type.default_crs.as_deref(),
+        Some("EPSG:31256"),
+        "SRS in 1.0"
+    );
     assert_eq!(
         feature_type.wgs84_bbox,
         Some([16.1, 48.1, 16.6, 48.4]),
@@ -128,15 +137,21 @@ fn reads_the_older_versions_spellings() {
 #[test]
 fn the_best_gml_output_format_is_picked() {
     let capabilities = Capabilities::parse(WFS_20.as_bytes()).expect("parsed");
-    let feature_type = capabilities.feature_type("ms:AD.Address").expect("the type");
+    let feature_type = capabilities
+        .feature_type("ms:AD.Address")
+        .expect("the type");
     assert_eq!(
-        capabilities.preferred_output_format(feature_type).as_deref(),
+        capabilities
+            .preferred_output_format(feature_type)
+            .as_deref(),
         Some("application/gml+xml; version=3.2"),
         "GML 3.2 before 3.1.1 before 2"
     );
 
     let wfs10 = Capabilities::parse(WFS_10.as_bytes()).expect("parsed");
-    let feature_type = wfs10.feature_type("ogdwien:SCOOTERABSTELLOGD").expect("the type");
+    let feature_type = wfs10
+        .feature_type("ogdwien:SCOOTERABSTELLOGD")
+        .expect("the type");
     assert_eq!(
         wfs10.preferred_output_format(feature_type).as_deref(),
         Some("GML2"),

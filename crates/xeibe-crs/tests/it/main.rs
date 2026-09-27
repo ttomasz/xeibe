@@ -10,10 +10,18 @@ use xeibe_crs::{CrsKind, FirstAxis, alias, get, projjson};
 #[test]
 fn knows_which_crss_are_northing_or_latitude_first() {
     for code in [4326, 4258, 2180, 2176, 3301, 31256] {
-        assert_eq!(get(code).unwrap().first_axis, FirstAxis::NorthOrLat, "EPSG:{code}");
+        assert_eq!(
+            get(code).unwrap().first_axis,
+            FirstAxis::NorthOrLat,
+            "EPSG:{code}"
+        );
     }
     for code in [25832, 3812, 2056, 3857, 32633] {
-        assert_eq!(get(code).unwrap().first_axis, FirstAxis::EastOrLon, "EPSG:{code}");
+        assert_eq!(
+            get(code).unwrap().first_axis,
+            FirstAxis::EastOrLon,
+            "EPSG:{code}"
+        );
     }
 }
 
@@ -56,7 +64,10 @@ fn deprecated_codes_are_kept_because_real_data_uses_them() {
     let ntf = get(27582).expect("EPSG:27582");
     assert!(ntf.deprecated);
     assert_eq!(ntf.kind, CrsKind::Projected);
-    assert!(projjson(27582).is_some(), "deprecated CRSs still get PROJJSON");
+    assert!(
+        projjson(27582).is_some(),
+        "deprecated CRSs still get PROJJSON"
+    );
 }
 
 #[test]
@@ -67,11 +78,16 @@ fn areas_of_use_are_epsg_bounds_and_reorder_to_axis_order() {
     assert!(west > -40.0 && east < 50.0, "longitude: {west}..{east}");
 
     // EPSG:4258 is latitude-first, so the axis-order view keeps that order.
-    let [min_first, min_second, max_first, max_second] =
-        etrs89.area_in_axis_order().expect("geographic CRSs have one");
-    assert_eq!([min_first, min_second, max_first, max_second], [south, west, north, east]);
+    let [min_first, min_second, max_first, max_second] = etrs89
+        .area_in_axis_order()
+        .expect("geographic CRSs have one");
+    assert_eq!(
+        [min_first, min_second, max_first, max_second],
+        [south, west, north, east]
+    );
 
-    let inside = |a: f32, b: f32| a >= min_first && a <= max_first && b >= min_second && b <= max_second;
+    let inside =
+        |a: f32, b: f32| a >= min_first && a <= max_first && b >= min_second && b <= max_second;
     assert!(inside(52.23, 21.01), "Warsaw, latitude first");
     assert!(!inside(21.01, 52.23), "the swapped reading falls outside");
 
@@ -87,9 +103,17 @@ fn the_crate_version_carries_the_epsg_version_as_build_metadata() {
     // has a letter in it, and v13's parallel streams let the minor go
     // backwards. See `update_crate_version` in scripts/gen_crs_tables.py.
     let version = env!("CARGO_PKG_VERSION");
-    let (_, metadata) = version.split_once('+').expect("build metadata naming the EPSG version");
-    let expected = format!("epsg-{}", xeibe_crs::EPSG_VERSION.replace(|c: char| !c.is_ascii_alphanumeric() && c != '.', "-"));
-    assert_eq!(metadata, expected, "crate version and table.rs disagree; rerun the generator");
+    let (_, metadata) = version
+        .split_once('+')
+        .expect("build metadata naming the EPSG version");
+    let expected = format!(
+        "epsg-{}",
+        xeibe_crs::EPSG_VERSION.replace(|c: char| !c.is_ascii_alphanumeric() && c != '.', "-")
+    );
+    assert_eq!(
+        metadata, expected,
+        "crate version and table.rs disagree; rerun the generator"
+    );
 }
 
 #[test]
@@ -105,7 +129,10 @@ fn projjson_is_parseable_and_identifies_its_own_code() {
         let doc: serde_json::Value = serde_json::from_str(text).expect("valid JSON");
         assert_eq!(doc["id"]["authority"], "EPSG", "EPSG:{code}");
         assert_eq!(doc["id"]["code"], code, "EPSG:{code}");
-        assert!(doc["type"].as_str().unwrap().ends_with("CRS"), "EPSG:{code}");
+        assert!(
+            doc["type"].as_str().unwrap().ends_with("CRS"),
+            "EPSG:{code}"
+        );
     }
 }
 
@@ -121,7 +148,10 @@ fn sexagesimal_angles_were_decoded_and_relabelled() {
         .find(|p| p["name"] == "Longitude of natural origin")
         .expect("a longitude of natural origin");
     assert_eq!(longitude["value"].as_f64().unwrap(), -58.5);
-    assert_eq!(longitude["unit"], "degree", "relabelled, not left as sexagesimal");
+    assert_eq!(
+        longitude["unit"], "degree",
+        "relabelled, not left as sexagesimal"
+    );
 }
 
 #[test]
@@ -138,10 +168,17 @@ fn every_record_has_a_sane_shape() {
     const { assert!(CRS_LEN > 8000, "expected the whole EPSG dataset") };
     let mut previous = 0;
     for record in xeibe_crs::CRS {
-        assert!(record.code > previous, "CRS must be sorted by code for binary search");
+        assert!(
+            record.code > previous,
+            "CRS must be sorted by code for binary search"
+        );
         previous = record.code;
         assert!(!record.name.is_empty(), "EPSG:{}", record.code);
-        assert!(record.dimension >= 1 && record.dimension <= 4, "EPSG:{}", record.code);
+        assert!(
+            record.dimension >= 1 && record.dimension <= 4,
+            "EPSG:{}",
+            record.code
+        );
         if let Some([south, west, north, east]) = record.area_wgs84 {
             assert!((-90.0..=90.0).contains(&south), "EPSG:{}", record.code);
             assert!((-90.0..=90.0).contains(&north), "EPSG:{}", record.code);
@@ -175,5 +212,8 @@ fn every_alias_names_a_crs_in_the_table() {
         assert!(get(*code).is_some(), "{alias_name} → {code}");
         assert_eq!(alias(alias_name), Some(*code), "{alias_name}");
     }
-    assert!(xeibe_crs::ALIASES.windows(2).all(|w| w[0].0 < w[1].0), "sorted and unique");
+    assert!(
+        xeibe_crs::ALIASES.windows(2).all(|w| w[0].0 < w[1].0),
+        "sorted and unique"
+    );
 }

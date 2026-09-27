@@ -94,7 +94,12 @@ fn arcs_keep_their_stored_points_exactly() {
 
 #[test]
 fn an_even_number_of_arc_positions_is_an_error() {
-    assert!(parse(&curve("<gml:Arc><gml:posList>0 0 0 1</gml:posList></gml:Arc>")).is_err());
+    assert!(
+        parse(&curve(
+            "<gml:Arc><gml:posList>0 0 0 1</gml:posList></gml:Arc>"
+        ))
+        .is_err()
+    );
     assert!(
         parse(&curve(
             "<gml:ArcString><gml:posList>0 0 0 1 1 0 2 0</gml:posList></gml:ArcString>"
@@ -138,7 +143,12 @@ fn a_circle_is_closed_with_one_computed_point() {
 
 #[test]
 fn a_circle_needs_three_distinct_non_collinear_points() {
-    assert!(parse(&curve("<gml:Circle><gml:posList>0 0 0 1</gml:posList></gml:Circle>")).is_err());
+    assert!(
+        parse(&curve(
+            "<gml:Circle><gml:posList>0 0 0 1</gml:posList></gml:Circle>"
+        ))
+        .is_err()
+    );
     assert!(
         parse(&curve(
             "<gml:Circle><gml:posList>0 0 1 0 2 0</gml:posList></gml:Circle>"

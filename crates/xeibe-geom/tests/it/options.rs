@@ -32,7 +32,10 @@ fn the_defaults_match_the_documented_ones() {
     assert!(options.axis.overrides.is_empty());
     assert!(options.crs_override.is_none());
     assert!(matches!(options.curves, CurveMode::Preserve));
-    assert!(options.primary.is_none(), "the first geometry column is primary");
+    assert!(
+        options.primary.is_none(),
+        "the first geometry column is primary"
+    );
 }
 
 #[test]

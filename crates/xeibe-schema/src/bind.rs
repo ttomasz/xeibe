@@ -37,7 +37,11 @@ impl ColumnPath {
             return Err("the path is empty".into());
         }
         let parts: Vec<&str> = path.split('/').collect();
-        let mut parsed = ColumnPath { steps: Vec::new(), attribute: None, anchor: None };
+        let mut parsed = ColumnPath {
+            steps: Vec::new(),
+            attribute: None,
+            anchor: None,
+        };
         for (index, part) in parts.iter().enumerate() {
             if part.is_empty() {
                 return Err(format!("empty step in {path:?}"));
@@ -55,11 +59,17 @@ impl ColumnPath {
             };
             if anchor {
                 if parsed.anchor.is_some() {
-                    return Err(format!("{path:?} has more than one `[]`: there are no lists of lists"));
+                    return Err(format!(
+                        "{path:?} has more than one `[]`: there are no lists of lists"
+                    ));
                 }
                 parsed.anchor = Some(parsed.steps.len());
             }
-            parsed.steps.push(if step == "*" { QName::new(None, "*") } else { step_name(step, namespaces)? });
+            parsed.steps.push(if step == "*" {
+                QName::new(None, "*")
+            } else {
+                step_name(step, namespaces)?
+            });
         }
         Ok(parsed)
     }
@@ -89,7 +99,9 @@ fn step_name(step: &str, namespaces: &HashMap<String, String>) -> Result<QName, 
 pub fn schema_namespaces(schema: &Schema) -> Result<HashMap<String, String>, String> {
     match schema.metadata().get(meta::NS) {
         None => Ok(HashMap::new()),
-        Some(json) => serde_json::from_str(json).map_err(|e| format!("invalid `{}` metadata: {e}", meta::NS)),
+        Some(json) => {
+            serde_json::from_str(json).map_err(|e| format!("invalid `{}` metadata: {e}", meta::NS))
+        }
     }
 }
 
@@ -98,7 +110,11 @@ pub fn schema_namespaces(schema: &Schema) -> Result<HashMap<String, String>, Str
 ///
 /// `options` is taken for symmetry with [`crate::infer_schema`]: binding
 /// applies no inference rule.
-pub fn bind_schema(layer: &QName, schema: &Schema, _options: &InferenceOptions) -> crate::Result<LayerSchema> {
+pub fn bind_schema(
+    layer: &QName,
+    schema: &Schema,
+    _options: &InferenceOptions,
+) -> crate::Result<LayerSchema> {
     let error = |field: Option<&Field>, message: String| crate::Error::Bind {
         layer: layer.to_string(),
         message: match field {
@@ -109,19 +125,34 @@ pub fn bind_schema(layer: &QName, schema: &Schema, _options: &InferenceOptions) 
     let namespaces = schema_namespaces(schema).map_err(|message| error(None, message))?;
     let mut routes = Vec::new();
     for (index, field) in schema.fields().iter().enumerate() {
-        let text = field.metadata().get(meta::PATH).map_or(field.name().as_str(), String::as_str);
-        let path = ColumnPath::parse(text, &namespaces).map_err(|message| error(Some(field), message))?;
+        let text = field
+            .metadata()
+            .get(meta::PATH)
+            .map_or(field.name().as_str(), String::as_str);
+        let path =
+            ColumnPath::parse(text, &namespaces).map_err(|message| error(Some(field), message))?;
         let (list, item) = match field.data_type() {
-            DataType::List(item) | DataType::LargeList(item) if !is_geoarrow(field) => (true, item.as_ref()),
+            DataType::List(item) | DataType::LargeList(item) if !is_geoarrow(field) => {
+                (true, item.as_ref())
+            }
             _ => (false, field.as_ref()),
         };
-        let value = route_value(field, item, list).map_err(|message| error(Some(field), message))?;
+        let value =
+            route_value(field, item, list).map_err(|message| error(Some(field), message))?;
         let anchor = match (list, path.anchor) {
             (false, Some(_)) => {
-                return Err(error(Some(field), format!("`[]` in {text:?} marks the anchor of a list, but the column is not a list")));
+                return Err(error(
+                    Some(field),
+                    format!(
+                        "`[]` in {text:?} marks the anchor of a list, but the column is not a list"
+                    ),
+                ));
             }
             (true, _) if path.steps.is_empty() => {
-                return Err(error(Some(field), "a list column follows an element; its path has none".into()));
+                return Err(error(
+                    Some(field),
+                    "a list column follows an element; its path has none".into(),
+                ));
             }
             // Without a marker, a list is anchored on its first step.
             (true, anchor) => Some(anchor.unwrap_or(0)),
@@ -135,7 +166,12 @@ pub fn bind_schema(layer: &QName, schema: &Schema, _options: &InferenceOptions) 
             anchor,
         });
     }
-    Ok(LayerSchema { layer: layer.clone(), schema: schema.clone(), routes, decisions: Vec::new() })
+    Ok(LayerSchema {
+        layer: layer.clone(),
+        schema: schema.clone(),
+        routes,
+        decisions: Vec::new(),
+    })
 }
 
 /// What a column (or a list column's `item`) takes from its element.
@@ -165,7 +201,10 @@ fn route_value(field: &Field, item: &Field, list: bool) -> Result<RouteValue, St
 }
 
 fn extension_name(field: &Field) -> Option<&str> {
-    field.metadata().get("ARROW:extension:name").map(String::as_str)
+    field
+        .metadata()
+        .get("ARROW:extension:name")
+        .map(String::as_str)
 }
 
 fn is_geoarrow(field: &Field) -> bool {

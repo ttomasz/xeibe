@@ -41,7 +41,12 @@ impl Parser<'_> {
     /// The corners as written: `lowerCorner`/`upperCorner`, or the
     /// deprecated two positions in `pos`, `coordinates` or `coord`
     /// (07-036 §10.1.4.6).
-    pub(super) fn envelope(&mut self, reader: &mut GmlReader<'_>, elem: &Elem, scope: Scope) -> crate::Result<Envelope> {
+    pub(super) fn envelope(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: &Elem,
+        scope: Scope,
+    ) -> crate::Result<Envelope> {
         let scope = self.enter(elem, scope);
         let mut lower = None;
         let mut upper = None;
@@ -66,10 +71,15 @@ impl Parser<'_> {
             upper = Some(positions.get(1).to_vec());
         }
         match (lower, upper) {
-            (Some(lower), Some(upper)) => {
-                Ok(Envelope { lower, upper, srs_name: elem.attrs.srs_name.clone() })
-            }
-            _ => Err(self.invalid(reader, format!("{} needs a lower and an upper corner", elem.local()))),
+            (Some(lower), Some(upper)) => Ok(Envelope {
+                lower,
+                upper,
+                srs_name: elem.attrs.srs_name.clone(),
+            }),
+            _ => Err(self.invalid(
+                reader,
+                format!("{} needs a lower and an upper corner", elem.local()),
+            )),
         }
     }
 }

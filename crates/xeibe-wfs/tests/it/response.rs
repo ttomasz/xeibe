@@ -1,9 +1,9 @@
 //! Reading the facts a paged download needs out of a response, and OWS
 //! exceptions (`docs/wfs.md`, "Response structure", "Errors and robustness").
 
+use xeibe_testkit::samples::sample;
 use xeibe_wfs::exception::ExceptionReport;
 use xeibe_wfs::response::{Response, inspect};
-use xeibe_testkit::samples::sample;
 
 fn info(xml: &str) -> xeibe_wfs::response::ResponseInfo {
     match inspect(xml.as_bytes()).expect("the response is inspected") {
@@ -132,7 +132,11 @@ fn a_cache_expired_exception_is_recognised_so_paging_can_resume() {
         r#"<ows:ExceptionReport xmlns:ows="http://www.opengis.net/ows/1.1">"#,
         r#"<ows:Exception exceptionCode="OperationProcessingFailed"/></ows:ExceptionReport>"#
     );
-    assert!(!ExceptionReport::parse(other.as_bytes()).unwrap().is_cache_expired());
+    assert!(
+        !ExceptionReport::parse(other.as_bytes())
+            .unwrap()
+            .is_cache_expired()
+    );
 }
 
 #[test]

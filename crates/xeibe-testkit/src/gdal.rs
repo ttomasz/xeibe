@@ -117,9 +117,11 @@ impl GdalReport {
 impl GdalLayer {
     /// The value of one attribute of one feature, as `ogrinfo` printed it.
     pub fn attr(&self, feature: usize, name: &str) -> Option<&str> {
-        self.features.get(feature)?.attrs.iter().find_map(|(n, _, v)| {
-            (n == name).then_some(v.as_str())
-        })
+        self.features
+            .get(feature)?
+            .attrs
+            .iter()
+            .find_map(|(n, _, v)| (n == name).then_some(v.as_str()))
     }
 }
 
@@ -151,8 +153,14 @@ fn parse_field_definition(line: &str) -> Option<(String, String)> {
 
 fn is_wkt(line: &str) -> bool {
     let line = line.trim();
-    let tag: String = line.chars().take_while(|c| c.is_ascii_uppercase()).collect();
-    !tag.is_empty() && line[tag.len()..].trim_start().starts_with(['(', 'E', 'Z', 'M'])
+    let tag: String = line
+        .chars()
+        .take_while(|c| c.is_ascii_uppercase())
+        .collect();
+    !tag.is_empty()
+        && line[tag.len()..]
+            .trim_start()
+            .starts_with(['(', 'E', 'Z', 'M'])
 }
 
 // ------------------------------------------- GML geometry snippets from GDAL

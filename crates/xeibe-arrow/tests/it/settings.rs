@@ -62,7 +62,10 @@ fn list_of(item: DataType) -> DataType {
 }
 
 fn extension(field: &Field) -> Option<&str> {
-    field.metadata().get("ARROW:extension:name").map(String::as_str)
+    field
+        .metadata()
+        .get("ARROW:extension:name")
+        .map(String::as_str)
 }
 
 fn path_of(field: &Field) -> Option<&str> {
@@ -141,7 +144,10 @@ fn aliases_follow_postgresql_and_duckdb() {
         ("double precision", DataType::Float64),
         ("float8", DataType::Float64),
         ("date", DataType::Date32),
-        ("timestamp", DataType::Timestamp(TimeUnit::Microsecond, None)),
+        (
+            "timestamp",
+            DataType::Timestamp(TimeUnit::Microsecond, None),
+        ),
         (
             "timestamptz",
             DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into())),
@@ -186,7 +192,10 @@ fn map_is_a_string_to_string_map() {
 
 #[test]
 fn arrow_type_strings_are_accepted_too() {
-    assert_eq!(type_of("Utf8View").unwrap().data_type(), &DataType::Utf8View);
+    assert_eq!(
+        type_of("Utf8View").unwrap().data_type(),
+        &DataType::Utf8View
+    );
     assert_eq!(type_of("Int64").unwrap().data_type(), &DataType::Int64);
     assert_eq!(
         type_of("List(Utf8View)").unwrap().data_type(),
@@ -208,8 +217,15 @@ fn numeric_and_decimal_are_rejected_with_a_hint() {
 
 #[test]
 fn geometry_columns_accept_a_kind_and_dimensions() {
-    assert_eq!(extension(&type_of("geometry").unwrap()), Some("geoarrow.wkb"), "bare geometry is WKB");
-    assert_eq!(extension(&type_of("geometry(Point)").unwrap()), Some("geoarrow.point"));
+    assert_eq!(
+        extension(&type_of("geometry").unwrap()),
+        Some("geoarrow.wkb"),
+        "bare geometry is WKB"
+    );
+    assert_eq!(
+        extension(&type_of("geometry(Point)").unwrap()),
+        Some("geoarrow.point")
+    );
     assert_eq!(
         extension(&type_of("geometry(MultiPolygon, XYZ)").unwrap()),
         Some("geoarrow.multipolygon")
@@ -330,9 +346,8 @@ fn a_column_spec_round_trips_through_a_field() {
 
 #[test]
 fn an_unknown_type_string_is_an_error_naming_the_column() {
-    let settings = load(
-        r#"{ "format_version": 1, "layers": { "Parcel": { "area": "NotAType" } } }"#,
-    );
+    let settings =
+        load(r#"{ "format_version": 1, "layers": { "Parcel": { "area": "NotAType" } } }"#);
     let error = settings.schema("Parcel").expect_err("an invalid type");
     let message = error.to_string();
     assert!(message.contains("area"), "{message}");

@@ -24,7 +24,11 @@ pub enum Error {
     Settings { path: String, message: String },
 
     #[error("column {column}: invalid type {type_string:?}: {message}")]
-    ColumnType { column: String, type_string: String, message: String },
+    ColumnType {
+        column: String,
+        type_string: String,
+        message: String,
+    },
 
     /// A field marked non-null in a given Arrow schema has no value in this feature.
     /// Handled per `OnFeatureError`, like any feature error.

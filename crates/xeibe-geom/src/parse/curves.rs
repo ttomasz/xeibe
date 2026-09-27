@@ -20,7 +20,12 @@ impl Parser<'_> {
     /// Any curve element as a [`Curve`]: `LineString`, `Curve`,
     /// `OrientableCurve`, `CompositeCurve`, `Ring` (and, leniently, `LinearRing`),
     /// and GML 3.3's compact curves.
-    pub(super) fn curve(&mut self, reader: &mut GmlReader<'_>, elem: Elem, scope: Scope) -> crate::Result<Curve> {
+    pub(super) fn curve(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: Elem,
+        scope: Scope,
+    ) -> crate::Result<Curve> {
         let curve = if let Some((element, segment)) = super::compact_curve(&elem.name) {
             // GML 3.3: a `Curve` of one segment, written compactly
             // (OGC 10-129r1 §7.6–7.12), with that segment's rules.
@@ -44,7 +49,9 @@ impl Parser<'_> {
             }
         };
         if elem.attrs.href && curve.is_empty() {
-            return Err(Error::ByReference { location: reader.location() });
+            return Err(Error::ByReference {
+                location: reader.location(),
+            });
         }
         Ok(curve)
     }
@@ -63,12 +70,19 @@ impl Parser<'_> {
         self.segment_as(reader, elem, element, segment, scope, &mut builder)?;
         let joined = builder.finish();
         self.warnings.extend(joined.warnings);
-        Ok(joined.curve.unwrap_or_else(|| Curve::Linear(LineString::default())))
+        Ok(joined
+            .curve
+            .unwrap_or_else(|| Curve::Linear(LineString::default())))
     }
 
     /// `Curve` with its `segments`, joined. `segments` is required; an empty
     /// one is an empty curve.
-    fn segmented_curve(&mut self, reader: &mut GmlReader<'_>, elem: &Elem, scope: Scope) -> crate::Result<Curve> {
+    fn segmented_curve(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: &Elem,
+        scope: Scope,
+    ) -> crate::Result<Curve> {
         let scope = self.enter(elem, scope);
         let mut builder = CurveBuilder::default();
         let mut has_segments = false;
@@ -88,7 +102,9 @@ impl Parser<'_> {
         }
         let joined = builder.finish();
         self.warnings.extend(joined.warnings);
-        Ok(joined.curve.unwrap_or_else(|| Curve::Linear(LineString::default())))
+        Ok(joined
+            .curve
+            .unwrap_or_else(|| Curve::Linear(LineString::default())))
     }
 
     /// One element of `segments`, pushed onto `builder`.
@@ -136,7 +152,12 @@ impl Parser<'_> {
             _ => "circularArc2PointWithBulge",
         };
         // The element name decides how the segment is read (support matrix §5.4).
-        if let Some(written) = elem.attrs.interpolation.as_deref().filter(|i| *i != interpolation) {
+        if let Some(written) = elem
+            .attrs
+            .interpolation
+            .as_deref()
+            .filter(|i| *i != interpolation)
+        {
             self.warnings.push(format!(
                 "{element} has interpolation=\"{written}\" (expected \"{interpolation}\"); read as {element}"
             ));
@@ -158,10 +179,18 @@ impl Parser<'_> {
                 match check_arc_positions(coords.len(), elem.attrs.num_arc) {
                     Ok(warning) => self.warnings.extend(warning),
                     Err(_) => {
-                        return Err(self.position_count(reader, element, coords.len(), "an odd number of at least 3"));
+                        return Err(self.position_count(
+                            reader,
+                            element,
+                            coords.len(),
+                            "an odd number of at least 3",
+                        ));
                     }
                 }
-                builder.push_circular(CircularString { coords, computed: Vec::new() });
+                builder.push_circular(CircularString {
+                    coords,
+                    computed: Vec::new(),
+                });
             }
             "Circle" => {
                 let coords = self.positions(reader, scope, true)?;
@@ -171,17 +200,22 @@ impl Parser<'_> {
                 if coords.len() != 3 {
                     return Err(self.position_count(reader, element, coords.len(), "3"));
                 }
-                let circle = circle_from_points(&coords).map_err(|message| self.invalid(reader, message))?;
+                let circle =
+                    circle_from_points(&coords).map_err(|message| self.invalid(reader, message))?;
                 builder.push_circular(circle);
             }
             "ArcByCenterPoint" | "CircleByCenterPoint" => {
                 let circle = segment == "CircleByCenterPoint";
-                if let Some(arc) = self.arc_by_center_point(reader, element, circle, compact, scope)? {
+                if let Some(arc) =
+                    self.arc_by_center_point(reader, element, circle, compact, scope)?
+                {
                     builder.push_circular(arc);
                 }
             }
             _ => {
-                if let Some(arc) = self.arc_string_by_bulge(reader, elem, element, compact, scope)? {
+                if let Some(arc) =
+                    self.arc_string_by_bulge(reader, elem, element, compact, scope)?
+                {
                     builder.push_circular(arc);
                 }
             }
@@ -231,9 +265,13 @@ impl Parser<'_> {
                 }
                 "startAngle" | "endAngle" => {
                     let value = self.number(reader)?;
-                    let degrees = angle_to_degrees(value, child.attrs.uom.as_deref()).ok_or_else(|| {
-                        self.invalid(reader, format!("unknown angle unit {:?}", child.attrs.uom))
-                    })?;
+                    let degrees =
+                        angle_to_degrees(value, child.attrs.uom.as_deref()).ok_or_else(|| {
+                            self.invalid(
+                                reader,
+                                format!("unknown angle unit {:?}", child.attrs.uom),
+                            )
+                        })?;
                     angles[usize::from(child.local() == "endAngle")] = Some(degrees);
                 }
                 _ => self.skip(reader)?,
@@ -245,11 +283,14 @@ impl Parser<'_> {
         if center.len() != 1 {
             return Err(self.position_count(reader, element, center.len(), "1 (the center)"));
         }
-        let (radius, uom) = radius.ok_or_else(|| self.invalid(reader, format!("{element} without a radius")))?;
+        let (radius, uom) =
+            radius.ok_or_else(|| self.invalid(reader, format!("{element} without a radius")))?;
         let (start, end) = match angles {
             [Some(start), Some(end)] => (start, end),
             _ if circle => (0.0, 0.0),
-            _ => return Err(self.invalid(reader, format!("{element} needs startAngle and endAngle"))),
+            _ => {
+                return Err(self.invalid(reader, format!("{element} needs startAngle and endAngle")));
+            }
         };
 
         let info = self.crs_info();
@@ -260,7 +301,9 @@ impl Parser<'_> {
             return Err(self.unsupported(reader, format!("{element} in a geographic CRS")));
         }
         let radius = match unit_m {
-            Some(metres) => radius * metres / info.and_then(|info| info.linear_unit_m).unwrap_or(1.0),
+            Some(metres) => {
+                radius * metres / info.and_then(|info| info.linear_unit_m).unwrap_or(1.0)
+            }
             None => radius,
         };
 
@@ -313,7 +356,10 @@ impl Parser<'_> {
                 "normal" => {
                     let mut vector = Vec::new();
                     self.read_numbers(reader, &mut vector)?;
-                    let first = vector.first().copied().ok_or_else(|| self.invalid(reader, "an empty normal"))?;
+                    let first = vector
+                        .first()
+                        .copied()
+                        .ok_or_else(|| self.invalid(reader, "an empty normal"))?;
                     normals.push(first);
                 }
                 _ => self.skip(reader)?,
@@ -328,17 +374,29 @@ impl Parser<'_> {
         }
         let arcs = n - 1;
         if bulges.len() < arcs || normals.len() < arcs {
-            return Err(self.invalid(reader, format!("{element} needs a bulge and a normal for each of its {arcs} arcs")));
+            return Err(self.invalid(
+                reader,
+                format!("{element} needs a bulge and a normal for each of its {arcs} arcs"),
+            ));
         }
         if let Some(num_arc) = elem.attrs.num_arc.filter(|&num_arc| num_arc != arcs) {
-            self.warnings.push(format!("numArc=\"{num_arc}\" does not match {n} positions; the positions are used"));
+            self.warnings.push(format!(
+                "numArc=\"{num_arc}\" does not match {n} positions; the positions are used"
+            ));
         }
 
         let swap = self.swap();
         let xy = |position: &[f64]| {
-            if swap { [position[1], position[0]] } else { [position[0], position[1]] }
+            if swap {
+                [position[1], position[0]]
+            } else {
+                [position[0], position[1]]
+            }
         };
-        let mut out = Coords { dim: coords.dim, values: Vec::with_capacity(coords.values.len() * 2) };
+        let mut out = Coords {
+            dim: coords.dim,
+            values: Vec::with_capacity(coords.values.len() * 2),
+        };
         let mut computed = Vec::with_capacity(arcs);
         out.push(coords.get(0));
         for i in 0..arcs {
@@ -354,7 +412,10 @@ impl Parser<'_> {
             }
             out.push(p1);
         }
-        Ok(Some(CircularString { coords: out, computed }))
+        Ok(Some(CircularString {
+            coords: out,
+            computed,
+        }))
     }
 
     /// One number: the text of the current element.
@@ -364,7 +425,12 @@ impl Parser<'_> {
     }
 
     /// `OrientableCurve`: its `baseCurve`, reversed if `orientation="-"`. May nest.
-    fn orientable_curve(&mut self, reader: &mut GmlReader<'_>, elem: &Elem, scope: Scope) -> crate::Result<Curve> {
+    fn orientable_curve(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: &Elem,
+        scope: Scope,
+    ) -> crate::Result<Curve> {
         let scope = self.enter(elem, scope);
         let mut base = None;
         while let Some(child) = self.next_child(reader)? {
@@ -377,7 +443,8 @@ impl Parser<'_> {
                 self.skip(reader)?;
             }
         }
-        let mut curve = base.ok_or_else(|| self.invalid(reader, "an OrientableCurve needs a baseCurve"))?;
+        let mut curve =
+            base.ok_or_else(|| self.invalid(reader, "an OrientableCurve needs a baseCurve"))?;
         if elem.attrs.reversed {
             curve.reverse();
         }
@@ -385,16 +452,28 @@ impl Parser<'_> {
     }
 
     /// `CompositeCurve`: its members joined into one curve.
-    fn composite_curve(&mut self, reader: &mut GmlReader<'_>, elem: &Elem, scope: Scope) -> crate::Result<Curve> {
+    fn composite_curve(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: &Elem,
+        scope: Scope,
+    ) -> crate::Result<Curve> {
         let builder = self.curve_members(reader, elem, scope)?;
         let joined = builder.finish();
         self.warnings.extend(joined.warnings);
-        joined.curve.ok_or_else(|| self.invalid(reader, "a CompositeCurve needs at least one member"))
+        joined
+            .curve
+            .ok_or_else(|| self.invalid(reader, "a CompositeCurve needs at least one member"))
     }
 
     /// `Ring` made of `curveMember`s: contiguous, closed cycle. An empty
     /// ring is an empty curve.
-    fn ring(&mut self, reader: &mut GmlReader<'_>, elem: &Elem, scope: Scope) -> crate::Result<Curve> {
+    fn ring(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: &Elem,
+        scope: Scope,
+    ) -> crate::Result<Curve> {
         let builder = self.curve_members(reader, elem, scope)?;
         let joined = builder.finish();
         self.warnings.extend(joined.warnings);
@@ -407,7 +486,12 @@ impl Parser<'_> {
     }
 
     /// The curves of `curveMember`/`curveMembers`, collected for joining.
-    fn curve_members(&mut self, reader: &mut GmlReader<'_>, elem: &Elem, scope: Scope) -> crate::Result<CurveBuilder> {
+    fn curve_members(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: &Elem,
+        scope: Scope,
+    ) -> crate::Result<CurveBuilder> {
         let scope = self.enter(elem, scope);
         let mut builder = CurveBuilder::default();
         while let Some(child) = self.next_child(reader)? {

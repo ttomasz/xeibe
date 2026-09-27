@@ -200,7 +200,9 @@ impl G {
                     G::MultiSurface(members)
                 }
             }
-            G::MultiPoint(members) => G::MultiPoint(members.iter().map(|m| m.canonical()).collect()),
+            G::MultiPoint(members) => {
+                G::MultiPoint(members.iter().map(|m| m.canonical()).collect())
+            }
             G::MultiLineString(members) => {
                 G::MultiLineString(members.iter().map(|m| m.canonical()).collect())
             }
@@ -246,7 +248,10 @@ pub struct Tol {
 
 impl Default for Tol {
     fn default() -> Self {
-        Tol { abs: 1e-9, rel: 1e-9 }
+        Tol {
+            abs: 1e-9,
+            rel: 1e-9,
+        }
     }
 }
 
@@ -421,7 +426,10 @@ impl fmt::Display for G {
                 if rings.is_empty() {
                     return write!(f, "POLYGON{z} EMPTY");
                 }
-                let rings: Vec<String> = rings.iter().map(|r| format!("({})", fmt_coords(r))).collect();
+                let rings: Vec<String> = rings
+                    .iter()
+                    .map(|r| format!("({})", fmt_coords(r)))
+                    .collect();
                 write!(f, "POLYGON{z} ({})", rings.join(","))
             }
             G::Other(tag) => write!(f, "{tag}"),
@@ -434,7 +442,9 @@ impl fmt::Display for G {
                 // as GDAL and the OGC WKT grammar do.
                 let untagged = match self {
                     G::MultiPoint(_) => Untagged::Point,
-                    G::CompoundCurve(_) | G::CurvePolygon(_) | G::MultiCurve(_)
+                    G::CompoundCurve(_)
+                    | G::CurvePolygon(_)
+                    | G::MultiCurve(_)
                     | G::MultiLineString(_) => Untagged::LineString,
                     G::MultiPolygon(_) | G::MultiSurface(_) => Untagged::Polygon,
                     _ => Untagged::None,
@@ -447,8 +457,10 @@ impl fmt::Display for G {
                             format!("({})", fmt_coords(cs))
                         }
                         (Untagged::Polygon, G::Polygon(rings)) if !rings.is_empty() => {
-                            let rings: Vec<String> =
-                                rings.iter().map(|r| format!("({})", fmt_coords(r))).collect();
+                            let rings: Vec<String> = rings
+                                .iter()
+                                .map(|r| format!("({})", fmt_coords(r)))
+                                .collect();
                             format!("({})", rings.join(","))
                         }
                         _ => part.to_string(),
@@ -572,7 +584,11 @@ impl Parser {
                 return Ok(G::Point(Some(coord)));
             }
             "LINESTRING" | "CIRCULARSTRING" => {
-                let coords = if empty { Vec::new() } else { self.coord_list()? };
+                let coords = if empty {
+                    Vec::new()
+                } else {
+                    self.coord_list()?
+                };
                 if tag == "LINESTRING" {
                     G::LineString(coords)
                 } else {

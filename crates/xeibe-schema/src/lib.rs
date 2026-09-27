@@ -17,10 +17,10 @@ pub mod rules;
 pub mod scan;
 pub mod value;
 
+pub use bind::{ColumnPath, bind_schema};
 pub use error::{Error, Result};
 pub use merge::Merge;
 pub use node::ElementNode;
-pub use bind::{ColumnPath, bind_schema};
 pub use observation::{DatasetObservation, LayerObservation};
 pub use options::{InferenceOptions, SampleOptions};
 pub use pattern::PathPattern;

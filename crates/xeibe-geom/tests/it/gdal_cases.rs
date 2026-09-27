@@ -16,7 +16,7 @@ use std::panic::AssertUnwindSafe;
 use xeibe_testkit::gdal::{GeometryCase, geometry_cases};
 use xeibe_testkit::wkt::{G, Tol, diff};
 
-use crate::support::{parse_in, to_g, FixedAxis};
+use crate::support::{FixedAxis, parse_in, to_g};
 use xeibe_geom::GeometryOptions;
 use xeibe_geom::parse::ParseContext;
 
@@ -40,8 +40,16 @@ enum Expect {
 const OVERRIDES: &[(&str, Expect, &str)] = &[
     // An empty geometry element is an empty geometry, not a null one
     // (`docs/geometry.md`, "Empty, invalid and degenerate geometry").
-    ("ogr_gml_geom:1365", Expect::Wkt("POINT EMPTY"), "empty element"),
-    ("ogr_gml_geom:1367", Expect::Wkt("LINESTRING EMPTY"), "empty element"),
+    (
+        "ogr_gml_geom:1365",
+        Expect::Wkt("POINT EMPTY"),
+        "empty element",
+    ),
+    (
+        "ogr_gml_geom:1367",
+        Expect::Wkt("LINESTRING EMPTY"),
+        "empty element",
+    ),
     // A gap between members is a warning, not an error ("Joining segments and
     // members"); GDAL says "Non contiguous curves". Both positions are kept,
     // joined by a straight line so that every part of the compound curve
@@ -63,23 +71,43 @@ const OVERRIDES: &[(&str, Expect, &str)] = &[
     ),
     // An empty member is an empty geometry, not a null one, so it is not an
     // error ("Empty, invalid and degenerate geometry"); GDAL's null member is.
-    ("ogr_gml_geom:1482", Expect::Wkt("MULTIPOINT EMPTY"), "empty element"),
-    ("ogr_gml_geom:1523", Expect::Wkt("MULTILINESTRING EMPTY"), "empty element"),
+    (
+        "ogr_gml_geom:1482",
+        Expect::Wkt("MULTIPOINT EMPTY"),
+        "empty element",
+    ),
+    (
+        "ogr_gml_geom:1523",
+        Expect::Wkt("MULTILINESTRING EMPTY"),
+        "empty element",
+    ),
     // A patch with only interior rings is an unsupported geometry, so a
     // geometry error ("Empty, invalid and degenerate geometry"); GDAL makes it
     // a hole of the previous member.
-    ("ogr_gml_geom:2050", Expect::Error, "polygon with no exterior is unsupported"),
+    (
+        "ogr_gml_geom:2050",
+        Expect::Error,
+        "polygon with no exterior is unsupported",
+    ),
     // Solids are out of scope (support matrix §5.1, "Unsupported geometry");
     // GDAL reads this one's exterior as a polygon.
     ("ogr_gml_geom:1591", Expect::Error, "solids are unsupported"),
     // The root is `gml:Point`: `root_element` stops at the XML declaration.
-    ("ogr_gml_geom:2191", Expect::Gdal, "the XML declaration and a comment precede the root"),
+    (
+        "ogr_gml_geom:2191",
+        Expect::Gdal,
+        "the XML declaration and a comment precede the root",
+    ),
     // Arc angles are measured in output (x/y) order ("Arcs given by
     // parameters"). EPSG:2326 is northing first and GDAL measures in that
     // order, while this harness declares the coordinates x/y (no swap). With a
     // swap decision we give GDAL's arc: see
     // `parse_curves::arc_angles_are_measured_in_output_order`.
-    ("ogr_gml_geom:3050", Expect::Skip, "angles in output order; the harness never swaps"),
+    (
+        "ogr_gml_geom:3050",
+        Expect::Skip,
+        "angles in output order; the harness never swaps",
+    ),
     // Triangle and Rectangle patches are polygons, so a surface of both is a
     // MultiPolygon, not GDAL's GEOMETRYCOLLECTION of TRIANGLE + POLYGON.
     (
@@ -90,7 +118,11 @@ const OVERRIDES: &[(&str, Expect, &str)] = &[
         "patches are polygons",
     ),
     // `trianglePatches` inside a `Surface` is not valid GML; GDAL reads it as a TIN.
-    ("ogr_gml_geom:1099", Expect::Skip, "invalid GML, GDAL guesses a TIN"),
+    (
+        "ogr_gml_geom:1099",
+        Expect::Skip,
+        "invalid GML, GDAL guesses a TIN",
+    ),
     // Arcs by parameters in a geographic CRS need geodesic linearization,
     // which is 🤔 Considering / P2 (support matrix §5.2).
     ("ogr_gml_geom:2424", Expect::Skip, "geodesic arc, P2"),
@@ -238,9 +270,9 @@ fn gdal_geometry_cases() {
                     Err(format!("expected no geometry ({reason}), got {geometry}"))
                 }
             }
-            (Expect::Gdal | Expect::Wkt(_), Err(error)) => {
-                Err(format!("expected a geometry ({reason}), got error: {error}"))
-            }
+            (Expect::Gdal | Expect::Wkt(_), Err(error)) => Err(format!(
+                "expected a geometry ({reason}), got error: {error}"
+            )),
             (Expect::Gdal | Expect::Wkt(_), Ok(None)) => {
                 Err(format!("expected a geometry ({reason}), got none"))
             }
@@ -253,10 +285,15 @@ fn gdal_geometry_cases() {
                 match diff(
                     &geometry.canonical(),
                     &expected.canonical(),
-                    Tol { abs: 1e-9, rel: 1e-12 },
+                    Tol {
+                        abs: 1e-9,
+                        rel: 1e-12,
+                    },
                 ) {
                     None => Ok(()),
-                    Some(message) => Err(format!("{message}\n      got {geometry}\n      want {expected}")),
+                    Some(message) => Err(format!(
+                        "{message}\n      got {geometry}\n      want {expected}"
+                    )),
                 }
             }
             _ => Ok(()),
@@ -284,8 +321,14 @@ fn every_override_names_a_case_that_exists() {
 
 #[test]
 fn wrapping_only_touches_segments_and_patches() {
-    assert_eq!(wrap("<gml:Point><gml:pos>1 2</gml:pos></gml:Point>"), "<gml:Point><gml:pos>1 2</gml:pos></gml:Point>");
-    assert!(wrap("<gml:Arc><gml:posList>0 0 1 1 2 0</gml:posList></gml:Arc>").starts_with("<gml:Curve>"));
+    assert_eq!(
+        wrap("<gml:Point><gml:pos>1 2</gml:pos></gml:Point>"),
+        "<gml:Point><gml:pos>1 2</gml:pos></gml:Point>"
+    );
+    assert!(
+        wrap("<gml:Arc><gml:posList>0 0 1 1 2 0</gml:posList></gml:Arc>")
+            .starts_with("<gml:Curve>")
+    );
     assert!(wrap("<gml:Triangle/>").starts_with("<gml:Surface>"));
     assert_eq!(root_element("<gml:Point srsName=\"x\">"), "gml:Point");
     assert_eq!(root_element("<gml:Point/>"), "gml:Point");

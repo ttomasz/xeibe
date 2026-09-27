@@ -17,9 +17,11 @@ use arrow_schema::SchemaRef;
 use arrow_select::coalesce::BatchCoalescer;
 use crossbeam_channel::{Receiver, Sender, bounded};
 use xeibe_core::reader::{GmlReader, XmlEvent};
-use xeibe_core::{FeatureChunk, FeatureSplitter, Location, NamespaceContext, QName, SourceId, Sources, ns};
-use xeibe_geom::{GeometryParser, ParseContext};
+use xeibe_core::{
+    FeatureChunk, FeatureSplitter, Location, NamespaceContext, QName, SourceId, Sources, ns,
+};
 use xeibe_geom::options::GeometryOptions;
+use xeibe_geom::{GeometryParser, ParseContext};
 
 use crate::axis::{AxisDecisions, SharedContexts};
 use crate::builders::LayerBatchBuilder;
@@ -48,7 +50,12 @@ pub struct ReadPlan {
 
 impl ReadPlan {
     /// The applied axis decisions and the warnings about them.
-    pub fn axis_report(&self) -> (Vec<(xeibe_geom::AxisKey, xeibe_geom::AxisDecision)>, Vec<Warning>) {
+    pub fn axis_report(
+        &self,
+    ) -> (
+        Vec<(xeibe_geom::AxisKey, xeibe_geom::AxisDecision)>,
+        Vec<Warning>,
+    ) {
         let mut decisions: Vec<(xeibe_geom::AxisKey, xeibe_geom::AxisDecision)> = Vec::new();
         let mut warnings = Vec::new();
         for axis in &self.axis {
@@ -58,7 +65,10 @@ impl ReadPlan {
                 }
             }
             for warning in axis.warnings() {
-                if !warnings.iter().any(|w: &Warning| w.message == warning.message) {
+                if !warnings
+                    .iter()
+                    .any(|w: &Warning| w.message == warning.message)
+                {
                     warnings.push(warning);
                 }
             }
@@ -79,11 +89,17 @@ pub enum LayerSelector {
 
 impl LayerSelector {
     pub fn parse(layer: &str) -> Self {
-        if let Some((uri, local)) = layer.strip_prefix('{').and_then(|rest| rest.split_once('}')) {
+        if let Some((uri, local)) = layer
+            .strip_prefix('{')
+            .and_then(|rest| rest.split_once('}'))
+        {
             return LayerSelector::Exact(QName::new(Some(uri), local));
         }
         match layer.split_once(':') {
-            Some((prefix, local)) => LayerSelector::Prefixed { prefix: prefix.into(), local: local.into() },
+            Some((prefix, local)) => LayerSelector::Prefixed {
+                prefix: prefix.into(),
+                local: local.into(),
+            },
             None => LayerSelector::Local(layer.into()),
         }
     }
@@ -92,7 +108,9 @@ impl LayerSelector {
     pub fn filter(&self) -> QName {
         match self {
             LayerSelector::Exact(name) => name.clone(),
-            LayerSelector::Prefixed { local, .. } | LayerSelector::Local(local) => QName::new(None, local),
+            LayerSelector::Prefixed { local, .. } | LayerSelector::Local(local) => {
+                QName::new(None, local)
+            }
         }
     }
 
@@ -133,7 +151,11 @@ pub struct ChunkStream {
 }
 
 impl ChunkStream {
-    pub fn new(sources: Sources, options: xeibe_core::SplitterOptions, contexts: SharedContexts) -> Self {
+    pub fn new(
+        sources: Sources,
+        options: xeibe_core::SplitterOptions,
+        contexts: SharedContexts,
+    ) -> Self {
         ChunkStream {
             sources,
             options,
@@ -216,7 +238,9 @@ impl Iterator for ChunkStream {
                             lock(&self.warnings).push(Warning {
                                 kind: WarningKind::ReferencedMember,
                                 location: None,
-                                message: format!("{referenced} feature members given by reference (not read)"),
+                                message: format!(
+                                    "{referenced} feature members given by reference (not read)"
+                                ),
                             });
                         }
                         self.current = None;
@@ -242,7 +266,9 @@ impl Iterator for ChunkStream {
 }
 
 pub(crate) fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 pub struct Pipeline {
@@ -265,7 +291,11 @@ struct ChunkResult {
 
 impl Pipeline {
     pub fn new(options: ReadOptions, plan: Arc<ReadPlan>, report: Arc<Mutex<ReadReport>>) -> Self {
-        Pipeline { options, plan, report }
+        Pipeline {
+            options,
+            plan,
+            report,
+        }
     }
 
     /// Start the workers. `chunks` already contains only this layer's features
@@ -305,18 +335,20 @@ impl Pipeline {
                         // A panic becomes an error in its place in the stream,
                         // rather than a gap the reorder stage would wait on.
                         let batches = chunk.map_err(Into::into).and_then(|chunk| {
-                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| pipeline.process_chunk(&chunk)))
-                                .unwrap_or_else(|panic| {
-                                    let message = panic
-                                        .downcast_ref::<&str>()
-                                        .map(|s| s.to_string())
-                                        .or_else(|| panic.downcast_ref::<String>().cloned())
-                                        .unwrap_or_default();
-                                    Err(arrow_schema::ArrowError::ComputeError(format!(
-                                        "reading chunk {seq} panicked: {message}"
-                                    ))
-                                    .into())
-                                })
+                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                pipeline.process_chunk(&chunk)
+                            }))
+                            .unwrap_or_else(|panic| {
+                                let message = panic
+                                    .downcast_ref::<&str>()
+                                    .map(|s| s.to_string())
+                                    .or_else(|| panic.downcast_ref::<String>().cloned())
+                                    .unwrap_or_default();
+                                Err(arrow_schema::ArrowError::ComputeError(format!(
+                                    "reading chunk {seq} panicked: {message}"
+                                ))
+                                .into())
+                            })
                         });
                         if result_tx.send(ChunkResult { seq, batches }).is_err() {
                             break;
@@ -336,16 +368,22 @@ impl Pipeline {
 
     fn process_chunk(&self, chunk: &FeatureChunk) -> crate::Result<Vec<SeqBatch>> {
         let plan = &*self.plan;
-        let axis = plan.axis.iter().map(|axis| axis.for_source(chunk.source)).collect();
+        let axis = plan
+            .axis
+            .iter()
+            .map(|axis| axis.for_source(chunk.source))
+            .collect();
         let inherited = match chunk.collection_bounded_by.as_deref() {
             Some(raw) if plan.has_geometry => xeibe_geom::parse::collection_bounded_by(raw)?.1,
             _ => ParseContext::default(),
         };
-        let features = FeatureReader::new(plan, GeometryParser::new(&plan.geometry), axis).with_inherited(inherited);
+        let features = FeatureReader::new(plan, GeometryParser::new(&plan.geometry), axis)
+            .with_inherited(inherited);
         let mut builder = LayerBatchBuilder::new(plan.schema.clone(), plan.batch_size.min(4096))?;
         let mut report = ReadReport::default();
         let mut batches = Vec::new();
-        let mut reader = GmlReader::new(&chunk.bytes, &chunk.namespaces, chunk.byte_offset).with_source(chunk.source);
+        let mut reader = GmlReader::new(&chunk.bytes, &chunk.namespaces, chunk.byte_offset)
+            .with_source(chunk.source);
         let mut index = 0u64;
         let mut rows = 0u64;
         loop {
@@ -368,11 +406,16 @@ impl Pipeline {
                         gml_id,
                     };
                     index += 1;
-                    if features.read_feature(&mut reader, location, &mut builder, &mut report)? == FeatureOutcome::Row {
+                    if features.read_feature(&mut reader, location, &mut builder, &mut report)?
+                        == FeatureOutcome::Row
+                    {
                         rows += 1;
                     }
                     if builder.len() >= plan.batch_size {
-                        batches.push(SeqBatch { chunk_seq: chunk.seq, batch: builder.finish()? });
+                        batches.push(SeqBatch {
+                            chunk_seq: chunk.seq,
+                            batch: builder.finish()?,
+                        });
                     }
                 }
                 XmlEvent::Text(_) | XmlEvent::End { .. } => {}
@@ -380,9 +423,15 @@ impl Pipeline {
             }
         }
         if !builder.is_empty() {
-            batches.push(SeqBatch { chunk_seq: chunk.seq, batch: builder.finish()? });
+            batches.push(SeqBatch {
+                chunk_seq: chunk.seq,
+                batch: builder.finish()?,
+            });
         }
-        *report.features_per_layer.entry(plan.layer_name.clone()).or_default() += rows;
+        *report
+            .features_per_layer
+            .entry(plan.layer_name.clone())
+            .or_default() += rows;
         lock(&self.report).merge(report);
         Ok(batches)
     }

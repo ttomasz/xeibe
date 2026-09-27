@@ -29,7 +29,14 @@ impl LayerReader {
         plan: Arc<ReadPlan>,
         source_warnings: Arc<Mutex<Vec<Warning>>>,
     ) -> Self {
-        LayerReader { schema: plan.schema.clone(), receiver, report, plan, source_warnings, failed: false }
+        LayerReader {
+            schema: plan.schema.clone(),
+            receiver,
+            report,
+            plan,
+            source_warnings,
+            failed: false,
+        }
     }
 
     /// Report so far (complete once the reader is exhausted).

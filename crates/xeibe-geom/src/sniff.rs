@@ -10,7 +10,9 @@ use crate::epsg::CrsTable;
 use crate::model::GeomKind;
 use crate::parse::assemble::{DimensionInputs, crs_dimension, effective_dimension};
 use crate::parse::coords::{CoordinatesFormat, parse_coordinates, parse_number};
-use crate::parse::{ARC_SEGMENTS, Attrs, UNSUPPORTED, compact_curve, current_element, geom_kind, is_unsupported_33};
+use crate::parse::{
+    ARC_SEGMENTS, Attrs, UNSUPPORTED, compact_curve, current_element, geom_kind, is_unsupported_33,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct GeometrySniff {
@@ -68,7 +70,10 @@ pub fn sniff_geometry_in(
     let mut first_srs: Option<String> = None;
     // (srsDimension, CRS dimension) in scope, per open element.
     let mut scopes = Vec::new();
-    let inherited = (inherited_dimension, inherited_srs.and_then(|s| crs_dimension(s, &table)));
+    let inherited = (
+        inherited_dimension,
+        inherited_srs.and_then(|s| crs_dimension(s, &table)),
+    );
     let scope = observe(&mut sniff, &mut first_srs, &root.attrs, inherited, &table);
     scopes.push(scope);
     let root_srs = root.attrs.srs_name.clone();
@@ -111,7 +116,9 @@ pub fn sniff_geometry_in(
         scopes.push(scope);
     }
 
-    sniff.srs_name = root_srs.or_else(|| inherited_srs.map(str::to_string)).or(first_srs);
+    sniff.srs_name = root_srs
+        .or_else(|| inherited_srs.map(str::to_string))
+        .or(first_srs);
     sniff.dialect = Some(dialect.result());
     sniff.empty = sniff.first_position.is_none();
     Ok(sniff)
@@ -144,7 +151,10 @@ fn observe(
 }
 
 fn is_carrier(name: &QName) -> bool {
-    matches!(&*name.local, "pos" | "posList" | "coordinates" | "coord" | "lowerCorner")
+    matches!(
+        &*name.local,
+        "pos" | "posList" | "coordinates" | "coord" | "lowerCorner"
+    )
 }
 
 /// Read a carrier up to its end tag and return its first position.
@@ -170,7 +180,9 @@ fn first_position(
             _ if text.contains(',') => text.split_whitespace().next().unwrap_or_default(),
             _ => text.as_str(),
         };
-        parse_coordinates(first, &format).ok().and_then(|coords| coords.first().map(<[f64]>::to_vec))
+        parse_coordinates(first, &format)
+            .ok()
+            .and_then(|coords| coords.first().map(<[f64]>::to_vec))
     } else {
         let single = &*name.local != "posList";
         let mut tokens = text.split_ascii_whitespace();
@@ -182,14 +194,19 @@ fn first_position(
             single_position: single,
         };
         // The number of values only matters for rule 4 (a `pos`, or `count`).
-        let values = if inputs.own.or(inputs.inherited).or(inputs.crs).is_none() && (single || inputs.count.is_some()) {
+        let values = if inputs.own.or(inputs.inherited).or(inputs.crs).is_none()
+            && (single || inputs.count.is_some())
+        {
             tokens.clone().count()
         } else {
             0
         };
         let (dimension, _) = effective_dimension(inputs, values);
-        let position: Option<Vec<f64>> =
-            tokens.by_ref().take(dimension).map(|token| parse_number(token).ok()).collect();
+        let position: Option<Vec<f64>> = tokens
+            .by_ref()
+            .take(dimension)
+            .map(|token| parse_number(token).ok())
+            .collect();
         position.filter(|position| position.len() == dimension)
     };
     Ok(position)

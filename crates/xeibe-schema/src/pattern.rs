@@ -30,9 +30,17 @@ impl<'a> Step<'a> {
         match rest.strip_prefix('{') {
             Some(qualified) => {
                 let (ns, local) = qualified.split_once('}')?;
-                Some(Step { attribute, ns: Some(ns), local })
+                Some(Step {
+                    attribute,
+                    ns: Some(ns),
+                    local,
+                })
             }
-            None => Some(Step { attribute, ns: None, local: rest }),
+            None => Some(Step {
+                attribute,
+                ns: None,
+                local: rest,
+            }),
         }
     }
 }
@@ -62,7 +70,9 @@ impl PathPattern {
                 return Err(error("unbalanced braces"));
             }
         }
-        Ok(PathPattern { raw: raw.to_string() })
+        Ok(PathPattern {
+            raw: raw.to_string(),
+        })
     }
 
     /// `path` is the element path from the feature root, e.g. `["idIIP", "lokalnyId"]`.
@@ -153,9 +163,10 @@ fn match_step(pattern: &str, name: &str) -> bool {
         return false;
     }
     if let Some(ns) = pattern.ns
-        && name.ns != Some(ns) {
-            return false;
-        }
+        && name.ns != Some(ns)
+    {
+        return false;
+    }
     wildcard(pattern.local.as_bytes(), name.local.as_bytes())
 }
 

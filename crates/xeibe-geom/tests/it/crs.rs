@@ -35,7 +35,11 @@ fn short_and_legacy_forms() {
 
 #[test]
 fn urn_forms() {
-    assert_srs("urn:ogc:def:crs:EPSG::2180", SrsNameForm::OgcUrn, Some(epsg("2180")));
+    assert_srs(
+        "urn:ogc:def:crs:EPSG::2180",
+        SrsNameForm::OgcUrn,
+        Some(epsg("2180")),
+    );
     // The version is ignored.
     assert_srs(
         "urn:ogc:def:crs:EPSG:6.6:4326",
@@ -125,21 +129,31 @@ fn compound_uris_keep_their_components_in_key_order() {
          &1=http://www.opengis.net/def/crs/EPSG/0/25832",
     );
     assert_eq!(parsed.form, SrsNameForm::CompoundUri);
-    assert_eq!(parsed.crs, Some(CrsRef::Compound(vec![epsg("25832"), epsg("7837")])));
+    assert_eq!(
+        parsed.crs,
+        Some(CrsRef::Compound(vec![epsg("25832"), epsg("7837")]))
+    );
 }
 
 #[test]
 fn the_proj_compound_spelling_is_a_short_form() {
     // What `--crs` users write, and what `authority_code` writes back.
     let compound = CrsRef::Compound(vec![epsg("25832"), epsg("7837")]);
-    for raw in ["EPSG:25832+7837", "EPSG:25832+EPSG:7837", "epsg:25832 + 7837"] {
+    for raw in [
+        "EPSG:25832+7837",
+        "EPSG:25832+EPSG:7837",
+        "epsg:25832 + 7837",
+    ] {
         let parsed = SrsName::parse(raw);
         assert_eq!(parsed.form, SrsNameForm::Short, "{raw}");
         assert_eq!(parsed.crs.as_ref(), Some(&compound), "{raw}");
     }
     let written = compound.authority_code();
     assert_eq!(written, "EPSG:25832+7837");
-    assert_eq!(SrsName::parse(&written).crs.map(|crs| crs.authority_code()), Some(written));
+    assert_eq!(
+        SrsName::parse(&written).crs.map(|crs| crs.authority_code()),
+        Some(written)
+    );
     assert_eq!(SrsName::parse("EPSG:25832+").crs, None);
 }
 
@@ -147,7 +161,10 @@ fn the_proj_compound_spelling_is_a_short_form() {
 fn names_resolve_wherever_a_crs_can_stand() {
     // EPSG's aliases ("Poland alternative identifier") as a whole srsName…
     let parsed = SrsName::parse("PL-1992");
-    assert_eq!((parsed.form, parsed.crs), (SrsNameForm::Short, Some(epsg("2180"))));
+    assert_eq!(
+        (parsed.form, parsed.crs),
+        (SrsNameForm::Short, Some(epsg("2180")))
+    );
     assert_eq!(SrsName::parse("pl-2000/15").crs, Some(epsg("2176")));
     // …and as compound parts: GUGiK's 3D building models, LoD1 and LoD2.
     assert_eq!(
@@ -176,7 +193,10 @@ fn a_compound_crs_keeps_its_known_parts() {
     let parsed = SrsName::parse("urn:ogc:def:crs,crs:EPSG::2180,crs:PL-XYZ");
     assert_eq!(parsed.form, SrsNameForm::CompoundUrn);
     let crs = parsed.crs.expect("the known part is kept");
-    assert_eq!(crs, CrsRef::Compound(vec![epsg("2180"), CrsRef::Unresolved("PL-XYZ".into())]));
+    assert_eq!(
+        crs,
+        CrsRef::Compound(vec![epsg("2180"), CrsRef::Unresolved("PL-XYZ".into())])
+    );
     assert_eq!(crs.unresolved(), ["PL-XYZ"]);
     assert_eq!(crs.horizontal(), &epsg("2180"));
     // The output CRS is the known part alone.
@@ -186,9 +206,17 @@ fn a_compound_crs_keeps_its_known_parts() {
     assert_eq!(SrsName::parse("EPSG:2180+PL-XYZ").crs, Some(crs));
 
     // With no known part there is no CRS.
-    for raw in ["urn:ogc:def:crs,crs:PL-XYZ,crs:PL-ABC", "urn:adv:crs:DE_XYZ", "urn:adv:crs:DE_XYZ*DE_ABC"] {
+    for raw in [
+        "urn:ogc:def:crs,crs:PL-XYZ,crs:PL-ABC",
+        "urn:adv:crs:DE_XYZ",
+        "urn:adv:crs:DE_XYZ*DE_ABC",
+    ] {
         let parsed = SrsName::parse(raw);
-        assert_eq!((parsed.form, parsed.crs), (SrsNameForm::Unknown, None), "{raw}");
+        assert_eq!(
+            (parsed.form, parsed.crs),
+            (SrsNameForm::Unknown, None),
+            "{raw}"
+        );
     }
     // An empty part is malformed, not unknown.
     assert_eq!(SrsName::parse("urn:ogc:def:crs,crs:EPSG::2180,").crs, None);
@@ -202,7 +230,11 @@ fn a_compound_crs_gets_projjson_built_from_its_components() {
     let json = srs.crs.unwrap().projjson().expect("PROJJSON");
     assert_eq!(json["type"], "CompoundCRS");
     assert_eq!(json["name"], "ETRS89 / UTM zone 32N + DHHN2016 height");
-    assert!(json["$schema"].as_str().is_some_and(|s| s.contains("projjson.schema.json")));
+    assert!(
+        json["$schema"]
+            .as_str()
+            .is_some_and(|s| s.contains("projjson.schema.json"))
+    );
     assert!(json.get("id").is_none());
     let components = json["components"].as_array().unwrap();
     assert_eq!(components.len(), 2);
@@ -216,7 +248,11 @@ fn a_compound_crs_gets_projjson_built_from_its_components() {
 #[test]
 fn a_compound_crs_has_no_projjson_when_a_component_has_none() {
     // Falls back to `authority_code`, like a single unknown code.
-    assert!(CrsRef::Compound(vec![epsg("25832"), epsg("98765")]).projjson().is_none());
+    assert!(
+        CrsRef::Compound(vec![epsg("25832"), epsg("98765")])
+            .projjson()
+            .is_none()
+    );
     assert!(epsg("98765").projjson().is_none());
     assert_eq!(epsg("2180").projjson().unwrap()["id"]["code"], 2180);
 }

@@ -51,7 +51,14 @@ fn an_empty_pos_list_is_an_empty_coordinate_sequence() {
 fn coordinates_use_the_gml_2_default_separators() {
     // decimal ".", cs ",", ts " " (02-069 §4.3.1).
     let format = CoordinatesFormat::default();
-    assert_eq!(format, CoordinatesFormat { decimal: ".".into(), cs: ",".into(), ts: " ".into() });
+    assert_eq!(
+        format,
+        CoordinatesFormat {
+            decimal: ".".into(),
+            cs: ",".into(),
+            ts: " ".into()
+        }
+    );
 
     let coords = parse_coordinates("1,2 3,4", &format).expect("two positions");
     assert_eq!(coords_to_vec(&coords), [[1.0, 2.0], [3.0, 4.0]]);

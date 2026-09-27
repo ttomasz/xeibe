@@ -43,21 +43,33 @@ pub enum Item {
 impl ColumnPlan {
     fn of(field: &Field, geometry_index: &mut Vec<String>) -> crate::Result<Self> {
         let (list, item) = match field.data_type() {
-            DataType::List(item) | DataType::LargeList(item) if !is_geoarrow(field) => (true, item.as_ref()),
+            DataType::List(item) | DataType::LargeList(item) if !is_geoarrow(field) => {
+                (true, item.as_ref())
+            }
             _ => (false, field),
         };
         let mut axis = || {
             geometry_index.push(field.name().clone());
             geometry_index.len() - 1
         };
-        let value = match item.metadata().get("ARROW:extension:name").map(String::as_str) {
+        let value = match item
+            .metadata()
+            .get("ARROW:extension:name")
+            .map(String::as_str)
+        {
             Some("geoarrow.box") => Item::Box(axis()),
             Some(name) if name.starts_with("geoarrow.") => {
                 Item::Geometry(GeometrySpec::for_type(&geoarrow_type(item)?)?, axis())
             }
             _ => match item.data_type() {
                 DataType::Map(..) => Item::Map,
-                DataType::Binary => Item::Geometry(GeometrySpec { kind: GeometryKind::Wkb, dim: None }, axis()),
+                DataType::Binary => Item::Geometry(
+                    GeometrySpec {
+                        kind: GeometryKind::Wkb,
+                        dim: None,
+                    },
+                    axis(),
+                ),
                 data_type => Item::Scalar(data_type.clone()),
             },
         };
@@ -68,7 +80,10 @@ impl ColumnPlan {
             anchor: 0,
             item_nullable: item.is_nullable(),
             item: value,
-            srs_name: field.metadata().get(xeibe_schema::rules::meta::SRS_NAME).cloned(),
+            srs_name: field
+                .metadata()
+                .get(xeibe_schema::rules::meta::SRS_NAME)
+                .cloned(),
         })
     }
 }
@@ -87,7 +102,10 @@ pub enum Step {
     /// `*`: any element.
     Any,
     /// A local name; `ns: None` matches it in any namespace.
-    Name { ns: Option<Arc<str>>, local: Arc<str> },
+    Name {
+        ns: Option<Arc<str>>,
+        local: Arc<str>,
+    },
 }
 
 impl Step {
@@ -95,7 +113,10 @@ impl Step {
         if name.ns.is_none() && &*name.local == "*" {
             Step::Any
         } else {
-            Step::Name { ns: name.ns.clone(), local: name.local.clone() }
+            Step::Name {
+                ns: name.ns.clone(),
+                local: name.local.clone(),
+            }
         }
     }
 
@@ -124,7 +145,13 @@ pub struct RouteNode {
 
 impl RouteNode {
     fn new(step: Step) -> Self {
-        RouteNode { step, children: Vec::new(), attributes: Vec::new(), targets: Vec::new(), anchor: None }
+        RouteNode {
+            step,
+            children: Vec::new(),
+            attributes: Vec::new(),
+            targets: Vec::new(),
+            anchor: None,
+        }
     }
 
     fn child_mut(&mut self, step: Step) -> &mut RouteNode {
@@ -143,11 +170,16 @@ impl RouteNode {
     /// namespace (the more specific step wins).
     pub fn matching_children<'n>(&'n self, name: &QName, out: &mut Vec<&'n RouteNode>) {
         let ns = name.ns.as_deref();
-        let exact = self.children.iter().any(|child| child.step.is_exact(ns, &name.local));
+        let exact = self
+            .children
+            .iter()
+            .any(|child| child.step.is_exact(ns, &name.local));
         for child in &self.children {
             let matches = match &child.step {
                 Step::Any => true,
-                step => step.is_exact(ns, &name.local) || (!exact && step.is_any_namespace(&name.local)),
+                step => {
+                    step.is_exact(ns, &name.local) || (!exact && step.is_any_namespace(&name.local))
+                }
             };
             if matches {
                 out.push(child);
@@ -158,7 +190,10 @@ impl RouteNode {
     /// Add the targets of attribute `(ns, local)` to `out`, matched like
     /// elements.
     pub fn attribute_targets(&self, ns: Option<&str>, local: &str, out: &mut Vec<Target>) {
-        let exact = self.attributes.iter().any(|(step, _)| step.is_exact(ns, local));
+        let exact = self
+            .attributes
+            .iter()
+            .any(|(step, _)| step.is_exact(ns, local));
         for (step, target) in &self.attributes {
             if step.is_exact(ns, local) || (!exact && step.is_any_namespace(local)) {
                 out.push(*target);
@@ -187,7 +222,11 @@ pub struct RouteTree {
 impl RouteTree {
     /// `columns[i]`: the output index of the schema's column `i`, or `None`
     /// if the projection leaves it out. `output`: the output fields.
-    pub fn new(layer: &LayerSchema, columns: &[Option<usize>], output: &[Arc<Field>]) -> crate::Result<Self> {
+    pub fn new(
+        layer: &LayerSchema,
+        columns: &[Option<usize>],
+        output: &[Arc<Field>],
+    ) -> crate::Result<Self> {
         let mut geometry_columns = Vec::new();
         let mut plans = output
             .iter()
@@ -196,7 +235,10 @@ impl RouteTree {
         let mut root = RouteNode::new(Step::Any);
         let mut anchors = 0;
         for route in &layer.routes {
-            let Some(column) = route.field_path.first().and_then(|index| columns.get(*index).copied().flatten())
+            let Some(column) = route
+                .field_path
+                .first()
+                .and_then(|index| columns.get(*index).copied().flatten())
             else {
                 continue;
             };
@@ -211,13 +253,21 @@ impl RouteTree {
                     plans[column].anchor = counter;
                 }
             }
-            let target = Target { column, value: route.value };
+            let target = Target {
+                column,
+                value: route.value,
+            };
             match &route.attribute {
                 Some(attribute) => node.attributes.push((Step::of(attribute), target)),
                 None => node.targets.push(target),
             }
         }
-        Ok(RouteTree { root, columns: plans, anchors, geometry_columns })
+        Ok(RouteTree {
+            root,
+            columns: plans,
+            anchors,
+            geometry_columns,
+        })
     }
 }
 

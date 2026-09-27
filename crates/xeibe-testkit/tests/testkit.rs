@@ -61,7 +61,10 @@ fn wkt_accepts_gdal_spellings() {
 fn wkt_canonical_matches_our_type_choices() {
     let cases = [
         // A compound curve with one part is that part.
-        ("COMPOUNDCURVE (CIRCULARSTRING (0 0,1 1,2 0))", "CIRCULARSTRING (0 0,1 1,2 0)"),
+        (
+            "COMPOUNDCURVE (CIRCULARSTRING (0 0,1 1,2 0))",
+            "CIRCULARSTRING (0 0,1 1,2 0)",
+        ),
         ("COMPOUNDCURVE ((0 0,1 1,2 0))", "LINESTRING (0 0,1 1,2 0)"),
         // Adjacent parts with the same interpolation merge, sharing one point.
         (
@@ -73,9 +76,15 @@ fn wkt_canonical_matches_our_type_choices() {
             "CIRCULARSTRING (0 0,1 1,2 0,3 1,4 0)",
         ),
         // Curve-free curve types become simple-feature types.
-        ("CURVEPOLYGON ((0 0,1 0,1 1,0 0))", "POLYGON ((0 0,1 0,1 1,0 0))"),
+        (
+            "CURVEPOLYGON ((0 0,1 0,1 1,0 0))",
+            "POLYGON ((0 0,1 0,1 1,0 0))",
+        ),
         ("MULTICURVE ((0 0,1 1))", "MULTILINESTRING ((0 0,1 1))"),
-        ("MULTISURFACE (((0 0,1 0,1 1,0 0)))", "MULTIPOLYGON (((0 0,1 0,1 1,0 0)))"),
+        (
+            "MULTISURFACE (((0 0,1 0,1 1,0 0)))",
+            "MULTIPOLYGON (((0 0,1 0,1 1,0 0)))",
+        ),
         // …but not when a curve is present.
         (
             "MULTISURFACE (CURVEPOLYGON (CIRCULARSTRING (0 0,1 1,2 0,1 -1,0 0)))",
@@ -91,7 +100,14 @@ fn wkt_canonical_matches_our_type_choices() {
 #[test]
 fn wkt_diff_reports_differences() {
     let a = G::parse("POINT (1 2)").unwrap();
-    assert!(diff(&a, &G::parse("LINESTRING (1 2,3 4)").unwrap(), Tol::default()).is_some());
+    assert!(
+        diff(
+            &a,
+            &G::parse("LINESTRING (1 2,3 4)").unwrap(),
+            Tol::default()
+        )
+        .is_some()
+    );
     assert!(diff(&a, &G::parse("POINT (1 3)").unwrap(), Tol::default()).is_some());
     assert!(diff(&a, &G::parse("POINT Z (1 2 0)").unwrap(), Tol::default()).is_some());
     assert!(diff(&a, &G::parse("POINT (1 2)").unwrap(), Tol::default()).is_none());
@@ -148,7 +164,10 @@ fn wkb_decodes_curve_types() {
         bytes.extend(f64::to_le_bytes(x));
         bytes.extend(f64::to_le_bytes(y));
     }
-    assert_wkt(&wkb::decode(&bytes).unwrap(), "CIRCULARSTRING (0 0,1 1,2 0)");
+    assert_wkt(
+        &wkb::decode(&bytes).unwrap(),
+        "CIRCULARSTRING (0 0,1 1,2 0)",
+    );
 
     // The same, wrapped in a COMPOUNDCURVE.
     let mut compound = vec![1u8];
@@ -252,8 +271,16 @@ fn gdal_reference_output_keeps_fields_and_values() {
     let layer = report.layer("AD_Miejscowosc").expect("layer");
     assert_eq!(layer.geometry_type, "Point");
     assert_eq!(layer.geometry_column.as_deref(), Some("georeferencja"));
-    assert!(layer.fields.contains(&("lokalnyId".into(), "String".into())));
-    assert!(layer.fields.contains(&("wersjaId".into(), "DateTime".into())));
+    assert!(
+        layer
+            .fields
+            .contains(&("lokalnyId".into(), "String".into()))
+    );
+    assert!(
+        layer
+            .fields
+            .contains(&("wersjaId".into(), "DateTime".into()))
+    );
     assert_eq!(layer.attr(0, "nazwa"), Some("Chyrzyno"));
     assert_eq!(
         layer.attr(0, "gml_id"),
@@ -269,7 +296,12 @@ fn gdal_reference_output_keeps_fields_and_values() {
     let transactions = rcn.layer("RCN_Transakcja").expect("layer");
     assert_eq!(transactions.geometry_type, "None");
     assert_eq!(transactions.geometry_column, None);
-    assert!(transactions.fields.iter().any(|(n, _)| n == "oznaczenieTransakcji"));
+    assert!(
+        transactions
+            .fields
+            .iter()
+            .any(|(n, _)| n == "oznaczenieTransakcji")
+    );
     assert_eq!(transactions.features[0].wkt, None);
 }
 
@@ -289,7 +321,10 @@ fn gdal_first_position_agrees_with_the_manifest() {
             continue;
         };
         let vertex = G::parse(first).unwrap().first_vertex().expect("a vertex");
-        let tol = Tol { abs: 1e-6, rel: 0.0 };
+        let tol = Tol {
+            abs: 1e-6,
+            rel: 0.0,
+        };
         assert!(
             tol.matches(vertex[0], gdal_first[0]) && tol.matches(vertex[1], gdal_first[1]),
             "{}: GDAL output starts at {vertex:?}, manifest says {gdal_first:?}",
@@ -313,7 +348,11 @@ fn gdal_geometry_cases_load() {
             G::parse(text).unwrap_or_else(|e| panic!("{}: {e} in {text}", case.id));
             parsed += 1;
         } else {
-            assert!(case.gdal.error.is_some(), "{}: neither WKT nor error", case.id);
+            assert!(
+                case.gdal.error.is_some(),
+                "{}: neither WKT nor error",
+                case.id
+            );
         }
     }
     assert_eq!(parsed, 181, "GDAL parsed 181 of the 292 snippets");

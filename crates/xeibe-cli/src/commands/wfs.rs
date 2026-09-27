@@ -36,7 +36,13 @@ pub fn run(command: WfsCommand) -> super::Result {
                         .ok_or_else(|| format!("--param {param:?}: expected key=value"))
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            let options = WfsOptions { page_size, srs_name, sort_by, vendor_params, ..WfsOptions::default() };
+            let options = WfsOptions {
+                page_size,
+                srs_name,
+                sort_by,
+                vendor_params,
+                ..WfsOptions::default()
+            };
             let client = WfsClient::new(&url, options)?;
             let settings = super::settings(&read)?;
             // `--layer` names the layer in the settings file when it differs
@@ -59,7 +65,16 @@ fn layers(url: &str) -> super::Result {
     let client = WfsClient::new(url, WfsOptions::default())?;
     let capabilities = client.capabilities()?;
     let mut out = std::io::stdout().lock();
-    writeln!(out, "WFS {}{}", capabilities.version.as_str(), capabilities.service_title.as_deref().map(|t| format!(": {t}")).unwrap_or_default())?;
+    writeln!(
+        out,
+        "WFS {}{}",
+        capabilities.version.as_str(),
+        capabilities
+            .service_title
+            .as_deref()
+            .map(|t| format!(": {t}"))
+            .unwrap_or_default()
+    )?;
     for feature_type in &capabilities.feature_types {
         let mut line = feature_type.name.clone();
         if let Some(title) = &feature_type.title {
@@ -85,7 +100,10 @@ fn progress(progress: &Progress) {
         eprintln!("warning: {warning}");
     }
     match progress.number_matched {
-        Some(total) => eprintln!("page {}: {} of {total} features", progress.pages, progress.features),
+        Some(total) => eprintln!(
+            "page {}: {} of {total} features",
+            progress.pages, progress.features
+        ),
         None => eprintln!("page {}: {} features", progress.pages, progress.features),
     }
 }

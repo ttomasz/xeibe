@@ -1,9 +1,9 @@
 //! `InferenceOptions`: the policy that turns a path tree into an Arrow schema.
 
 use arrow_schema::{DataType, TimeUnit};
+use serde::{Deserialize, Serialize};
 use xeibe_geom::GeometryOptions;
 use xeibe_geom::options::GeomEncoding;
-use serde::{Deserialize, Serialize};
 
 use crate::{PathPattern, TypeSet};
 
@@ -70,7 +70,8 @@ pub(crate) fn layer_selector_matches(selector: &str, layer: &str) -> bool {
             None => name.rsplit_once(':').map_or(name, |(_, l)| l).to_string(),
         }
     };
-    let glob = |pattern: &str, text: &str| crate::pattern::wildcard(pattern.as_bytes(), text.as_bytes());
+    let glob =
+        |pattern: &str, text: &str| crate::pattern::wildcard(pattern.as_bytes(), text.as_bytes());
     glob(selector, layer)
         || (!selector.contains(['{', ':']) && glob(selector, &local(layer)))
         || (!layer.contains(['{', ':']) && glob(&local(selector), layer))
@@ -219,13 +220,19 @@ pub struct TimestampOptions {
 
 impl Default for TimestampOptions {
     fn default() -> Self {
-        TimestampOptions { unit: TimeUnit::Microsecond }
+        TimestampOptions {
+            unit: TimeUnit::Microsecond,
+        }
     }
 }
 
 /// The type an Arrow `DataType` gets for a string column.
 pub(crate) fn string_type(types: &TypeOptions) -> DataType {
-    if types.string_view { DataType::Utf8View } else { DataType::Utf8 }
+    if types.string_view {
+        DataType::Utf8View
+    } else {
+        DataType::Utf8
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -35,7 +35,9 @@ pub fn parse_scalar(data_type: &DataType, text: &str) -> Option<Scalar> {
         DataType::UInt16 => Scalar::UInt(uint_in(text, u16::MAX as u64)?),
         DataType::UInt32 => Scalar::UInt(uint_in(text, u32::MAX as u64)?),
         DataType::UInt64 => Scalar::UInt(uint_in(text, u64::MAX)?),
-        DataType::Float16 | DataType::Float32 | DataType::Float64 => Scalar::Float(parse_float(text)?),
+        DataType::Float16 | DataType::Float32 | DataType::Float64 => {
+            Scalar::Float(parse_float(text)?)
+        }
         DataType::Date32 => {
             let (days, rest) = parse_date(text)?;
             parse_tz(rest)?;
@@ -77,7 +79,10 @@ fn parse_float(text: &str) -> Option<f64> {
         _ => {}
     }
     // Rust also takes `inf`, `infinity` and `nan` in any case; XML doesn't.
-    if text.bytes().any(|b| b.is_ascii_alphabetic() && b != b'e' && b != b'E') {
+    if text
+        .bytes()
+        .any(|b| b.is_ascii_alphabetic() && b != b'e' && b != b'E')
+    {
         return None;
     }
     text.parse().ok()
@@ -121,7 +126,8 @@ fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
     let era = year.div_euclid(400);
     let year_of_era = year - era * 400;
     let month = month as i64;
-    let day_of_year = (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day as i64 - 1;
+    let day_of_year =
+        (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day as i64 - 1;
     let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
     era * 146_097 + day_of_era - 719_468
 }
@@ -199,7 +205,11 @@ fn fraction_units(fraction: &str, unit: TimeUnit) -> Option<i64> {
     if dropped.bytes().any(|b| b != b'0') {
         return None;
     }
-    let mut value: i64 = if kept.is_empty() { 0 } else { kept.parse().ok()? };
+    let mut value: i64 = if kept.is_empty() {
+        0
+    } else {
+        kept.parse().ok()?
+    };
     for _ in kept.len()..digits {
         value *= 10;
     }
@@ -237,20 +247,38 @@ mod tests {
 
     #[test]
     fn dates_and_timestamps() {
-        assert_eq!(parse_scalar(&DataType::Date32, "1970-01-02"), Some(Scalar::Int32(1)));
-        assert_eq!(parse_scalar(&DataType::Date32, "2000-03-01Z"), Some(Scalar::Int32(11017)));
+        assert_eq!(
+            parse_scalar(&DataType::Date32, "1970-01-02"),
+            Some(Scalar::Int32(1))
+        );
+        assert_eq!(
+            parse_scalar(&DataType::Date32, "2000-03-01Z"),
+            Some(Scalar::Int32(11017))
+        );
         let utc = DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into()));
-        assert_eq!(parse_scalar(&utc, "1970-01-01T00:00:01+00:00"), Some(Scalar::Int(1_000_000)));
-        assert_eq!(parse_scalar(&utc, "1970-01-01T01:00:00.5+01:00"), Some(Scalar::Int(500_000)));
+        assert_eq!(
+            parse_scalar(&utc, "1970-01-01T00:00:01+00:00"),
+            Some(Scalar::Int(1_000_000))
+        );
+        assert_eq!(
+            parse_scalar(&utc, "1970-01-01T01:00:00.5+01:00"),
+            Some(Scalar::Int(500_000))
+        );
         assert_eq!(parse_scalar(&utc, "1970-01-01T00:00:01"), None);
         assert_eq!(parse_scalar(&utc, "1970-01-01T00:00:00.0000001Z"), None);
     }
 
     #[test]
     fn numbers() {
-        assert_eq!(parse_scalar(&DataType::Int64, "0012"), Some(Scalar::Int(12)));
+        assert_eq!(
+            parse_scalar(&DataType::Int64, "0012"),
+            Some(Scalar::Int(12))
+        );
         assert_eq!(parse_scalar(&DataType::Int8, "300"), None);
-        assert_eq!(parse_scalar(&DataType::Float64, "1e3"), Some(Scalar::Float(1000.0)));
+        assert_eq!(
+            parse_scalar(&DataType::Float64, "1e3"),
+            Some(Scalar::Float(1000.0))
+        );
         assert_eq!(parse_scalar(&DataType::Float64, "inf"), None);
         assert_eq!(parse_scalar(&DataType::Int64, "huge"), None);
     }

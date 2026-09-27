@@ -29,7 +29,11 @@ pub enum Error {
     RemoteArchive(String),
 
     #[error("zip member {member} in {archive}: {message}")]
-    Zip { archive: String, member: String, message: String },
+    Zip {
+        archive: String,
+        member: String,
+        message: String,
+    },
 
     #[error("no GML members found in zip archive {0}")]
     NoGmlMembers(String),

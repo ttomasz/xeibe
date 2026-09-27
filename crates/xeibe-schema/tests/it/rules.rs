@@ -96,7 +96,11 @@ fn scalars_get_the_first_matching_type() {
         data_type(&schema, "clock"),
         DataType::Time64(TimeUnit::Microsecond)
     );
-    assert_eq!(data_type(&schema, "code"), utf8(), "leading zeros: an identifier");
+    assert_eq!(
+        data_type(&schema, "code"),
+        utf8(),
+        "leading zeros: an identifier"
+    );
     assert_eq!(
         data_type(&schema, "duration"),
         utf8(),
@@ -108,7 +112,10 @@ fn scalars_get_the_first_matching_type() {
 fn a_float_column_records_its_scale_in_metadata() {
     let schema = schema(&one("<app:area>1523.40</app:area>"), "Parcel");
     assert_eq!(
-        field(&schema, "area").metadata().get(meta::MAX_SCALE).map(String::as_str),
+        field(&schema, "area")
+            .metadata()
+            .get(meta::MAX_SCALE)
+            .map(String::as_str),
         Some("2")
     );
 }
@@ -125,7 +132,10 @@ fn a_timestamp_column_with_one_offset_keeps_it_in_metadata() {
         DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into()))
     );
     assert_eq!(
-        field(&schema, "t").metadata().get(meta::TZ_OFFSET).map(String::as_str),
+        field(&schema, "t")
+            .metadata()
+            .get(meta::TZ_OFFSET)
+            .map(String::as_str),
         Some("+02:00")
     );
 }
@@ -145,7 +155,10 @@ fn mixed_offsets_are_stored_as_utc_without_an_offset_column() {
     );
     assert_eq!(column_names(&schema), ["@id", "t"], "no offset column");
     assert!(
-        field(&schema, "t").metadata().get(meta::TZ_OFFSET).is_none(),
+        field(&schema, "t")
+            .metadata()
+            .get(meta::TZ_OFFSET)
+            .is_none(),
         "the offsets differ, so none is recorded"
     );
 }
@@ -209,9 +222,17 @@ fn text_and_attributes_are_separate_columns() {
         r#"<app:area uom="ha">1</app:area>"#,
     ]);
     let schema = schema(&document, "Parcel");
-    assert_eq!(data_type(&schema, "area"), DataType::Int64, "the element's own value");
+    assert_eq!(
+        data_type(&schema, "area"),
+        DataType::Int64,
+        "the element's own value"
+    );
     assert_eq!(path(&schema, "area"), "area");
-    assert_eq!(data_type(&schema, "@uom"), utf8(), "the shortest unique name");
+    assert_eq!(
+        data_type(&schema, "@uom"),
+        utf8(),
+        "the shortest unique name"
+    );
     assert_eq!(path(&schema, "@uom"), "area/@uom");
     assert_flat(&schema);
 }
@@ -223,7 +244,11 @@ fn repeated_elements_become_lists() {
     let item = list_item(data_type(&schema, "tag"));
     assert_eq!(item.data_type(), &utf8());
     assert!(item.is_nullable(), "list items are nullable too");
-    assert_eq!(path(&schema, "tag"), "tag[]", "the element is its own anchor");
+    assert_eq!(
+        path(&schema, "tag"),
+        "tag[]",
+        "the element is its own anchor"
+    );
 }
 
 #[test]
@@ -255,7 +280,10 @@ fn names_grow_from_the_end_until_they_are_unique() {
         column_names(&schema),
         ["@id", "localId", "inspireId.namespace", "hydroId.namespace"]
     );
-    assert_eq!(path(&schema, "inspireId.namespace"), "inspireId/*/namespace");
+    assert_eq!(
+        path(&schema, "inspireId.namespace"),
+        "inspireId/*/namespace"
+    );
     assert_eq!(path(&schema, "hydroId.namespace"), "hydroId/*/namespace");
 }
 
@@ -321,7 +349,10 @@ fn different_wrapper_types_under_one_property_are_merged() {
     ]);
     let schema = schema(&document, "Parcel");
     assert_eq!(column_names(&schema), ["@id", "referenzName", "typ"]);
-    assert_eq!(path(&schema, "referenzName"), "externeReferenz/*/referenzName");
+    assert_eq!(
+        path(&schema, "referenzName"),
+        "externeReferenz/*/referenzName"
+    );
     assert_eq!(path(&schema, "typ"), "externeReferenz/*/typ");
 }
 
@@ -346,7 +377,10 @@ fn xlink_references_become_string_columns() {
         r##"<app:adres2 xlink:href="#b"/>"##
     )]);
     let schema_ = schema(&repeated, "Parcel");
-    assert_eq!(list_item(data_type(&schema_, "adres2")).data_type(), &utf8());
+    assert_eq!(
+        list_item(data_type(&schema_, "adres2")).data_type(),
+        &utf8()
+    );
     assert_eq!(path(&schema_, "adres2"), "adres2[]/@href");
 }
 
@@ -452,9 +486,19 @@ fn many_gml33(bodies: &[&str]) -> String {
 fn gml_33_compact_encodings_have_the_types_of_what_they_abbreviate() {
     // A `SimplePolygon` is a polygon, with a `MultiSurface` a multipolygon.
     let polygon = "<gmlce:SimplePolygon srsName=\"EPSG:2180\"><gml:posList>0 0 1 0 1 1</gml:posList></gmlce:SimplePolygon>";
-    let schema = schema(&many_gml33(&[&format!("<app:geom>{polygon}</app:geom>")]), "Parcel");
-    assert_eq!(extension_name(field(&schema, "geom")), Some("geoarrow.polygon"));
-    assert_eq!(column_names(&schema), ["@id", "geom"], "the geometry is a leaf");
+    let schema = schema(
+        &many_gml33(&[&format!("<app:geom>{polygon}</app:geom>")]),
+        "Parcel",
+    );
+    assert_eq!(
+        extension_name(field(&schema, "geom")),
+        Some("geoarrow.polygon")
+    );
+    assert_eq!(
+        column_names(&schema),
+        ["@id", "geom"],
+        "the geometry is a leaf"
+    );
 
     let document = many_gml33(&[
         &format!("<app:geom>{polygon}</app:geom>"),
@@ -462,14 +506,23 @@ fn gml_33_compact_encodings_have_the_types_of_what_they_abbreviate() {
             "<app:geom><gml:MultiSurface srsName=\"EPSG:2180\"><gml:surfaceMember>{polygon}</gml:surfaceMember></gml:MultiSurface></app:geom>"
         ),
     ]);
-    assert_eq!(extension_name(field(&schema_of(&document), "geom")), Some("geoarrow.multipolygon"));
+    assert_eq!(
+        extension_name(field(&schema_of(&document), "geom")),
+        Some("geoarrow.multipolygon")
+    );
 
     let points = "<app:geom><gmlce:SimpleMultiPoint><gml:posList>0 0 1 1</gml:posList></gmlce:SimpleMultiPoint></app:geom>";
-    assert_eq!(extension_name(field(&schema_of(&many_gml33(&[points])), "geom")), Some("geoarrow.multipoint"));
+    assert_eq!(
+        extension_name(field(&schema_of(&many_gml33(&[points])), "geom")),
+        Some("geoarrow.multipoint")
+    );
 
     // A compact curve has arcs.
     let arc = "<app:geom><gmlce:SimpleArc><gml:posList>0 0 1 1 2 0</gml:posList></gmlce:SimpleArc></app:geom>";
-    assert_eq!(extension_name(field(&schema_of(&many_gml33(&[arc])), "geom")), Some("geoarrow.wkb"));
+    assert_eq!(
+        extension_name(field(&schema_of(&many_gml33(&[arc])), "geom")),
+        Some("geoarrow.wkb")
+    );
 }
 
 #[test]
@@ -500,7 +553,10 @@ fn a_kind_and_its_multi_form_become_the_multi_type() {
         ),
     ]);
     let schema = schema(&document, "Parcel");
-    assert_eq!(extension_name(field(&schema, "geom")), Some("geoarrow.multipolygon"));
+    assert_eq!(
+        extension_name(field(&schema, "geom")),
+        Some("geoarrow.multipolygon")
+    );
 }
 
 #[test]
@@ -528,7 +584,11 @@ fn a_geometry_below_a_repeated_element_is_a_list_of_wkb() {
             id, x, foo
         )
     };
-    let body = format!("{}{}", object("o1", "48", "bar"), object("o2", "-48", "baz"));
+    let body = format!(
+        "{}{}",
+        object("o1", "48", "bar"),
+        object("o2", "-48", "baz")
+    );
     let schema = schema(&one(&body), "Parcel");
     let item = list_item(data_type(&schema, "geometry"));
     assert_eq!(
@@ -555,7 +615,11 @@ fn bounded_by_is_dropped_by_default() {
 fn every_field_records_where_it_came_from() {
     let schema = schema(&one("<app:area>1</app:area>"), "Parcel");
     let metadata = field(&schema, "area").metadata().clone();
-    assert_eq!(metadata.get(meta::PATH).map(String::as_str), Some("area"), "{metadata:?}");
+    assert_eq!(
+        metadata.get(meta::PATH).map(String::as_str),
+        Some("area"),
+        "{metadata:?}"
+    );
     assert!(
         schema.metadata().get(meta::NS).is_none(),
         "namespaces are only declared when two siblings differ only by namespace"
@@ -598,7 +662,10 @@ fn integer_width_is_stable_by_default() {
         ..InferenceOptions::default()
     };
     assert_eq!(
-        data_type(&layer_schema(&observation, "Parcel", &smallest).schema, "small"),
+        data_type(
+            &layer_schema(&observation, "Parcel", &smallest).schema,
+            "small"
+        ),
         DataType::Int8
     );
 }
@@ -642,7 +709,10 @@ fn every_column_below_a_repeated_element_is_a_list_anchored_on_it() {
     ]);
     let schema = schema(&document, "Parcel");
     assert_eq!(list_item(data_type(&schema, "ulica")).data_type(), &utf8());
-    assert_eq!(list_item(data_type(&schema, "numer")).data_type(), &DataType::Int64);
+    assert_eq!(
+        list_item(data_type(&schema, "numer")).data_type(),
+        &DataType::Int64
+    );
     assert_eq!(path(&schema, "ulica"), "adres[]/ulica");
     assert_eq!(path(&schema, "numer"), "adres[]/numer");
     assert_flat(&schema);
@@ -674,7 +744,11 @@ fn repetition_at_two_levels_anchors_on_the_inner_element() {
             lang, a, b
         )
     };
-    let body = format!("{}{}", name("pol", "Łódź", "Lodz"), name("deu", "Lodsch", "Litzmannstadt"));
+    let body = format!(
+        "{}{}",
+        name("pol", "Łódź", "Lodz"),
+        name("deu", "Lodsch", "Litzmannstadt")
+    );
     let schema = schema(&one(&body), "Parcel");
     assert_eq!(path(&schema, "language"), "name[]/language");
     assert_eq!(path(&schema, "text"), "name/spelling[]/text");

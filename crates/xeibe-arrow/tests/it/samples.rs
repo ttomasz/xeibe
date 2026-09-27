@@ -56,7 +56,10 @@ fn first_geometry_of(sample: &Sample, options: &ReadOptions) -> Option<G> {
 }
 
 fn tol() -> Tol {
-    Tol { abs: 1e-6, rel: 0.0 }
+    Tol {
+        abs: 1e-6,
+        rel: 0.0,
+    }
 }
 
 #[test]
@@ -115,7 +118,11 @@ fn auto_finds_the_verified_axis_order() {
             ));
         }
     }
-    assert!(wrong.is_empty(), "Auto read these wrongly:\n  {}", wrong.join("\n  "));
+    assert!(
+        wrong.is_empty(),
+        "Auto read these wrongly:\n  {}",
+        wrong.join("\n  ")
+    );
 }
 
 #[test]
@@ -198,7 +205,10 @@ fn the_ngi_line_is_read_in_three_dimensions() {
             "LINESTRING Z (701548.2374999970 711198.8764999993 50.8436999999999,",
             "701594.7454999983 711470.2360000014 51.0999999999999)"
         ),
-        Tol { abs: 1e-6, rel: 0.0 },
+        Tol {
+            abs: 1e-6,
+            rel: 0.0,
+        },
     );
 }
 

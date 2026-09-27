@@ -16,12 +16,19 @@ use crate::model::{Coords, Dim, LineString, Point};
 static DEFAULT_FORMAT: LazyLock<CoordinatesFormat> = LazyLock::new(CoordinatesFormat::default);
 
 impl Parser<'_> {
-    pub(super) fn point(&mut self, reader: &mut GmlReader<'_>, elem: &Elem, scope: Scope) -> crate::Result<Point> {
+    pub(super) fn point(
+        &mut self,
+        reader: &mut GmlReader<'_>,
+        elem: &Elem,
+        scope: Scope,
+    ) -> crate::Result<Point> {
         let scope = self.enter(elem, scope);
         let coords = self.positions(reader, scope, false)?;
         match coords.len() {
             0 => Ok(Point { coord: None }),
-            1 => Ok(Point { coord: Some(coords.values) }),
+            1 => Ok(Point {
+                coord: Some(coords.values),
+            }),
             n => Err(self.position_count(reader, "Point", n, "1")),
         }
     }
@@ -44,7 +51,8 @@ impl Parser<'_> {
         element: &'static str,
         coords: &Coords,
     ) -> crate::Result<()> {
-        check_line_string(coords).map_err(|_| self.position_count(reader, element, coords.len(), "at least 2"))
+        check_line_string(coords)
+            .map_err(|_| self.position_count(reader, element, coords.len(), "at least 2"))
     }
 
     pub(super) fn linear_ring(
@@ -57,7 +65,9 @@ impl Parser<'_> {
         let mut coords = self.positions(reader, scope, true)?;
         match check_linear_ring(&mut coords) {
             Ok(warnings) => self.warnings.extend(warnings),
-            Err(_) => return Err(self.position_count(reader, "LinearRing", coords.len(), "at least 4")),
+            Err(_) => {
+                return Err(self.position_count(reader, "LinearRing", coords.len(), "at least 4"));
+            }
         }
         Ok(LineString { coords })
     }
@@ -141,9 +151,15 @@ impl Parser<'_> {
         let (dimension, warning) = effective_dimension(inputs, values.len());
         self.warnings.extend(warning);
         let element = if single { "pos" } else { "posList" };
-        let invalid = |message: String| Error::InvalidCoordinates { location: reader.location(), message };
-        let dim = Dim::from_size(dimension)
-            .ok_or_else(|| invalid(format!("unsupported dimension {dimension} in {element} (2 or 3 expected)")))?;
+        let invalid = |message: String| Error::InvalidCoordinates {
+            location: reader.location(),
+            message,
+        };
+        let dim = Dim::from_size(dimension).ok_or_else(|| {
+            invalid(format!(
+                "unsupported dimension {dimension} in {element} (2 or 3 expected)"
+            ))
+        })?;
         if values.len() % dimension != 0 {
             return Err(invalid(format!(
                 "{} values in {element} are not a whole number of {dimension}D positions",
@@ -155,9 +171,14 @@ impl Parser<'_> {
             return Err(self.position_count(reader, "pos", positions, "1"));
         }
         if let Some(count) = elem.attrs.count.filter(|&count| count != positions) {
-            return Err(invalid(format!("count=\"{count}\" but {positions} positions in {element}")));
+            return Err(invalid(format!(
+                "count=\"{count}\" but {positions} positions in {element}"
+            )));
         }
-        Ok(Coords { dim: Some(dim), values })
+        Ok(Coords {
+            dim: Some(dim),
+            values,
+        })
     }
 
     /// `coordinates` with its `decimal`/`cs`/`ts`.
@@ -170,7 +191,10 @@ impl Parser<'_> {
         } else {
             let default = &*DEFAULT_FORMAT;
             custom = CoordinatesFormat {
-                decimal: attrs.decimal.clone().unwrap_or_else(|| default.decimal.clone()),
+                decimal: attrs
+                    .decimal
+                    .clone()
+                    .unwrap_or_else(|| default.decimal.clone()),
                 cs: attrs.cs.clone().unwrap_or_else(|| default.cs.clone()),
                 ts: attrs.ts.clone().unwrap_or_else(|| default.ts.clone()),
             };

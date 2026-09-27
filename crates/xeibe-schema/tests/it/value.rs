@@ -20,7 +20,10 @@ fn string_is_always_possible() {
     for value in ["", "0012", "abc", "2021-03-04", "1", "true"] {
         let candidates = classify(value);
         assert!(candidates.exact_text.contains(TypeSet::STRING), "{value:?}");
-        assert!(candidates.exact_value.contains(TypeSet::STRING), "{value:?}");
+        assert!(
+            candidates.exact_value.contains(TypeSet::STRING),
+            "{value:?}"
+        );
         assert!(candidates.lossy.contains(TypeSet::STRING), "{value:?}");
     }
 }
@@ -35,7 +38,11 @@ fn integers_and_floats() {
     // Too many digits for an f64 round trip.
     assert_exact_value("12345678901234567.89", TypeSet::STRING);
     // Beyond i64, but exact as a float.
-    assert!(classify("99999999999999999999.0").lossy.contains(TypeSet::FLOAT));
+    assert!(
+        classify("99999999999999999999.0")
+            .lossy
+            .contains(TypeSet::FLOAT)
+    );
 }
 
 #[test]

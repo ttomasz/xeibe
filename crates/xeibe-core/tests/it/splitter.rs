@@ -13,7 +13,13 @@ use crate::support::{feature_names, features, one_feature_per_chunk, split, try_
 
 fn parcels(count: usize) -> Vec<String> {
     (0..count)
-        .map(|i| gml::feature("Parcel", &format!("p{i}"), &format!("<app:area>{i}</app:area>")))
+        .map(|i| {
+            gml::feature(
+                "Parcel",
+                &format!("p{i}"),
+                &format!("<app:area>{i}</app:area>"),
+            )
+        })
         .collect()
 }
 
@@ -78,10 +84,16 @@ fn splits_wfs_20_members_and_wfs_11_feature_members() {
         r#"numberMatched="unknown" numberReturned="2""#,
         &refs(&features),
     );
-    assert_eq!(feature_names(&split(&wfs20, one_feature_per_chunk())), ["Parcel"; 2]);
+    assert_eq!(
+        feature_names(&split(&wfs20, one_feature_per_chunk())),
+        ["Parcel"; 2]
+    );
 
     let wfs11 = gml::wfs11_collection(r#"numberOfFeatures="2""#, &refs(&features));
-    assert_eq!(feature_names(&split(&wfs11, one_feature_per_chunk())), ["Parcel"; 2]);
+    assert_eq!(
+        feature_names(&split(&wfs11, one_feature_per_chunk())),
+        ["Parcel"; 2]
+    );
 }
 
 #[test]
@@ -94,10 +106,16 @@ fn reads_the_document_header_before_the_first_feature() {
         r#" xsi:schemaLocation="http://example.com/app app.xsd""#,
         "",
     );
-    let mut splitter =
-        xeibe_core::FeatureSplitter::new(document.as_bytes(), xeibe_core::SourceId(0), SplitterOptions::default());
+    let mut splitter = xeibe_core::FeatureSplitter::new(
+        document.as_bytes(),
+        xeibe_core::SourceId(0),
+        SplitterOptions::default(),
+    );
     let header = splitter.header().expect("a header");
-    assert_eq!(header.root, QName::new(Some(ns::GML_32), "FeatureCollection"));
+    assert_eq!(
+        header.root,
+        QName::new(Some(ns::GML_32), "FeatureCollection")
+    );
     assert_eq!(
         header.schema_location.as_deref(),
         Some("http://example.com/app app.xsd")
@@ -117,8 +135,11 @@ fn header_keeps_the_wfs_response_attributes() {
         r#"numberMatched="17" numberReturned="2" next="http://example.com/next""#,
         &refs(&features),
     );
-    let mut splitter =
-        xeibe_core::FeatureSplitter::new(document.as_bytes(), xeibe_core::SourceId(0), SplitterOptions::default());
+    let mut splitter = xeibe_core::FeatureSplitter::new(
+        document.as_bytes(),
+        xeibe_core::SourceId(0),
+        SplitterOptions::default(),
+    );
     let header = splitter.header().expect("a header");
     let attribute = |local: &str| {
         header
@@ -137,8 +158,11 @@ fn header_flags_fme_produced_documents() {
     // The FME namespace on the root changes the axis-order decision.
     let features = parcels(1);
     let document = gml::fme_collection(&refs(&features));
-    let mut splitter =
-        xeibe_core::FeatureSplitter::new(document.as_bytes(), xeibe_core::SourceId(0), SplitterOptions::default());
+    let mut splitter = xeibe_core::FeatureSplitter::new(
+        document.as_bytes(),
+        xeibe_core::SourceId(0),
+        SplitterOptions::default(),
+    );
     assert!(splitter.header().expect("a header").fme_produced);
 }
 
@@ -152,7 +176,9 @@ fn chunks_carry_sequence_numbers_and_offsets() {
     let first_features: Vec<u64> = chunks.iter().map(|c| c.first_feature_seq).collect();
     assert_eq!(first_features, [0, 1, 2, 3]);
     assert!(
-        chunks.windows(2).all(|w| w[0].byte_offset < w[1].byte_offset),
+        chunks
+            .windows(2)
+            .all(|w| w[0].byte_offset < w[1].byte_offset),
         "byte offsets grow: {:?}",
         chunks.iter().map(|c| c.byte_offset).collect::<Vec<_>>()
     );
@@ -174,7 +200,13 @@ fn a_large_target_puts_every_feature_in_one_chunk() {
 fn a_single_feature_larger_than_the_target_becomes_its_own_chunk() {
     let big = "x".repeat(4096);
     let features: Vec<String> = (0..3)
-        .map(|i| gml::feature("Parcel", &format!("p{i}"), &format!("<app:note>{big}</app:note>")))
+        .map(|i| {
+            gml::feature(
+                "Parcel",
+                &format!("p{i}"),
+                &format!("<app:note>{big}</app:note>"),
+            )
+        })
         .collect();
     let document = gml::gml32_collection(&refs(&features));
     let chunks = split(
@@ -208,11 +240,17 @@ fn a_layer_filter_skips_other_feature_types() {
     // Feature sequence numbers count the features of the read, so the second
     // Parcel is the second feature this read sees.
     assert_eq!(
-        chunks.iter().map(|c| c.first_feature_seq).collect::<Vec<_>>(),
+        chunks
+            .iter()
+            .map(|c| c.first_feature_seq)
+            .collect::<Vec<_>>(),
         [0, 1]
     );
     // Features of other layers are not counted in a chunk either.
-    assert_eq!(chunks.iter().map(|c| c.features).collect::<Vec<_>>(), [1, 1]);
+    assert_eq!(
+        chunks.iter().map(|c| c.features).collect::<Vec<_>>(),
+        [1, 1]
+    );
 }
 
 #[test]
@@ -356,18 +394,38 @@ fn chunks_carry_the_collection_bounded_by() {
     // inherit the srsName (`docs/geometry.md`, "srsName inheritance").
     let features = parcels(2);
     let envelope = bounded_by("gml:boundedBy", "EPSG:2180");
-    let document = gml::collection(ns::GML_32, "gml:featureMember", &refs(&features), "", &envelope);
+    let document = gml::collection(
+        ns::GML_32,
+        "gml:featureMember",
+        &refs(&features),
+        "",
+        &envelope,
+    );
     let chunks = split(&document, one_feature_per_chunk());
-    assert_eq!(feature_names(&chunks), ["Parcel", "Parcel"], "the boundedBy is not a feature");
+    assert_eq!(
+        feature_names(&chunks),
+        ["Parcel", "Parcel"],
+        "the boundedBy is not a feature"
+    );
     for chunk in &chunks {
         assert_eq!(chunk_bounded_by(chunk).as_deref(), Some(envelope.as_str()));
         let raw = chunk.collection_bounded_by.as_ref().expect("a boundedBy");
         assert_eq!(raw.namespaces.resolve_prefix(Some("gml")), Some(ns::GML_32));
-        assert_eq!(&document.as_bytes()[raw.byte_offset as usize..][..raw.bytes.len()], &raw.bytes[..]);
+        assert_eq!(
+            &document.as_bytes()[raw.byte_offset as usize..][..raw.bytes.len()],
+            &raw.bytes[..]
+        );
     }
 
-    let plain = split(&gml::gml32_collection(&refs(&features)), SplitterOptions::default());
-    assert!(plain.iter().all(|chunk| chunk.collection_bounded_by.is_none()));
+    let plain = split(
+        &gml::gml32_collection(&refs(&features)),
+        SplitterOptions::default(),
+    );
+    assert!(
+        plain
+            .iter()
+            .all(|chunk| chunk.collection_bounded_by.is_none())
+    );
 }
 
 #[test]
@@ -377,34 +435,60 @@ fn nested_collections_hand_down_their_own_bounded_by() {
     let inner = |envelope: &str, ids: &[&str]| {
         let members: String = ids
             .iter()
-            .map(|id| format!("<wfs:member>{}</wfs:member>", gml::feature("Parcel", id, "")))
+            .map(|id| {
+                format!(
+                    "<wfs:member>{}</wfs:member>",
+                    gml::feature("Parcel", id, "")
+                )
+            })
             .collect();
         format!("<wfs:FeatureCollection>{envelope}{members}</wfs:FeatureCollection>")
     };
     let document = gml::wfs20_collection(
         "",
-        &[&inner(&bounded_by("wfs:boundedBy", "EPSG:2180"), &["p1", "p2"]), &inner("", &["p3"])],
+        &[
+            &inner(&bounded_by("wfs:boundedBy", "EPSG:2180"), &["p1", "p2"]),
+            &inner("", &["p3"]),
+        ],
     )
-    .replacen("<wfs:member>", &format!("{}<wfs:member>", bounded_by("wfs:boundedBy", "EPSG:4326")), 1);
+    .replacen(
+        "<wfs:member>",
+        &format!("{}<wfs:member>", bounded_by("wfs:boundedBy", "EPSG:4326")),
+        1,
+    );
     let chunks = split(&document, SplitterOptions::default());
-    let per_chunk: Vec<(usize, Option<String>)> =
-        chunks.iter().map(|chunk| (features(std::slice::from_ref(chunk)).len(), chunk_bounded_by(chunk))).collect();
+    let per_chunk: Vec<(usize, Option<String>)> = chunks
+        .iter()
+        .map(|chunk| {
+            (
+                features(std::slice::from_ref(chunk)).len(),
+                chunk_bounded_by(chunk),
+            )
+        })
+        .collect();
     assert_eq!(
         per_chunk,
-        [(2, Some(bounded_by("wfs:boundedBy", "EPSG:2180"))), (1, Some(bounded_by("wfs:boundedBy", "EPSG:4326")))]
+        [
+            (2, Some(bounded_by("wfs:boundedBy", "EPSG:2180"))),
+            (1, Some(bounded_by("wfs:boundedBy", "EPSG:4326")))
+        ]
     );
 }
 
 #[test]
 fn the_bounded_by_of_a_feature_root_stays_the_feature_s_own() {
     let envelope = bounded_by("gml:boundedBy", "EPSG:2180");
-    let document = gml::single_feature_document("Parcel", "p1", &format!("{envelope}<app:area>1</app:area>"));
+    let document =
+        gml::single_feature_document("Parcel", "p1", &format!("{envelope}<app:area>1</app:area>"));
     let options = SplitterOptions {
         allow_single_feature_root: true,
         ..SplitterOptions::default()
     };
     let chunks = split(&document, options);
     assert_eq!(feature_names(&chunks), ["Parcel"]);
-    assert!(chunks[0].collection_bounded_by.is_none(), "a property of the feature, not a collection's");
+    assert!(
+        chunks[0].collection_bounded_by.is_none(),
+        "a property of the feature, not a collection's"
+    );
     assert!(String::from_utf8_lossy(&chunks[0].bytes).contains(&envelope));
 }

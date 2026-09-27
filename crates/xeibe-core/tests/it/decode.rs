@@ -27,7 +27,10 @@ fn decode_all(bytes: Vec<u8>) -> String {
 
 #[test]
 fn detects_compression_from_magic_bytes() {
-    assert_eq!(detect_compression(b"<?xml version=\"1.0\"?>"), Compression::None);
+    assert_eq!(
+        detect_compression(b"<?xml version=\"1.0\"?>"),
+        Compression::None
+    );
     assert_eq!(detect_compression(&gzip(b"<a/>")), Compression::Gzip);
     assert_eq!(detect_compression(&zstd(b"<a/>")), Compression::Zstd);
     assert_eq!(detect_compression(b"PK\x03\x04rest"), Compression::Zip);
@@ -37,7 +40,10 @@ fn detects_compression_from_magic_bytes() {
 
 #[test]
 fn detects_the_declared_encoding() {
-    assert_eq!(detect_encoding(b"<?xml version=\"1.0\"?><a/>"), encoding_rs::UTF_8);
+    assert_eq!(
+        detect_encoding(b"<?xml version=\"1.0\"?><a/>"),
+        encoding_rs::UTF_8
+    );
     assert_eq!(
         detect_encoding(b"<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?><a/>"),
         encoding_rs::ISO_8859_2
@@ -90,8 +96,13 @@ fn a_truncated_compressed_stream_is_an_error() {
     bytes.truncate(bytes.len() / 2);
     let reader: Box<dyn Read + Send> = Box::new(std::io::Cursor::new(bytes));
     let mut text = String::new();
-    let result = decoded_reader(reader).and_then(|mut stream| Ok(stream.read_to_string(&mut text)?));
-    assert!(result.is_err(), "read {} bytes without an error", text.len());
+    let result =
+        decoded_reader(reader).and_then(|mut stream| Ok(stream.read_to_string(&mut text)?));
+    assert!(
+        result.is_err(),
+        "read {} bytes without an error",
+        text.len()
+    );
 }
 
 #[test]

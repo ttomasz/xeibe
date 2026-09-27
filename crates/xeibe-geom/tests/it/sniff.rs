@@ -127,10 +127,7 @@ fn reports_empty_and_referenced_geometry() {
     assert!(empty.empty);
     assert_eq!(empty.first_position, None);
 
-    let referenced = sniff(
-        r##"<gml:Point xlink:href="#p1"/>"##,
-        None,
-    );
+    let referenced = sniff(r##"<gml:Point xlink:href="#p1"/>"##, None);
     assert!(referenced.by_reference);
 }
 
@@ -155,13 +152,17 @@ fn a_3d_geometry_is_reported_as_such() {
 fn gml_33_compact_encodings_have_the_kind_they_abbreviate() {
     let sniff33 = |snippet: &str| sniff_in(&gml::geometry_document_gml33(snippet), None);
 
-    let polygon = sniff33("<gmlce:SimplePolygon><gml:posList>1 2 3 4 5 6</gml:posList></gmlce:SimplePolygon>");
+    let polygon = sniff33(
+        "<gmlce:SimplePolygon><gml:posList>1 2 3 4 5 6</gml:posList></gmlce:SimplePolygon>",
+    );
     assert_eq!(polygon.kinds, vec![GeomKind::Polygon]);
     assert_eq!(polygon.first_position, Some(vec![1.0, 2.0]));
     assert!(polygon.gml_33 && !polygon.has_curves && !polygon.has_unsupported);
     assert_eq!(polygon.dialect, Some(Dialect::Gml3));
 
-    let points = sniff33("<gmlce:SimpleMultiPoint><gml:posList>1 2 3 4</gml:posList></gmlce:SimpleMultiPoint>");
+    let points = sniff33(
+        "<gmlce:SimpleMultiPoint><gml:posList>1 2 3 4</gml:posList></gmlce:SimpleMultiPoint>",
+    );
     assert_eq!(points.kinds, vec![GeomKind::MultiPoint]);
 
     // A compact curve is a curve, so `Auto` encodes its column as WKB.
@@ -181,6 +182,8 @@ fn gml_33_triangulated_surfaces_are_unsupported() {
     let tin = sniff33("<gmltin:TIN><gml:patches/></gmltin:TIN>");
     assert_eq!(tin.kinds, vec![GeomKind::Unsupported]);
     assert!(tin.has_unsupported);
-    let nested = sniff33("<gml:MultiGeometry><gml:geometryMember><gmltin:TIN/></gml:geometryMember></gml:MultiGeometry>");
+    let nested = sniff33(
+        "<gml:MultiGeometry><gml:geometryMember><gmltin:TIN/></gml:geometryMember></gml:MultiGeometry>",
+    );
     assert!(nested.has_unsupported);
 }

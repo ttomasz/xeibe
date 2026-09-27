@@ -4,14 +4,16 @@
 //! Whether that stops the read, skips the feature or nulls the geometry is
 //! `OnFeatureError`'s job, tested in `xeibe-arrow`.
 
-use xeibe_geom::model::GeomKind;
 use xeibe_geom::Error;
+use xeibe_geom::model::GeomKind;
 use xeibe_testkit::wkt::assert_wkt;
 
 use crate::support::{assert_geometry, g31, parse, to_g};
 
-const RING: &str = "<gml:LinearRing><gml:posList>0 0 4 0 4 4 0 4 0 0</gml:posList></gml:LinearRing>";
-const HOLE: &str = "<gml:LinearRing><gml:posList>1 1 2 1 2 2 1 2 1 1</gml:posList></gml:LinearRing>";
+const RING: &str =
+    "<gml:LinearRing><gml:posList>0 0 4 0 4 4 0 4 0 0</gml:posList></gml:LinearRing>";
+const HOLE: &str =
+    "<gml:LinearRing><gml:posList>1 1 2 1 2 2 1 2 1 1</gml:posList></gml:LinearRing>";
 
 #[test]
 fn polygon_with_exterior_and_interior_rings() {
@@ -175,7 +177,6 @@ fn solids_and_triangulated_surfaces_are_unsupported() {
         assert!(matches!(error, Error::Unsupported { .. }), "got {error:?}");
     }
 }
-
 
 #[test]
 fn a_3d_polygon_keeps_its_z_ordinates() {

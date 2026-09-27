@@ -1,9 +1,9 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use xeibe_core::{GmlVersion, QName};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use xeibe_core::{GmlVersion, QName};
 
 use crate::geometry_stats::union_bbox;
 use crate::{ElementNode, Merge};
@@ -82,7 +82,10 @@ impl DatasetObservation {
                 .map(|(uri, _)| uri.clone())
         });
         let mut matches = self.layers.iter().filter(|(qname, _)| {
-            &*qname.local == local && uri.as_ref().is_none_or(|uri| qname.ns.as_ref() == Some(uri))
+            &*qname.local == local
+                && uri
+                    .as_ref()
+                    .is_none_or(|uri| qname.ns.as_ref() == Some(uri))
         });
         let first = matches
             .next()
@@ -119,8 +122,9 @@ impl Merge for DatasetObservation {
         }
         if reorder {
             // Layers in order of their first feature, whatever the merge order.
-            self.layers
-                .sort_by_cached_key(|_, layer| layer.root.first_seen.map_or((1, 0, 0), |(s, o)| (0, s, o)));
+            self.layers.sort_by_cached_key(|_, layer| {
+                layer.root.first_seen.map_or((1, 0, 0), |(s, o)| (0, s, o))
+            });
         }
         self.sampled |= other.sampled;
         self.source_context.extend(other.source_context);

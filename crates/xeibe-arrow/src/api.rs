@@ -6,14 +6,14 @@ use std::sync::{Arc, Mutex};
 
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use geoarrow_schema::{Crs, GeoArrowType, Metadata};
-use xeibe_core::{FeatureChunk, QName, SourceId, Sources};
 use indexmap::IndexMap;
+use xeibe_core::{FeatureChunk, QName, SourceId, Sources};
 use xeibe_geom::axis::{AxisContext, decide};
 use xeibe_geom::{AxisKey, AxisOrderMode, AxisOrderOptions, SrsName};
 use xeibe_schema::rules::meta;
 use xeibe_schema::{
-    DatasetObservation, ElementNode, InferenceOptions, LayerSchema, Merge, SampleOptions, ScanExtent,
-    ScanOptions, Scanner, bind_schema, infer_schema,
+    DatasetObservation, ElementNode, InferenceOptions, LayerSchema, Merge, SampleOptions,
+    ScanExtent, ScanOptions, Scanner, bind_schema, infer_schema,
 };
 
 use crate::axis::{AxisDecisions, SharedContexts};
@@ -24,7 +24,11 @@ use crate::{LayerReader, ReadOptions, ReadReport, Settings};
 
 /// List every layer with its inferred schema. Full, or the first N features of
 /// the input (late layers may then be missing).
-pub fn scan(sources: impl Into<Sources>, extent: ScanExtent, options: &ReadOptions) -> crate::Result<ScanResult> {
+pub fn scan(
+    sources: impl Into<Sources>,
+    extent: ScanExtent,
+    options: &ReadOptions,
+) -> crate::Result<ScanResult> {
     let options = &options.effective();
     let scanner = Scanner::new(ScanOptions {
         extent,
@@ -34,7 +38,10 @@ pub fn scan(sources: impl Into<Sources>, extent: ScanExtent, options: &ReadOptio
         threads: options.threads.max(1),
     });
     let observation = scanner.run(sources.into())?;
-    Ok(ScanResult { observation, options: options.clone() })
+    Ok(ScanResult {
+        observation,
+        options: options.clone(),
+    })
 }
 
 /// Read one layer. With `schema: None` the schema is inferred from the first
@@ -68,12 +75,23 @@ pub fn read(
     // A sample: for the schema, and for `Auto` axis evidence.
     // A given schema's geometry columns need one too when their CRS is to
     // come from the data.
-    let has_geometry = schema.as_ref().is_none_or(|schema| schema.fields().iter().any(|f| reads_geometry(f)));
+    let has_geometry = schema
+        .as_ref()
+        .is_none_or(|schema| schema.fields().iter().any(|f| reads_geometry(f)));
     let crs_from_data = options.geometry.crs_override.is_none()
-        && schema.as_ref().is_some_and(|schema| schema.fields().iter().any(|f| is_geometry(f) && !has_crs(f)));
+        && schema.as_ref().is_some_and(|schema| {
+            schema
+                .fields()
+                .iter()
+                .any(|f| is_geometry(f) && !has_crs(f))
+        });
     let needs_sample = schema.is_none()
         || (has_geometry && (crs_from_data || needs_axis_evidence(&options.geometry.axis)));
-    let sample = if needs_sample { Some(take_sample(&mut stream, &contexts, options)?) } else { None };
+    let sample = if needs_sample {
+        Some(take_sample(&mut stream, &contexts, options)?)
+    } else {
+        None
+    };
 
     let layer_name = match &sample {
         Some(sample) => match sample.observation.layer(layer) {
@@ -93,28 +111,46 @@ pub fn read(
         None => {
             let sample = sample.as_ref().expect("a read without a schema samples");
             let sample_options = sample_options(&options.sample, sample.complete);
-            infer_schema(&sample.observation, &qname, &options.inference, Some(&sample_options))?
+            infer_schema(
+                &sample.observation,
+                &qname,
+                &options.inference,
+                Some(&sample_options),
+            )?
         }
-        Some(schema) => bind_schema(&qname, &with_namespaces(schema, &options.namespaces), &options.inference)?,
+        Some(schema) => bind_schema(
+            &qname,
+            &with_namespaces(schema, &options.namespaces),
+            &options.inference,
+        )?,
     };
 
     // Output columns: the projection.
     let base = layer_schema.schema.clone();
-    let wanted = |name: &str| options.projection.as_ref().is_none_or(|names| names.iter().any(|n| n == name));
+    let wanted = |name: &str| {
+        options
+            .projection
+            .as_ref()
+            .is_none_or(|names| names.iter().any(|n| n == name))
+    };
     let mut fields: Vec<Field> = Vec::new();
     let mut columns: Vec<Option<usize>> = Vec::new();
     let srs = options.geometry.crs_override.clone().or_else(|| {
         let layer = sample.as_ref()?.observation.layers.get(&qname)?;
         let mut srs = BTreeMap::new();
         collect_srs(&layer.root, true, &mut srs);
-        srs.into_iter().max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(&a.0))).map(|(name, _)| name)
+        srs.into_iter()
+            .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(&a.0)))
+            .map(|(name, _)| name)
     });
     for field in base.fields() {
         if wanted(field.name()) {
             columns.push(Some(fields.len()));
             let field = match (&schema, &srs) {
                 // A given schema carries no CRS: it comes from the data.
-                (Some(_), Some(srs)) if is_geometry(field) && !has_crs(field) => with_crs(field, srs)?,
+                (Some(_), Some(srs)) if is_geometry(field) && !has_crs(field) => {
+                    with_crs(field, srs)?
+                }
                 _ => field.as_ref().clone(),
             };
             fields.push(field);
@@ -130,8 +166,13 @@ pub fn read(
         .geometry_columns
         .iter()
         .map(|column| {
-            AxisDecisions::from_observation(observation, &qname.to_clark(), column, &options.geometry.axis)
-                .with_contexts(contexts.clone())
+            AxisDecisions::from_observation(
+                observation,
+                &qname.to_clark(),
+                column,
+                &options.geometry.axis,
+            )
+            .with_contexts(contexts.clone())
         })
         .collect();
 
@@ -175,7 +216,11 @@ struct Sample {
 /// Take chunks until `sample.features_per_layer` features of the layer (or
 /// `max_buffer_bytes`) are in, or the input ends, and scan them on all
 /// threads: the workers aren't running yet.
-fn take_sample(stream: &mut ChunkStream, contexts: &SharedContexts, options: &ReadOptions) -> crate::Result<Sample> {
+fn take_sample(
+    stream: &mut ChunkStream,
+    contexts: &SharedContexts,
+    options: &ReadOptions,
+) -> crate::Result<Sample> {
     let scanner = Scanner::new(ScanOptions {
         extent: ScanExtent::Full,
         limits: options.inference.limits,
@@ -183,7 +228,11 @@ fn take_sample(stream: &mut ChunkStream, contexts: &SharedContexts, options: &Re
         splitter: options.splitter.clone(),
         threads: 1,
     });
-    let mut sample = Sample { chunks: Vec::new(), observation: DatasetObservation::default(), complete: false };
+    let mut sample = Sample {
+        chunks: Vec::new(),
+        observation: DatasetObservation::default(),
+        complete: false,
+    };
     let budget = options.sample.features_per_layer;
     let (mut features, mut bytes) = (0u64, 0u64);
     // A chunk after the sample, taken only to tell whether there is more.
@@ -218,7 +267,12 @@ fn take_sample(stream: &mut ChunkStream, contexts: &SharedContexts, options: &Re
 
 /// The first `budget` features of `chunks`, scanned on up to `threads`
 /// threads and merged in chunk order.
-fn scan_sample(scanner: &Scanner, chunks: &[FeatureChunk], budget: u64, threads: usize) -> crate::Result<DatasetObservation> {
+fn scan_sample(
+    scanner: &Scanner,
+    chunks: &[FeatureChunk],
+    budget: u64,
+    threads: usize,
+) -> crate::Result<DatasetObservation> {
     // Only the first `budget` features count, even where a chunk holds more.
     let mut left = budget;
     let budgets: Vec<u64> = chunks
@@ -231,25 +285,35 @@ fn scan_sample(scanner: &Scanner, chunks: &[FeatureChunk], budget: u64, threads:
         .collect();
     let threads = threads.clamp(1, chunks.len().max(1));
     let budgets = &budgets;
-    let mut scanned: Vec<(usize, xeibe_schema::Result<DatasetObservation>)> = std::thread::scope(|scope| {
-        let workers: Vec<_> = (0..threads)
-            .map(|first| {
-                scope.spawn(move || {
-                    (first..chunks.len())
-                        .step_by(threads)
-                        .map(|i| {
-                            let mut budget = budgets[i];
-                            (i, scanner.scan_chunk_limited(&chunks[i], &mut budget).map(|(observation, _)| observation))
-                        })
-                        .collect::<Vec<_>>()
+    let mut scanned: Vec<(usize, xeibe_schema::Result<DatasetObservation>)> =
+        std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..threads)
+                .map(|first| {
+                    scope.spawn(move || {
+                        (first..chunks.len())
+                            .step_by(threads)
+                            .map(|i| {
+                                let mut budget = budgets[i];
+                                (
+                                    i,
+                                    scanner
+                                        .scan_chunk_limited(&chunks[i], &mut budget)
+                                        .map(|(observation, _)| observation),
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                    })
                 })
-            })
-            .collect();
-        workers
-            .into_iter()
-            .flat_map(|worker| worker.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic)))
-            .collect()
-    });
+                .collect();
+            workers
+                .into_iter()
+                .flat_map(|worker| {
+                    worker
+                        .join()
+                        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+                })
+                .collect()
+        });
     scanned.sort_by_key(|(i, _)| *i);
     let mut observation = DatasetObservation::default();
     for (_, scanned) in scanned {
@@ -359,10 +423,24 @@ fn plain_axis(observation: &DatasetObservation, options: &AxisOrderOptions) -> A
         let mut evidence = Vec::new();
         collect_geometry(&layer.root, true, &mut evidence);
         for (key, evidence) in evidence {
-            let axis_key = AxisKey { source: SourceId(key.source), srs_name: key.srs_name.clone(), dialect: key.dialect };
+            let axis_key = AxisKey {
+                source: SourceId(key.source),
+                srs_name: key.srs_name.clone(),
+                dialect: key.dialect,
+            };
             let context = axis_context(observation, key.source);
-            let decision = decide(&axis_key, Some(&name.local), None, evidence, &context, options);
-            decided.entry(key.srs_name.clone()).or_default().push(decision.swap);
+            let decision = decide(
+                &axis_key,
+                Some(&name.local),
+                None,
+                evidence,
+                &context,
+                options,
+            );
+            decided
+                .entry(key.srs_name.clone())
+                .or_default()
+                .push(decision.swap);
         }
     }
     let all: Vec<bool> = decided.values().flatten().copied().collect();
@@ -370,7 +448,13 @@ fn plain_axis(observation: &DatasetObservation, options: &AxisOrderOptions) -> A
         return options.clone();
     }
     let majority = |swaps: &[bool]| swaps.iter().filter(|swap| **swap).count() * 2 > swaps.len();
-    let mode = |swap: bool| if swap { AxisOrderMode::YX } else { AxisOrderMode::XY };
+    let mode = |swap: bool| {
+        if swap {
+            AxisOrderMode::YX
+        } else {
+            AxisOrderMode::XY
+        }
+    };
     let overall = majority(&all);
     let mut overrides = IndexMap::new();
     for (srs_name, swaps) in decided {
@@ -380,7 +464,11 @@ fn plain_axis(observation: &DatasetObservation, options: &AxisOrderOptions) -> A
             overrides.insert(srs_name, mode(swap));
         }
     }
-    AxisOrderOptions { mode: mode(overall), overrides, crs_table: options.crs_table.clone() }
+    AxisOrderOptions {
+        mode: mode(overall),
+        overrides,
+        crs_table: options.crs_table.clone(),
+    }
 }
 
 fn axis_context(observation: &DatasetObservation, source: u32) -> AxisContext {
@@ -401,7 +489,10 @@ fn axis_context(observation: &DatasetObservation, source: u32) -> AxisContext {
 fn collect_geometry<'n>(
     node: &'n ElementNode,
     feature: bool,
-    out: &mut Vec<(&'n xeibe_schema::geometry_stats::ColumnAxisKey, &'n xeibe_geom::AxisEvidence)>,
+    out: &mut Vec<(
+        &'n xeibe_schema::geometry_stats::ColumnAxisKey,
+        &'n xeibe_geom::AxisEvidence,
+    )>,
 ) {
     if let Some(stats) = &node.geometry {
         out.extend(stats.axis_evidence.iter());
@@ -458,17 +549,22 @@ impl ScanResult {
             .layers
             .iter()
             .map(|(name, layer)| {
-                let geometry_columns = infer_schema(&self.observation, name, &self.options.inference, self.sampled())
-                    .map(|schema| {
-                        schema
-                            .schema
-                            .fields()
-                            .iter()
-                            .filter(|field| is_geometry(field) && !is_box(field))
-                            .map(|field| field.name().clone())
-                            .collect()
-                    })
-                    .unwrap_or_default();
+                let geometry_columns = infer_schema(
+                    &self.observation,
+                    name,
+                    &self.options.inference,
+                    self.sampled(),
+                )
+                .map(|schema| {
+                    schema
+                        .schema
+                        .fields()
+                        .iter()
+                        .filter(|field| is_geometry(field) && !is_box(field))
+                        .map(|field| field.name().clone())
+                        .collect()
+                })
+                .unwrap_or_default();
                 let mut srs: BTreeMap<String, u64> = BTreeMap::new();
                 collect_srs(&layer.root, true, &mut srs);
                 let mut crs: Vec<(String, u64)> = srs.into_iter().collect();
@@ -490,10 +586,22 @@ impl ScanResult {
     }
 
     /// Schema of one layer with other options, without another pass.
-    pub fn schema_with(&self, layer: &str, options: &InferenceOptions) -> crate::Result<LayerSchema> {
+    pub fn schema_with(
+        &self,
+        layer: &str,
+        options: &InferenceOptions,
+    ) -> crate::Result<LayerSchema> {
         let (name, _) = self.observation.layer(layer)?;
-        let options = InferenceOptions { geometry: self.options.geometry.clone(), ..options.clone() };
-        Ok(infer_schema(&self.observation, name, &options, self.sampled())?)
+        let options = InferenceOptions {
+            geometry: self.options.geometry.clone(),
+            ..options.clone()
+        };
+        Ok(infer_schema(
+            &self.observation,
+            name,
+            &options,
+            self.sampled(),
+        )?)
     }
 
     pub fn arrow_schema(&self, layer: &str) -> crate::Result<SchemaRef> {
@@ -514,9 +622,20 @@ impl ScanResult {
             let mut evidence = Vec::new();
             collect_geometry(&layer.root, true, &mut evidence);
             for (key, evidence) in evidence {
-                let axis_key = AxisKey { source: SourceId(key.source), srs_name: key.srs_name.clone(), dialect: key.dialect };
+                let axis_key = AxisKey {
+                    source: SourceId(key.source),
+                    srs_name: key.srs_name.clone(),
+                    dialect: key.dialect,
+                };
                 let context = axis_context(&self.observation, key.source);
-                let decision = decide(&axis_key, Some(&name.local), None, evidence, &context, options);
+                let decision = decide(
+                    &axis_key,
+                    Some(&name.local),
+                    None,
+                    evidence,
+                    &context,
+                    options,
+                );
                 out.push((name.clone(), axis_key, decision));
             }
         }
@@ -529,7 +648,12 @@ impl ScanResult {
         let mut settings = Settings::new(self.options.clone());
         settings.options.geometry.axis = plain_axis(&self.observation, &self.options.geometry.axis);
         for name in self.observation.layers.keys() {
-            let schema = infer_schema(&self.observation, name, &self.options.inference, self.sampled())?;
+            let schema = infer_schema(
+                &self.observation,
+                name,
+                &self.options.inference,
+                self.sampled(),
+            )?;
             settings.set_schema(&display_name(&self.observation, name), &schema.schema)?;
         }
         Ok(settings)
@@ -542,7 +666,10 @@ impl ScanResult {
 }
 
 fn is_box(field: &Field) -> bool {
-    field.metadata().get("ARROW:extension:name").is_some_and(|name| name == "geoarrow.box")
+    field
+        .metadata()
+        .get("ARROW:extension:name")
+        .is_some_and(|name| name == "geoarrow.box")
 }
 
 /// srsNames of the geometry properties below a feature, with counts.

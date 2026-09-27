@@ -74,7 +74,11 @@ fn is_member_wrapper(name: &QName) -> bool {
     let in_gml = matches!(name.ns.as_deref(), Some(ns::GML) | Some(ns::GML_32));
     let in_wfs = matches!(name.ns.as_deref(), Some(ns::WFS) | Some(ns::WFS_20));
     (in_gml && matches!(&*name.local, "featureMember" | "featureMembers"))
-        || (in_wfs && matches!(&*name.local, "member" | "featureMember" | "additionalObjects"))
+        || (in_wfs
+            && matches!(
+                &*name.local,
+                "member" | "featureMember" | "additionalObjects"
+            ))
 }
 
 /// A namespace context with the prefixes the synthetic documents use.

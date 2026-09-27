@@ -14,7 +14,10 @@ pub const POINTS: &str = "AD_PunktAdresowy";
 
 /// Absolute path of a file below `tests/data`.
 pub fn path(relative: &str) -> String {
-    xeibe_testkit::data_dir().join(relative).display().to_string()
+    xeibe_testkit::data_dir()
+        .join(relative)
+        .display()
+        .to_string()
 }
 
 /// A `file://` URL, read through the session's local object store.
@@ -44,7 +47,9 @@ pub fn rows(batches: &[RecordBatch]) -> usize {
 /// The single value of `select count(*) …`.
 pub async fn count(ctx: &SessionContext, sql: &str) -> i64 {
     let batches = query(ctx, sql).await;
-    let column = batches[0].column(0).as_primitive::<datafusion::arrow::datatypes::Int64Type>();
+    let column = batches[0]
+        .column(0)
+        .as_primitive::<datafusion::arrow::datatypes::Int64Type>();
     column.value(0)
 }
 
@@ -52,8 +57,11 @@ pub async fn count(ctx: &SessionContext, sql: &str) -> i64 {
 pub fn strings(batches: &[RecordBatch], column: &str) -> Vec<Option<String>> {
     let mut out = Vec::new();
     for batch in batches {
-        let array = batch.column_by_name(column).unwrap_or_else(|| panic!("no column {column}"));
-        let array = datafusion::arrow::compute::cast(array, &DataType::Utf8).expect("a string column");
+        let array = batch
+            .column_by_name(column)
+            .unwrap_or_else(|| panic!("no column {column}"));
+        let array =
+            datafusion::arrow::compute::cast(array, &DataType::Utf8).expect("a string column");
         let array = array.as_string::<i32>();
         out.extend((0..array.len()).map(|i| array.is_valid(i).then(|| array.value(i).to_string())));
     }

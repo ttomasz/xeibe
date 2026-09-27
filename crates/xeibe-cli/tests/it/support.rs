@@ -20,7 +20,9 @@ pub const RCN_ARCS: &str = "pl/rcn-price-register-arcs.gml";
 
 /// An empty directory for one test's outputs.
 pub fn out_dir(test: &str) -> PathBuf {
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("xeibe-cli").join(test);
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("xeibe-cli")
+        .join(test);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -33,7 +35,11 @@ pub struct Run {
 }
 
 pub fn xeibe(args: &[&str]) -> Run {
-    let Output { status, stdout, stderr } = Command::new(env!("CARGO_BIN_EXE_xeibe"))
+    let Output {
+        status,
+        stdout,
+        stderr,
+    } = Command::new(env!("CARGO_BIN_EXE_xeibe"))
         .args(args)
         .output()
         .expect("running xeibe");
@@ -47,7 +53,11 @@ pub fn xeibe(args: &[&str]) -> Run {
 /// Runs and expects success; both streams go into the panic message otherwise.
 pub fn xeibe_ok(args: &[&str]) -> Run {
     let run = xeibe(args);
-    assert!(run.success, "xeibe {args:?} failed\nstdout:\n{}\nstderr:\n{}", run.stdout, run.stderr);
+    assert!(
+        run.success,
+        "xeibe {args:?} failed\nstdout:\n{}\nstderr:\n{}",
+        run.stdout, run.stderr
+    );
     run
 }
 
@@ -82,7 +92,15 @@ pub fn zip_bytes(path: &Path, members: &[(&str, Vec<u8>)]) {
 /// The file's GeoParquet `geo` metadata.
 pub fn geo_metadata(path: &Path) -> serde_json::Value {
     let reader = parquet_reader(path);
-    let kv = reader.metadata().file_metadata().key_value_metadata().cloned().unwrap_or_default();
-    let geo = kv.iter().find(|kv| kv.key == "geo").expect("`geo` key-value metadata");
+    let kv = reader
+        .metadata()
+        .file_metadata()
+        .key_value_metadata()
+        .cloned()
+        .unwrap_or_default();
+    let geo = kv
+        .iter()
+        .find(|kv| kv.key == "geo")
+        .expect("`geo` key-value metadata");
     serde_json::from_str(geo.value.as_deref().expect("a value")).expect("`geo` is JSON")
 }

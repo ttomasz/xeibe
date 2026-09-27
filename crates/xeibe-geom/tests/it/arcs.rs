@@ -105,7 +105,11 @@ fn a_geodesic_arc_follows_compass_bearings() {
     // Geographic CRSs use AIXM bearings: clockwise from north. Lossy, so the
     // tolerance is loose (support matrix: 🤔 Considering, P2).
     let points = geodesic_arc([0.0, 0.0], 111_000.0, 0.0, 90.0, 4.0, 6_378_137.0);
-    assert!(points.len() >= 23, "one vertex per 4°, got {}", points.len());
+    assert!(
+        points.len() >= 23,
+        "one vertex per 4°, got {}",
+        points.len()
+    );
     let first = points.first().expect("a first point");
     let last = points.last().expect("a last point");
     assert!(

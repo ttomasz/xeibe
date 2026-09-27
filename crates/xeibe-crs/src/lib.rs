@@ -19,9 +19,9 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
 // Generated data: bbox longitudes such as 3.14 are not π.
+mod aliases;
 #[allow(clippy::approx_constant)]
 mod table;
-mod aliases;
 
 pub use aliases::ALIASES;
 pub use table::{CRS, EPSG_DATE, EPSG_VERSION, PROJJSON_COUNT};
@@ -179,8 +179,10 @@ impl Header {
                 std::cmp::Ordering::Greater => hi = mid,
                 std::cmp::Ordering::Equal => {
                     let at = base + mid * INDEX_ENTRY;
-                    let shard = u16::from_le_bytes(PROJJSON_BLOB[at + 4..at + 6].try_into().unwrap());
-                    let line = u16::from_le_bytes(PROJJSON_BLOB[at + 6..at + 8].try_into().unwrap());
+                    let shard =
+                        u16::from_le_bytes(PROJJSON_BLOB[at + 4..at + 6].try_into().unwrap());
+                    let line =
+                        u16::from_le_bytes(PROJJSON_BLOB[at + 6..at + 8].try_into().unwrap());
                     return Some((shard as usize, line as usize));
                 }
             }
@@ -192,11 +194,18 @@ impl Header {
 fn header() -> &'static Header {
     static HEADER: OnceLock<Header> = OnceLock::new();
     HEADER.get_or_init(|| {
-        assert_eq!(&PROJJSON_BLOB[..4], MAGIC, "data/projjson.bin is not a PROJJSON blob");
+        assert_eq!(
+            &PROJJSON_BLOB[..4],
+            MAGIC,
+            "data/projjson.bin is not a PROJJSON blob"
+        );
         let read = |offset: usize| {
             u32::from_le_bytes(PROJJSON_BLOB[offset..offset + 4].try_into().unwrap()) as usize
         };
-        Header { shards: read(4), entries: read(8) }
+        Header {
+            shards: read(4),
+            entries: read(8),
+        }
     })
 }
 
@@ -217,7 +226,9 @@ pub fn projjson(code: u32) -> Option<&'static str> {
     let header = header();
     let (shard, line) = header.find(code)?;
 
-    let mut cache = shard_cache().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut cache = shard_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let lines = match cache.get(&shard) {
         Some(lines) => *lines,
         None => {
@@ -228,8 +239,12 @@ pub fn projjson(code: u32) -> Option<&'static str> {
             let text = String::from_utf8(raw).ok()?;
             // Leaked deliberately: shards are immutable, bounded (one per 64
             // CRSs) and shared, so a `&'static` beats handing out clones.
-            let lines: &'static [String] =
-                Box::leak(text.lines().map(str::to_owned).collect::<Vec<_>>().into_boxed_slice());
+            let lines: &'static [String] = Box::leak(
+                text.lines()
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            );
             cache.insert(shard, lines);
             lines
         }

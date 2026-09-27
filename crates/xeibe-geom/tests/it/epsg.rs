@@ -54,9 +54,13 @@ fn areas_of_use_are_in_the_authority_axis_order() {
     let area = etrs89.area_of_use.expect("an area of use");
     let [min_lat, min_lon, max_lat, max_lon] = area;
     assert!(min_lat > 20.0 && max_lat < 90.0, "latitude first: {area:?}");
-    assert!(min_lon > -40.0 && max_lon < 50.0, "then longitude: {area:?}");
+    assert!(
+        min_lon > -40.0 && max_lon < 50.0,
+        "then longitude: {area:?}"
+    );
     // Warsaw is inside, and the swapped reading is not.
-    let inside = |lat: f64, lon: f64| lat >= min_lat && lat <= max_lat && lon >= min_lon && lon <= max_lon;
+    let inside =
+        |lat: f64, lon: f64| lat >= min_lat && lat <= max_lat && lon >= min_lon && lon <= max_lon;
     assert!(inside(52.23, 21.01));
     assert!(!inside(21.01, 52.23), "the swapped reading falls outside");
 }

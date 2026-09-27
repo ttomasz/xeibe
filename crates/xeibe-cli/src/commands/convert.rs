@@ -13,12 +13,20 @@ use super::geoparquet::GeoColumns;
 use crate::args::{InputArgs, OutputArgs, OutputFormat, ReadArgs};
 
 pub fn run(input: InputArgs, output: OutputArgs, read: ReadArgs) -> super::Result {
-    let layer = output.layer.clone().ok_or("--layer is required: run `xeibe scan` to list the layers")?;
+    let layer = output
+        .layer
+        .clone()
+        .ok_or("--layer is required: run `xeibe scan` to list the layers")?;
     let settings = super::settings(&read)?;
     let schema = layer_schema(&settings, &layer)?;
     let sources = super::sources(&input)?;
     let mut reader = xeibe_arrow::read(sources, &layer, schema, &settings.options)?;
-    let rows = write(&mut reader, &output, &layer, settings.options.geometry.primary.as_deref())?;
+    let rows = write(
+        &mut reader,
+        &output,
+        &layer,
+        settings.options.geometry.primary.as_deref(),
+    )?;
     super::print_report(&reader.report());
     eprintln!("{rows} rows written to {}", output.output.display());
     Ok(())
@@ -61,7 +69,13 @@ fn write_parquet(
     let path = &output.output;
     // The first batch tells `--bbox-column auto` which WKB columns hold points.
     let first = reader.next().transpose()?;
-    let mut geo = GeoColumns::new(layer, &reader.schema(), primary, output.bbox_column, first.as_ref())?;
+    let mut geo = GeoColumns::new(
+        layer,
+        &reader.schema(),
+        primary,
+        output.bbox_column,
+        first.as_ref(),
+    )?;
     let properties = WriterProperties::builder()
         .set_compression(Compression::ZSTD(ZstdLevel::default()))
         .set_max_row_group_row_count(Some(output.row_group_size.get()))

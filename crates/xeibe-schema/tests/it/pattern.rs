@@ -31,7 +31,10 @@ fn a_star_matches_one_step_and_a_double_star_matches_any() {
 #[test]
 fn patterns_may_be_namespace_qualified() {
     let p = pattern("{https://geoportal.gov.pl/schemas/prgad/1.0}*/**");
-    assert!(p.matches("{https://geoportal.gov.pl/schemas/prgad/1.0}AD_PunktAdresowy", &["idIIP"]));
+    assert!(p.matches(
+        "{https://geoportal.gov.pl/schemas/prgad/1.0}AD_PunktAdresowy",
+        &["idIIP"]
+    ));
     assert!(!p.matches("{http://example.com/app}Parcel", &["idIIP"]));
 }
 

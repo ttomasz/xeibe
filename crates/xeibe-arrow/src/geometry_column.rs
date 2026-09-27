@@ -12,9 +12,9 @@ use geoarrow_array::builder::{
     MultiPolygonBuilder, PointBuilder, PolygonBuilder,
 };
 use geoarrow_schema::{Dimension, GeoArrowType};
+use xeibe_geom::model::Envelope;
 use xeibe_geom::model::{Coords, Curve, CurvePart, Point, Polygon, Surface};
 use xeibe_geom::wkb::{Endianness, write_wkb};
-use xeibe_geom::model::Envelope;
 use xeibe_geom::{Dim, Geometry};
 
 /// What a geometry column holds, from its field's GeoArrow extension type.
@@ -55,17 +55,28 @@ impl GeometrySpec {
                     .into());
                 }
             };
-            Ok(GeometrySpec { kind, dim: Some(dim) })
+            Ok(GeometrySpec {
+                kind,
+                dim: Some(dim),
+            })
         };
         match geometry {
             GeoArrowType::Point(t) => native(GeometryKind::Point, t.dimension()),
             GeoArrowType::LineString(t) => native(GeometryKind::LineString, t.dimension()),
             GeoArrowType::Polygon(t) => native(GeometryKind::Polygon, t.dimension()),
             GeoArrowType::MultiPoint(t) => native(GeometryKind::MultiPoint, t.dimension()),
-            GeoArrowType::MultiLineString(t) => native(GeometryKind::MultiLineString, t.dimension()),
+            GeoArrowType::MultiLineString(t) => {
+                native(GeometryKind::MultiLineString, t.dimension())
+            }
             GeoArrowType::MultiPolygon(t) => native(GeometryKind::MultiPolygon, t.dimension()),
-            GeoArrowType::Geometry(_) => Ok(GeometrySpec { kind: GeometryKind::Mixed, dim: None }),
-            GeoArrowType::Wkb(_) => Ok(GeometrySpec { kind: GeometryKind::Wkb, dim: None }),
+            GeoArrowType::Geometry(_) => Ok(GeometrySpec {
+                kind: GeometryKind::Mixed,
+                dim: None,
+            }),
+            GeoArrowType::Wkb(_) => Ok(GeometrySpec {
+                kind: GeometryKind::Wkb,
+                dim: None,
+            }),
             other => Err(ArrowError::InvalidArgumentError(format!(
                 "geometry columns of type {other:?} are not supported"
             ))
@@ -89,7 +100,9 @@ impl GeometrySpec {
             }
         };
         match self.dim {
-            Some(Dim::Xy) if geometry.dim().is_some_and(|dim| dim != Dim::Xy) => return Err(geometry),
+            Some(Dim::Xy) if geometry.dim().is_some_and(|dim| dim != Dim::Xy) => {
+                return Err(geometry);
+            }
             // A no-op for parts that already have it; mixed 2D/3D parts differ.
             Some(dim) => force_dim(&mut geometry, dim),
             None => {}
@@ -148,20 +161,31 @@ impl GeometryColumnBuilder {
     pub fn for_field(field: &arrow_schema::Field, capacity: usize) -> crate::Result<Self> {
         let typ = geoarrow_type(field)?;
         let inner = Inner::new(&typ, capacity)?;
-        Ok(GeometryColumnBuilder { typ, inner, len: 0, wkb: Vec::new() })
+        Ok(GeometryColumnBuilder {
+            typ,
+            inner,
+            len: 0,
+            wkb: Vec::new(),
+        })
     }
 
     /// A plain `Binary` column (`bytea`): ISO WKB without a GeoArrow type.
     pub fn plain_wkb(capacity: usize) -> Self {
         let typ = GeoArrowType::Wkb(geoarrow_schema::WkbType::new(Default::default()));
         let inner = Inner::Wkb(BinaryBuilder::with_capacity(capacity, capacity * 32));
-        GeometryColumnBuilder { typ, inner, len: 0, wkb: Vec::new() }
+        GeometryColumnBuilder {
+            typ,
+            inner,
+            len: 0,
+            wkb: Vec::new(),
+        }
     }
 
     /// Append a geometry already brought into the column's form
     /// ([`GeometrySpec::prepare`]), or a null.
     pub fn push(&mut self, geometry: Option<&Geometry>) -> crate::Result<()> {
-        let error = |e: geoarrow_schema::error::GeoArrowError| ArrowError::ExternalError(Box::new(e));
+        let error =
+            |e: geoarrow_schema::error::GeoArrowError| ArrowError::ExternalError(Box::new(e));
         self.len += 1;
         match &mut self.inner {
             Inner::Wkb(builder) => match geometry {
@@ -211,14 +235,22 @@ impl GeometryColumnBuilder {
 impl Inner {
     fn new(typ: &GeoArrowType, capacity: usize) -> crate::Result<Self> {
         Ok(match typ {
-            GeoArrowType::Point(t) => Inner::Point(PointBuilder::with_capacity(t.clone(), capacity)),
+            GeoArrowType::Point(t) => {
+                Inner::Point(PointBuilder::with_capacity(t.clone(), capacity))
+            }
             GeoArrowType::LineString(t) => Inner::LineString(LineStringBuilder::new(t.clone())),
             GeoArrowType::Polygon(t) => Inner::Polygon(PolygonBuilder::new(t.clone())),
             GeoArrowType::MultiPoint(t) => Inner::MultiPoint(MultiPointBuilder::new(t.clone())),
-            GeoArrowType::MultiLineString(t) => Inner::MultiLineString(MultiLineStringBuilder::new(t.clone())),
-            GeoArrowType::MultiPolygon(t) => Inner::MultiPolygon(MultiPolygonBuilder::new(t.clone())),
+            GeoArrowType::MultiLineString(t) => {
+                Inner::MultiLineString(MultiLineStringBuilder::new(t.clone()))
+            }
+            GeoArrowType::MultiPolygon(t) => {
+                Inner::MultiPolygon(MultiPolygonBuilder::new(t.clone()))
+            }
             GeoArrowType::Geometry(t) => Inner::Geometry(Box::new(GeometryBuilder::new(t.clone()))),
-            GeoArrowType::Wkb(_) => Inner::Wkb(BinaryBuilder::with_capacity(capacity, capacity * 32)),
+            GeoArrowType::Wkb(_) => {
+                Inner::Wkb(BinaryBuilder::with_capacity(capacity, capacity * 32))
+            }
             other => {
                 return Err(ArrowError::InvalidArgumentError(format!(
                     "geometry columns of type {other:?} are not supported"
@@ -234,7 +266,11 @@ pub fn geoarrow_type(field: &arrow_schema::Field) -> crate::Result<GeoArrowType>
     GeoArrowType::from_extension_field(field)
         .map_err(|e| ArrowError::ExternalError(Box::new(e)))?
         .ok_or_else(|| {
-            ArrowError::InvalidArgumentError(format!("column {} has no GeoArrow type", field.name())).into()
+            ArrowError::InvalidArgumentError(format!(
+                "column {} has no GeoArrow type",
+                field.name()
+            ))
+            .into()
         })
 }
 
@@ -290,7 +326,11 @@ impl BoxColumnBuilder {
             .collect();
         let validity = NullBuffer::from(std::mem::take(&mut self.validity));
         let nulls = (validity.null_count() > 0).then_some(validity);
-        Ok(Arc::new(StructArray::try_new(self.fields.clone(), columns, nulls)?))
+        Ok(Arc::new(StructArray::try_new(
+            self.fields.clone(),
+            columns,
+            nulls,
+        )?))
     }
 }
 
@@ -353,8 +393,12 @@ fn visit_coords(
         Geometry::LineString(line) => on_coords(&mut line.coords),
         Geometry::Polygon(p) => polygon(p, on_coords),
         Geometry::MultiPoint(points) => points.0.iter_mut().for_each(on_point),
-        Geometry::MultiLineString(lines) => lines.0.iter_mut().for_each(|l| on_coords(&mut l.coords)),
-        Geometry::MultiPolygon(polygons) => polygons.0.iter_mut().for_each(|p| polygon(p, on_coords)),
+        Geometry::MultiLineString(lines) => {
+            lines.0.iter_mut().for_each(|l| on_coords(&mut l.coords))
+        }
+        Geometry::MultiPolygon(polygons) => {
+            polygons.0.iter_mut().for_each(|p| polygon(p, on_coords))
+        }
         Geometry::GeometryCollection(members) => {
             for member in &mut members.0 {
                 visit_coords(member, on_coords, on_point);
