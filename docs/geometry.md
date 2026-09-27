@@ -412,6 +412,13 @@ A compound part that names no known CRS is kept as written
 order and PROJJSON apply, with an `UnknownCrs` warning naming `PL-XYZ`. An
 srsName with no known part at all has no CRS. An empty part is malformed.
 
+The name tables can't be extended by users. For a name they don't know
+(`AUT-GK31-5`), give the CRS and the axis order yourself:
+`--crs EPSG:31255 --axis-order xy` (`crs_override` and `axis` in the settings
+file), or `--axis-override 'AUT-GK31-5=xy'` when the input mixes it with other
+srsNames. A name seen in real data belongs in the built-in list in
+`xeibe-geom` (`crs.rs`, `NAMES`).
+
 #### The short-form problem
 
 OGC's current naming policy defines the CURIE `EPSG:4326` as
@@ -610,10 +617,12 @@ fallback when no PROJJSON is available (a code EPSG doesn't have).
    on the srsName as written, trimmed: different spellings of one CRS can be
    decided differently ([Decision key and scope](#decision-key-and-scope)). A
    bare `#2180` without `…/gml/srs/epsg.xml` is not recognised; no data uses it.
-2. **AdV mapping and alias table** (`urn:adv:crs:…`, `osgb:BNG`). *Partly resolved*:
-   one name lookup serves every srsName form, from our list in `xeibe-geom` and
-   EPSG's aliases generated into `xeibe-crs` ([CRS names](#crs-names)). Still
-   open: can users extend it, like the CRS table?
+2. ~~**AdV mapping and alias table**~~ **Resolved.** One name lookup serves every
+   srsName form, from our list in `xeibe-geom` and EPSG's aliases generated into
+   `xeibe-crs` ([CRS names](#crs-names)). Users can't extend it: `--crs` and
+   `--axis-order` / `--axis-override` already cover an unknown name, and only 2 of
+   1,575 corpus documents mix CRSs. Names seen in real data are added to the
+   built-in list.
 3. ~~**Generating the CRS table.**~~ **Resolved.** `scripts/gen_crs_tables.py`
    generates `crates/xeibe-crs` from the EPSG Dataset's own "PostgreSQL scripts"
    release, not from PROJ's `proj.db`: it is the authoritative source, it is
