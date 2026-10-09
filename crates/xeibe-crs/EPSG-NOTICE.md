@@ -1,7 +1,7 @@
 # EPSG Dataset notice
 
 `xeibe-crs` contains data extracted from the **EPSG Geodetic Parameter
-Dataset** v13.103 (2026-09-11), published by the International Association of
+Dataset** v13.104 (2026-10-05), published by the International Association of
 Oil and Gas Producers (IOGP) at <https://epsg.org/>.
 
 **Ownership of the EPSG Dataset by IOGP is hereby acknowledged.**
