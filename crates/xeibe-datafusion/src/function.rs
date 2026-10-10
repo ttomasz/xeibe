@@ -9,8 +9,6 @@ use datafusion::common::{ScalarValue, plan_datafusion_err, plan_err};
 use datafusion::error::Result;
 use datafusion::logical_expr::Expr;
 use xeibe_arrow::{ReadOptions, Settings};
-use xeibe_geom::AxisOrderMode;
-use xeibe_schema::InferenceOptions;
 
 use crate::sources::{blocking, external};
 use crate::table::{GmlTable, sample_schema};
@@ -23,7 +21,8 @@ use crate::table::{GmlTable, sample_schema};
 /// to table functions, so the path and the layer are positional and options
 /// are `'key=value'` strings: `settings`, `preset` (`default`, `strings`),
 /// `axis_order` (`xy`, `yx`, `crs`, `crs_heuristic`, `gml_version`, `auto`),
-/// `crs`, `sample_features` and `threads`. A third argument without `=` is
+/// `crs`, `sample_features`, `batch_size` and `threads` (see
+/// [`ReadOptions::set`]). A third argument without `=` is
 /// the settings file. The path may also be an array of paths.
 #[derive(Debug, Default)]
 pub struct ReadGmlFunction;
@@ -81,38 +80,10 @@ fn read_options(
         };
         options = settings.options;
     }
-    for (key, value) in pairs {
-        let bad = || plan_datafusion_err!("read_gml: invalid {key} {value:?}");
-        match key.as_str() {
-            "settings" => {}
-            "preset" => {
-                options.inference = match value.as_str() {
-                    "default" => InferenceOptions::default(),
-                    "strings" => InferenceOptions::strings(),
-                    _ => return Err(bad()),
-                };
-            }
-            "axis_order" => {
-                options.geometry.axis.mode = match value.replace('-', "_").as_str() {
-                    "xy" => AxisOrderMode::XY,
-                    "yx" => AxisOrderMode::YX,
-                    "crs" => AxisOrderMode::Crs,
-                    "crs_heuristic" => AxisOrderMode::CrsHeuristic,
-                    "gml_version" => AxisOrderMode::GmlVersion {
-                        gml2: Box::new(AxisOrderMode::XY),
-                        gml3: Box::new(AxisOrderMode::Crs),
-                    },
-                    "auto" => AxisOrderMode::Auto,
-                    _ => return Err(bad()),
-                }
-            }
-            "crs" => options.geometry.crs_override = Some(value.clone()),
-            "sample_features" => {
-                options.sample.features_per_layer = value.parse().map_err(|_| bad())?
-            }
-            "threads" => options.threads = value.parse().map_err(|_| bad())?,
-            _ => return plan_err!("read_gml: unknown option {key:?}"),
-        }
+    for (key, value) in pairs.iter().filter(|(key, _)| key != "settings") {
+        options
+            .set(key, value)
+            .map_err(|error| plan_datafusion_err!("read_gml: {error}"))?;
     }
     Ok((schema, options))
 }

@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use xeibe_core::SplitterOptions;
-use xeibe_geom::GeometryOptions;
+use xeibe_geom::{AxisOrderMode, GeometryOptions};
 use xeibe_schema::{InferenceOptions, SampleOptions};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -67,6 +67,54 @@ impl Default for ReadOptions {
 }
 
 impl ReadOptions {
+    /// Set one option from a `key=value` pair, the form in which SQL table
+    /// functions and data-source options pass them: `preset` (`default`,
+    /// `strings`), `axis_order` (`xy`, `yx`, `crs`, `crs_heuristic`,
+    /// `gml_version`, `auto`), `crs`, `sample_features`, `batch_size` and
+    /// `threads`. `preset` replaces all inference options.
+    pub fn set(&mut self, key: &str, value: &str) -> crate::Result<()> {
+        let invalid = || crate::Error::Option {
+            key: key.to_string(),
+            message: format!("invalid {key} {value:?}"),
+        };
+        match key {
+            "preset" => {
+                self.inference = match value {
+                    "default" => InferenceOptions::default(),
+                    "strings" => InferenceOptions::strings(),
+                    _ => return Err(invalid()),
+                }
+            }
+            "axis_order" => {
+                self.geometry.axis.mode = match value.replace('-', "_").as_str() {
+                    "xy" => AxisOrderMode::XY,
+                    "yx" => AxisOrderMode::YX,
+                    "crs" => AxisOrderMode::Crs,
+                    "crs_heuristic" => AxisOrderMode::CrsHeuristic,
+                    "gml_version" => AxisOrderMode::GmlVersion {
+                        gml2: Box::new(AxisOrderMode::XY),
+                        gml3: Box::new(AxisOrderMode::Crs),
+                    },
+                    "auto" => AxisOrderMode::Auto,
+                    _ => return Err(invalid()),
+                }
+            }
+            "crs" => self.geometry.crs_override = Some(value.to_string()),
+            "sample_features" => {
+                self.sample.features_per_layer = value.parse().map_err(|_| invalid())?
+            }
+            "batch_size" => self.batch_size = value.parse().map_err(|_| invalid())?,
+            "threads" => self.threads = value.parse().map_err(|_| invalid())?,
+            _ => {
+                return Err(crate::Error::Option {
+                    key: key.to_string(),
+                    message: format!("unknown option {key:?}"),
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// These options with the geometry options also where inference looks for
     /// them.
     pub(crate) fn effective(&self) -> ReadOptions {

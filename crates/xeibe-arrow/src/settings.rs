@@ -99,12 +99,21 @@ impl Settings {
     }
 
     pub fn load(path: &Path) -> crate::Result<Self> {
-        let error = |message: String| crate::Error::Settings {
+        let text = std::fs::read_to_string(path).map_err(|e| crate::Error::Settings {
             path: path.display().to_string(),
+            message: e.to_string(),
+        })?;
+        Self::parse(&text, &path.display().to_string())
+    }
+
+    /// Settings from JSON text, for settings that aren't a file; `source`
+    /// names them in errors.
+    pub fn parse(text: &str, source: &str) -> crate::Result<Self> {
+        let error = |message: String| crate::Error::Settings {
+            path: source.to_string(),
             message,
         };
-        let text = std::fs::read_to_string(path).map_err(|e| error(e.to_string()))?;
-        let settings: Settings = serde_json::from_str(&text).map_err(|e| error(e.to_string()))?;
+        let settings: Settings = serde_json::from_str(text).map_err(|e| error(e.to_string()))?;
         if settings.format_version > Self::FORMAT_VERSION {
             return Err(error(format!(
                 "format_version {} is newer than this release reads ({})",

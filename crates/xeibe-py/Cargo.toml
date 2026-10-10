@@ -8,7 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-name = "xeibe"
+name = "_xeibe"
 crate-type = ["cdylib"]
 
 [dependencies]
@@ -20,4 +20,5 @@ xeibe-io = { workspace = true, features = ["http", "object-store"] }
 arrow-array = { workspace = true, features = ["ffi"] }
 arrow-schema = { workspace = true, features = ["ffi"] }
 pyo3.workspace = true
+pyo3-arrow.workspace = true
 serde_json.workspace = true

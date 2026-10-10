@@ -229,9 +229,9 @@ to turn paths and URLs into sources.
 | `xeibe-arrow` | `scan()` and `read()`; settings file; feature → Arrow builders; parallel read pipeline | `arrow-array`, `geoarrow-array` |
 | `xeibe-io` | `ByteSource`s that stream from HTTP(S) and object stores; resolving inputs (paths, globs, URLs, `archive.zip!/member`) | `reqwest` (feature `http`), `object_store` + `tokio` (feature `object-store`) |
 | `xeibe-wfs` | WFS capabilities, hit counts, paging; pages streamed into a read | `xeibe-io` (HTTP client), `quick-xml` (capabilities, exception reports) |
-| `xeibe-datafusion` | `TableProvider` for one layer; `read_gml()` table function; adapter from DataFusion's `ObjectStore` registry to `ByteSource`. SedonaDB integration is planned (see [below](#sedonadb)) | `datafusion` |
+| `xeibe-datafusion` | `TableProvider` for one layer; `read_gml()` table function; adapter from DataFusion's `ObjectStore` registry to `ByteSource` | `datafusion` |
 | `xeibe-cli` | `xeibe scan`, `xeibe convert` (one layer to Parquet or Arrow IPC), `xeibe wfs` | `clap`, `parquet` (feature `geospatial`) |
-| `xeibe-py` | Python bindings: `scan()`, `read()` returning the Arrow C stream interface (PyCapsule) | `pyo3` |
+| `xeibe-py` | Python package `xeibe`: `scan()`, `read()` returning arro3 schemas and streams (Arrow PyCapsule interface); `xeibe.sedona`, GML as a SedonaDB data source (see [below](#sedonadb)) | `pyo3`, `pyo3-arrow`; Python: `arro3-core`, `sedonadb` (optional) |
 
 `xeibe-testkit` is test support only (sample loading, independent WKT/WKB readers); see
 [testing.md](testing.md).
@@ -257,9 +257,9 @@ Where each design topic lives in the code (`crates/<crate>/src/…`):
 | `InferenceOptions`, presets, rule engine, binding, `--explain` (schema-inference.md, type-mapping.md) | `xeibe-schema`: `options`, `presets`, `pattern`, `rules`, `bind`, `explain` |
 | `scan()`, `read()`, settings file, path routes and list alignment, builders, pipeline, read report | `xeibe-arrow`: `api`, `settings`, `reader`, `route`, `feature`, `builders`, `geometry_column`, `value`, `pipeline`, `report`, `options` |
 | WFS (wfs.md) | `xeibe-wfs`: `capabilities`, `request`, `response`, `paging`, `pages`, `http`, `exception`, `xml`, `options` |
-| DataFusion / SedonaDB | `xeibe-datafusion`: `table`, `partition`, `function`, `sources` |
+| DataFusion | `xeibe-datafusion`: `table`, `partition`, `function`, `sources` |
 | CLI | `xeibe-cli`: `args`, `commands/*` (binary `xeibe`) |
-| Python | `xeibe-py` (module `xeibe`) |
+| Python, SedonaDB | `xeibe-py`: the native module `xeibe._xeibe` (`src/lib.rs`), `python/xeibe/__init__.py`, `python/xeibe/sedona.py` |
 
 Arrow is pinned to **59** because `geoarrow-array` 0.9 and DataFusion 55 depend on it.
 `xeibe-datafusion` and `xeibe-py` are not default workspace members (slow builds): use
@@ -536,21 +536,112 @@ Spark, Polars) reads zip at all. Only GDAL does.
 
 ### SedonaDB
 
-SedonaDB is built on DataFusion and stores geometry as `geoarrow.wkb`. Integration
-means registering `xeibe-datafusion` in SedonaDB's context. The plan is to offer it
-upstream as a thin adapter crate once the API is stable. Until then SedonaDB reads
-GML only through pyogrio/GDAL.
+SedonaDB is built on DataFusion, but on its own DataFusion and Arrow versions, and
+its geometry type is `geoarrow.wkb` alone: a native GeoArrow column
+(`geoarrow.point`, …) is an unrecognised extension type there, which its `ST_`
+functions don't take. Rather than register `xeibe-datafusion`, the integration
+plugs into SedonaDB's own extension point for file formats, `ExternalFormatSpec`
+(`sedona-datasource`), which LAS/LAZ and pyogrio also use: per file, infer a
+schema and open a `RecordBatchReader` for a projection. SedonaDB supplies the
+rest: globs, directories, hive partitions, `sd.read()` and SQL on the result.
+
+The first form is Python, `xeibe.sedona` in the `xeibe` package. Batches cross
+the Arrow C stream interface, so the versions of Arrow and DataFusion on either
+side don't matter, and SedonaDB needs no change:
+
+```python
+from xeibe.sedona import GmlFormat, read_gml
+
+df = read_gml(sd, "prg/*.gml", "AD_PunktAdresowy")      # one schema for all files
+df = sd.read("bdot/", format=GmlFormat(), options={"layer": "OT_BUBD_A"})
+sd.register(GmlFormat(extension="gml"))                   # sd.read("a.gml", options=…)
+```
+
+- **A table is one layer.** `layer` is required unless a sampled scan reads the
+  whole input and finds exactly one layer; otherwise the error lists the layers
+  seen. Left out for several files, the layer is decided per file and recorded
+  in the schema metadata (`gml:layer`), so files that decided differently fail to
+  merge instead of making one table of two layers.
+- **The schema is optional.** Given, it is used for every file without reading
+  it: an Arrow schema (which carries the paths in `gml:path`), a `Scan`, the
+  layer's columns as a dict or JSON text, or a settings file (`settings`, a path,
+  dict or JSON text, also supplies read options). SQL-style options arrive as
+  strings, so JSON text is the way to give a schema there.
+- **Without a schema** SedonaDB infers one per file and merges them, and the merge
+  fails on conflicting types or paths. Inferred schemas keep only the metadata a
+  read needs (`gml:path`, `gml:content`, `gml:ns`, the GeoArrow keys), because what
+  a sample observed (`gml:versions`, srsNames, axis decisions) differs between
+  files and blocks the merge too. `read_gml()` avoids the per-file merge: it
+  picks the layer with one scan and infers one schema across all the files, as
+  `xeibe.read()` does, before handing the files to SedonaDB.
+- Geometry columns are always `geoarrow.wkb`, CRS and path kept.
+- Projection: the projected schema is given to `xeibe.read()`, and unselected
+  columns aren't built.
+- Other read options come as `key=value` pairs, parsed by `ReadOptions::set` like
+  `read_gml()`'s in DataFusion.
+- Paths and URLs are opened by `xeibe-io`, so object stores take xeibe's
+  credentials, not the stores registered in SedonaDB.
+- Every file SedonaDB lists is read, and files without features (XML schemas,
+  ISO metadata, anything that isn't GML) are skipped, as xeibe skips such
+  sources everywhere. Each skip is a `SkippedSourceWarning` (see
+  [Python](#python)); if no file holds the layer, the query fails. `extension`
+  (none by default) makes SedonaDB list only files with it, in globs too, and
+  is what `sd.register()` registers the format under.
+- Skipping happens while SedonaDB reads a file, in Rust: xeibe notices a file
+  isn't GML either while sampling, when the projection has geometry, or only at
+  the end of the stream. `GmlFormat` reads each file with a private variant of
+  `read()` for which such a file is no rows (and a warning) rather than a
+  `NoFeaturesError`.
+- The plugin's helpers live in the native module `xeibe._xeibe` and are not
+  public API: `read_or_empty` (that variant of `read()`), `read_options`
+  (`key=value` pairs over settings, parsed by `ReadOptions::set`),
+  `layer_schema` (one layer's schema from settings) and `to_wkb` (native
+  geometry columns as `geoarrow.wkb`).
+
+Limits of SedonaDB 0.4.1, the current release: `CREATE EXTERNAL TABLE … STORED AS`
+doesn't work for Python formats (SQL runs on `SELECT … FROM 'file.gml'` or on a
+view of the DataFrame); a DataFrame `select()` that reorders the columns of any
+Python data source fails to plan; and a scan without columns (`count(*)`) must
+return one column, which `GmlFormat` does.
+
+The second form, later, is a Rust crate implementing `ExternalFormatSpec` on
+`xeibe-arrow`, offered upstream once the API is stable. Inside SedonaDB's
+workspace it has to use SedonaDB's Arrow and DataFusion versions.
 
 ### Python
 
 ```python
-scan = xeibe.scan(paths, sample=None)   # .layers, .schema(layer) -> pyarrow.Schema, .save(path)
-reader = xeibe.read(paths, "AD_PunktAdresowy", schema=None, options=None)
+scan = xeibe.scan(paths, sample=None)   # .layers, .schema(layer) -> arro3.core.Schema, .save(path)
+reader = xeibe.read(paths, "AD_PunktAdresowy", schema=None, options=None)  # arro3.core.RecordBatchReader
 ```
 
-`schema` accepts a `pyarrow.Schema` (or anything with `__arrow_c_schema__`) or a
-settings-file path. The reader implements `__arrow_c_stream__`, so it works directly
-with PyArrow, GeoPandas (`from_arrow`), DuckDB, Polars and SedonaDB's Python API.
+Arrow objects are [arro3](https://github.com/kylebarron/arro3)'s: `arro3.core.Schema`
+and a one-shot `arro3.core.RecordBatchReader`, made in Rust with `pyo3-arrow`, which
+is built on the same Arrow and pyo3 versions as the workspace. `arro3-core` is a
+3 MB wheel and the package's one dependency; PyArrow (50 MB) is not needed. Both
+implement the Arrow PyCapsule interface, so they work directly with PyArrow
+(`pyarrow.schema(s)`, `pyarrow.table(reader)`), GeoPandas (`from_arrow`), DuckDB,
+Polars and SedonaDB's Python API.
+
+`schema` accepts any Arrow schema (anything with `__arrow_c_schema__`: arro3,
+PyArrow, …) or settings: a path, a dict or JSON text, either a whole settings file
+or one layer's columns. `options` accepts the `options` section as a dict or JSON
+text, or settings. An unknown layer raises `UnknownLayerError`, an input in
+which no source holds features `NoFeaturesError`, both subclasses of
+`XeibeError`.
+
+The public API is `scan()`, `read()`, `Scan`, the three errors and
+`SkippedSourceWarning`; `xeibe.sedona` adds `read_gml()` and `GmlFormat`.
+
+A source without features is skipped, as in every read, and the stream issues a
+`SkippedSourceWarning` (a `UserWarning`) for each one skipped when it ends: the
+Python form of the read report's skipped sources.
+`warnings.simplefilter("error", xeibe.SkippedSourceWarning)` makes a skip the
+stream's error instead.
+
+The package uses maturin's mixed layout: the native module is `xeibe._xeibe`, and
+`python/xeibe` holds the Python modules. `xeibe.sedona` needs the `sedona` extra
+(`sedonadb`).
 
 ### CLI
 

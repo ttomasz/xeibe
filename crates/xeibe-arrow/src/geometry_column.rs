@@ -274,6 +274,48 @@ pub fn geoarrow_type(field: &arrow_schema::Field) -> crate::Result<GeoArrowType>
         })
 }
 
+/// The schema with every native GeoArrow column (`geoarrow.point`, …,
+/// `geoarrow.geometry`) as `geoarrow.wkb`, for consumers that only take WKB,
+/// such as SedonaDB. CRS and edges are kept, and so is the field's other
+/// metadata (`gml:path`). Box columns, lists of WKB and non-geometry columns
+/// are unchanged.
+pub fn to_wkb(schema: &arrow_schema::Schema) -> crate::Result<arrow_schema::Schema> {
+    let fields = schema
+        .fields()
+        .iter()
+        .map(|field| {
+            let native = match GeoArrowType::from_extension_field(field)
+                .map_err(|e| ArrowError::ExternalError(Box::new(e)))?
+            {
+                Some(
+                    GeoArrowType::Wkb(_)
+                    | GeoArrowType::LargeWkb(_)
+                    | GeoArrowType::WkbView(_)
+                    | GeoArrowType::Wkt(_)
+                    | GeoArrowType::LargeWkt(_)
+                    | GeoArrowType::WktView(_)
+                    | GeoArrowType::Rect(_),
+                )
+                | None => return Ok(field.as_ref().clone()),
+                Some(native) => native,
+            };
+            let wkb = GeoArrowType::Wkb(geoarrow_schema::WkbType::new(native.metadata().clone()))
+                .to_field(field.name(), field.is_nullable());
+            let mut metadata = wkb.metadata().clone();
+            for (key, value) in field.metadata() {
+                if !key.starts_with("ARROW:extension:") {
+                    metadata.insert(key.clone(), value.clone());
+                }
+            }
+            Ok(wkb.with_metadata(metadata))
+        })
+        .collect::<crate::Result<Vec<_>>>()?;
+    Ok(arrow_schema::Schema::new_with_metadata(
+        fields,
+        schema.metadata().clone(),
+    ))
+}
+
 /// `geoarrow.box` columns: a struct of `xmin, ymin[, zmin], xmax, ymax[, zmax]`.
 pub struct BoxColumnBuilder {
     fields: arrow_schema::Fields,

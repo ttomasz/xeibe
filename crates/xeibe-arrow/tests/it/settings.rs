@@ -390,3 +390,44 @@ fn the_axis_order_is_written_as_a_plain_mode() {
     assert_eq!(axis.mode, AxisOrderMode::Auto);
     assert_eq!(axis.overrides.len(), 1);
 }
+
+#[test]
+fn settings_parse_from_text_like_a_file() {
+    let settings = Settings::parse(EXAMPLE, "inline").expect("the example parses");
+    assert_eq!(settings.layers.len(), 2);
+    assert_eq!(settings.options.geometry.axis.mode, AxisOrderMode::XY);
+
+    let error = Settings::parse(r#"{ "format_version": 99 }"#, "inline").unwrap_err();
+    assert!(error.to_string().contains("inline"), "{error}");
+    assert!(error.to_string().contains("newer"), "{error}");
+}
+
+#[test]
+fn options_are_set_from_key_value_pairs() {
+    let mut options = ReadOptions::default();
+    for (key, value) in [
+        ("preset", "strings"),
+        ("axis_order", "crs-heuristic"),
+        ("crs", "EPSG:2180"),
+        ("sample_features", "50"),
+        ("batch_size", "100"),
+        ("threads", "2"),
+    ] {
+        options
+            .set(key, value)
+            .unwrap_or_else(|e| panic!("{key}={value}: {e}"));
+    }
+    assert_eq!(options.geometry.axis.mode, AxisOrderMode::CrsHeuristic);
+    assert_eq!(options.geometry.crs_override.as_deref(), Some("EPSG:2180"));
+    assert_eq!(options.sample.features_per_layer, 50);
+    assert_eq!((options.batch_size, options.threads), (100, 2));
+
+    for (key, value, message) in [
+        ("preset", "fancy", "invalid preset"),
+        ("threads", "many", "invalid threads"),
+        ("colour", "red", "unknown option"),
+    ] {
+        let error = options.set(key, value).unwrap_err().to_string();
+        assert!(error.contains(message), "{key}={value}: {error}");
+    }
+}

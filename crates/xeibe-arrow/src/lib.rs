@@ -18,6 +18,7 @@ pub mod value;
 
 pub use api::{LayerInfo, ScanResult, read, scan};
 pub use error::{Error, Result};
+pub use geometry_column::to_wkb;
 pub use options::{OnFeatureError, ReadOptions};
 pub use reader::LayerReader;
 pub use report::ReadReport;

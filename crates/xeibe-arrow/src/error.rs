@@ -23,6 +23,10 @@ pub enum Error {
     #[error("settings file {path}: {message}")]
     Settings { path: String, message: String },
 
+    /// A `key=value` read option ([`crate::ReadOptions::set`]).
+    #[error("{message}")]
+    Option { key: String, message: String },
+
     #[error("column {column}: invalid type {type_string:?}: {message}")]
     ColumnType {
         column: String,

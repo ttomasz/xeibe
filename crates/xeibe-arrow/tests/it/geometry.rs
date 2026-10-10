@@ -703,3 +703,61 @@ fn a_gml_33_tin_is_a_geometry_error() {
     assert_eq!(read.i64s("area"), [Some(1)], "the feature is kept");
     assert_eq!(read.geometries("geom"), [None]);
 }
+
+#[test]
+fn to_wkb_turns_native_columns_into_wkb_keeping_crs_and_path() {
+    let document = gml::gml32_collection(&[&parcel(
+        "p1",
+        &format!(
+            "<app:geom>{}</app:geom><app:shape><gml:Polygon srsName=\"EPSG:2180\">{RING}</gml:Polygon></app:shape>",
+            point(1.0, 2.0)
+        ),
+    )]);
+    let scan = scan(
+        sources(&document),
+        ScanExtent::Full,
+        &ReadOptions::default(),
+    )
+    .expect("a scan");
+    let native = scan.arrow_schema("Parcel").expect("a schema");
+    assert_eq!(
+        extension_name(native.field_with_name("geom").unwrap()),
+        Some("geoarrow.point")
+    );
+
+    let wkb = xeibe_arrow::to_wkb(&native).expect("to_wkb");
+    for name in ["geom", "shape"] {
+        let (before, after) = (
+            native.field_with_name(name).unwrap(),
+            wkb.field_with_name(name).unwrap(),
+        );
+        assert_eq!(extension_name(after), Some("geoarrow.wkb"), "{name}");
+        assert_eq!(
+            after.metadata().get(meta::PATH),
+            before.metadata().get(meta::PATH),
+            "{name}"
+        );
+        assert_eq!(
+            after.metadata().get("ARROW:extension:metadata"),
+            before.metadata().get("ARROW:extension:metadata"),
+            "{name}: the CRS is kept"
+        );
+    }
+    assert_eq!(
+        wkb.field_with_name("@id").unwrap(),
+        native.field_with_name("@id").unwrap()
+    );
+    assert_eq!(wkb.metadata(), native.metadata());
+
+    let read = read_with(
+        &document,
+        "Parcel",
+        Some(std::sync::Arc::new(wkb)),
+        &ReadOptions::default(),
+    );
+    assert_wkt(read.geometries("geom")[0].as_ref().unwrap(), "POINT (1 2)");
+    assert_wkt(
+        read.geometries("shape")[0].as_ref().unwrap(),
+        "POLYGON ((0 0, 1 0, 1 1, 0 0))",
+    );
+}

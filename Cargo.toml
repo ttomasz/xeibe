@@ -87,7 +87,10 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 clap = { version = "4", features = ["derive"] }
 async-trait = "0.1"
 futures-util = { version = "0.3", default-features = false }
-pyo3 = { version = "0.29", features = ["extension-module", "abi3-py310"] }
+pyo3 = { version = "0.29", features = ["extension-module", "abi3-py311"] }
+# Arrow objects for Python (arro3), built on the same arrow and pyo3 versions.
+# No `buffer_protocol`: xeibe hands no buffers to Python.
+pyo3-arrow = { version = "0.19", default-features = false }
 
 # Everyday builds and benchmarks. Line tables give readable profiler stacks at
 # no runtime cost.
