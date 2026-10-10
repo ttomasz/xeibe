@@ -769,6 +769,9 @@ def emit_table(records: list[dict], version: str, date: str, counts: dict) -> st
         f"pub const EPSG_DATE: &str = {rust_string(date)};",
         "",
         "/// Every CRS in the EPSG Dataset, sorted by code.",
+        # One record per line is the format verify_crs_tables.py reads back, and
+        # it keeps a release's diff to the records that changed.
+        "#[rustfmt::skip]",
         "pub static CRS: &[CrsRecord] = &[",
     ]
     for r in records:
@@ -854,6 +857,7 @@ def emit_aliases(aliases: list[tuple[str, int]], version: str, date: str) -> str
         "// of Use; see EPSG-NOTICE.md next to this crate's Cargo.toml.",
         "",
         "/// EPSG's aliases for its CRSs, lowercased and sorted, each naming one code.",
+        "#[rustfmt::skip]",
         "pub static ALIASES: &[(&str, u32)] = &[",
     ]
     lines += [f"    ({rust_string(alias)}, {code})," for alias, code in aliases]

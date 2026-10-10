@@ -245,7 +245,10 @@ jobs:
           set -euo pipefail
           # The archives live in example_data/, which is git-ignored; nothing
           # to clean up, but be explicit about what gets committed.
-          git add crates/xeibe-crs/src/table.rs \
+          # Cargo.lock records the crate version, which carries the EPSG
+          # version; the Test step's cargo runs have already rewritten it.
+          git add Cargo.lock \
+                  crates/xeibe-crs/src/table.rs \
                   crates/xeibe-crs/src/aliases.rs \
                   crates/xeibe-crs/data/projjson.bin \
                   crates/xeibe-crs/EPSG-NOTICE.md \

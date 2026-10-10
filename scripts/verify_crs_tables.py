@@ -460,6 +460,10 @@ def main() -> int:
     table = read_committed_table()
     docs = read_committed_blob()
     print(f"  {len(table)} CRS records, {len(docs)} PROJJSON documents")
+    # RECORD matches the generator's one-record-per-line layout only. A
+    # reformatted table.rs would otherwise read as empty and pass every check.
+    if docs and not table:
+        sys.exit(f"{TABLE_RS} has no CrsRecord lines in the generated layout; regenerate it")
 
     if everything or args.do_self:
         check_self(report, table, docs)
