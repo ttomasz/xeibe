@@ -1,4 +1,4 @@
-//! `xeibe convert` (`docs/architecture.md`, "CLI"; `docs/geometry.md`,
+//! `xeibe gml convert` (`docs/architecture.md`, "CLI"; `docs/geometry.md`,
 //! "Parquet and GeoParquet output" and "Curves").
 
 use std::fs::File;
@@ -17,6 +17,7 @@ fn convert_to_parquet_writes_wkb_with_the_geometry_logical_type() {
     let dir = out_dir("convert_parquet");
     let out = dir.join("points.parquet");
     let run = xeibe_ok(&[
+        "gml",
         "convert",
         &sample(PRG),
         "--layer",
@@ -87,6 +88,7 @@ fn convert_to_parquet_writes_geoparquet_metadata_with_projjson() {
     let dir = out_dir("convert_geo");
     let out = dir.join("streets.parquet");
     xeibe_ok(&[
+        "gml",
         "convert",
         &sample(PRG),
         "--layer",
@@ -131,6 +133,7 @@ fn convert_with_a_settings_file_uses_its_schema() {
 
     let out = dir.join("points.parquet");
     xeibe_ok(&[
+        "gml",
         "convert",
         &sample(PRG),
         "--layer",
@@ -162,6 +165,7 @@ fn the_output_embeds_the_settings_it_was_read_with() {
     let dir = out_dir("convert_embedded_settings");
     let out = dir.join("points.parquet");
     xeibe_ok(&[
+        "gml",
         "convert",
         &sample(PRG),
         "--layer",
@@ -179,7 +183,10 @@ fn the_output_embeds_the_settings_it_was_read_with() {
         .expect("`gml:settings` key-value metadata");
     let settings: serde_json::Value = serde_json::from_str(&text).expect("JSON");
     assert_eq!(settings["format_version"], 1);
-    assert_eq!(settings["options"]["geometry"]["axis"], "XY", "the decision, not Auto");
+    assert_eq!(
+        settings["options"]["geometry"]["axis"], "XY",
+        "the decision, not Auto"
+    );
     let layers = settings["layers"].as_object().expect("layers");
     assert_eq!(layers.len(), 1, "only the layer read");
     let (_, columns) = layers.iter().next().unwrap();
@@ -190,6 +197,7 @@ fn the_output_embeds_the_settings_it_was_read_with() {
     std::fs::write(&file, &text).unwrap();
     let again = dir.join("again.parquet");
     xeibe_ok(&[
+        "gml",
         "convert",
         &sample(PRG),
         "--layer",
@@ -213,6 +221,7 @@ fn the_output_embeds_the_settings_it_was_read_with() {
     // Arrow IPC keeps it in the file footer's custom metadata.
     let ipc = dir.join("points.arrow");
     xeibe_ok(&[
+        "gml",
         "convert",
         &sample(PRG),
         "--layer",
@@ -234,9 +243,10 @@ fn convert_to_ipc_keeps_geoarrow_types() {
     // A sampled read makes `Auto` geometry WKB (`docs/schema-inference.md`
     // §6.2); a scanned schema has the native type.
     let settings = dir.join("prg.json");
-    xeibe_ok(&["scan", &sample(PRG), "-o", path_str(&settings)]);
+    xeibe_ok(&["gml", "scan", &sample(PRG), "-o", path_str(&settings)]);
     let out = dir.join("points.arrow");
     xeibe_ok(&[
+        "gml",
         "convert",
         &sample(PRG),
         "--layer",
@@ -272,6 +282,7 @@ fn curves_are_an_error_for_parquet_without_linearize() {
     let dir = out_dir("convert_curves");
     let out = dir.join("buildings.parquet");
     let run = xeibe(&[
+        "gml",
         "convert",
         &sample(RCN_ARCS),
         "--layer",
@@ -312,6 +323,7 @@ fn linearize_makes_curves_writable_to_parquet() {
     let dir = out_dir("convert_linearize");
     let out = dir.join("buildings.parquet");
     xeibe_ok(&[
+        "gml",
         "convert",
         &sample(RCN_ARCS),
         "--layer",
@@ -336,6 +348,7 @@ fn linearize_makes_curves_writable_to_parquet() {
     // A finer step gives more vertices.
     let fine = dir.join("fine.parquet");
     xeibe_ok(&[
+        "gml",
         "convert",
         &sample(RCN_ARCS),
         "--layer",
@@ -357,6 +370,7 @@ fn curves_are_kept_in_ipc() {
     let dir = out_dir("convert_curves_ipc");
     let out = dir.join("buildings.arrow");
     xeibe_ok(&[
+        "gml",
         "convert",
         &sample(RCN_ARCS),
         "--layer",
@@ -394,6 +408,7 @@ fn curves_are_kept_in_ipc() {
 fn convert_needs_a_layer() {
     let dir = out_dir("convert_no_layer");
     let run = xeibe(&[
+        "gml",
         "convert",
         &sample(PRG),
         "-o",
@@ -408,6 +423,7 @@ fn convert_of_an_unknown_layer_fails() {
     let dir = out_dir("convert_unknown_layer");
     let out = dir.join("x.parquet");
     let run = xeibe(&[
+        "gml",
         "convert",
         &sample(PRG),
         "--layer",
@@ -426,6 +442,7 @@ fn an_axis_override_is_keyed_by_the_srs_name() {
     let dir = out_dir("convert_axis_override");
     let out = dir.join("points.parquet");
     xeibe_ok(&[
+        "gml",
         "convert",
         &sample(PRG),
         "--layer",
@@ -457,6 +474,7 @@ fn the_on_mismatch_flag_is_gone() {
     // Content outside the schema is simply not read.
     let dir = out_dir("convert_on_mismatch");
     let run = xeibe(&[
+        "gml",
         "convert",
         &sample(PRG),
         "--layer",
@@ -473,6 +491,7 @@ fn the_on_mismatch_flag_is_gone() {
 fn a_bad_override_is_reported() {
     let dir = out_dir("convert_bad_override");
     let run = xeibe(&[
+        "gml",
         "convert",
         &sample(PRG),
         "--layer",
@@ -491,6 +510,7 @@ fn overrides_change_column_types() {
     let dir = out_dir("convert_override");
     let out = dir.join("points.parquet");
     xeibe_ok(&[
+        "gml",
         "convert",
         &sample(PRG),
         "--layer",
@@ -535,6 +555,7 @@ fn geometry_primary_names_the_geoparquet_primary_column() {
 
     let first = dir.join("first.parquet");
     xeibe_ok(&[
+        "gml",
         "convert",
         path_str(&input),
         "--layer",
@@ -559,6 +580,7 @@ fn geometry_primary_names_the_geoparquet_primary_column() {
         .unwrap();
     let named = dir.join("named.parquet");
     xeibe_ok(&[
+        "gml",
         "convert",
         path_str(&input),
         "--layer",
@@ -600,6 +622,7 @@ fn convert_places(
     std::fs::write(&input, document).unwrap();
     let out = dir.join("places.parquet");
     let mut command = vec![
+        "gml",
         "convert",
         path_str(&input),
         "--layer",
@@ -763,6 +786,7 @@ fn row_group_size_caps_the_rows_per_row_group() {
     assert_eq!(rows, [2, 1]);
 
     let zero = xeibe(&[
+        "gml",
         "convert",
         path_str(&out),
         "--layer",

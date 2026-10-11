@@ -10,12 +10,13 @@ use crate::args::{InputArgs, ReadArgs};
 /// with `-o`, writes the settings file.
 pub fn run(
     input: InputArgs,
+    settings: Option<PathBuf>,
     read: ReadArgs,
     sample: Option<u64>,
     explain: bool,
     output: Option<PathBuf>,
 ) -> super::Result {
-    let settings = super::settings(&read)?;
+    let settings = super::settings(settings.as_deref(), &read)?;
     let sources = super::sources(&input)?;
     let names: Vec<String> = sources.iter().map(|source| source.name()).collect();
     let extent = match sample {

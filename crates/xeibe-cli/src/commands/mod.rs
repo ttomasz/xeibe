@@ -14,31 +14,34 @@ use xeibe_geom::options::{CurveMode, LinearizeOptions};
 use xeibe_schema::options::FieldOverride;
 use xeibe_schema::{InferenceOptions, PathPattern};
 
-use crate::args::{AxisMode, Cli, Command, InputArgs, Preset, ReadArgs};
+use crate::args::{AxisMode, Cli, Command, GmlCommand, InputArgs, Preset, ReadArgs};
 
 pub type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub fn run(cli: Cli) -> Result {
     match cli.command {
-        Command::Scan {
+        Command::Gml(GmlCommand::Scan {
             input,
-            read,
             sample,
             explain,
             output,
-        } => scan::run(input, read, sample, explain, output),
-        Command::Convert {
-            input,
-            output,
+            settings,
             read,
-        } => convert::run(input, output, read),
+        }) => scan::run(input, settings, read, sample, explain, output),
+        Command::Gml(GmlCommand::Convert {
+            input,
+            layer,
+            output,
+            schema,
+            read,
+        }) => convert::run(input, layer, output, schema, read),
         Command::Wfs(command) => wfs::run(command),
     }
 }
 
 /// Load the settings file (if any) and apply CLI overrides to its options.
-pub(crate) fn settings(read: &ReadArgs) -> Result<Settings> {
-    let mut settings = match &read.settings {
+pub(crate) fn settings(file: Option<&Path>, read: &ReadArgs) -> Result<Settings> {
+    let mut settings = match file {
         Some(path) => Settings::load(path)?,
         None => Settings::new(ReadOptions::default()),
     };
@@ -81,9 +84,6 @@ fn apply(read: &ReadArgs, options: &mut ReadOptions) -> Result {
     }
     for text in &read.overrides {
         options.inference.overrides.push(field_override(text)?);
-    }
-    if let Some(features) = read.sample_features {
-        options.sample.features_per_layer = features;
     }
     if let Some(threads) = read.threads {
         options.threads = threads.max(1);
@@ -169,23 +169,10 @@ fn data_type(text: &str) -> std::result::Result<DataType, String> {
         .map_err(|e| e.to_string())
 }
 
-/// Resolve the inputs. Local zip archives are filtered by `--member`; the
-/// rest goes through `xeibe-io` (paths, globs, `-`, URLs).
+/// Resolve the inputs through `xeibe-io`: paths, globs, zip archives and
+/// their members, `-`, URLs.
 pub(crate) fn sources(input: &InputArgs) -> Result<Vec<Source>> {
-    let mut sources = Vec::new();
-    let options = xeibe_io::IoOptions::default();
-    for item in &input.inputs {
-        let path = Path::new(item);
-        let is_zip = item.to_ascii_lowercase().ends_with(".zip") && path.is_file();
-        if is_zip && !input.member.is_empty() {
-            sources.extend(xeibe_core::archive::expand(path, &input.member)?);
-        } else {
-            sources.extend(xeibe_io::resolve_sources(
-                std::slice::from_ref(item),
-                &options,
-            )?);
-        }
-    }
+    let sources = xeibe_io::resolve_sources(&input.inputs, &xeibe_io::IoOptions::default())?;
     if sources.is_empty() {
         return Err("no input files found".into());
     }

@@ -11,15 +11,16 @@ use xeibe_arrow::{LayerReader, Settings};
 use xeibe_schema::rules::meta;
 
 use super::geoparquet::GeoColumns;
-use crate::args::{InputArgs, OutputArgs, OutputFormat, ReadArgs};
+use crate::args::{InputArgs, OutputArgs, OutputFormat, ReadArgs, SchemaArgs};
 
-pub fn run(input: InputArgs, output: OutputArgs, read: ReadArgs) -> super::Result {
-    let layer = output
-        .layer
-        .clone()
-        .ok_or("--layer is required: run `xeibe scan` to list the layers")?;
-    let settings = super::settings(&read)?;
-    let schema = layer_schema(&settings, &layer)?;
+pub fn run(
+    input: InputArgs,
+    layer: String,
+    output: OutputArgs,
+    schema: SchemaArgs,
+    read: ReadArgs,
+) -> super::Result {
+    let (settings, schema) = settings(&schema, &read, &layer)?;
     let sources = super::sources(&input)?;
     let mut reader = xeibe_arrow::read(sources, &layer, schema, &settings.options)?;
     let rows = write(
@@ -33,13 +34,23 @@ pub fn run(input: InputArgs, output: OutputArgs, read: ReadArgs) -> super::Resul
     Ok(())
 }
 
-/// The layer's schema from the settings file, or `None` to sample it.
-pub(crate) fn layer_schema(settings: &Settings, layer: &str) -> super::Result<Option<SchemaRef>> {
-    match settings.schema(layer) {
-        Ok(schema) => Ok(Some(schema)),
-        Err(xeibe_arrow::Error::Schema(xeibe_schema::Error::UnknownLayer(_))) => Ok(None),
-        Err(error) => Err(error.into()),
+/// The settings of a conversion (shared with `xeibe wfs convert`), and the
+/// layer's schema from the settings file, or `None` to sample it.
+pub(crate) fn settings(
+    schema: &SchemaArgs,
+    read: &ReadArgs,
+    layer: &str,
+) -> super::Result<(Settings, Option<SchemaRef>)> {
+    let mut settings = super::settings(schema.settings.as_deref(), read)?;
+    if let Some(features) = schema.sample_features {
+        settings.options.sample.features_per_layer = features;
     }
+    let schema = match settings.schema(layer) {
+        Ok(schema) => Some(schema),
+        Err(xeibe_arrow::Error::Schema(xeibe_schema::Error::UnknownLayer(_))) => None,
+        Err(error) => return Err(error.into()),
+    };
+    Ok((settings, schema))
 }
 
 /// Write one layer's batches to `output` (shared with `xeibe wfs convert`).

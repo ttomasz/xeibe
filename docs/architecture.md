@@ -102,7 +102,7 @@ both:
 
 - **`options`** is `ReadOptions` (see [below](#read-options)). Every key is optional,
   and parameters given on the command line or in code override the file.
-  `xeibe scan` writes the options it used, with the axis-order decision as a plain
+  `xeibe gml scan` writes the options it used, with the axis-order decision as a plain
   mode (`"axis": "XY"`), so a later read doesn't depend on evidence gathering.
   Per-srsName overrides appear only when one input mixes srsNames that were decided
   differently (see [geometry.md](geometry.md#decision-key-and-scope)).
@@ -118,7 +118,7 @@ both:
   (`srsName`) and from the options.
 - A settings file is plain JSON, named `*.json`. There is no special extension,
   and nothing checks the name.
-- `xeibe convert` and `xeibe wfs convert` **embed the settings they read with** in
+- `xeibe gml convert` and `xeibe wfs convert` **embed the settings they read with** in
   the output: the `gml:settings` key-value metadata of a Parquet file, or the
   footer's custom metadata of an Arrow IPC file. It is a complete settings file
   (`LayerReader::settings()`): the read options, with the axis-order decision as a
@@ -230,7 +230,7 @@ to turn paths and URLs into sources.
 | `xeibe-io` | `ByteSource`s that stream from HTTP(S) and object stores; resolving inputs (paths, globs, URLs, `archive.zip!/member`) | `reqwest` (feature `http`), `object_store` + `tokio` (feature `object-store`) |
 | `xeibe-wfs` | WFS capabilities, hit counts, paging; pages streamed into a read | `xeibe-io` (HTTP client), `quick-xml` (capabilities, exception reports) |
 | `xeibe-datafusion` | `TableProvider` for one layer; `read_gml()` table function; adapter from DataFusion's `ObjectStore` registry to `ByteSource` | `datafusion` |
-| `xeibe-cli` | `xeibe scan`, `xeibe convert` (one layer to Parquet or Arrow IPC), `xeibe wfs` | `clap`, `parquet` (feature `geospatial`) |
+| `xeibe-cli` | `xeibe gml scan`, `xeibe gml convert` (one layer to Parquet or Arrow IPC), `xeibe wfs` | `clap`, `parquet` (feature `geospatial`) |
 | `xeibe-py` | Python package `xeibe`: `scan()`, `read()` returning arro3 schemas and streams (Arrow PyCapsule interface); `xeibe.sedona`, GML as a SedonaDB data source (see [below](#sedonadb)) | `pyo3`, `pyo3-arrow`; Python: `arro3-core`, `sedonadb` (optional) |
 
 `xeibe-testkit` is test support only (sample loading, independent WKT/WKB readers); see
@@ -505,8 +505,11 @@ Spark, Polars) reads zip at all. Only GDAL does.
   more than the 186 named `.gml`. Other members (shapefiles, PDFs, XSDs, …) are
   ignored. A zip with no GML member is an error.
 - All selected members of one archive form **one input**, like a directory.
-- `archive.zip!/dir/file.gml` selects a single member. `--member <glob>` selects
-  several. Member names are shown as the `zip` crate decodes them.
+- `archive.zip!/dir/file.gml` selects a single member, and
+  `archive.zip!/dir/*.gml` (a glob after `!/`) several. The glob is matched
+  against the whole name of each candidate member; `*` stays within a
+  directory, `**` doesn't. A plain name is taken as it is, whatever its suffix.
+  Member names are shown as the `zip` crate decodes them.
 - Not supported: zips inside zips (29 in the corpus, none containing GML).
 
 ## Integrations
@@ -646,24 +649,46 @@ The package uses maturin's mixed layout: the native module is `xeibe._xeibe`, an
 ### CLI
 
 The CLI is deliberately simple: one command per operation, one layer per output.
+The first level names the kind of input, `gml` (files) or `wfs` (a service),
+and the second the operation.
 
 ```
-xeibe scan    <src>… [--sample N] [--preset …] [--explain] [-o settings.json]
-xeibe convert <src>… --layer <name> -o out.parquet [--settings settings.json] [--format parquet|ipc] [--bbox-column auto|always|never] [--row-group-size N] [options…]
+xeibe gml scan    <src>… [--sample N] [--explain] [-o settings.json] [--settings settings.json] [read options…]
+xeibe gml convert <src>… --layer <name> -o out.parquet [--settings settings.json] [--sample-features N] [output options…] [read options…]
 xeibe wfs layers  <url>
 xeibe wfs count   <url> --type-name <name>
-xeibe wfs convert <url> --type-name <name> -o out.parquet [--settings settings.json] [--page-size N]
+xeibe wfs convert <url> --type-name <name> -o out.parquet [--settings settings.json] [--sample-features N] [--page-size N] [--srs-name …] [--sort-by …] [--param k=v]… [--layer <name>] [output options…] [read options…]
 ```
 
-- `<src>` can be a path, a glob, a directory, `archive.zip!/member.gml`, `-` (stdin),
-  or an `http(s)://`, `s3://`, `gs://` or `az://` URL (object stores need the
-  `object-store` feature).
-- `xeibe scan` without `-o` prints the layers with their feature counts, geometry and
+| Group | Flags |
+|---|---|
+| Read options | `--preset`, `--override pattern=action`, `--axis-order`, `--axis-override srsName=mode`, `--crs`, `--linearize [step]`, `--arc-max-gap`, `--threads` |
+| Output options | `--format parquet\|ipc`, `--bbox-column auto\|always\|never`, `--row-group-size N` |
+
+`xeibe <command> --help` is the reference for every flag: what it accepts,
+with examples. This section only records the design.
+
+- `<src>` can be a path, a glob, a directory, a zip archive, `archive.zip!/member.gml`,
+  `archive.zip!/<glob>`, `-` (stdin), or an `http(s)://`, `s3://`, `gs://` or
+  `az://` URL (object stores need the `object-store` feature). Zip members are
+  chosen in the input itself; there is no separate flag for them.
+- `xeibe gml scan` without `-o` prints the layers with their feature counts, geometry and
   CRS, and the extent the collection declares in its `boundedBy`, if it does.
   Axis-order conflicts are printed first.
-- `xeibe convert` without `--settings` samples the layer. Options such as
-  `--axis-order`, `--crs`, `--linearize` and `--preset` override the settings file.
-- Converting several layers means running `xeibe convert` once per layer.
+- `xeibe gml scan --settings` takes only the file's `options`; its `layers` are
+  ignored, because the scan infers them anew. It is how a scan gets options
+  that have no flag.
+- `--layer` (`gml convert`) is the layer's local name, `prefix:name` with a
+  prefix the input declares, or `{uri}name`. `wfs convert` reads the type
+  `--type-name`; its `--layer` only names the layer's schema in the settings
+  file, when that differs.
+- `xeibe gml convert` and `xeibe wfs convert` without a schema for the layer in
+  `--settings` sample the layer (`--sample-features`). A flag given on the
+  command line wins over the settings file's `options`; `--axis-override` and
+  `--override` add to the file's entries, and `--preset` replaces all of its
+  inference options. With a schema from the file nothing is inferred, so
+  `--preset` and `--override` don't change the columns.
+- Converting several layers means running `xeibe gml convert` once per layer.
 
 ### Parquet and GeoParquet output
 

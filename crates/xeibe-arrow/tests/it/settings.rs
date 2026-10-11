@@ -375,7 +375,7 @@ fn options_and_layers_are_both_optional() {
 
 #[test]
 fn the_axis_order_is_written_as_a_plain_mode() {
-    // `xeibe scan` writes one mode; overrides only for inputs that mix
+    // `xeibe gml scan` writes one mode; overrides only for inputs that mix
     // srsNames decided differently. Geometry options are read options, under
     // `options.geometry`, not `options.inference`.
     let settings = load(r#"{ "format_version": 1, "options": { "geometry": { "axis": "YX" } } }"#);

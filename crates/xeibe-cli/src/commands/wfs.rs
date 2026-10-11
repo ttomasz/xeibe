@@ -7,26 +7,32 @@ use crate::args::WfsCommand;
 
 pub fn run(command: WfsCommand) -> super::Result {
     match command {
-        WfsCommand::Layers { url } => layers(&url),
-        WfsCommand::Count { url, type_name } => {
-            let client = WfsClient::new(&url, WfsOptions::default())?;
+        WfsCommand::Layers { service } => layers(&service.url),
+        WfsCommand::Count {
+            service,
+            feature_type,
+        } => {
+            let client = WfsClient::new(&service.url, WfsOptions::default())?;
             let mut out = std::io::stdout().lock();
-            match client.count(&type_name)? {
+            match client.count(&feature_type.type_name)? {
                 Some(count) => writeln!(out, "{count}")?,
                 None => writeln!(out, "unknown")?,
             }
             Ok(())
         }
         WfsCommand::Convert {
-            url,
-            type_name,
+            service,
+            feature_type,
             page_size,
             srs_name,
             sort_by,
             params,
+            layer,
             output,
+            schema,
             read,
         } => {
+            let type_name = feature_type.type_name;
             let vendor_params = params
                 .iter()
                 .map(|param| {
@@ -43,12 +49,11 @@ pub fn run(command: WfsCommand) -> super::Result {
                 vendor_params,
                 ..WfsOptions::default()
             };
-            let client = WfsClient::new(&url, options)?;
-            let settings = super::settings(&read)?;
+            let client = WfsClient::new(&service.url, options)?;
             // `--layer` names the layer in the settings file when it differs
             // from the type name (another prefix, say).
-            let layer = output.layer.clone().unwrap_or_else(|| type_name.clone());
-            let schema = super::convert::layer_schema(&settings, &layer)?;
+            let layer = layer.unwrap_or_else(|| type_name.clone());
+            let (settings, schema) = super::convert::settings(&schema, &read, &layer)?;
             let sources = client.pages(&type_name, Box::new(progress))?;
             let mut reader = xeibe_arrow::read(sources, &type_name, schema, &settings.options)?;
             let primary = settings.options.geometry.primary.clone();

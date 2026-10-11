@@ -81,7 +81,7 @@ file. Not listed individually:
 | zstd input | ✅ Supported | P1 | `crates/xeibe-core/tests/it/decode.rs` |
 | zip archives: stored/deflate/zip64 via the `zip` crate, one input per archive | ✅ Supported | P1 | Local files only. A remote zip is an error: download it first. `crates/xeibe-core/tests/it/archive.rs` |
 | Zip member selection by content (`.gml`/`.xml` candidates, non-feature XML skipped) | ✅ Supported | P1 | Most GML members in the corpus are named `.xml`. Candidates and `NoFeatures` are in `xeibe-core`. A read or scan skips any source without a feature collection or feature member (a report warning, `ScanResult::skipped_sources`) and fails only if every source is skipped. `crates/xeibe-arrow/tests/it/api.rs`, `crates/xeibe-schema/tests/it/scan.rs`, `crates/xeibe-cli/tests/it/scan.rs` |
-| `archive.zip!/member` and `--member <glob>` | ✅ Supported | P1 | Both in `xeibe-core` (`archive.rs` tests); CLI: `crates/xeibe-cli/tests/it/scan.rs` |
+| `archive.zip!/member` and `archive.zip!/<glob>` | ✅ Supported | P1 | Both in `xeibe-core` (`archive.rs` tests); CLI: `crates/xeibe-cli/tests/it/scan.rs` |
 | Zips inside zips | ❌ Not planned | — | 29 in the corpus, none with GML |
 | Zip methods other than stored/deflate, encrypted zips | ❌ Not planned | — | Error naming the method |
 | Multi-file datasets (directory / glob) | ✅ Supported | P0 | Path trees are merged. `crates/xeibe-io/tests/it/resolve.rs`, `crates/xeibe-arrow/tests/it/api.rs` (`several_sources_share_one_schema`) |
@@ -111,7 +111,7 @@ file. Not listed individually:
 | `wfs:additionalObjects` | WFS 2.0 | 🚧 In progress | P2 | Objects included by `resolve` (§11.3.4). Read as features of their own layers |
 | Referenced collection members (`wfs:member xlink:href`) | WFS 2.0 | ✅ Supported | P2 | Multi-query responses reference features that appear in another collection (§11.3.3.5). Counted, not fetched. `crates/xeibe-wfs/tests/it/response.rs` |
 | `wfs:Tuple` / `wfs:SimpleFeatureCollection` (joins) | WFS 2.0 | ❌ Not planned | — | Joins are out of scope |
-| `gml:boundedBy` on the collection | all | ✅ Supported | P1 | Also `wfs:boundedBy` (WFS 2.0); inner collections of a multi-query response hand down their own. Its srsName and srsDimension are the default for every feature; its envelope, as written, is the dataset extent (`ScanResult::extent`, `xeibe scan`). `crates/xeibe-core/tests/it/splitter.rs`, `crates/xeibe-geom/tests/it/envelope.rs`, `crates/xeibe-schema/tests/it/scan.rs`, `crates/xeibe-arrow/tests/it/geometry.rs`, `crates/xeibe-cli/tests/it/scan.rs` |
+| `gml:boundedBy` on the collection | all | ✅ Supported | P1 | Also `wfs:boundedBy` (WFS 2.0); inner collections of a multi-query response hand down their own. Its srsName and srsDimension are the default for every feature; its envelope, as written, is the dataset extent (`ScanResult::extent`, `xeibe gml scan`). `crates/xeibe-core/tests/it/splitter.rs`, `crates/xeibe-geom/tests/it/envelope.rs`, `crates/xeibe-schema/tests/it/scan.rs`, `crates/xeibe-arrow/tests/it/geometry.rs`, `crates/xeibe-cli/tests/it/scan.rs` |
 
 ## 3. Feature properties and schema inference
 
@@ -152,7 +152,7 @@ file. Not listed individually:
 | Namespace collision handling | ✅ Supported | P1 | Prefix kept on the differing step, declared in the settings file's `namespaces`. `crates/xeibe-schema/tests/it/rules.rs`, `crates/xeibe-arrow/tests/it/settings.rs` |
 | Overrides by path pattern | ✅ Supported | P1 | `crates/xeibe-cli/tests/it/convert.rs` (`--override`) |
 | Presets (`default`, `strings`) | ✅ Supported | P1 | `crates/xeibe-schema/tests/it/presets.rs`, `crates/xeibe-cli/tests/it/scan.rs` |
-| `--explain` | ✅ Supported | P1 | `xeibe scan --explain`. `crates/xeibe-cli/tests/it/scan.rs` |
+| `--explain` | ✅ Supported | P1 | `xeibe gml scan --explain`. `crates/xeibe-cli/tests/it/scan.rs` |
 | Per-feature error policy (`Error`/`Skip`/`NullGeometry`) | ✅ Supported | P1 | `NullGeometry` applies to geometry errors only. `crates/xeibe-arrow/tests/it/api.rs`, `mismatch.rs` |
 | Inline nested features (with own `gml:id`) → flat columns under the property's path | ✅ Supported | P1 | `crates/xeibe-arrow/tests/it/lists.rs` (`a_geometry_below_a_repeated_element_is_a_list_of_wkb`) |
 | Feature-valued properties (`gml:featureProperty` 3.1, app-schema properties containing a feature) | ✅ Supported | P1 | Same handling as inline nested features. `crates/xeibe-arrow/tests/it/lists.rs`, `crates/xeibe-schema/tests/it/rules.rs` |
@@ -324,7 +324,7 @@ file. Not listed individually:
 | Axis mode `Auto`: WFS version + requested srsName form | ✅ Supported | P1 | Version from the request, or from `xsi:schemaLocation` when a saved response is read as a file. `crates/xeibe-geom/tests/it/axis.rs`, `crates/xeibe-arrow/tests/it/samples.rs` |
 | Axis mode `Auto`: envelope / request `BBOX` consistency | ✅ Supported | P2 | Tie-break and warnings: reported as conflicts, never decisive. `crates/xeibe-geom/tests/it/axis.rs` |
 | Axis overrides by srsName (`{ srsName → mode }`) | ✅ Supported | P0 | Keyed by the srsName as written, trimmed (case matters); `--axis-override 'EPSG:4326=yx'`. `crates/xeibe-geom/tests/it/axis.rs`, `crates/xeibe-cli/tests/it/convert.rs` |
-| Decisions per (source, srsName, dialect), reported by `--explain` and `xeibe scan` | ✅ Supported | P0 | Never per feature. Applied once per key and listed in the read report (`axis_decisions`); `xeibe scan` prints conflicting decisions first (`ScanResult::axis_decisions`). `crates/xeibe-cli/tests/it/scan.rs` |
+| Decisions per (source, srsName, dialect), reported by `--explain` and `xeibe gml scan` | ✅ Supported | P0 | Never per feature. Applied once per key and listed in the read report (`axis_decisions`); `xeibe gml scan` prints conflicting decisions first (`ScanResult::axis_decisions`). `crates/xeibe-cli/tests/it/scan.rs` |
 | Sign/orientation normalization for westing/southing CRSs (Krovak 2065, Lo 2046–2055) | ❌ Not planned | — | Warning. Use `crs_override` with the east-north variant |
 | GeoArrow CRS metadata (`authority_code`) | ✅ Supported | P0 | Fallback for srsNames that resolve to no EPSG code; GeoArrow calls it a last resort. `crates/xeibe-arrow/tests/it/geometry.rs` |
 | PROJJSON CRS metadata | ✅ Supported | P0 | Required by GeoParquet 1.1 `geo` metadata, recommended by GeoArrow. From `xeibe-crs` (all 8,299 EPSG CRSs) into the GeoArrow field metadata and the GeoParquet `geo` metadata. `crates/xeibe-cli/tests/it/convert.rs` |
@@ -443,10 +443,10 @@ file. Not listed individually:
 |---|---|---|---|
 | `RecordBatchReader` per layer | ✅ Supported | P0 | `crates/xeibe-arrow/tests/it/api.rs` |
 | Parallel read pipeline with order preservation | ✅ Supported | P0 | Bounded queues and reorder stage (`xeibe-arrow` `pipeline`). `crates/xeibe-arrow/tests/it/api.rs` (`rows_keep_their_source_order_by_default`, `batch_size_bounds_the_batches`) |
-| Parquet output | ✅ Supported | P0 | `xeibe convert`, `xeibe wfs convert`. ZSTD, 128,000-row row groups (`--row-group-size`). `crates/xeibe-cli/tests/it/convert.rs` |
+| Parquet output | ✅ Supported | P0 | `xeibe gml convert`, `xeibe wfs convert`. ZSTD, 128,000-row row groups (`--row-group-size`). `crates/xeibe-cli/tests/it/convert.rs` |
 | GeoParquet 1.1 metadata | ✅ Supported | P0 | `geo` key: WKB encoding, `geometry_types`, CRS as PROJJSON or `null`, file bbox. Top-level geometry columns only. `crates/xeibe-cli/tests/it/convert.rs` |
 | Native Parquet `GEOMETRY` logical type + row-group bbox statistics | ✅ Supported | P0 | `parquet` feature `geospatial`; CRS as `authority:code`, `srid:0` when unknown. A column with curves is an error unless `--linearize`. `crates/xeibe-cli/tests/it/convert.rs` |
-| GeoParquet 1.1 `bbox` covering column | ✅ Supported | P1 | `--bbox-column auto|always|never` (`xeibe convert`, `xeibe wfs convert`). `auto` (default): every geometry column but points; `<column>_bbox` struct, named in `covering`. `crates/xeibe-cli/tests/it/convert.rs` |
+| GeoParquet 1.1 `bbox` covering column | ✅ Supported | P1 | `--bbox-column auto|always|never` (`xeibe gml convert`, `xeibe wfs convert`). `auto` (default): every geometry column but points; `<column>_bbox` struct, named in `covering`. `crates/xeibe-cli/tests/it/convert.rs` |
 | GeoParquet 1.1 native encoding | 📋 Planned | P2 | `--parquet-geometry native` |
 | DataFusion over remote sources (`ObjectStore` → `ByteSource`) | ✅ Supported | P1 | One streaming `get`. No cache of our own. URLs go through the session's store registry (`file://` included; zip archives only as plain paths). `crates/xeibe-datafusion/tests/it/table.rs` |
 | Writing GML (any form) | ❌ Not planned | — | Never. One-way GML → GeoArrow project |
@@ -454,7 +454,7 @@ file. Not listed individually:
 | Settings embedded in the output (`gml:settings`) | ✅ Supported | P1 | Parquet key-value metadata, IPC footer custom metadata; a complete settings file for the layer read. `crates/xeibe-cli/tests/it/convert.rs` (`the_output_embeds_the_settings_it_was_read_with`) |
 | Read report (counts, skips, warnings) | ✅ Supported | P0 | `crates/xeibe-arrow/tests/it/api.rs`. Overflow counts are still in the implementation, to be removed |
 | Reading several layers in one pass | ❌ Not planned | — | One read per layer |
-| CLI: `scan`, `convert` (one layer), `wfs layers`/`count`/`convert` | ✅ Supported | P0 | Samples the layer without a settings file. `crates/xeibe-cli/tests/it/` |
+| CLI: `gml scan`, `gml convert` (one layer), `wfs layers`/`count`/`convert` | ✅ Supported | P0 | Samples the layer without a settings file. `crates/xeibe-cli/tests/it/` |
 | DataFusion `TableProvider` (one layer, given or sampled schema) | ✅ Supported | P1 | `crates/xeibe-datafusion/tests/it/table.rs`, `function.rs` |
 | DataFusion `SchemaProvider` (one table per layer of a settings file) | 🤔 Considering | P2 | |
 | `read_gml()` table function | ✅ Supported | P1 | Positional `read_gml(path, layer, 'key=value', …)`: DataFusion 55 passes no named arguments to table functions. `crates/xeibe-datafusion/tests/it/function.rs` |

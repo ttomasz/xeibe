@@ -177,7 +177,7 @@ pub fn read(
         .collect();
 
     // The settings this read uses: its options, with the axis decisions as a
-    // plain mode (as `xeibe scan` writes them), and the layer's schema.
+    // plain mode (as `xeibe gml scan` writes them), and the layer's schema.
     let mut used = Settings::new(options.clone());
     used.options.geometry.axis = plain_axis(observation, &options.geometry.axis);
     used.set_schema(&display_name(observation, &qname), &layer_schema.schema)?;
@@ -610,13 +610,13 @@ impl ScanResult {
         Ok(Arc::new(self.schema(layer)?.schema))
     }
 
-    /// Reason and evidence for every field (`xeibe scan --explain`).
+    /// Reason and evidence for every field (`xeibe gml scan --explain`).
     pub fn explain(&self, layer: &str) -> crate::Result<String> {
         Ok(xeibe_schema::explain::explain(&self.schema(layer)?))
     }
 
     /// The axis decision of every geometry key (source, srsName, dialect) per
-    /// layer, with the scan's options. `xeibe scan` prints their conflicts.
+    /// layer, with the scan's options. `xeibe gml scan` prints their conflicts.
     pub fn axis_decisions(&self) -> Vec<(QName, AxisKey, xeibe_geom::AxisDecision)> {
         let options = &self.options.geometry.axis;
         let mut out = Vec::new();

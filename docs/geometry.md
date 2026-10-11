@@ -248,7 +248,7 @@ several queries, each inner collection's `boundedBy` applies to its own
 features and the outer one to the rest. `gml:Null` (`gml:null` in GML 2)
 declares nothing. An envelope whose corners can't be read still passes on its
 srsName and srsDimension. The collection's envelope, as written, is also the
-dataset extent that a scan reports (`ScanResult::extent`, `xeibe scan`).
+dataset extent that a scan reports (`ScanResult::extent`, `xeibe gml scan`).
 
 ## CRS and axis order
 
@@ -342,7 +342,7 @@ decision key = (source, srsName string as written (trimmed), dialect)
   buffered before the first batch: the sample when the schema is inferred, or the
   first `sample.features_per_layer` features when it is given. The read then applies
   one decision per key, and `--explain` shows it.
-- `xeibe scan` writes its decision into the settings file as a plain mode
+- `xeibe gml scan` writes its decision into the settings file as a plain mode
   (`"axis": "YX"`), so later reads with the file don't gather evidence at all. Only
   if keys were decided differently does it add overrides, one per srsName that differs
   from the most common decision.
@@ -467,7 +467,7 @@ evidence wins:
   decides it correctly on its own.
 - When evidence contradicts the chosen rule, for example a range check that says
   "swapped" while the srsName heuristic says "as written", `Auto` takes the stronger
-  evidence and **always** reports the conflict. `xeibe scan` prints these conflicts
+  evidence and **always** reports the conflict. `xeibe gml scan` prints these conflicts
   first.
 - `Auto` always uses all of the evidence above; there are no switches for single
   rows. When nothing is decisive, the `CrsHeuristic` fallback applies with a
@@ -747,7 +747,7 @@ outputs in `tests/data/`. Stored control points are always kept as vertices. Thi
 is lossy and opt-in. It is
 **required for Parquet output** of columns with curves (see
 [Curves](#curves)); elsewhere, use it when targets can't read curve WKB.
-It is a read option (`--linearize` on `convert` and `wfs convert`; in the settings
+It is a read option (`--linearize` on `gml convert` and `wfs convert`; in the settings
 file `options.geometry.curves`: `{ "Linearize": {} }` for GDAL's defaults, or
 `{ "Linearize": { "max_angle_step_deg": 2, "max_gap": 0.5 } }`), not an output option, so every consumer of a read gets the same
 geometry.
@@ -770,7 +770,7 @@ end to end. Only the storage encoding changes. The `parquet` crate (feature
 `geospatial`, enabled in the workspace) maps a `geoarrow.wkb` field to the
 `GEOMETRY` logical type and computes the statistics on its own.
 
-Defaults for `xeibe convert` and `xeibe wfs convert` with `--format parquet` (the default):
+Defaults for `xeibe gml convert` and `xeibe wfs convert` with `--format parquet` (the default):
 
 - **WKB.** Every geometry column is written as WKB,
   even if it is a native GeoArrow type in memory. It gets the `GEOMETRY` logical

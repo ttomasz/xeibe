@@ -22,7 +22,8 @@ pub struct MemberInfo {
     pub size: u64,
 }
 
-/// List candidate members, optionally filtered by `--member` globs.
+/// List candidate members, optionally filtered by member globs
+/// (`archive.zip!/<glob>`).
 ///
 /// Members are listed in archive order. A glob is matched against the whole
 /// member name; `*` does not cross `/`.
@@ -64,7 +65,11 @@ pub fn list_candidates(archive: &Path, member_globs: &[String]) -> crate::Result
 pub fn expand(archive: &Path, member_globs: &[String]) -> crate::Result<Vec<Source>> {
     let members = list_candidates(archive, member_globs)?;
     if members.is_empty() {
-        return Err(crate::Error::NoGmlMembers(archive.display().to_string()));
+        let mut name = archive.display().to_string();
+        if !member_globs.is_empty() {
+            name.push_str(&format!(" matching {}", member_globs.join(", ")));
+        }
+        return Err(crate::Error::NoGmlMembers(name));
     }
     Ok(members
         .into_iter()

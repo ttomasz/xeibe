@@ -178,6 +178,33 @@ fn a_missing_member_is_an_error_naming_the_archive() {
 }
 
 #[test]
+fn a_member_glob_in_the_path_selects_several_members() {
+    let dir = temp_dir("archive-member-glob");
+    let path = build_archive(&dir);
+    let names = |glob: &str| -> Vec<String> {
+        xeibe_core::source::expand_sources(&[format!("{}!/{glob}", path.display())])
+            .expect("members")
+            .iter()
+            .map(|source| match source {
+                Source::ZipMember { member, .. } => member.clone(),
+                other => panic!("expected a zip member, got {other:?}"),
+            })
+            .collect()
+    };
+    // `*` stays within one directory, `**` doesn't; only candidates match.
+    assert_eq!(names("*.gml"), ["a.gml"]);
+    assert_eq!(names("sub/*"), ["sub/b.XML"]);
+    let mut all = names("**");
+    all.sort();
+    assert_eq!(all, ["a.gml", "meta/metadata.xml", "sub/b.XML"]);
+
+    let error = xeibe_core::source::expand_sources(&[format!("{}!/nope/*", path.display())])
+        .expect_err("no member matches");
+    assert!(matches!(error, Error::NoGmlMembers(_)), "got {error:?}");
+    assert!(error.to_string().contains("matching nope/*"), "{error}");
+}
+
+#[test]
 fn expanding_inputs_covers_files_directories_and_globs() {
     let dir = temp_dir("expand-sources");
     std::fs::write(dir.join("one.gml"), DOC).unwrap();

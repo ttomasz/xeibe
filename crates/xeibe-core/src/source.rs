@@ -226,7 +226,9 @@ const DIRECTORY_SUFFIXES: &[&str] = &[
 ///
 /// Directories are walked recursively and contribute files with a GML
 /// suffix (see [`DIRECTORY_SUFFIXES`]); a glob contributes every file it
-/// matches. Results of one directory or glob are sorted by path.
+/// matches. Results of one directory or glob are sorted by path. The member
+/// of `archive.zip!/member` may be a glob too (`archive.zip!/data/*.gml`),
+/// matched against the archive's candidate members.
 pub fn expand_sources(inputs: &[String]) -> crate::Result<Vec<Source>> {
     let mut sources = Vec::new();
     for input in inputs {
@@ -241,8 +243,14 @@ pub fn expand_sources(inputs: &[String]) -> crate::Result<Vec<Source>> {
             )
             .into());
         }
-        if archive::split_member_path(input).is_some() {
-            sources.push(Source::file(input)?);
+        if let Some((archive, member)) = archive::split_member_path(input) {
+            // A glob selects among the candidate members; a plain name is
+            // that one member, whatever its suffix.
+            if is_glob(member) {
+                sources.extend(archive::expand(Path::new(archive), &[member.to_string()])?);
+            } else {
+                sources.push(Source::file(input)?);
+            }
             continue;
         }
         let path = Path::new(input);

@@ -253,7 +253,7 @@ negligible.
   invalidation. It can be applied to any input with the same feature types (for
   example, one voivodeship's PRG scan for all 16). Content the schema doesn't
   describe is not read (see [6.3](#63-data-that-doesnt-fit)).
-- `xeibe convert` embeds the settings a read used in its output (`gml:settings`
+- `xeibe gml convert` embeds the settings a read used in its output (`gml:settings`
   in the Parquet key-value metadata or the IPC footer), to record where it came
   from ([architecture.md](architecture.md#settings-file)).
 
@@ -596,7 +596,7 @@ A schema inferred from part of the data is a **sampled schema**. There are two
 ways to get one:
 
 - `read` without a schema samples the requested layer;
-- `xeibe scan --sample N` (`ScanExtent::Sample`) scans only the first N features of
+- `xeibe gml scan --sample N` (`ScanExtent::Sample`) scans only the first N features of
   the input.
 
 ### 6.1 Sampling in a read
@@ -667,7 +667,7 @@ collects unread content.
 
 ## 7. `--explain`
 
-`xeibe scan <src> --explain` prints every field with its reason and evidence:
+`xeibe gml scan <src> --explain` prints every field with its reason and evidence:
 
 ```
 adres2        List(Utf8View)      list: max_occurs=3 (first at feature #1204, gml:id=PL.ZIPIN…, byte 91 233 812)

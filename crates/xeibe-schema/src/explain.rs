@@ -1,4 +1,4 @@
-//! Human-readable schema explanation (`xeibe scan --explain`).
+//! Human-readable schema explanation (`xeibe gml scan --explain`).
 //!
 //! One block per column: the name, the type and each reason on its own line
 //! (`docs/schema-inference.md` §7).

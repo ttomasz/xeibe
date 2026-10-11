@@ -23,7 +23,7 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 | `xeibe-io` | HTTP and object-store inputs |
 | `xeibe-wfs` | WFS capabilities and paged reads |
 | `xeibe-datafusion` | DataFusion table provider and `read_gml()` |
-| `xeibe-cli` | The `xeibe` command: `scan`, `convert`, `wfs` |
+| `xeibe-cli` | The `xeibe` command: `gml scan`, `gml convert`, `wfs layers`/`count`/`convert` |
 | `xeibe-py` | Python module `xeibe` |
 
 Setting up a development environment is described in [`CLAUDE.md`](CLAUDE.md).

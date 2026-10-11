@@ -1,11 +1,11 @@
-//! `xeibe scan` (`docs/architecture.md`, "CLI" and "Settings file";
+//! `xeibe gml scan` (`docs/architecture.md`, "CLI" and "Settings file";
 //! `docs/schema-inference.md` §7).
 
 use crate::support::*;
 
 #[test]
 fn scan_lists_layers_with_counts_geometry_crs_and_columns() {
-    let run = xeibe_ok(&["scan", &sample(PRG)]);
+    let run = xeibe_ok(&["gml", "scan", &sample(PRG)]);
     for layer in [
         "prgad:AD_Miejscowosc",
         "prgad:AD_UlicaPlac",
@@ -36,7 +36,7 @@ fn scan_lists_layers_with_counts_geometry_crs_and_columns() {
 fn scan_writes_a_settings_file_with_options_and_one_schema_per_layer() {
     let dir = out_dir("scan_settings");
     let path = dir.join("prg.json");
-    xeibe_ok(&["scan", &sample(PRG), "-o", path_str(&path)]);
+    xeibe_ok(&["gml", "scan", &sample(PRG), "-o", path_str(&path)]);
 
     let text = std::fs::read_to_string(&path).unwrap();
     let settings: serde_json::Value = serde_json::from_str(&text).unwrap();
@@ -73,6 +73,7 @@ fn scan_preset_and_axis_order_go_into_the_settings_file() {
     let dir = out_dir("scan_preset");
     let path = dir.join("prg.json");
     xeibe_ok(&[
+        "gml",
         "scan",
         &sample(PRG),
         "--preset",
@@ -92,14 +93,14 @@ fn scan_preset_and_axis_order_go_into_the_settings_file() {
 #[test]
 fn only_the_documented_presets_exist() {
     for gone in ["flat", "gdal-like", "spark-xml-like"] {
-        let run = xeibe(&["scan", &sample(PRG), "--preset", gone]);
+        let run = xeibe(&["gml", "scan", &sample(PRG), "--preset", gone]);
         assert!(!run.success, "--preset {gone} is still accepted");
     }
 }
 
 #[test]
 fn scan_explain_prints_every_field_with_its_reasons() {
-    let run = xeibe_ok(&["scan", &sample(PRG), "--explain"]);
+    let run = xeibe_ok(&["gml", "scan", &sample(PRG), "--explain"]);
     let line = run
         .stdout
         .lines()
@@ -121,7 +122,7 @@ fn scan_explain_prints_every_field_with_its_reasons() {
 
 #[test]
 fn scan_sample_reads_only_the_first_features() {
-    let run = xeibe_ok(&["scan", &sample(PRG), "--sample", "1"]);
+    let run = xeibe_ok(&["gml", "scan", &sample(PRG), "--sample", "1"]);
     assert!(run.stdout.contains("sampled scan"), "{}", run.stdout);
     assert!(!run.stdout.contains("AD_PunktAdresowy"), "{}", run.stdout);
 }
@@ -129,6 +130,7 @@ fn scan_sample_reads_only_the_first_features() {
 #[test]
 fn scan_prints_axis_order_conflicts_first() {
     let run = xeibe_ok(&[
+        "gml",
         "scan",
         &sample("wfs/de-bfn-inspire-sd-wfs100-short-latlon.xml"),
     ]);
@@ -152,23 +154,28 @@ fn scan_reads_zip_members_selected_by_glob_or_path() {
         &[("data/prg.gml", PRG), ("data/rcn.gml", RCN_ARCS)],
     );
 
-    let all = xeibe_ok(&["scan", path_str(&archive)]);
+    let all = xeibe_ok(&["gml", "scan", path_str(&archive)]);
     assert!(
         all.stdout.contains("AD_PunktAdresowy") && all.stdout.contains("RCN_Budynek"),
         "{}",
         all.stdout
     );
 
-    let member = xeibe_ok(&["scan", path_str(&archive), "--member", "data/rcn*"]);
+    // A glob after `!/` selects among the members.
+    let glob = format!("{}!/data/rcn*", archive.display());
+    let member = xeibe_ok(&["gml", "scan", &glob]);
     assert!(member.stdout.contains("RCN_Budynek"), "{}", member.stdout);
     assert!(
         !member.stdout.contains("AD_PunktAdresowy"),
         "{}",
         member.stdout
     );
+    let none = xeibe(&["gml", "scan", &format!("{}!/nope/*", archive.display())]);
+    assert!(!none.success);
+    assert!(none.stderr.contains("matching nope/*"), "{}", none.stderr);
 
     let path = format!("{}!/data/prg.gml", archive.display());
-    let single = xeibe_ok(&["scan", &path]);
+    let single = xeibe_ok(&["gml", "scan", &path]);
     assert!(
         single.stdout.contains("AD_PunktAdresowy"),
         "{}",
@@ -194,12 +201,13 @@ fn zip_members_without_features_are_skipped() {
         archive.display()
     );
 
-    let scan = xeibe_ok(&["scan", path_str(&archive)]);
+    let scan = xeibe_ok(&["gml", "scan", path_str(&archive)]);
     assert!(scan.stdout.contains("AD_PunktAdresowy"), "{}", scan.stdout);
     assert!(scan.stderr.contains(&skipped), "{}", scan.stderr);
 
     let out = dir.join("points.parquet");
     let convert = xeibe_ok(&[
+        "gml",
         "convert",
         path_str(&archive),
         "--layer",
@@ -216,7 +224,7 @@ fn zip_members_without_features_are_skipped() {
 
     let only_metadata = dir.join("only-metadata.zip");
     zip_bytes(&only_metadata, &[("metadata.xml", metadata)]);
-    let run = xeibe(&["scan", path_str(&only_metadata)]);
+    let run = xeibe(&["gml", "scan", path_str(&only_metadata)]);
     assert!(!run.success);
     assert!(
         run.stderr
@@ -228,7 +236,7 @@ fn zip_members_without_features_are_skipped() {
 
 #[test]
 fn scan_of_a_missing_file_fails() {
-    let run = xeibe(&["scan", "does/not/exist.gml"]);
+    let run = xeibe(&["gml", "scan", "does/not/exist.gml"]);
     assert!(!run.success);
     assert!(run.stderr.starts_with("error:"), "{}", run.stderr);
 }
@@ -237,6 +245,7 @@ fn scan_of_a_missing_file_fails() {
 fn scan_prints_the_extent_the_collection_declares() {
     // WFS 2.0's `wfs:boundedBy` on the collection, as written.
     let run = xeibe_ok(&[
+        "gml",
         "scan",
         &sample("wfs/pl-gugik-mapserver-addresses-wfs200.xml"),
     ]);
@@ -246,7 +255,7 @@ fn scan_prints_the_extent_the_collection_declares() {
         "{}",
         run.stdout
     );
-    let run = xeibe_ok(&["scan", &sample(PRG)]);
+    let run = xeibe_ok(&["gml", "scan", &sample(PRG)]);
     assert!(
         !run.stdout.contains("dataset extent"),
         "PRG's collection has no boundedBy: {}",

@@ -43,9 +43,9 @@ impl LayerReader {
     }
 
     /// The settings this read uses, ready to save: its options, with the
-    /// axis-order decisions as a plain mode (as `xeibe scan` writes them),
+    /// axis-order decisions as a plain mode (as `xeibe gml scan` writes them),
     /// and the layer's schema, given or inferred. Known before the first
-    /// batch. `xeibe convert` embeds it in its output as `gml:settings`.
+    /// batch. `xeibe gml convert` embeds it in its output as `gml:settings`.
     pub fn settings(&self) -> &crate::Settings {
         &self.settings
     }
