@@ -42,7 +42,7 @@ const GEOMETRY: &str = "Geometry";
 #[command(
     name = "xeibe",
     version = version(),
-    about = "Convert GML and WFS data to Arrow / Parquet"
+    about = "Convert Geography Markup Language (GML) and Web Feature Service (WFS) data to Arrow / Parquet"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -66,14 +66,18 @@ pub enum GmlCommand {
     /// List the layers of the input with their inferred schemas
     ///
     /// Prints every layer (feature type) with its feature count, geometry
-    /// columns, CRS and columns. With `-o`, the result is also saved as a
-    /// settings file; `xeibe gml convert --settings` then converts with
-    /// it and infers nothing again.
+    /// columns, CRS and columns. With `--output/-o`, the result is also saved as
+    /// a settings file; `xeibe gml convert --settings` can use this file to get 
+    /// settings for conversion.
+    /// 
+    /// By default scan command reads the entire file(s). With `--sample` you can specify
+    /// max number of features to read. 
     ///
     /// Examples:
     ///   xeibe gml scan parcels.gml
     ///   xeibe gml scan 'data/**/*.gml' -o parcels.json
     ///   xeibe gml scan parcels.zip --sample 1000 --explain
+    ///   xeibe gml scan parcels.zip!/member.xml --sample 1000 --explain
     #[command(verbatim_doc_comment)]
     Scan {
         #[command(flatten)]
@@ -95,7 +99,7 @@ pub enum GmlCommand {
         /// change types, then pass it to `xeibe gml convert --settings`.
         #[arg(short, long, value_name = "FILE", verbatim_doc_comment)]
         output: Option<PathBuf>,
-        /// Take the scan's options from a settings file
+        /// Take the scan's options from a settings file (the one exported by running `scan --output``)
         ///
         /// Only the file's `options` are used. Its `layers` (the schemas)
         /// are ignored, because the scan infers them anew. Use it to scan
@@ -401,8 +405,6 @@ pub struct ReadArgs {
     /// changes by the conversion: `0012` stays text, because the zeros
     /// would be lost. Every other column is text. With `strings`, values
     /// are not interpreted at all.
-    ///
-    /// Default: the settings file's inference options, or `default`.
     #[arg(long, value_enum, help_heading = INFERENCE, verbatim_doc_comment)]
     pub preset: Option<Preset>,
     /// Set the type or the handling of fields in an inferred schema
@@ -440,11 +442,17 @@ pub struct ReadArgs {
     /// Order of the coordinates in the input: x/y or y/x
     ///
     /// x is the easting or longitude, y the northing or latitude. GML
-    /// should follow the axis order of its CRS (EPSG:4326 is lat/lon),
-    /// but much of it doesn't. The output is always x/y; this flag says
-    /// how the input is to be read.
-    ///
-    /// `auto` decides once per file, srsName and GML version, by the
+    /// should follow the axis order of its Coordinate Reference System
+    /// (CRS, usually used interchangeably with SRS - Spatial Reference System)
+    /// (EPSG:4326 is lat/lon), but most files in the wild don't so you'd get entries like:
+    /// ```
+    /// <gml:Point gml:id="p1" srsName="http://www.opengis.net/def/crs/EPSG/0/4326">
+    ///   <gml:coordinates>10.0, 20.0</gml:coordinates>
+    /// </gml:Point>
+    /// ```
+    /// where 10.0 would be longitude or x, and 20.0 would be latitude or y despite specifying EPSG:4326 CRS.
+    /// 
+    /// Value `auto` decides once per file, srsName and GML version, by the
     /// first of these that gives an answer:
     ///
     ///   1. `--axis-override` for the srsName
@@ -473,8 +481,8 @@ pub struct ReadArgs {
     pub axis_order: Option<AxisMode>,
     /// Coordinate order for one srsName, as `SRSNAME=MODE`
     ///
-    /// For an input that mixes srsNames which must be read differently;
-    /// otherwise `--axis-order` alone is enough. MODE is one of
+    /// This is useful only for an input that mixes srsNames which must be read differently.
+    /// Otherwise `--axis-order` alone is enough. MODE is one of
     /// `--axis-order`'s values. SRSNAME is compared with the input's as
     /// written: case matters, surrounding whitespace doesn't.
     ///
@@ -487,7 +495,7 @@ pub struct ReadArgs {
         verbatim_doc_comment
     )]
     pub axis_overrides: Vec<String>,
-    /// CRS of the geometry, in place of the one the input declares
+    /// Manually set CRS of the geometry
     ///
     /// For input without an srsName, or with a wrong or unknown one. It
     /// only labels the output: coordinates are not reprojected, and their
@@ -498,7 +506,7 @@ pub struct ReadArgs {
     ///   urn:ogc:def:crs:EPSG::2180
     ///   http://www.opengis.net/def/crs/EPSG/0/2180
     ///   EPSG:25832+7837     horizontal + vertical CRS
-    ///   PL-1992             a name EPSG lists as an alias
+    ///   PL-1992             a name EPSG lists as an alias (this is not recommended to use)
     #[arg(
         long,
         value_name = "CRS",
@@ -506,15 +514,15 @@ pub struct ReadArgs {
         verbatim_doc_comment
     )]
     pub crs: Option<String>,
-    /// Replace curves by straight segments. Needed for Parquet; lossy
+    /// Replace curves by straight segments. Needed for Parquet; lossy conversion.
     ///
     /// GML arcs and circles (Arc, ArcString, Circle, ArcByCenterPoint,
     /// ArcByBulge and their kin) are read as the curve types
     /// CircularString, CompoundCurve, CurvePolygon, MultiCurve and
     /// MultiSurface. Parquet and GeoParquet only allow points, lines and
     /// polygons, so converting a layer with curves to Parquet is an error
-    /// without this flag. Arrow IPC output keeps curves; there the flag
-    /// is for readers that can't handle them.
+    /// without this flag. Arrow IPC output can keep the curves but you can
+    /// use the flag for readers that can't handle them.
     ///
     /// Every arc becomes a line through points on the arc that are at
     /// most STEP_DEG degrees of arc apart (4 if not given, as in GDAL: a
