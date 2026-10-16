@@ -86,13 +86,17 @@ pub fn split_member_path(input: &str) -> Option<(&str, &str)> {
     (!archive.is_empty() && !member.is_empty()).then_some((archive, member))
 }
 
-/// Open one member as a stream (decompressed by the `zip` crate, not yet decoded).
+/// Open one member as a stream (decompressed by the `zip` crate, not yet
+/// decoded), and whether it is compressed.
 ///
 /// The `zip` crate's member readers borrow the archive, so the member's data
 /// is located through the archive and then streamed from a file handle of its
 /// own: the reader is `'static` and holds no more than the decompressor's
 /// state, however large the member is.
-pub(crate) fn open_member(archive: &Path, member: &str) -> crate::Result<Box<dyn Read + Send>> {
+pub(crate) fn open_member(
+    archive: &Path,
+    member: &str,
+) -> crate::Result<(Box<dyn Read + Send>, bool)> {
     let mut zip = open_archive(archive)?;
     let file = zip
         .by_name(member)
@@ -111,10 +115,10 @@ pub(crate) fn open_member(archive: &Path, member: &str) -> crate::Result<Box<dyn
     handle.seek(SeekFrom::Start(data_start))?;
     let data = handle.take(compressed_size);
     match method {
-        zip::CompressionMethod::Stored => Ok(Box::new(data)),
-        zip::CompressionMethod::Deflated => Ok(crate::decode::read_ahead(Box::new(
-            flate2::read::DeflateDecoder::new(data),
-        ))?),
+        zip::CompressionMethod::Stored => Ok((Box::new(data), false)),
+        zip::CompressionMethod::Deflated => {
+            Ok((Box::new(flate2::read::DeflateDecoder::new(data)), true))
+        }
         other => Err(crate::Error::Zip {
             archive: archive.display().to_string(),
             member: member.to_string(),

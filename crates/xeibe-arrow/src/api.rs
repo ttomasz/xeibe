@@ -201,10 +201,12 @@ pub fn read(
         empty_as_null: inference.types.empty_as_null,
         batch_size: options.batch_size.max(1),
     });
+    let helper = stream.helper();
     let buffered = sample.map(|sample| sample.chunks).unwrap_or_default();
     let chunks: Box<dyn Iterator<Item = xeibe_core::Result<FeatureChunk>> + Send> =
         Box::new(buffered.into_iter().map(Ok).chain(stream));
-    let batches = Pipeline::new(options.clone(), plan.clone(), report.clone()).start(chunks)?;
+    let batches =
+        Pipeline::new(options.clone(), plan.clone(), report.clone()).start(chunks, Some(helper))?;
     Ok(LayerReader::new(
         batches,
         report,
@@ -297,6 +299,7 @@ fn scan_sample(
         threads,
         "xeibe-sample",
         chunks.iter().zip(budgets).enumerate(),
+        None,
         Vec::new,
         |scanned, (i, (chunk, mut budget))| {
             let observation = scanner

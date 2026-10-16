@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use std::ops::ControlFlow;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, mpsc};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, TryLockError, mpsc};
 
 /// A caught panic's payload.
 pub type Panic = Box<dyn Any + Send + 'static>;
@@ -39,6 +39,36 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Work a worker does for the input before it takes an item, and while
+/// another worker takes one, such as decoding the input ahead
+/// ([`crate::decode::DecodeAhead::help`]); `false` when there is none.
+pub type Helper = Arc<dyn Fn() -> bool + Send + Sync>;
+
+/// Lock the input. With a helper, help first as long as there is something
+/// to do (so that a source is decoded ahead before the worker that splits
+/// it needs it, not by that worker), and again while another thread holds
+/// the input.
+fn lock_or_help<'a, T>(
+    mutex: &'a Mutex<T>,
+    helper: Option<&(dyn Fn() -> bool + Sync)>,
+) -> MutexGuard<'a, T> {
+    if let Some(helper) = helper {
+        while helper() {}
+        loop {
+            match mutex.try_lock() {
+                Ok(guard) => return guard,
+                Err(TryLockError::Poisoned(poisoned)) => return poisoned.into_inner(),
+                Err(TryLockError::WouldBlock) => {
+                    if !helper() {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    lock(mutex)
+}
+
 fn spawn_error(error: std::io::Error) -> std::io::Error {
     std::io::Error::new(error.kind(), format!("starting a worker thread: {error}"))
 }
@@ -48,13 +78,16 @@ fn spawn_error(error: std::io::Error) -> std::io::Error {
 /// `Break` stops every worker after its current item.
 ///
 /// The items are taken one at a time under a lock, so `items.next()` (such as
-/// splitting the next chunk) runs on whichever worker is free. With
+/// splitting the next chunk) runs on whichever worker is free. Before it
+/// takes one, and while another worker holds the lock, a worker calls
+/// `helper` until it has nothing to do. With
 /// `threads <= 1`, all of it runs on the calling thread. A panic in a worker
 /// is resumed on the calling thread once every worker has stopped.
 pub fn fold<T, A>(
     threads: usize,
     name: &str,
     items: impl Iterator<Item = T> + Send,
+    helper: Option<&(dyn Fn() -> bool + Sync)>,
     init: impl Fn() -> A + Sync,
     step: impl Fn(&mut A, T) -> ControlFlow<()> + Sync,
 ) -> std::io::Result<Vec<A>>
@@ -78,7 +111,7 @@ where
         let mut acc = init();
         loop {
             let item = {
-                let mut items = lock(&items);
+                let mut items = lock_or_help(&items, helper);
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
@@ -129,7 +162,7 @@ where
 }
 
 /// How a [`ParallelMap`] runs.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct MapOptions {
     /// Threads that work; `<= 1` runs every item on the consumer's thread.
     pub threads: usize,
@@ -140,6 +173,9 @@ pub struct MapOptions {
     pub preserve_order: bool,
     /// Worker thread names: `{name}-{index}`.
     pub name: String,
+    /// Called by a worker before it takes an item, and while the input is
+    /// taken by another.
+    pub helper: Option<Helper>,
 }
 
 /// `f` applied to every item of an input, on [`MapOptions::threads`] workers,
@@ -275,11 +311,16 @@ impl<R: Send + 'static> ParallelMap<R> {
             preserve_order: options.preserve_order,
         };
         for index in 0..options.threads {
-            let (shared, input, f, sender) =
-                (shared.clone(), input.clone(), f.clone(), sender.clone());
+            let (shared, input, f, sender, helper) = (
+                shared.clone(),
+                input.clone(),
+                f.clone(),
+                sender.clone(),
+                options.helper.clone(),
+            );
             std::thread::Builder::new()
                 .name(format!("{}-{index}", options.name))
-                .spawn(move || work(&shared, &input, &*f, &sender))
+                .spawn(move || work(&shared, &input, &*f, &sender, helper.as_deref()))
                 .map_err(spawn_error)?;
         }
         Ok(ParallelMap {
@@ -294,13 +335,17 @@ fn work<T, R>(
     input: &Mutex<Input<T>>,
     f: &(impl Fn(T) -> R + ?Sized),
     sender: &mpsc::Sender<(u64, Result<R, Panic>)>,
+    helper: Option<&(dyn Fn() -> bool + Send + Sync)>,
 ) {
     loop {
         if !shared.take_ticket() {
             return;
         }
         let (seq, item) = {
-            let mut input = lock(input);
+            let mut input = match helper {
+                Some(helper) => lock_or_help(input, Some(helper)),
+                None => lock(input),
+            };
             if input.done {
                 drop(input);
                 shared.return_ticket();
@@ -390,6 +435,7 @@ mod tests {
             in_flight: threads + 2,
             preserve_order,
             name: "test".into(),
+            helper: None,
         }
     }
 
@@ -496,6 +542,7 @@ mod tests {
                 threads,
                 "test",
                 1..=1000u64,
+                None,
                 || 0u64,
                 |sum, i| {
                     *sum += i;
@@ -518,6 +565,7 @@ mod tests {
             4,
             "test",
             items,
+            None,
             || (),
             |_, i| {
                 if i == 10 {
@@ -538,6 +586,7 @@ mod tests {
             1,
             "test",
             0..3,
+            None,
             || true,
             |all, _| {
                 *all &= std::thread::current().id() == caller;

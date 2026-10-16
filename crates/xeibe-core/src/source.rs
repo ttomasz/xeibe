@@ -76,11 +76,27 @@ impl Source {
 
     /// Open a fresh decompressed and decoded (UTF-8) stream.
     pub fn open(&self) -> crate::Result<Box<dyn std::io::Read + Send>> {
-        let raw = match self {
-            Source::Stream(source) => source.open()?,
+        self.open_with(None)
+    }
+
+    /// [`Source::open`], for a stream that other threads decode ahead of its
+    /// reader with `ahead`; the source replaces the one `ahead` worked for.
+    pub fn open_ahead(
+        &self,
+        ahead: &crate::decode::DecodeAhead,
+    ) -> crate::Result<Box<dyn std::io::Read + Send>> {
+        self.open_with(Some(ahead))
+    }
+
+    fn open_with(
+        &self,
+        ahead: Option<&crate::decode::DecodeAhead>,
+    ) -> crate::Result<Box<dyn std::io::Read + Send>> {
+        let (raw, compressed) = match self {
+            Source::Stream(source) => (source.open()?, false),
             Source::ZipMember { archive, member } => archive::open_member(archive, member)?,
         };
-        crate::decode::decoded_reader(raw)
+        crate::decode::decoded_reader_with(raw, compressed, ahead)
     }
 }
 

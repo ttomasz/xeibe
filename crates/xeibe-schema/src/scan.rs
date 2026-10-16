@@ -3,7 +3,9 @@
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::ops::ControlFlow;
+use std::sync::Arc;
 
+use xeibe_core::decode::DecodeAhead;
 use xeibe_core::reader::{Attributes, GmlReader, XmlEvent};
 use xeibe_core::splitter::DocumentHeader;
 use xeibe_core::version::VersionHints;
@@ -81,8 +83,10 @@ impl Scanner {
         if self.options.layers.is_some() {
             splitter_options.layers = self.options.layers.clone();
         }
+        let ahead = Arc::new(DecodeAhead::default());
         let mut stream = ScanStream {
             sources,
+            ahead: ahead.clone(),
             splitter_options,
             current: None,
             opened: Vec::new(),
@@ -97,6 +101,7 @@ impl Scanner {
             self.options.threads,
             "xeibe-scan",
             stream.by_ref(),
+            Some(&|| ahead.help()),
             Partial::default,
             |partial, item| self.scan_item(partial, item),
         )
@@ -259,6 +264,8 @@ struct Partial {
 /// of a sampled scan's budget. Records each source's header as it opens it.
 struct ScanStream {
     sources: Sources,
+    /// Decoding ahead of the source being split, by waiting workers.
+    ahead: Arc<DecodeAhead>,
     splitter_options: xeibe_core::SplitterOptions,
     current: Option<FeatureSplitter<Box<dyn Read + Send>>>,
     /// Every source opened so far, at the index of its id.
@@ -291,7 +298,11 @@ impl ScanStream {
         };
         let source = source?;
         let id = SourceId(u32::try_from(self.opened.len()).unwrap_or(u32::MAX));
-        let mut splitter = FeatureSplitter::new(source.open()?, id, self.splitter_options.clone());
+        let mut splitter = FeatureSplitter::new(
+            source.open_ahead(&self.ahead)?,
+            id,
+            self.splitter_options.clone(),
+        );
         let header = match splitter.header() {
             Ok(header) => {
                 let context = source_context(header);

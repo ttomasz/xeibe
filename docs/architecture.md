@@ -405,10 +405,11 @@ flowchart LR
 
 - **Workers take their own chunks.** The chunk stream (every source, one after
   another) sits behind a lock. A free worker takes the lock, pulls the next chunk,
-  which opens the next source, decompresses and splits as far as needed, and
-  releases the lock before parsing. Splitting stays sequential, but it is cheap:
-  on PRG address points it costs about a tenth of parsing, and decompression
-  (gzip, zstd, zip) about as much again, so one stream keeps 5–10 workers busy.
+  which opens the next source, splits as far as needed, and releases the lock
+  before parsing. Splitting stays sequential, but it is cheap: on PRG address
+  points it costs about a tenth of parsing, so one stream keeps about 10
+  workers busy. Decompression costs about as much again; workers do it ahead
+  of the splitter (below).
 - **The consumer reorders.** In a read, each worker sends its chunk's batches to
   the consumer, and `LayerReader::next` puts them back in chunk order (unless
   `preserve_order` is off) and combines the small batches that end chunks into
@@ -450,14 +451,19 @@ Measured on a 6-core machine (12 hardware threads) with a 657 MB PRG file, befor
 this design: parsing takes 89% of a read's CPU time, splitting 9%, decompression
 6–9% (zstd, zip, gzip), transcoding from ISO-8859-2 3%, reordering under 1%.
 
-### Planned: decompression beside splitting
+### Decompression beside splitting
 
-📋 Planned (P2). A compressed source is decompressed under the same lock as it is
-split, so the two add up: about 0.8 GB/s of XML for gzip on the machine above,
-against 1.6 GB/s for splitting alone. That only limits machines with more than
-about 6 cores. The fix keeps the thread count exact: a second lock for
-decompression with a small queue of decoded blocks, which a worker tops up when it
-runs low, so that one worker decompresses while another splits.
+A compressed or transcoded source is decoded in blocks of 256 KB into a queue
+of up to 16 (`xeibe_core::decode::DecodeAhead`). Before a worker takes its next
+chunk, and while another worker splits, it decodes blocks into the queue until
+the queue is full or another worker is decoding. The worker that splits then
+mostly finds its input decoded, and decompression and splitting overlap without
+a thread of their own; it decodes a block itself only when the queue is empty.
+
+Measured on the machine above (657 MB PRG file, gzip, zstd, zip or ISO-8859-2),
+against the earlier design, which decoded on a thread outside `threads`: 4–6%
+slower at 12 threads, 11–14% at 1 to 4, where the earlier design had a
+thread more to work with. Plain files are as fast as before.
 
 ### Planned: several sources at once
 

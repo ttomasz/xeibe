@@ -1,7 +1,9 @@
 //! Decompression and character-encoding conversion. Everything downstream
 //! sees a UTF-8 byte stream.
 
+use std::collections::VecDeque;
 use std::io::{Cursor, Read};
+use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 
 use encoding_rs::{Encoding, UTF_8, UTF_16BE, UTF_16LE};
 
@@ -86,8 +88,20 @@ fn declared_label(prefix: &[u8]) -> Option<&[u8]> {
 ///
 /// A UTF-8 BOM is removed. A zip archive is an error here: archives are
 /// expanded into member sources before anything is opened. Decompression
-/// and transcoding run on a thread of their own ([`read_ahead`]).
+/// and transcoding happen as the stream is read, on the thread that reads it.
 pub fn decoded_reader(raw: Box<dyn Read + Send>) -> crate::Result<Box<dyn Read + Send>> {
+    decoded_reader_with(raw, false, None)
+}
+
+/// [`decoded_reader`] for a source that may be `compressed` already (a
+/// deflated zip member). With `ahead`, a stream that needs decompressing or
+/// transcoding is decoded in blocks that other threads can decode ahead of
+/// the reader ([`DecodeAhead`]).
+pub(crate) fn decoded_reader_with(
+    raw: Box<dyn Read + Send>,
+    compressed: bool,
+    ahead: Option<&DecodeAhead>,
+) -> crate::Result<Box<dyn Read + Send>> {
     let (magic, raw) = peek(raw, MAGIC_LEN)?;
     let compression = detect_compression(&magic);
     let decompressed: Box<dyn Read + Send> = match compression {
@@ -117,84 +131,174 @@ pub fn decoded_reader(raw: Box<dyn Read + Send>) -> crate::Result<Box<dyn Read +
     } else {
         Box::new(Utf8Transcoder::new(stream, encoding))
     };
-    if compression != Compression::None || encoding != UTF_8 {
-        return Ok(read_ahead(decoded)?);
+    let Some(ahead) = ahead else {
+        return Ok(decoded);
+    };
+    if !compressed && compression == Compression::None && encoding == UTF_8 {
+        // Nothing to decode: the reader is as fast as the source.
+        ahead.set(None);
+        return Ok(decoded);
     }
-    Ok(decoded)
-}
-
-/// Bytes a [`read_ahead`] thread reads at a time, and blocks it may be ahead.
-const AHEAD_BLOCK: usize = 256 * 1024;
-const AHEAD_BLOCKS: usize = 8;
-
-/// Run `reader` on a thread of its own, up to a few blocks ahead of the
-/// consumer, so that decompression overlaps with the splitter, the one
-/// sequential stage of a read. Where there are no threads (WebAssembly),
-/// `reader` itself.
-pub(crate) fn read_ahead(
-    mut reader: Box<dyn Read + Send>,
-) -> std::io::Result<Box<dyn Read + Send>> {
-    if cfg!(target_family = "wasm") {
-        return Ok(reader);
-    }
-    let (sender, blocks) = std::sync::mpsc::sync_channel(AHEAD_BLOCKS);
-    std::thread::Builder::new()
-        .name("xeibe-decode".into())
-        .spawn(move || {
-            loop {
-                let mut block = vec![0; AHEAD_BLOCK];
-                let mut len = 0;
-                let error = loop {
-                    match reader.read(&mut block[len..]) {
-                        Ok(0) => break None,
-                        Ok(n) => {
-                            len += n;
-                            if len == block.len() {
-                                break None;
-                            }
-                        }
-                        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
-                        Err(e) => break Some(e),
-                    }
-                };
-                // A short block: the end of input, or an error.
-                let last = len < block.len();
-                block.truncate(len);
-                // A failed send: the consumer is gone.
-                if len > 0 && sender.send(Ok(block)).is_err() {
-                    return;
-                }
-                if let Some(error) = error {
-                    let _ = sender.send(Err(error));
-                }
-                if last {
-                    return;
-                }
-            }
-        })?;
-    Ok(Box::new(ReadAhead {
-        blocks,
+    let shared = Arc::new(AheadShared {
+        decoder: Mutex::new(AheadDecoder {
+            reader: decoded,
+            done: false,
+            error: None,
+        }),
+        blocks: Mutex::new(VecDeque::new()),
+    });
+    ahead.set(Some(shared.clone()));
+    Ok(Box::new(AheadReader {
+        shared,
         current: Cursor::new(Vec::new()),
     }))
 }
 
-/// The consumer's end of [`read_ahead`].
-struct ReadAhead {
-    blocks: std::sync::mpsc::Receiver<std::io::Result<Vec<u8>>>,
+/// Bytes decoded at a time, and blocks that may wait for the reader.
+const AHEAD_BLOCK: usize = 256 * 1024;
+const AHEAD_BLOCKS: usize = 16;
+
+/// Decoding ahead of the reader, by the workers of a scan or read.
+///
+/// The worker that splits a source reads its decoded stream, and
+/// decompression or transcoding costs about as much as splitting. A source
+/// opened with [`crate::Source::open_ahead`] decodes in blocks of 256 KB, and
+/// [`DecodeAhead::help`] decodes the next block into a queue of up to 16
+/// (4 MB). Workers call it before they take their next chunk and while
+/// another worker splits, so that the splitting worker mostly finds its
+/// input decoded. Nothing runs on a thread of its own
+/// (`docs/architecture.md`, "Parallel pipeline").
+#[derive(Default)]
+pub struct DecodeAhead {
+    /// The stream of the source opened last.
+    current: Mutex<Option<Arc<AheadShared>>>,
+}
+
+impl DecodeAhead {
+    /// Decode one block ahead of the reader of the source opened last.
+    /// `false` when there is nothing to do: the queue is full, another thread
+    /// is decoding, the stream has ended or needs no decoding.
+    pub fn help(&self) -> bool {
+        let Some(shared) = lock(&self.current).clone() else {
+            return false;
+        };
+        shared.decode_ahead()
+    }
+
+    fn set(&self, shared: Option<Arc<AheadShared>>) {
+        *lock(&self.current) = shared;
+    }
+}
+
+impl std::fmt::Debug for DecodeAhead {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DecodeAhead").finish_non_exhaustive()
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// A decoded stream shared by its reader and the threads that decode ahead.
+/// Blocks are queued while the decoder is locked, so they stay in order.
+struct AheadShared {
+    decoder: Mutex<AheadDecoder>,
+    blocks: Mutex<VecDeque<std::io::Result<Vec<u8>>>>,
+}
+
+struct AheadDecoder {
+    reader: Box<dyn Read + Send>,
+    done: bool,
+    /// An error after the data read with it, for the next block.
+    error: Option<std::io::Error>,
+}
+
+impl AheadDecoder {
+    /// The next block; `None` at the end of the stream.
+    fn block(&mut self) -> Option<std::io::Result<Vec<u8>>> {
+        if let Some(error) = self.error.take() {
+            return Some(Err(error));
+        }
+        if self.done {
+            return None;
+        }
+        let mut block = vec![0; AHEAD_BLOCK];
+        let mut len = 0;
+        while len < block.len() {
+            match self.reader.read(&mut block[len..]) {
+                Ok(0) => {
+                    self.done = true;
+                    break;
+                }
+                Ok(n) => len += n,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(e) => {
+                    self.done = true;
+                    if len == 0 {
+                        return Some(Err(e));
+                    }
+                    self.error = Some(e);
+                    break;
+                }
+            }
+        }
+        block.truncate(len);
+        (len > 0).then_some(Ok(block))
+    }
+}
+
+impl AheadShared {
+    fn decode_ahead(&self) -> bool {
+        if lock(&self.blocks).len() >= AHEAD_BLOCKS {
+            return false;
+        }
+        let mut decoder = match self.decoder.try_lock() {
+            Ok(decoder) => decoder,
+            Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+            Err(TryLockError::WouldBlock) => return false,
+        };
+        match decoder.block() {
+            Some(block) => {
+                lock(&self.blocks).push_back(block);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The next block for the reader: a queued one, or one decoded now.
+    fn next_block(&self) -> Option<std::io::Result<Vec<u8>>> {
+        if let Some(block) = lock(&self.blocks).pop_front() {
+            return Some(block);
+        }
+        let mut decoder = lock(&self.decoder);
+        // Queued while this thread waited for the decoder.
+        if let Some(block) = lock(&self.blocks).pop_front() {
+            return Some(block);
+        }
+        decoder.block()
+    }
+}
+
+/// The reader's end of a stream decoded ahead.
+struct AheadReader {
+    shared: Arc<AheadShared>,
     current: Cursor<Vec<u8>>,
 }
 
-impl Read for ReadAhead {
+impl Read for AheadReader {
     fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
         loop {
             let n = self.current.read(out)?;
             if n > 0 || out.is_empty() {
                 return Ok(n);
             }
-            match self.blocks.recv() {
-                Ok(block) => self.current = Cursor::new(block?),
-                // The thread has finished: the end of input.
-                Err(_) => return Ok(0),
+            match self.shared.next_block() {
+                Some(block) => self.current = Cursor::new(block?),
+                None => return Ok(0),
             }
         }
     }

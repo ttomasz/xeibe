@@ -15,7 +15,8 @@ use std::sync::{Arc, Mutex};
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use arrow_select::coalesce::BatchCoalescer;
-use xeibe_core::parallel::{MapOptions, ParallelMap, panic_message};
+use xeibe_core::decode::DecodeAhead;
+use xeibe_core::parallel::{Helper, MapOptions, ParallelMap, panic_message};
 use xeibe_core::reader::{GmlReader, XmlEvent};
 use xeibe_core::{
     FeatureChunk, FeatureSplitter, Location, NamespaceContext, QName, SourceId, Sources, ns,
@@ -148,6 +149,8 @@ pub struct ChunkStream {
     contexts: SharedContexts,
     warnings: Arc<Mutex<Vec<Warning>>>,
     finished: bool,
+    /// Decoding ahead of the source being split.
+    ahead: Arc<DecodeAhead>,
 }
 
 impl ChunkStream {
@@ -167,7 +170,15 @@ impl ChunkStream {
             contexts,
             warnings: Arc::new(Mutex::new(Vec::new())),
             finished: false,
+            ahead: Arc::default(),
         }
+    }
+
+    /// What workers waiting for the stream can do meanwhile: decode the
+    /// current source ahead of the splitter.
+    pub fn helper(&self) -> Helper {
+        let ahead = self.ahead.clone();
+        Arc::new(move || ahead.help())
     }
 
     /// Warnings about skipped sources, shared with the read report.
@@ -183,7 +194,8 @@ impl ChunkStream {
         let source = source?;
         let id = SourceId(self.next_source);
         self.next_source += 1;
-        let mut splitter = FeatureSplitter::new(source.open()?, id, self.options.clone());
+        let mut splitter =
+            FeatureSplitter::new(source.open_ahead(&self.ahead)?, id, self.options.clone());
         let context = match splitter.header() {
             Ok(header) => Some(xeibe_schema::scan::source_context(header)),
             Err(xeibe_core::Error::NoFeatures(_)) => None,
@@ -288,9 +300,11 @@ impl Pipeline {
 
     /// Start the workers. `chunks` already contains only this layer's features
     /// (splitter layer filter), starting with any buffered sample chunks.
+    /// `helper`: what a worker can do while another takes a chunk.
     pub fn start(
         self,
         chunks: Box<dyn Iterator<Item = xeibe_core::Result<FeatureChunk>> + Send>,
+        helper: Option<Helper>,
     ) -> crate::Result<Batches> {
         let threads = self.options.threads.max(1);
         let options = MapOptions {
@@ -298,6 +312,7 @@ impl Pipeline {
             in_flight: self.options.queue_depth.max(1) + threads,
             preserve_order: self.options.preserve_order,
             name: "xeibe-read".into(),
+            helper,
         };
         // Batches of at least half the size pass through uncopied.
         let batch_size = self.plan.batch_size;

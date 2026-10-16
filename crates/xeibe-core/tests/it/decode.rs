@@ -82,8 +82,7 @@ fn decompresses_gzip_and_zstd_transparently() {
 
 #[test]
 fn a_long_compressed_stream_arrives_whole_and_in_order() {
-    // Decompression runs ahead on a thread of its own, in blocks: many
-    // blocks, more than it may be ahead, arrive as they were.
+    // Many blocks of the decompressor's output arrive as they were.
     let document: String = (0..200_000).map(|i| format!("<a>{i}</a>\n")).collect();
     assert_eq!(decode_all(gzip(document.as_bytes())), document);
     assert_eq!(decode_all(zstd(document.as_bytes())), document);
@@ -118,4 +117,61 @@ fn a_utf8_bom_is_removed() {
     let mut bytes = b"\xEF\xBB\xBF".to_vec();
     bytes.extend_from_slice(b"<a/>");
     assert_eq!(decode_all(bytes), "<a/>");
+}
+
+/// Read a source opened with `DecodeAhead` while `helpers` threads decode
+/// ahead of the reader as fast as they can.
+fn decode_with_helpers(bytes: Vec<u8>, helpers: usize) -> Vec<u8> {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let ahead = Arc::new(xeibe_core::decode::DecodeAhead::default());
+    let source = xeibe_core::Source::Stream(Arc::new(xeibe_core::BytesSource {
+        name: "test.gml".into(),
+        bytes: bytes.into(),
+    }));
+    let mut reader = source.open_ahead(&ahead).unwrap();
+    let done = Arc::new(AtomicBool::new(false));
+    let threads: Vec<_> = (0..helpers)
+        .map(|_| {
+            let (ahead, done) = (ahead.clone(), done.clone());
+            std::thread::spawn(move || {
+                while !done.load(Ordering::Relaxed) {
+                    if !ahead.help() {
+                        std::thread::yield_now();
+                    }
+                }
+            })
+        })
+        .collect();
+    let mut out = Vec::new();
+    let mut buf = [0u8; 1000];
+    loop {
+        let n = reader.read(&mut buf).unwrap();
+        if n == 0 {
+            break;
+        }
+        out.extend_from_slice(&buf[..n]);
+    }
+    done.store(true, Ordering::Relaxed);
+    for thread in threads {
+        thread.join().unwrap();
+    }
+    out
+}
+
+#[test]
+fn decoding_ahead_on_other_threads_keeps_the_stream_whole_and_in_order() {
+    // Several 256 KB blocks, each line numbered.
+    let text: String = (0..200_000).map(|i| format!("<n>{i}</n>\n")).collect();
+    let document = format!("<?xml version=\"1.0\"?><root>{text}</root>");
+    for helpers in [0, 1, 3] {
+        let out = decode_with_helpers(gzip(document.as_bytes()), helpers);
+        assert!(out == document.as_bytes(), "gzip, {helpers} helpers");
+    }
+    // Transcoding is decoded ahead too.
+    let latin2 = format!("<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?><r>{text}\u{f3}</r>");
+    let (encoded, _, _) = encoding_rs::ISO_8859_2.encode(&latin2);
+    let out = decode_with_helpers(encoded.into_owned(), 2);
+    assert!(out == latin2.as_bytes());
 }
