@@ -462,4 +462,4 @@ file. Not listed individually:
 | SedonaDB data source in Python (`xeibe.sedona`) | ✅ Supported | P2 | `GmlFormat` (SedonaDB's `ExternalFormatSpec`) and `read_gml()`; one layer per table, geometry as `geoarrow.wkb`. Tested against sedonadb 0.4.1, which has no `CREATE EXTERNAL TABLE` for Python formats. `crates/xeibe-py/tests/sedona.py` |
 | SedonaDB integration in Rust (upstream crate) | 📋 Planned | P2 | `ExternalFormatSpec` on `xeibe-arrow`, offered upstream once the API is stable |
 | Python bindings (`__arrow_c_stream__`) | ✅ Supported | P2 | `scan()`, `read()`, returning arro3 objects (no PyArrow needed); schemas via `__arrow_c_schema__` or settings (a path, dict or JSON text); skipped sources as `SkippedSourceWarning`. `crates/xeibe-py/tests/smoke.py` (run against a maturin-built wheel) |
-| WebAssembly build | 🤔 Considering | P2 | `xeibe-core`, `xeibe-geom`, `xeibe-schema`, `xeibe-arrow` without threads |
+| WebAssembly build | 🤔 Considering | P2 | `xeibe-core`, `xeibe-geom`, `xeibe-schema`, `xeibe-arrow` without threads; a browser page on top, see [web.md](web.md) |
