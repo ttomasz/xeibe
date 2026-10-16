@@ -180,9 +180,9 @@ pub struct ReadOptions {
     pub on_feature_error: OnFeatureError,
     pub splitter: SplitterOptions,
     pub batch_size: usize,
-    pub threads: usize,
+    pub threads: usize,                  // all threads used; 1 = the calling thread only
     pub preserve_order: bool,
-    pub queue_depth: usize,              // bounded queue length (backpressure)
+    pub queue_depth: usize,              // chunks in flight beyond `threads` (backpressure)
     pub projection: Option<Vec<String>>, // not serialized
     pub namespaces: IndexMap<String, String>, // prefix → URI for path steps; not serialized
 }
@@ -388,36 +388,86 @@ Details:
 
 ## Parallel pipeline
 
+`threads` is the number of threads a scan or read works on, all included. With
+`threads = 1` everything runs on the calling thread and nothing is spawned,
+which is also how xeibe runs on WebAssembly. With `threads = N` there are N
+workers and no other threads: splitting, decompression and reordering are not
+stages with threads of their own, but work that a worker or the consumer does
+in turn.
+
 ```mermaid
 flowchart LR
-    splitter["splitter thread"] --> cq[("chunk queue<br/>(bounded)")]
-    splitter -. "first chunks" .-> sample["sample buffer<br/>(reads that sample)"] -.-> cq
-    cq --> workers["workers 1..N<br/>read: parse + build batches<br/>scan: path tree per chunk"]
-    workers --> bq[("batch queue<br/>(bounded)")] --> reorder["reorder<br/>(optional)"]
-    workers -.-> merge["scan: merge observations"]
+    src["sources, one after another<br/>open, decode, split<br/>(behind one lock)"] -->|"next chunk"| w["workers 1..N<br/>read: parse + build batches<br/>scan: path tree per chunk"]
+    src -. "first chunks" .-> sample["sample buffer<br/>(reads that sample)"] -.-> w
+    w -->|"read: one result per chunk"| c["consumer (LayerReader::next)<br/>reorder (optional), coalesce"]
+    w -.->|"scan: one observation per worker"| merge["merge"]
 ```
 
-- The splitter is the only sequential stage. It does far less work per byte than
-  parsing, so one splitter keeps several workers busy.
-- Bounded queues provide backpressure, so memory stays bounded when a slow sink
-  (such as a Parquet writer) is downstream.
-- The reorder stage emits batches in order of their sequence number. It can be
-  disabled for maximum throughput when row order doesn't matter.
-- Workers never share builders. Each worker produces complete batches for its chunk.
-  The reorder stage combines the small batches that end chunks into `batch_size`
-  ones (Arrow's `BatchCoalescer`); a batch of at least half that size passes
-  through uncopied.
-- Several sources are split one after another into the same chunk queue.
-- **Scans use the same stages.** Each worker builds a path tree for its chunk
-  (`Scanner::scan_chunk`), and the per-chunk observations are merged. There is no
-  batch queue or reorder stage, because a scan produces one observation.
+- **Workers take their own chunks.** The chunk stream (every source, one after
+  another) sits behind a lock. A free worker takes the lock, pulls the next chunk,
+  which opens the next source, decompresses and splits as far as needed, and
+  releases the lock before parsing. Splitting stays sequential, but it is cheap:
+  on PRG address points it costs about a tenth of parsing, and decompression
+  (gzip, zstd, zip) about as much again, so one stream keeps 5–10 workers busy.
+- **The consumer reorders.** In a read, each worker sends its chunk's batches to
+  the consumer, and `LayerReader::next` puts them back in chunk order (unless
+  `preserve_order` is off) and combines the small batches that end chunks into
+  `batch_size` ones (Arrow's `BatchCoalescer`; a batch of at least half that size
+  passes through uncopied). That work is small, and the consumer would be
+  waiting otherwise.
+- **Backpressure through tickets.** A worker needs a ticket to take a chunk,
+  and the consumer returns it when it has passed that chunk's batches on. At most
+  `queue_depth + threads` chunks are between the source and the consumer, however
+  slow the consumer (such as a Parquet writer) is. In order, the oldest chunk in
+  flight has always been taken already, so the consumer can always make progress.
+- **Workers never share builders.** Each worker produces complete batches for its
+  chunk.
+- **Panics.** A panic while parsing a chunk, or in the chunk stream, becomes an
+  error in its place in the output, rather than a gap the consumer would wait on.
+- **Dropping the reader stops the read.** Workers stop taking chunks, and those
+  waiting for a ticket are woken and end.
+- **Scans use the same chunk stream.** Each worker builds a path tree per chunk
+  (`Scanner::scan_chunk`) and merges it into its own observation. The workers'
+  observations are merged at the end; merging is independent of order (layers and
+  child elements are kept in order of first appearance). What belongs to a source
+  rather than to a chunk (its header, `SourceContext`, GML version hints) is kept
+  per source and combined at the end, so the sources of a scan run on without a
+  pause between them. A sampled scan (`ScanExtent::Sample`) gives each chunk its
+  share of the budget when it is taken (each chunk knows its feature count), so it
+  runs on all threads too.
 - **Sampling happens before the workers start.** A read without a schema, or an
   `Auto` axis-order decision with a given schema, first takes the layer's chunks
-  from the splitter until they hold `sample.features_per_layer` features (each
-  chunk knows its feature count) and scans them on all threads, merging in chunk
-  order. It infers the schema or decides the axis order from them, then starts the
-  workers and feeds them the buffered chunks first, followed by the rest of the
-  stream. Nothing is read twice.
+  until they hold `sample.features_per_layer` features and scans them on all
+  threads. It infers the schema or decides the axis order from them, then starts
+  the workers and feeds them the buffered chunks first, followed by the rest of
+  the stream. Nothing is read twice.
+- **Threads outside a read.** Network inputs have their own I/O threads: the
+  blocking HTTP client runs one, and the tokio runtime `xeibe-io` starts when
+  there is none for `object_store` runs two. A WFS read can fetch pages ahead on a
+  thread of its own (`WfsOptions::concurrency`). None of them parses.
+
+Measured on a 6-core machine (12 hardware threads) with a 657 MB PRG file, before
+this design: parsing takes 89% of a read's CPU time, splitting 9%, decompression
+6–9% (zstd, zip, gzip), transcoding from ISO-8859-2 3%, reordering under 1%.
+
+### Planned: decompression beside splitting
+
+📋 Planned (P2). A compressed source is decompressed under the same lock as it is
+split, so the two add up: about 0.8 GB/s of XML for gzip on the machine above,
+against 1.6 GB/s for splitting alone. That only limits machines with more than
+about 6 cores. The fix keeps the thread count exact: a second lock for
+decompression with a small queue of decoded blocks, which a worker tops up when it
+runs low, so that one worker decompresses while another splits.
+
+### Planned: several sources at once
+
+📋 Planned (P2). Up to K sources open at the same time, each with its own lock, so
+that the sources of a multi-file input (zip members, a BDOT10k package, WFS pages)
+are decompressed and split in parallel, and a remote source's connection is
+opened while the previous one is still read. With `preserve_order`, the oldest
+open source must always get a ticket, or the consumer could wait for it forever
+while later sources hold them all; a few tickets are kept for it. Chunks are then
+ordered by (source, chunk) rather than by one sequence number.
 
 ### Memory
 
@@ -425,10 +475,9 @@ Every stage holds a bounded amount, set by `ReadOptions`:
 
 | What | At most |
 |---|---|
-| Chunks waiting in the chunk queue | `queue_depth` chunks |
-| Chunks being parsed | one per worker (`threads`) |
+| Chunks between the source and the consumer (queued, being parsed, or their batches waiting to be reordered) | `queue_depth + threads` chunks |
 | Chunk size | `target_chunk_bytes`, or the largest single feature if bigger |
-| Batches waiting | `queue_depth` batches of up to `batch_size` rows (more while reordering waits for an earlier chunk) |
+| Batches waiting | the batches of those chunks, plus one partly filled `batch_size` batch in the coalescer |
 | Sample buffer | the chunks holding the first `sample.features_per_layer` features of the layer, until the workers take them |
 | WFS | one page, fetched whole before it is parsed (see [wfs.md](wfs.md)) |
 
