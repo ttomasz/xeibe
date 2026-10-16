@@ -39,6 +39,7 @@ pub struct ScanOptions {
     /// Only these layers (the sample of a read without a schema); `None` = all.
     pub layers: Option<Vec<xeibe_core::QName>>,
     pub splitter: xeibe_core::SplitterOptions,
+    /// Threads the scan works on, all included; `<= 1`: the calling thread only.
     pub threads: usize,
 }
 
@@ -50,7 +51,7 @@ impl Default for ScanOptions {
             limits: Limits::default(),
             layers: None,
             splitter: xeibe_core::SplitterOptions::default(),
-            threads: std::thread::available_parallelism().map_or(1, usize::from),
+            threads: xeibe_core::parallel::default_threads(),
         }
     }
 }

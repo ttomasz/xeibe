@@ -243,7 +243,8 @@ pub fn store_sources(
 }
 
 /// The current tokio runtime, or one of this crate's own, started on first use
-/// and kept for the life of the process.
+/// and kept for the life of the process. Its two threads only download: the
+/// parsing threads are a read's own (`threads`).
 pub(crate) fn runtime() -> crate::Result<tokio::runtime::Handle> {
     static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
@@ -253,6 +254,7 @@ pub(crate) fn runtime() -> crate::Result<tokio::runtime::Handle> {
         return Ok(runtime.handle().clone());
     }
     let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
         .thread_name("xeibe-io")
         .enable_all()
         .build()?;

@@ -395,8 +395,18 @@ pub struct SchemaArgs {
 /// Read parameters. They override the settings file's `options`.
 #[derive(Debug, Args)]
 pub struct ReadArgs {
-    /// Worker threads that parse features. Default: one per CPU core.
-    #[arg(long, value_name = "N")]
+    /// Threads to work on (default: one per CPU core)
+    ///
+    /// All of the work counts: decompressing the input, splitting it into
+    /// features and parsing them. With 1, everything runs on one thread;
+    /// with N, on N threads and no more (0 counts as 1). Inputs read over
+    /// the network (http://, s3://, ...) add one or two threads that only
+    /// download.
+    ///
+    /// Examples:
+    ///   --threads 1    one thread, leaving the other cores to other work
+    ///   --threads 4    four threads
+    #[arg(long, value_name = "N", verbatim_doc_comment)]
     pub threads: Option<usize>,
     /// How column types are inferred from the values
     ///

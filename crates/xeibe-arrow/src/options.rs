@@ -30,10 +30,15 @@ pub struct ReadOptions {
     pub on_feature_error: OnFeatureError,
     pub splitter: SplitterOptions,
     pub batch_size: usize,
+    /// Threads the scan or read works on, all included: `1` (or `0`) runs
+    /// everything on the calling thread (for a read, the one that calls
+    /// [`crate::LayerReader`]'s `next`), `N` on N workers and no other
+    /// thread. Network inputs add their I/O threads (`docs/architecture.md`,
+    /// "Parallel pipeline").
     pub threads: usize,
     /// Restore source order of batches (off = faster).
     pub preserve_order: bool,
-    /// Bounded queue lengths (backpressure).
+    /// Chunks a read may have in flight beyond `threads` (backpressure).
     pub queue_depth: usize,
     /// Only build these columns (projection pushdown); `None` = all.
     #[serde(skip)]
@@ -57,7 +62,7 @@ impl Default for ReadOptions {
             on_feature_error: OnFeatureError::Error,
             splitter: SplitterOptions::default(),
             batch_size: 8192,
-            threads: std::thread::available_parallelism().map_or(1, usize::from),
+            threads: xeibe_core::parallel::default_threads(),
             preserve_order: true,
             queue_depth: 8,
             projection: None,
