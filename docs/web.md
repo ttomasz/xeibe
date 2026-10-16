@@ -97,7 +97,7 @@ flowchart LR
   UI. Results cross to the UI thread as Arrow IPC buffers (transferable, no copy).
 - **Single-threaded.** WebAssembly threads need `SharedArrayBuffer`, which needs
   COOP/COEP headers, which GitHub Pages can't set. The read runs with
-  `threads = 1`, which must mean "everything on the calling thread" (see
+  `threads = 1`, which means "everything on the calling thread" (see
   [Library changes](#library-changes)).
 - **`web/`**: the front end (Vite, TypeScript or plain JS) in this repository.
 - **`.github/workflows/pages.yml`**: builds `xeibe-wasm` and `web/`, deploys to
@@ -118,35 +118,20 @@ improvement, not needed for the first version.
 
 ## Library changes
 
-Checked on 2026-10-16 with `cargo check`/`cargo build --target
-wasm32-unknown-unknown`:
-
 | Crate | State |
 |---|---|
-| `xeibe-core`, `xeibe-crs`, `xeibe-geom`, `xeibe-schema`, `xeibe-arrow` | Compile. zstd's C code compiled with the system clang |
-| `xeibe-io` (even without `http`) | Fails: `Url::to_file_path` in `resolve.rs` doesn't exist on wasm. The page doesn't need `xeibe-io`; a `cfg` fixes the build anyway |
-| `xeibe-wfs` | Fails through `xeibe-io` |
+| `xeibe-core`, `xeibe-crs`, `xeibe-geom`, `xeibe-schema`, `xeibe-arrow`, `xeibe-io` and `xeibe-wfs` without `http` | Build for `wasm32-unknown-unknown`. zstd's C code compiles with the system clang. `file://` inputs are an error there |
+| Threads | Done: `threads = 1` runs a scan or read on the calling thread, and it is the default where the number of cores can't be known ([architecture.md](architecture.md#parallel-pipeline)). Asking for more is an error, not a panic. Checked on 2026-10-17 with a test module run in Node: reads and scans of 500 features with `threads` 0 and 1, an error with 4 |
 
-Compiling isn't enough: on `wasm32-unknown-unknown`, spawning a thread panics at
-runtime. Needed:
+Still needed:
 
-1. **A pipeline that can run without threads.** `Pipeline::start` always starts a
-   splitter, at least one worker and a reorder thread, and `scan_sample` uses
-   `std::thread::scope` even for one thread. `threads = 1` should run everything
-   on the calling thread; this is planned as part of making `threads` an exact
-   count of the threads xeibe uses ([architecture.md](architecture.md#parallel-pipeline)).
-   The scanner already runs on the calling thread for `threads <= 1`, and the
-   decompression read-ahead thread (`decode.rs`) is already skipped on wasm.
-2. **The default thread count on wasm.** `available_parallelism()` fails there and
-   the default falls back to 1, which is right once 1 means inline. A request for
-   more threads on wasm should be an error, not a panic.
-3. **In-memory zip archives.** `Source::ZipMember` holds a `PathBuf` and
+1. **In-memory zip archives.** `Source::ZipMember` holds a `PathBuf` and
    `archive.rs` opens it with `std::fs::File`. The `zip` crate itself only needs
    `Read + Seek`, so an archive held in memory (`Cursor<Bytes>`) is a small
    addition.
-4. **zstd.** Builds today with clang. If linking or CI makes it a problem, the
+2. **zstd.** Builds with clang. If linking or CI makes it a problem, the
    pure-Rust `ruzstd` decoder can replace it on wasm only.
-5. **GeoParquet export** needs `parquet` in the wasm build; its `zstd` feature
+3. **GeoParquet export** needs `parquet` in the wasm build; its `zstd` feature
    brings the same C dependency.
 
 ## Limits
@@ -159,14 +144,15 @@ runtime. Needed:
   that, the page points to the CLI.
 - **Speed.** One thread, so several times slower than the CLI on a multi-core
   machine. Fine for previewing.
-- **Bundle size.** The EPSG tables plus arrow, geoarrow and parquet: a wasm file of
-  a few MB, an estimated 1–2 MB gzipped. To be measured; loaded once, then cached.
+- **Bundle size.** A test module with `xeibe-arrow` (EPSG tables, arrow, geoarrow;
+  no parquet, no `wasm-opt`) is 7.3 MB, 2.0 MB gzipped. Parquet adds to that,
+  `wasm-opt` takes some off. Loaded once, then cached.
 - **CORS** rules out most live WFS endpoints (see [Inputs](#inputs)).
 
 ## Phases
 
 1. **MVP.** Drop a file; layer selector; Overview, Schema and Data tabs (first
-   100 rows); Parquet download. Requires library changes 1–2.
+   100 rows); Parquet download.
 2. **Map and options.** Map with display reprojection and the area-of-use box;
    Options tab with the CLI, Python and settings export; zip inputs; samples from
    `tests/data`.

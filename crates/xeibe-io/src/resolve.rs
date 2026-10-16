@@ -44,12 +44,20 @@ pub fn resolve_sources(inputs: &[String], options: &IoOptions) -> crate::Result<
         let url =
             Url::parse(input).map_err(|e| crate::Error::InvalidUrl(format!("{input}: {e}")))?;
         if url.scheme() == "file" {
-            let path = url
-                .to_file_path()
-                .map_err(|()| crate::Error::InvalidUrl(format!("{input}: not a local path")))?;
-            let path = path.display().to_string();
-            sources.extend(xeibe_core::source::expand_sources(&[path])?);
-            continue;
+            #[cfg(any(unix, windows))]
+            {
+                let path = url
+                    .to_file_path()
+                    .map_err(|()| crate::Error::InvalidUrl(format!("{input}: not a local path")))?;
+                let path = path.display().to_string();
+                sources.extend(xeibe_core::source::expand_sources(&[path])?);
+                continue;
+            }
+            // WebAssembly in a browser: no file system.
+            #[cfg(not(any(unix, windows)))]
+            return Err(crate::Error::InvalidUrl(format!(
+                "{input}: no local files on this platform"
+            )));
         }
         let lower = input.to_ascii_lowercase();
         if lower.contains(".zip!/") || url.path().to_ascii_lowercase().ends_with(".zip") {
