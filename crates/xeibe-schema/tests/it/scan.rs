@@ -386,3 +386,127 @@ fn geometries_inherit_the_collection_bounded_by() {
     // The collection's envelope is the dataset's declared extent.
     assert_eq!(observation.extent, Some([0.0, 0.0, 10.0, 20.0]));
 }
+
+/// Options that cut a chunk per feature, on `threads` threads.
+fn small_chunks(threads: usize, extent: ScanExtent) -> ScanOptions {
+    ScanOptions {
+        extent,
+        threads,
+        splitter: xeibe_core::SplitterOptions {
+            target_chunk_bytes: 1,
+            ..xeibe_core::SplitterOptions::default()
+        },
+        ..ScanOptions::default()
+    }
+}
+
+/// Three sources of four features each, one layer per source.
+fn three_sources() -> Sources {
+    let source = |name: &str, layer: &str| {
+        let members: Vec<String> = (0..4)
+            .map(|i| {
+                gml::feature(
+                    layer,
+                    &format!("{layer}{i}"),
+                    &format!("<app:n>{i}</app:n>"),
+                )
+            })
+            .collect();
+        let refs: Vec<&str> = members.iter().map(String::as_str).collect();
+        reader(name, &gml::gml32_collection(&refs))
+    };
+    Sources::from(vec![
+        source("a.gml", "Parcel"),
+        source("b.gml", "Road"),
+        source("c.gml", "River"),
+    ])
+}
+
+#[test]
+fn each_source_keeps_its_own_gml_version() {
+    for threads in [1, 4] {
+        let sources = Sources::from(vec![
+            reader("old.gml", &gml::gml2_collection(&[&parcel("p1", "")])),
+            reader("new.gml", &gml::gml32_collection(&[&parcel("p2", "")])),
+        ]);
+        let observation = Scanner::new(small_chunks(threads, ScanExtent::Full))
+            .run(sources)
+            .unwrap();
+        assert!(
+            observation.gml_versions.contains(&GmlVersion::V2),
+            "{threads}"
+        );
+        assert!(
+            observation.gml_versions.contains(&GmlVersion::V3_2),
+            "{threads}"
+        );
+        assert_eq!(observation.source_context.len(), 2);
+    }
+}
+
+#[test]
+fn a_sampled_scan_takes_the_first_features_on_any_number_of_threads() {
+    for threads in [1, 4] {
+        let sampled = Scanner::new(small_chunks(
+            threads,
+            ScanExtent::Sample { max_features: 6 },
+        ))
+        .run(three_sources())
+        .unwrap();
+        assert!(sampled.sampled, "{threads}");
+        assert_eq!(sampled.layers[&layer("Parcel")].feature_count, 4);
+        assert_eq!(sampled.layers[&layer("Road")].feature_count, 2);
+        assert!(sampled.layer("River").is_err(), "{threads}");
+
+        // A budget that ends with the input: not sampled.
+        let whole = Scanner::new(small_chunks(
+            threads,
+            ScanExtent::Sample { max_features: 12 },
+        ))
+        .run(three_sources())
+        .unwrap();
+        assert!(!whole.sampled, "{threads}");
+        assert_eq!(whole.layers.len(), 3);
+    }
+}
+
+#[test]
+fn the_number_of_threads_does_not_change_the_result() {
+    // What a scan is for: the layers, their schemas, and per-source facts.
+    // (The distinct values a column keeps are in the order they were merged.)
+    let observe = |threads| {
+        let observation = Scanner::new(small_chunks(threads, ScanExtent::Full))
+            .run(three_sources())
+            .unwrap();
+        let schemas: Vec<String> = observation
+            .layers
+            .keys()
+            .map(|name| {
+                let schema = xeibe_schema::rules::infer_schema(
+                    &observation,
+                    name,
+                    &xeibe_schema::InferenceOptions::default(),
+                    None,
+                )
+                .unwrap();
+                format!("{name}: {:?}", schema.schema)
+            })
+            .collect();
+        let counts: Vec<u64> = observation
+            .layers
+            .values()
+            .map(|l| l.feature_count)
+            .collect();
+        format!(
+            "{schemas:?} {counts:?} {:?} {:?} {:?} {:?}",
+            observation.gml_versions,
+            observation.source_context,
+            observation.prefixes,
+            observation.skipped_sources,
+        )
+    };
+    let one = observe(1);
+    for threads in [2, 4, 8] {
+        assert_eq!(observe(threads), one, "{threads}");
+    }
+}

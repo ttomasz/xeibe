@@ -1,13 +1,14 @@
 //! Scan: stream chunks, build one path tree per chunk, merge.
 
+use std::collections::BTreeMap;
 use std::io::Read;
-use std::sync::{Mutex, mpsc};
+use std::ops::ControlFlow;
 
 use xeibe_core::reader::{Attributes, GmlReader, XmlEvent};
 use xeibe_core::splitter::DocumentHeader;
 use xeibe_core::version::VersionHints;
 use xeibe_core::{
-    FeatureChunk, FeatureSplitter, Location, NamespaceContext, QName, Source, SourceId, Sources, ns,
+    FeatureChunk, FeatureSplitter, Location, NamespaceContext, QName, SourceId, Sources, ns,
 };
 use xeibe_geom::ParseContext;
 use xeibe_geom::sniff::sniff_geometry_in;
@@ -62,84 +63,120 @@ impl Scanner {
         Scanner { options }
     }
 
-    /// Scan every source, one after another, and merge the results.
+    /// Scan every source and merge the results.
     ///
     /// Each source gets `SourceId(i)` in the order the sources come, and one
-    /// [`SourceContext`] at the same index. A full scan splits on the calling
-    /// thread and scans chunks on `threads` workers; a sampled scan runs on
-    /// the calling thread, because "the first N features" needs order.
+    /// [`SourceContext`] at the same index. The sources are split one after
+    /// another, by whichever of the `threads` workers is free, and their
+    /// chunks are scanned on all of them: there is no pause between sources.
+    /// With `threads <= 1` all of it runs on the calling thread. A sampled
+    /// scan gives each chunk its share of the budget as it is split, so it
+    /// is "the first N features" on any number of threads.
     ///
     /// A source without a feature collection or feature member is skipped
     /// and listed in [`DatasetObservation::skipped_sources`]; if every
     /// source is, the scan fails with [`xeibe_core::Error::NoFeatures`].
     pub fn run(&self, sources: Sources) -> crate::Result<DatasetObservation> {
-        let mut total = DatasetObservation::default();
-        let mut budget = match self.options.extent {
-            ScanExtent::Full => None,
-            ScanExtent::Sample { max_features } => Some(max_features),
-        };
-        let mut scanned = 0usize;
-        for (index, source) in sources.enumerate() {
-            let source = source?;
-            let id = SourceId(u32::try_from(index).unwrap_or(u32::MAX));
-            match self.scan_source(&source, id, &mut budget) {
-                Ok((observation, stopped)) => {
-                    scanned += 1;
-                    total.merge(observation);
-                    if stopped {
-                        total.sampled = true;
-                        break;
-                    }
-                }
-                Err(crate::Error::Core(xeibe_core::Error::NoFeatures(_))) => {
-                    total.source_context.push(SourceContext::default());
-                    total.skipped_sources.push(source.name());
-                }
-                Err(error) => return Err(error),
-            }
-        }
-        if scanned == 0 && !total.skipped_sources.is_empty() {
-            return Err(xeibe_core::Error::no_features_in(&total.skipped_sources).into());
-        }
-        Ok(total)
-    }
-
-    /// One source's observation, and whether a sampled scan stopped in it.
-    fn scan_source(
-        &self,
-        source: &Source,
-        id: SourceId,
-        budget: &mut Option<u64>,
-    ) -> crate::Result<(DatasetObservation, bool)> {
         let mut splitter_options = self.options.splitter.clone();
         if self.options.layers.is_some() {
             splitter_options.layers = self.options.layers.clone();
         }
-        let mut splitter = FeatureSplitter::new(source.open()?, id, splitter_options);
-        let header = splitter.header()?.clone();
-
-        let mut observation = DatasetObservation::default();
-        note_prefixes(&mut observation, &header.namespaces);
-        let context = source_context(&header);
-        let mut hints = VersionHints {
-            gml_namespace: namespace_hint(&header.namespaces),
-            gml_33: declares_gml_33(&header.namespaces),
-            schema_location: header.schema_location.clone(),
-            wfs_version: context.wfs_version.clone(),
-            ..VersionHints::default()
+        let mut stream = ScanStream {
+            sources,
+            splitter_options,
+            current: None,
+            opened: Vec::new(),
+            budget: match self.options.extent {
+                ScanExtent::Full => None,
+                ScanExtent::Sample { max_features } => Some(max_features),
+            },
+            sampled: false,
+            finished: false,
         };
-        observation.source_context.push(context);
+        let partials = xeibe_core::parallel::fold(
+            self.options.threads,
+            "xeibe-scan",
+            stream.by_ref(),
+            Partial::default,
+            |partial, item| self.scan_item(partial, item),
+        )
+        .map_err(xeibe_core::Error::from)?;
 
-        let (element_hints, stopped) = if budget.is_some() || self.options.threads <= 1 {
-            self.scan_sequential(&mut splitter, &mut observation, budget)?
-        } else {
-            (self.scan_parallel(splitter, &mut observation)?, false)
-        };
-        element_hints.apply_to(&mut hints);
-        if let Some(version) = hints.detect() {
-            observation.gml_versions.insert(version);
+        // What the sources' headers say comes first: their prefixes win over
+        // those of chunks.
+        let mut total = DatasetObservation::default();
+        let mut scanned = 0usize;
+        for source in &stream.opened {
+            match &source.header {
+                Some(header) => {
+                    scanned += 1;
+                    note_prefixes(&mut total, &header.namespaces);
+                    total.source_context.push(header.context.clone());
+                }
+                None => {
+                    total.source_context.push(SourceContext::default());
+                    total.skipped_sources.push(source.name.clone());
+                }
+            }
         }
-        Ok((observation, stopped))
+        let mut hints = vec![ElementHints::default(); stream.opened.len()];
+        let mut error = None;
+        for partial in partials {
+            if let Some(partial_error) = partial.error {
+                error.get_or_insert(partial_error);
+            }
+            for (source, source_hints) in partial.hints {
+                if let Some(hints) = hints.get_mut(source as usize) {
+                    hints.merge(source_hints);
+                }
+            }
+            total.merge(partial.observation);
+        }
+        if let Some(error) = error {
+            return Err(error);
+        }
+        if scanned == 0 && !total.skipped_sources.is_empty() {
+            return Err(xeibe_core::Error::no_features_in(&total.skipped_sources).into());
+        }
+        // The GML version, per source: its header and the elements of its chunks.
+        for (source, element_hints) in stream.opened.iter().zip(&hints) {
+            if let Some(header) = &source.header {
+                let mut hints = header.hints.clone();
+                element_hints.apply_to(&mut hints);
+                if let Some(version) = hints.detect() {
+                    total.gml_versions.insert(version);
+                }
+            }
+        }
+        total.sampled = stream.sampled;
+        Ok(total)
+    }
+
+    /// A worker's step: scan one chunk into the worker's partial observation.
+    fn scan_item(
+        &self,
+        partial: &mut Partial,
+        item: crate::Result<(FeatureChunk, Option<u64>)>,
+    ) -> ControlFlow<()> {
+        let scanned = item.and_then(|(chunk, mut budget)| {
+            let scanned = self.scan_chunk_inner(&chunk, &mut budget)?;
+            Ok((chunk.source, scanned))
+        });
+        match scanned {
+            Ok((source, scanned)) => {
+                partial.observation.merge(scanned.observation);
+                partial
+                    .hints
+                    .entry(source.0)
+                    .or_default()
+                    .merge(scanned.hints);
+                ControlFlow::Continue(())
+            }
+            Err(error) => {
+                partial.error = Some(error);
+                ControlFlow::Break(())
+            }
+        }
     }
 
     /// Scan one chunk into a partial observation (called from worker threads, and
@@ -207,103 +244,134 @@ impl Scanner {
             stopped,
         })
     }
+}
 
-    fn scan_sequential<R: Read>(
-        &self,
-        splitter: &mut FeatureSplitter<R>,
-        observation: &mut DatasetObservation,
-        budget: &mut Option<u64>,
-    ) -> crate::Result<(ElementHints, bool)> {
-        let mut hints = ElementHints::default();
-        for chunk in splitter.by_ref() {
-            let scanned = self.scan_chunk_inner(&chunk?, budget)?;
-            hints.merge(scanned.hints);
-            observation.merge(scanned.observation);
-            if scanned.stopped {
-                return Ok((hints, true));
+/// What one worker of a scan collected.
+#[derive(Default)]
+struct Partial {
+    observation: DatasetObservation,
+    /// Per source id.
+    hints: BTreeMap<u32, ElementHints>,
+    error: Option<crate::Error>,
+}
+
+/// The chunks of every source, one source after another, each with its share
+/// of a sampled scan's budget. Records each source's header as it opens it.
+struct ScanStream {
+    sources: Sources,
+    splitter_options: xeibe_core::SplitterOptions,
+    current: Option<FeatureSplitter<Box<dyn Read + Send>>>,
+    /// Every source opened so far, at the index of its id.
+    opened: Vec<OpenedSource>,
+    /// Features a sampled scan may still take.
+    budget: Option<u64>,
+    /// A sampled scan stopped before the end of the input.
+    sampled: bool,
+    finished: bool,
+}
+
+struct OpenedSource {
+    name: String,
+    /// `None`: skipped, without a feature collection or feature member.
+    header: Option<SourceHeader>,
+}
+
+struct SourceHeader {
+    namespaces: NamespaceContext,
+    context: SourceContext,
+    /// From the header; the chunks' elements add to them.
+    hints: VersionHints,
+}
+
+impl ScanStream {
+    /// Open the next source; `Ok(false)` when there is none.
+    fn open_next(&mut self) -> crate::Result<bool> {
+        let Some(source) = self.sources.next() else {
+            return Ok(false);
+        };
+        let source = source?;
+        let id = SourceId(u32::try_from(self.opened.len()).unwrap_or(u32::MAX));
+        let mut splitter = FeatureSplitter::new(source.open()?, id, self.splitter_options.clone());
+        let header = match splitter.header() {
+            Ok(header) => {
+                let context = source_context(header);
+                Some(SourceHeader {
+                    namespaces: header.namespaces.clone(),
+                    hints: VersionHints {
+                        gml_namespace: namespace_hint(&header.namespaces),
+                        gml_33: declares_gml_33(&header.namespaces),
+                        schema_location: header.schema_location.clone(),
+                        wfs_version: context.wfs_version.clone(),
+                        ..VersionHints::default()
+                    },
+                    context,
+                })
+            }
+            Err(xeibe_core::Error::NoFeatures(_)) => None,
+            Err(error) => return Err(error.into()),
+        };
+        if header.is_some() {
+            self.current = Some(splitter);
+        }
+        self.opened.push(OpenedSource {
+            name: source.name(),
+            header,
+        });
+        Ok(true)
+    }
+}
+
+impl Iterator for ScanStream {
+    type Item = crate::Result<(FeatureChunk, Option<u64>)>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while !self.finished {
+            let Some(splitter) = &mut self.current else {
+                match self.open_next() {
+                    Ok(true) => {}
+                    Ok(false) => self.finished = true,
+                    Err(error) => {
+                        self.finished = true;
+                        return Some(Err(error));
+                    }
+                }
+                continue;
+            };
+            match splitter.next() {
+                Some(Ok(chunk)) => {
+                    let Some(left) = self.budget else {
+                        return Some(Ok((chunk, None)));
+                    };
+                    // The budget is used up, and there is another feature.
+                    if left == 0 {
+                        self.sampled = true;
+                        self.finished = true;
+                        return None;
+                    }
+                    let take = chunk.features.min(left);
+                    self.budget = Some(left - take);
+                    if take < chunk.features {
+                        self.sampled = true;
+                        self.finished = true;
+                    }
+                    return Some(Ok((chunk, Some(take))));
+                }
+                // Found at the end of the input: the root was read, but
+                // nothing in it holds features.
+                Some(Err(xeibe_core::Error::NoFeatures(_))) => {
+                    self.current = None;
+                    if let Some(source) = self.opened.last_mut() {
+                        source.header = None;
+                    }
+                }
+                Some(Err(error)) => {
+                    self.finished = true;
+                    return Some(Err(error.into()));
+                }
+                None => self.current = None,
             }
         }
-        Ok((hints, false))
-    }
-
-    /// Split on this thread, scan on `threads` workers, each merging into its
-    /// own observation; the workers' observations are merged at the end.
-    fn scan_parallel<R: Read>(
-        &self,
-        splitter: FeatureSplitter<R>,
-        observation: &mut DatasetObservation,
-    ) -> crate::Result<ElementHints> {
-        let threads = self.options.threads.max(1);
-        let (sender, receiver) = mpsc::sync_channel::<FeatureChunk>(threads * 2);
-        let receiver = Mutex::new(receiver);
-        std::thread::scope(|scope| {
-            let workers: Vec<_> = (0..threads)
-                .map(|_| {
-                    scope.spawn(|| {
-                        let mut merged = DatasetObservation::default();
-                        let mut hints = ElementHints::default();
-                        let mut error = None;
-                        loop {
-                            let next = receiver
-                                .lock()
-                                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                                .recv();
-                            let Ok(chunk) = next else { break };
-                            // After an error, keep draining so the splitter
-                            // never blocks on a full queue.
-                            if error.is_some() {
-                                continue;
-                            }
-                            match self.scan_chunk_inner(&chunk, &mut None) {
-                                Ok(scanned) => {
-                                    merged.merge(scanned.observation);
-                                    hints.merge(scanned.hints);
-                                }
-                                Err(e) => error = Some(e),
-                            }
-                        }
-                        match error {
-                            Some(error) => Err(error),
-                            None => Ok((merged, hints)),
-                        }
-                    })
-                })
-                .collect();
-
-            let mut first_error: Option<crate::Error> = None;
-            for chunk in splitter {
-                match chunk {
-                    Ok(chunk) => {
-                        if sender.send(chunk).is_err() {
-                            break;
-                        }
-                    }
-                    Err(error) => {
-                        first_error = Some(error.into());
-                        break;
-                    }
-                }
-            }
-            drop(sender);
-
-            let mut hints = ElementHints::default();
-            for worker in workers {
-                match worker.join() {
-                    Ok(Ok((merged, worker_hints))) => {
-                        observation.merge(merged);
-                        hints.merge(worker_hints);
-                    }
-                    Ok(Err(error)) => {
-                        first_error.get_or_insert(error);
-                    }
-                    Err(panic) => std::panic::resume_unwind(panic),
-                }
-            }
-            match first_error {
-                Some(error) => Err(error),
-                None => Ok(hints),
-            }
-        })
+        None
     }
 }
 
