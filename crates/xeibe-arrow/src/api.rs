@@ -2,6 +2,7 @@
 //! (see `docs/architecture.md#user-facing-api-scan-and-read`).
 
 use std::collections::BTreeMap;
+use std::ops::ControlFlow;
 use std::sync::{Arc, Mutex};
 
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
@@ -203,8 +204,14 @@ pub fn read(
     let buffered = sample.map(|sample| sample.chunks).unwrap_or_default();
     let chunks: Box<dyn Iterator<Item = xeibe_core::Result<FeatureChunk>> + Send> =
         Box::new(buffered.into_iter().map(Ok).chain(stream));
-    let receiver = Pipeline::new(options.clone(), plan.clone(), report.clone()).start(chunks);
-    Ok(LayerReader::new(receiver, report, plan, source_warnings, used))
+    let batches = Pipeline::new(options.clone(), plan.clone(), report.clone()).start(chunks)?;
+    Ok(LayerReader::new(
+        batches,
+        report,
+        plan,
+        source_warnings,
+        used,
+    ))
 }
 
 /// The chunks buffered before the workers start, and what they showed.
@@ -286,36 +293,27 @@ fn scan_sample(
         })
         .collect();
     let threads = threads.clamp(1, chunks.len().max(1));
-    let budgets = &budgets;
+    let per_worker = xeibe_core::parallel::fold(
+        threads,
+        "xeibe-sample",
+        chunks.iter().zip(budgets).enumerate(),
+        Vec::new,
+        |scanned, (i, (chunk, mut budget))| {
+            let observation = scanner
+                .scan_chunk_limited(chunk, &mut budget)
+                .map(|(observation, _)| observation);
+            let failed = observation.is_err();
+            scanned.push((i, observation));
+            if failed {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        },
+    )
+    .map_err(xeibe_core::Error::from)?;
     let mut scanned: Vec<(usize, xeibe_schema::Result<DatasetObservation>)> =
-        std::thread::scope(|scope| {
-            let workers: Vec<_> = (0..threads)
-                .map(|first| {
-                    scope.spawn(move || {
-                        (first..chunks.len())
-                            .step_by(threads)
-                            .map(|i| {
-                                let mut budget = budgets[i];
-                                (
-                                    i,
-                                    scanner
-                                        .scan_chunk_limited(&chunks[i], &mut budget)
-                                        .map(|(observation, _)| observation),
-                                )
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                })
-                .collect();
-            workers
-                .into_iter()
-                .flat_map(|worker| {
-                    worker
-                        .join()
-                        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
-                })
-                .collect()
-        });
+        per_worker.into_iter().flatten().collect();
     scanned.sort_by_key(|(i, _)| *i);
     let mut observation = DatasetObservation::default();
     for (_, scanned) in scanned {

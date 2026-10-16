@@ -72,7 +72,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 globset = "0.4"
-crossbeam-channel = "0.5"
 # `rustls-no-provider` + `rustls/ring`: object_store (through reqwest 0.12) already
 # brings ring, so reqwest 0.13's default aws-lc-rs would be a second crypto
 # library, and one that needs CMake and a C toolchain to build.

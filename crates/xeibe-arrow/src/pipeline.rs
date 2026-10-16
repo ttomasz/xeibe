@@ -1,21 +1,21 @@
-//! Parallel read pipeline:
-//! splitter → bounded chunk queue → workers (parse + build) → bounded batch
-//! queue → optional reorder by sequence number, where the small batches that
-//! end chunks are combined into `batch_size` ones. One layer per pipeline.
+//! Read pipeline: `threads` workers take chunks of one layer from the chunk
+//! stream, parse them and build batches; the consumer puts the batches back
+//! in chunk order (if asked) and combines the small batches that end chunks
+//! into `batch_size` ones. With `threads = 1` it all runs on the consumer's
+//! thread (`xeibe_core::parallel`).
 //!
-//! Memory stays bounded however slow the consumer is: the splitter hands out
-//! a chunk only while fewer than `queue_depth + threads` chunks are between
-//! it and the consumer (queued, being parsed, or waiting to be reordered),
-//! and the batch queue holds at most `queue_depth` messages.
+//! Memory stays bounded however slow the consumer is: at most
+//! `queue_depth + threads` chunks are between the chunk stream and the
+//! consumer (being parsed, or their batches waiting to be reordered).
 
-use std::collections::BTreeMap;
+use std::collections::VecDeque;
 use std::io::Read;
 use std::sync::{Arc, Mutex};
 
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use arrow_select::coalesce::BatchCoalescer;
-use crossbeam_channel::{Receiver, Sender, bounded};
+use xeibe_core::parallel::{MapOptions, ParallelMap, panic_message};
 use xeibe_core::reader::{GmlReader, XmlEvent};
 use xeibe_core::{
     FeatureChunk, FeatureSplitter, Location, NamespaceContext, QName, SourceId, Sources, ns,
@@ -277,18 +277,6 @@ pub struct Pipeline {
     report: Arc<Mutex<ReadReport>>,
 }
 
-/// A batch tagged for reordering.
-pub struct SeqBatch {
-    pub chunk_seq: u64,
-    pub batch: RecordBatch,
-}
-
-/// A chunk's result, sent from a worker to the reorder stage.
-struct ChunkResult {
-    seq: u64,
-    batches: crate::Result<Vec<SeqBatch>>,
-}
-
 impl Pipeline {
     pub fn new(options: ReadOptions, plan: Arc<ReadPlan>, report: Arc<Mutex<ReadReport>>) -> Self {
         Pipeline {
@@ -299,74 +287,36 @@ impl Pipeline {
     }
 
     /// Start the workers. `chunks` already contains only this layer's features
-    /// (splitter layer filter), starting with any buffered sample chunks, and
-    /// numbered from 0 without gaps.
+    /// (splitter layer filter), starting with any buffered sample chunks.
     pub fn start(
         self,
         chunks: Box<dyn Iterator<Item = xeibe_core::Result<FeatureChunk>> + Send>,
-    ) -> Receiver<crate::Result<RecordBatch>> {
+    ) -> crate::Result<Batches> {
         let threads = self.options.threads.max(1);
-        let depth = self.options.queue_depth.max(1);
-        let preserve_order = self.options.preserve_order;
+        let options = MapOptions {
+            threads,
+            in_flight: self.options.queue_depth.max(1) + threads,
+            preserve_order: self.options.preserve_order,
+            name: "xeibe-read".into(),
+        };
         // Batches of at least half the size pass through uncopied.
         let batch_size = self.plan.batch_size;
         let coalescer = BatchCoalescer::new(self.plan.schema.clone(), batch_size)
             .with_biggest_coalesce_batch_size(Some(batch_size / 2));
-        let (chunk_tx, chunk_rx) = bounded::<(u64, xeibe_core::Result<FeatureChunk>)>(depth);
-        let (result_tx, result_rx) = bounded::<ChunkResult>(depth);
-        let (out_tx, out_rx) = bounded::<crate::Result<RecordBatch>>(depth);
-        // Tickets for chunks between the splitter and the consumer.
-        let (ticket_tx, ticket_rx) = bounded::<()>(depth + threads);
-
-        std::thread::Builder::new()
-            .name("xeibe-split".into())
-            .spawn(move || split(chunks, chunk_tx, ticket_tx))
-            .expect("spawning the splitter thread");
-
         let pipeline = Arc::new(self);
-        for index in 0..threads {
-            let pipeline = pipeline.clone();
-            let chunk_rx = chunk_rx.clone();
-            let result_tx = result_tx.clone();
-            std::thread::Builder::new()
-                .name(format!("xeibe-read-{index}"))
-                .spawn(move || {
-                    for (seq, chunk) in chunk_rx {
-                        // A panic becomes an error in its place in the stream,
-                        // rather than a gap the reorder stage would wait on.
-                        let batches = chunk.map_err(Into::into).and_then(|chunk| {
-                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                pipeline.process_chunk(&chunk)
-                            }))
-                            .unwrap_or_else(|panic| {
-                                let message = panic
-                                    .downcast_ref::<&str>()
-                                    .map(|s| s.to_string())
-                                    .or_else(|| panic.downcast_ref::<String>().cloned())
-                                    .unwrap_or_default();
-                                Err(arrow_schema::ArrowError::ComputeError(format!(
-                                    "reading chunk {seq} panicked: {message}"
-                                ))
-                                .into())
-                            })
-                        });
-                        if result_tx.send(ChunkResult { seq, batches }).is_err() {
-                            break;
-                        }
-                    }
-                })
-                .expect("spawning a worker thread");
-        }
-        drop(result_tx);
-
-        std::thread::Builder::new()
-            .name("xeibe-order".into())
-            .spawn(move || reorder(result_rx, out_tx, ticket_rx, preserve_order, coalescer))
-            .expect("spawning the reorder thread");
-        out_rx
+        let chunks = ParallelMap::new(options, chunks, move |chunk| {
+            pipeline.process_chunk(&chunk?)
+        })
+        .map_err(xeibe_core::Error::from)?;
+        Ok(Batches {
+            chunks: Some(chunks),
+            coalescer,
+            ready: VecDeque::new(),
+            chunk_index: 0,
+        })
     }
 
-    fn process_chunk(&self, chunk: &FeatureChunk) -> crate::Result<Vec<SeqBatch>> {
+    fn process_chunk(&self, chunk: &FeatureChunk) -> crate::Result<Vec<RecordBatch>> {
         let plan = &*self.plan;
         let axis = plan
             .axis
@@ -412,10 +362,7 @@ impl Pipeline {
                         rows += 1;
                     }
                     if builder.len() >= plan.batch_size {
-                        batches.push(SeqBatch {
-                            chunk_seq: chunk.seq,
-                            batch: builder.finish()?,
-                        });
+                        batches.push(builder.finish()?);
                     }
                 }
                 XmlEvent::Text(_) | XmlEvent::End { .. } => {}
@@ -423,10 +370,7 @@ impl Pipeline {
             }
         }
         if !builder.is_empty() {
-            batches.push(SeqBatch {
-                chunk_seq: chunk.seq,
-                batch: builder.finish()?,
-            });
+            batches.push(builder.finish()?);
         }
         *report
             .features_per_layer
@@ -437,94 +381,77 @@ impl Pipeline {
     }
 }
 
-/// The splitter stage: number the chunks and queue them, one ticket each.
-fn split(
-    chunks: Box<dyn Iterator<Item = xeibe_core::Result<FeatureChunk>> + Send>,
-    chunk_tx: Sender<(u64, xeibe_core::Result<FeatureChunk>)>,
-    ticket_tx: Sender<()>,
-) {
-    for (seq, chunk) in chunks.enumerate() {
-        let seq = seq as u64;
-        let failed = chunk.is_err();
-        // Blocks while too many chunks are in flight; fails once the
-        // consumer is gone.
-        if ticket_tx.send(()).is_err() || chunk_tx.send((seq, chunk)).is_err() || failed {
-            return;
-        }
-    }
+/// The output of a read: the chunks' batches, in chunk order if asked,
+/// combined into batches of the target size. Ends after the first error; the
+/// rows before it still come out first.
+pub struct Batches {
+    /// `None` once the read has ended (dropping it stops the workers).
+    chunks: Option<ParallelMap<crate::Result<Vec<RecordBatch>>>>,
+    coalescer: BatchCoalescer,
+    ready: VecDeque<crate::Result<RecordBatch>>,
+    /// Chunks taken so far, for messages.
+    chunk_index: u64,
 }
 
-/// The reorder stage: pass batches on (in chunk order if asked), combined
-/// into batches of the target size, release one ticket per chunk, stop at the
-/// first error.
-fn reorder(
-    results: Receiver<ChunkResult>,
-    out: Sender<crate::Result<RecordBatch>>,
-    tickets: Receiver<()>,
-    preserve_order: bool,
-    mut coalescer: BatchCoalescer,
-) {
-    let mut pending: BTreeMap<u64, crate::Result<Vec<SeqBatch>>> = BTreeMap::new();
-    let mut next = 0u64;
-    for result in results {
-        if preserve_order {
-            pending.insert(result.seq, result.batches);
-            while let Some(batches) = pending.remove(&next) {
-                next += 1;
-                let _ = tickets.try_recv();
-                if !emit(&out, batches, &mut coalescer) {
-                    return;
-                }
-            }
-        } else {
-            let _ = tickets.try_recv();
-            if !emit(&out, result.batches, &mut coalescer) {
-                return;
-            }
-        }
-    }
-    let step = coalescer.finish_buffered_batch();
-    let _ = flush(&out, &mut coalescer, step);
-}
-
-/// Pass one chunk's batches to the coalescer and send the completed ones;
-/// `false` to stop (an error, or no consumer).
-fn emit(
-    out: &Sender<crate::Result<RecordBatch>>,
-    batches: crate::Result<Vec<SeqBatch>>,
-    coalescer: &mut BatchCoalescer,
-) -> bool {
-    match batches {
-        Ok(batches) => batches.into_iter().all(|batch| {
-            let step = coalescer.push_batch(batch.batch);
-            flush(out, coalescer, step)
-        }),
-        Err(error) => {
-            // The rows before the error still go out first.
-            let step = coalescer.finish_buffered_batch();
-            if flush(out, coalescer, step) {
-                let _ = out.send(Err(error));
-            }
-            false
-        }
-    }
-}
-
-/// Send the coalescer's completed batches, or the error of the step that
-/// completed them; `false` to stop.
-fn flush(
-    out: &Sender<crate::Result<RecordBatch>>,
-    coalescer: &mut BatchCoalescer,
-    step: Result<(), arrow_schema::ArrowError>,
-) -> bool {
-    if let Err(error) = step {
-        let _ = out.send(Err(error.into()));
-        return false;
-    }
-    while let Some(batch) = coalescer.next_completed_batch() {
-        if out.send(Ok(batch)).is_err() {
+impl Batches {
+    /// Queue the coalescer's completed batches, or the error of the step that
+    /// completed them; `false` after an error.
+    fn take_completed(&mut self, step: Result<(), arrow_schema::ArrowError>) -> bool {
+        if let Err(error) = step {
+            self.end_with(error.into());
             return false;
         }
+        while let Some(batch) = self.coalescer.next_completed_batch() {
+            self.ready.push_back(Ok(batch));
+        }
+        true
     }
-    true
+
+    /// The rows before the error first, then the error.
+    fn end_with(&mut self, error: crate::Error) {
+        self.chunks = None;
+        let step = self.coalescer.finish_buffered_batch();
+        if self.take_completed(step) {
+            self.ready.push_back(Err(error));
+        }
+    }
+}
+
+impl Iterator for Batches {
+    type Item = crate::Result<RecordBatch>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(batch) = self.ready.pop_front() {
+                return Some(batch);
+            }
+            let chunks = self.chunks.as_mut()?;
+            let index = self.chunk_index;
+            self.chunk_index += 1;
+            match chunks.next() {
+                Some(Ok(Ok(batches))) => {
+                    for batch in batches {
+                        let step = self.coalescer.push_batch(batch);
+                        if !self.take_completed(step) {
+                            break;
+                        }
+                    }
+                }
+                Some(Ok(Err(error))) => self.end_with(error),
+                // A panic becomes an error in its place in the stream.
+                Some(Err(panic)) => self.end_with(
+                    arrow_schema::ArrowError::ComputeError(format!(
+                        "reading chunk {index} panicked: {}",
+                        panic_message(&panic)
+                    ))
+                    .into(),
+                ),
+                None => {
+                    self.chunks = None;
+                    let step = self.coalescer.finish_buffered_batch();
+                    self.take_completed(step);
+                }
+            }
+        }
+    }
 }

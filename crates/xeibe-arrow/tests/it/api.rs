@@ -293,6 +293,161 @@ fn rows_keep_their_source_order_by_default() {
     assert!(ReadOptions::default().preserve_order);
 }
 
+/// A document whose reads record the threads they run on: the chunk stream
+/// reads its source on whichever thread splits.
+#[derive(Debug)]
+struct ThreadRecordingSource {
+    document: Vec<u8>,
+    threads: std::sync::Arc<std::sync::Mutex<Vec<std::thread::ThreadId>>>,
+}
+
+impl xeibe_core::ByteSource for ThreadRecordingSource {
+    fn name(&self) -> &str {
+        "recording.gml"
+    }
+
+    fn len(&self) -> Option<u64> {
+        Some(self.document.len() as u64)
+    }
+
+    fn open(&self) -> xeibe_core::Result<Box<dyn std::io::Read + Send>> {
+        struct Recording {
+            bytes: std::io::Cursor<Vec<u8>>,
+            threads: std::sync::Arc<std::sync::Mutex<Vec<std::thread::ThreadId>>>,
+        }
+        impl std::io::Read for Recording {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                self.threads
+                    .lock()
+                    .unwrap()
+                    .push(std::thread::current().id());
+                // Small reads: splitting goes on for the whole read.
+                let len = buf.len().min(64);
+                self.bytes.read(&mut buf[..len])
+            }
+        }
+        Ok(Box::new(Recording {
+            bytes: std::io::Cursor::new(self.document.clone()),
+            threads: self.threads.clone(),
+        }))
+    }
+}
+
+/// The threads a read and a scan of a 50-feature document run their source
+/// reads on, with the given `threads`.
+fn source_read_threads(threads: usize) -> Vec<std::thread::ThreadId> {
+    let features: Vec<String> = (0..50)
+        .map(|i| parcel(&format!("p{i}"), &format!("<app:area>{i}</app:area>")))
+        .collect();
+    let refs: Vec<&str> = features.iter().map(String::as_str).collect();
+    let recorded = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let source = || {
+        xeibe_core::Sources::from(vec![xeibe_core::Source::Stream(std::sync::Arc::new(
+            ThreadRecordingSource {
+                document: gml::gml32_collection(&refs).into_bytes(),
+                threads: recorded.clone(),
+            },
+        ))])
+    };
+    let options = ReadOptions {
+        threads,
+        // The sample is split on the calling thread, before the workers start.
+        sample: SampleOptions {
+            features_per_layer: 2,
+            ..SampleOptions::default()
+        },
+        splitter: xeibe_core::SplitterOptions {
+            target_chunk_bytes: 1,
+            ..xeibe_core::SplitterOptions::default()
+        },
+        ..ReadOptions::default()
+    };
+    let reader = read(source(), "Parcel", None, &options).unwrap();
+    let rows: usize = reader.map(|batch| batch.unwrap().num_rows()).sum();
+    assert_eq!(rows, 50);
+    let scanned = scan(source(), ScanExtent::Full, &options).unwrap();
+    assert_eq!(scanned.layers()[0].feature_count, 50);
+    std::sync::Arc::try_unwrap(recorded)
+        .unwrap()
+        .into_inner()
+        .unwrap()
+}
+
+#[test]
+fn one_thread_reads_and_scans_on_the_calling_thread() {
+    let caller = std::thread::current().id();
+    let threads = source_read_threads(1);
+    assert!(!threads.is_empty());
+    assert!(threads.iter().all(|thread| *thread == caller));
+}
+
+#[test]
+fn with_more_threads_the_workers_split() {
+    let caller = std::thread::current().id();
+    let threads = source_read_threads(4);
+    assert!(threads.iter().any(|thread| *thread != caller));
+}
+
+#[test]
+fn every_thread_count_reads_the_same_rows() {
+    let features: Vec<String> = (0..40)
+        .map(|i| parcel(&format!("p{i}"), &format!("<app:area>{i}</app:area>")))
+        .collect();
+    let refs: Vec<&str> = features.iter().map(String::as_str).collect();
+    let document = gml::gml32_collection(&refs);
+    for threads in [0, 1, 2, 5] {
+        for preserve_order in [true, false] {
+            let options = ReadOptions {
+                threads,
+                preserve_order,
+                batch_size: 7,
+                splitter: xeibe_core::SplitterOptions {
+                    target_chunk_bytes: 1,
+                    ..xeibe_core::SplitterOptions::default()
+                },
+                ..ReadOptions::default()
+            };
+            let read = read_with(&document, "Parcel", None, &options);
+            let mut areas: Vec<i64> = read.i64s("area").into_iter().flatten().collect();
+            if !preserve_order {
+                areas.sort();
+            }
+            assert_eq!(
+                areas,
+                (0..40).collect::<Vec<_>>(),
+                "{threads} {preserve_order}"
+            );
+        }
+    }
+}
+
+#[test]
+fn dropping_a_reader_part_way_stops_the_read() {
+    let features: Vec<String> = (0..200)
+        .map(|i| parcel(&format!("p{i}"), &format!("<app:area>{i}</app:area>")))
+        .collect();
+    let refs: Vec<&str> = features.iter().map(String::as_str).collect();
+    let options = ReadOptions {
+        threads: 3,
+        batch_size: 1,
+        queue_depth: 1,
+        splitter: xeibe_core::SplitterOptions {
+            target_chunk_bytes: 1,
+            ..xeibe_core::SplitterOptions::default()
+        },
+        ..ReadOptions::default()
+    };
+    let mut reader = read(
+        sources(&gml::gml32_collection(&refs)),
+        "Parcel",
+        None,
+        &options,
+    )
+    .unwrap();
+    assert_eq!(reader.next().unwrap().unwrap().num_rows(), 1);
+    drop(reader);
+}
+
 #[test]
 fn a_projection_builds_only_the_columns_asked_for() {
     let options = ReadOptions {

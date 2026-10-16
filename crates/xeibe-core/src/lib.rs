@@ -9,6 +9,7 @@ pub mod decode;
 pub mod error;
 pub mod location;
 pub mod namespace;
+pub mod parallel;
 pub mod qname;
 pub mod reader;
 pub mod source;

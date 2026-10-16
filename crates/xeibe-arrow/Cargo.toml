@@ -17,7 +17,6 @@ arrow-select.workspace = true
 arrow-schema.workspace = true
 geoarrow-array.workspace = true
 geoarrow-schema.workspace = true
-crossbeam-channel.workspace = true
 indexmap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

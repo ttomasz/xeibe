@@ -4,16 +4,16 @@ use arrow_array::{RecordBatch, RecordBatchReader};
 use arrow_schema::{ArrowError, SchemaRef};
 
 use crate::ReadReport;
-use crate::pipeline::{ReadPlan, lock};
+use crate::pipeline::{Batches, ReadPlan, lock};
 use crate::report::Warning;
 
 /// Streams one layer's batches. Implements `RecordBatchReader`.
 ///
-/// Dropping the reader stops the read: the pipeline's threads end once they
-/// notice that nobody takes their output.
+/// With `threads = 1` the read runs on the thread that calls `next`. Dropping
+/// the reader stops the read: its workers take no more chunks and end.
 pub struct LayerReader {
     schema: SchemaRef,
-    receiver: crossbeam_channel::Receiver<crate::Result<RecordBatch>>,
+    batches: Batches,
     report: Arc<Mutex<ReadReport>>,
     plan: Arc<ReadPlan>,
     /// Warnings of the source stream (skipped sources).
@@ -25,7 +25,7 @@ pub struct LayerReader {
 
 impl LayerReader {
     pub(crate) fn new(
-        receiver: crossbeam_channel::Receiver<crate::Result<RecordBatch>>,
+        batches: Batches,
         report: Arc<Mutex<ReadReport>>,
         plan: Arc<ReadPlan>,
         source_warnings: Arc<Mutex<Vec<Warning>>>,
@@ -33,7 +33,7 @@ impl LayerReader {
     ) -> Self {
         LayerReader {
             schema: plan.schema.clone(),
-            receiver,
+            batches,
             report,
             plan,
             source_warnings,
@@ -69,7 +69,7 @@ impl LayerReader {
         if self.failed {
             return None;
         }
-        let next = self.receiver.recv().ok()?;
+        let next = self.batches.next()?;
         self.failed = next.is_err();
         Some(next)
     }
