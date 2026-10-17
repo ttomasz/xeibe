@@ -3,9 +3,10 @@
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::ops::ControlFlow;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use xeibe_core::decode::DecodeAhead;
+use xeibe_core::parallel::Streams;
 use xeibe_core::reader::{Attributes, GmlReader, XmlEvent};
 use xeibe_core::splitter::DocumentHeader;
 use xeibe_core::version::VersionHints;
@@ -69,12 +70,14 @@ impl Scanner {
     /// Scan every source and merge the results.
     ///
     /// Each source gets `SourceId(i)` in the order the sources come, and one
-    /// [`SourceContext`] at the same index. The sources are split one after
-    /// another, by whichever of the `threads` workers is free, and their
-    /// chunks are scanned on all of them: there is no pause between sources.
-    /// With `threads <= 1` all of it runs on the calling thread. A sampled
-    /// scan gives each chunk its share of the budget as it is split, so it
-    /// is "the first N features" on any number of threads.
+    /// [`SourceContext`] at the same index. The sources are split by
+    /// whichever of the `threads` workers is free, several at once when one
+    /// source can't keep the workers busy, and their chunks are scanned on
+    /// all of them: there is no pause between sources. With `threads <= 1`
+    /// all of it runs on the calling thread. A sampled scan splits its
+    /// sources one after another and gives each chunk its share of the
+    /// budget as it is split, so it is "the first N features" on any number
+    /// of threads.
     ///
     /// A source without a feature collection or feature member is skipped
     /// and listed in [`DatasetObservation::skipped_sources`]; if every
@@ -84,25 +87,37 @@ impl Scanner {
         if self.options.layers.is_some() {
             splitter_options.layers = self.options.layers.clone();
         }
-        let ahead = Arc::new(DecodeAhead::default());
-        let mut stream = ScanStream {
-            sources,
-            ahead: ahead.clone(),
+        let budget = match self.options.extent {
+            ScanExtent::Full => None,
+            ScanExtent::Sample { max_features } => Some(max_features),
+        };
+        let shared = Arc::new(ScanShared {
+            ahead: DecodeAhead::default(),
             splitter_options,
-            current: None,
-            opened: Vec::new(),
-            budget: match self.options.extent {
-                ScanExtent::Full => None,
-                ScanExtent::Sample { max_features } => Some(max_features),
-            },
-            sampled: false,
-            finished: false,
+            opened: Mutex::new(Vec::new()),
+            budget: Mutex::new(Budget {
+                left: budget,
+                sampled: false,
+                used_up: false,
+            }),
+        });
+        let threads = self.options.threads;
+        // A sample is the first features of the input: its sources are split
+        // one after another.
+        let max_open = match budget {
+            None => xeibe_core::parallel::max_open_streams(threads),
+            Some(_) => 1,
+        };
+        let stream = ScanSources {
+            sources,
+            shared: shared.clone(),
         };
         let partials = xeibe_core::parallel::fold(
-            self.options.threads,
+            threads,
+            max_open,
             "xeibe-scan",
-            stream.by_ref(),
-            Some(&|| ahead.help()),
+            stream,
+            Some(&|| shared.ahead.help()),
             Partial::default,
             |partial, item| self.scan_item(partial, item),
         )
@@ -110,22 +125,25 @@ impl Scanner {
 
         // What the sources' headers say comes first: their prefixes win over
         // those of chunks.
+        let opened = std::mem::take(&mut *lock(&shared.opened));
         let mut total = DatasetObservation::default();
         let mut scanned = 0usize;
-        for source in &stream.opened {
-            match &source.header {
-                Some(header) => {
+        for source in &opened {
+            match &source.status {
+                SourceStatus::Read(header) => {
                     scanned += 1;
                     note_prefixes(&mut total, &header.namespaces);
                     total.source_context.push(header.context.clone());
                 }
-                None => {
+                SourceStatus::Skipped => {
                     total.source_context.push(SourceContext::default());
                     total.skipped_sources.push(source.name.clone());
                 }
+                // Only after an error, which is returned below.
+                SourceStatus::Pending => total.source_context.push(SourceContext::default()),
             }
         }
-        let mut hints = vec![ElementHints::default(); stream.opened.len()];
+        let mut hints = vec![ElementHints::default(); opened.len()];
         let mut error = None;
         for partial in partials {
             if let Some(partial_error) = partial.error {
@@ -145,8 +163,8 @@ impl Scanner {
             return Err(xeibe_core::Error::no_features_in(&total.skipped_sources).into());
         }
         // The GML version, per source: its header and the elements of its chunks.
-        for (source, element_hints) in stream.opened.iter().zip(&hints) {
-            if let Some(header) = &source.header {
+        for (source, element_hints) in opened.iter().zip(&hints) {
+            if let SourceStatus::Read(header) = &source.status {
                 let mut hints = header.hints.clone();
                 element_hints.apply_to(&mut hints);
                 if let Some(version) = hints.detect() {
@@ -154,7 +172,7 @@ impl Scanner {
                 }
             }
         }
-        total.sampled = stream.sampled;
+        total.sampled = lock(&shared.budget).sampled;
         Ok(total)
     }
 
@@ -261,27 +279,44 @@ struct Partial {
     error: Option<crate::Error>,
 }
 
-/// The chunks of every source, one source after another, each with its share
-/// of a sampled scan's budget. Records each source's header as it opens it.
-struct ScanStream {
+/// The sources of a scan, each a stream of its chunks.
+struct ScanSources {
     sources: Sources,
-    /// Decoding ahead of the source being split, by waiting workers.
-    ahead: Arc<DecodeAhead>,
+    shared: Arc<ScanShared>,
+}
+
+/// What the streams of a scan share.
+struct ScanShared {
+    /// Decoding ahead of the sources being split, by waiting workers.
+    ahead: DecodeAhead,
     splitter_options: xeibe_core::SplitterOptions,
-    current: Option<FeatureSplitter<Box<dyn Read + Send>>>,
-    /// Every source opened so far, at the index of its id.
-    opened: Vec<OpenedSource>,
-    /// Features a sampled scan may still take.
-    budget: Option<u64>,
+    /// Every source so far, at the index of its id.
+    opened: Mutex<Vec<OpenedSource>>,
+    budget: Mutex<Budget>,
+}
+
+/// What a sampled scan may still take.
+struct Budget {
+    /// Features left; `None` in a full scan.
+    left: Option<u64>,
     /// A sampled scan stopped before the end of the input.
     sampled: bool,
-    finished: bool,
+    /// Nothing more is taken.
+    used_up: bool,
 }
 
 struct OpenedSource {
     name: String,
-    /// `None`: skipped, without a feature collection or feature member.
-    header: Option<SourceHeader>,
+    status: SourceStatus,
+}
+
+enum SourceStatus {
+    /// Not opened yet.
+    Pending,
+    /// Opened, with features.
+    Read(Box<SourceHeader>),
+    /// Without a feature collection or feature member.
+    Skipped,
 }
 
 struct SourceHeader {
@@ -291,23 +326,63 @@ struct SourceHeader {
     hints: VersionHints,
 }
 
-impl ScanStream {
-    /// Open the next source; `Ok(false)` when there is none.
-    fn open_next(&mut self) -> crate::Result<bool> {
-        let Some(source) = self.sources.next() else {
-            return Ok(false);
+impl Streams for ScanSources {
+    type Item = crate::Result<(FeatureChunk, Option<u64>)>;
+    type Stream = SourceScan;
+
+    fn next_stream(&mut self) -> Option<SourceScan> {
+        if lock(&self.shared.budget).used_up {
+            return None;
+        }
+        let state = match self.sources.next()? {
+            Ok(source) => {
+                let mut opened = lock(&self.shared.opened);
+                let id = SourceId(u32::try_from(opened.len()).unwrap_or(u32::MAX));
+                opened.push(OpenedSource {
+                    name: source.name(),
+                    status: SourceStatus::Pending,
+                });
+                SourceState::Unopened(source, id)
+            }
+            Err(error) => SourceState::Failed(error.into()),
         };
-        let source = source?;
-        let id = SourceId(u32::try_from(self.opened.len()).unwrap_or(u32::MAX));
+        Some(SourceScan {
+            shared: self.shared.clone(),
+            state,
+        })
+    }
+
+    fn ends_input(item: &Self::Item) -> bool {
+        item.is_err()
+    }
+}
+
+/// The chunks of one source, each with its share of a sampled scan's
+/// budget. Opens the source on its first `next`, and records its header.
+struct SourceScan {
+    shared: Arc<ScanShared>,
+    state: SourceState,
+}
+
+enum SourceState {
+    Unopened(xeibe_core::Source, SourceId),
+    Splitting(Box<FeatureSplitter<Box<dyn Read + Send>>>, SourceId),
+    Failed(crate::Error),
+    Done,
+}
+
+impl SourceScan {
+    /// Open the source and read its header.
+    fn open(&mut self, source: &xeibe_core::Source, id: SourceId) -> crate::Result<()> {
         let mut splitter = FeatureSplitter::new(
-            source.open_ahead(&self.ahead)?,
+            source.open_ahead(&self.shared.ahead)?,
             id,
-            self.splitter_options.clone(),
+            self.shared.splitter_options.clone(),
         );
         let header = match splitter.header() {
             Ok(header) => {
                 let context = source_context(header);
-                Some(SourceHeader {
+                SourceHeader {
                     namespaces: header.namespaces.clone(),
                     hints: VersionHints {
                         gml_namespace: namespace_hint(&header.namespaces),
@@ -317,74 +392,87 @@ impl ScanStream {
                         ..VersionHints::default()
                     },
                     context,
-                })
+                }
             }
-            Err(xeibe_core::Error::NoFeatures(_)) => None,
+            Err(xeibe_core::Error::NoFeatures(_)) => {
+                self.set_status(id, SourceStatus::Skipped);
+                return Ok(());
+            }
             Err(error) => return Err(error.into()),
         };
-        if header.is_some() {
-            self.current = Some(splitter);
+        self.set_status(id, SourceStatus::Read(Box::new(header)));
+        self.state = SourceState::Splitting(Box::new(splitter), id);
+        Ok(())
+    }
+
+    fn set_status(&self, id: SourceId, status: SourceStatus) {
+        lock(&self.shared.opened)[id.0 as usize].status = status;
+    }
+
+    /// This chunk's share of the budget; `None` when it is used up.
+    fn share(&self, chunk: &FeatureChunk) -> Option<Option<u64>> {
+        let mut budget = lock(&self.shared.budget);
+        let Some(left) = budget.left else {
+            return Some(None);
+        };
+        // The budget is used up, and there is another feature.
+        if left == 0 {
+            budget.sampled = true;
+            budget.used_up = true;
+            return None;
         }
-        self.opened.push(OpenedSource {
-            name: source.name(),
-            header,
-        });
-        Ok(true)
+        let take = chunk.features.min(left);
+        budget.left = Some(left - take);
+        if take < chunk.features {
+            budget.sampled = true;
+            budget.used_up = true;
+        }
+        Some(Some(take))
     }
 }
 
-impl Iterator for ScanStream {
+impl Iterator for SourceScan {
     type Item = crate::Result<(FeatureChunk, Option<u64>)>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while !self.finished {
-            let Some(splitter) = &mut self.current else {
-                match self.open_next() {
-                    Ok(true) => {}
-                    Ok(false) => self.finished = true,
-                    Err(error) => {
-                        self.finished = true;
+        loop {
+            match std::mem::replace(&mut self.state, SourceState::Done) {
+                SourceState::Unopened(source, id) => {
+                    if let Err(error) = self.open(&source, id) {
                         return Some(Err(error));
                     }
                 }
-                continue;
-            };
-            match splitter.next() {
-                Some(Ok(chunk)) => {
-                    let Some(left) = self.budget else {
-                        return Some(Ok((chunk, None)));
-                    };
-                    // The budget is used up, and there is another feature.
-                    if left == 0 {
-                        self.sampled = true;
-                        self.finished = true;
+                SourceState::Splitting(mut splitter, id) => {
+                    if lock(&self.shared.budget).used_up {
                         return None;
                     }
-                    let take = chunk.features.min(left);
-                    self.budget = Some(left - take);
-                    if take < chunk.features {
-                        self.sampled = true;
-                        self.finished = true;
+                    match splitter.next() {
+                        Some(Ok(chunk)) => {
+                            let share = self.share(&chunk)?;
+                            self.state = SourceState::Splitting(splitter, id);
+                            return Some(Ok((chunk, share)));
+                        }
+                        // Found at the end of the input: the root was read,
+                        // but nothing in it holds features.
+                        Some(Err(xeibe_core::Error::NoFeatures(_))) => {
+                            self.set_status(id, SourceStatus::Skipped);
+                            return None;
+                        }
+                        Some(Err(error)) => return Some(Err(error.into())),
+                        None => return None,
                     }
-                    return Some(Ok((chunk, Some(take))));
                 }
-                // Found at the end of the input: the root was read, but
-                // nothing in it holds features.
-                Some(Err(xeibe_core::Error::NoFeatures(_))) => {
-                    self.current = None;
-                    if let Some(source) = self.opened.last_mut() {
-                        source.header = None;
-                    }
-                }
-                Some(Err(error)) => {
-                    self.finished = true;
-                    return Some(Err(error.into()));
-                }
-                None => self.current = None,
+                SourceState::Failed(error) => return Some(Err(error)),
+                SourceState::Done => return None,
             }
         }
-        None
     }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 struct ChunkScan {

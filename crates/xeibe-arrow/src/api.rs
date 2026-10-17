@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use geoarrow_schema::{Crs, GeoArrowType, Metadata};
 use indexmap::IndexMap;
+use xeibe_core::parallel::{One, Sequential};
 use xeibe_core::{FeatureChunk, QName, SourceId, Sources};
 use xeibe_geom::axis::{AxisContext, decide};
 use xeibe_geom::{AxisKey, AxisOrderMode, AxisOrderOptions, SrsName};
@@ -70,8 +71,11 @@ pub fn read(
     let mut splitter = options.splitter.clone();
     splitter.layers = Some(vec![selector.filter()]);
     let contexts: SharedContexts = Arc::default();
-    let mut stream = ChunkStream::new(sources.into(), splitter, contexts.clone());
+    let stream = ChunkStream::new(sources.into(), splitter, contexts.clone());
     let source_warnings = stream.warnings();
+    let helper = stream.helper();
+    // The sample is taken in order on this thread; the workers read the rest.
+    let mut chunks = Sequential::new(stream);
 
     // A sample: for the schema, and for `Auto` axis evidence.
     // A given schema's geometry columns need one too when their CRS is to
@@ -89,7 +93,7 @@ pub fn read(
     let needs_sample = schema.is_none()
         || (has_geometry && (crs_from_data || needs_axis_evidence(&options.geometry.axis)));
     let sample = if needs_sample {
-        Some(take_sample(&mut stream, &contexts, options)?)
+        Some(take_sample(&mut chunks, &contexts, options)?)
     } else {
         None
     };
@@ -201,12 +205,10 @@ pub fn read(
         empty_as_null: inference.types.empty_as_null,
         batch_size: options.batch_size.max(1),
     });
-    let helper = stream.helper();
     let buffered = sample.map(|sample| sample.chunks).unwrap_or_default();
-    let chunks: Box<dyn Iterator<Item = xeibe_core::Result<FeatureChunk>> + Send> =
-        Box::new(buffered.into_iter().map(Ok).chain(stream));
+    let rest = chunks.rest(buffered.into_iter().map(Ok).collect());
     let batches =
-        Pipeline::new(options.clone(), plan.clone(), report.clone()).start(chunks, Some(helper))?;
+        Pipeline::new(options.clone(), plan.clone(), report.clone()).start(rest, helper)?;
     Ok(LayerReader::new(
         batches,
         report,
@@ -228,7 +230,7 @@ struct Sample {
 /// `max_buffer_bytes`) are in, or the input ends, and scan them on all
 /// threads: the workers aren't running yet.
 fn take_sample(
-    stream: &mut ChunkStream,
+    stream: &mut Sequential<ChunkStream>,
     contexts: &SharedContexts,
     options: &ReadOptions,
 ) -> crate::Result<Sample> {
@@ -248,8 +250,15 @@ fn take_sample(
     let (mut features, mut bytes) = (0u64, 0u64);
     // A chunk after the sample, taken only to tell whether there is more.
     let mut after = None;
+    // A panic while splitting goes on to the caller, as it would without a
+    // sample.
+    let mut next = || {
+        stream
+            .next()
+            .map(|chunk| chunk.unwrap_or_else(|panic| std::panic::resume_unwind(panic)))
+    };
     loop {
-        let Some(chunk) = stream.next() else {
+        let Some(chunk) = next() else {
             sample.complete = true;
             break;
         };
@@ -262,7 +271,7 @@ fn take_sample(
             break;
         }
         if features == budget || bytes >= options.sample.max_buffer_bytes {
-            match stream.next() {
+            match next() {
                 None => sample.complete = true,
                 Some(chunk) => after = Some(chunk?),
             }
@@ -297,8 +306,9 @@ fn scan_sample(
     let threads = threads.clamp(1, chunks.len().max(1));
     let per_worker = xeibe_core::parallel::fold(
         threads,
+        1,
         "xeibe-sample",
-        chunks.iter().zip(budgets).enumerate(),
+        One::new(chunks.iter().zip(budgets).enumerate()),
         None,
         Vec::new,
         |scanned, (i, (chunk, mut budget))| {

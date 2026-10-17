@@ -3,7 +3,7 @@
 
 use std::collections::VecDeque;
 use std::io::{Cursor, Read};
-use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
+use std::sync::{Arc, Mutex, MutexGuard, TryLockError, Weak};
 
 use encoding_rs::{Encoding, UTF_8, UTF_16BE, UTF_16LE};
 
@@ -136,7 +136,6 @@ pub(crate) fn decoded_reader_with(
     };
     if !compressed && compression == Compression::None && encoding == UTF_8 {
         // Nothing to decode: the reader is as fast as the source.
-        ahead.set(None);
         return Ok(decoded);
     }
     let shared = Arc::new(AheadShared {
@@ -147,7 +146,7 @@ pub(crate) fn decoded_reader_with(
         }),
         blocks: Mutex::new(VecDeque::new()),
     });
-    ahead.set(Some(shared.clone()));
+    ahead.add(&shared);
     Ok(Box::new(AheadReader {
         shared,
         current: Cursor::new(Vec::new()),
@@ -158,35 +157,39 @@ pub(crate) fn decoded_reader_with(
 const AHEAD_BLOCK: usize = 256 * 1024;
 const AHEAD_BLOCKS: usize = 16;
 
-/// Decoding ahead of the reader, by the workers of a scan or read.
+/// Decoding ahead of the readers, by the workers of a scan or read.
 ///
 /// The worker that splits a source reads its decoded stream, and
 /// decompression or transcoding costs about as much as splitting. A source
 /// opened with [`crate::Source::open_ahead`] decodes in blocks of 256 KB, and
 /// [`DecodeAhead::help`] decodes the next block into a queue of up to 16
 /// (4 MB). Workers call it before they take their next chunk and while
-/// another worker splits, so that the splitting worker mostly finds its
-/// input decoded. Nothing runs on a thread of its own
+/// other workers split, so that a splitting worker mostly finds its input
+/// decoded. Several sources can be open at once; the one opened first is
+/// helped first. Nothing runs on a thread of its own
 /// (`docs/architecture.md`, "Parallel pipeline").
 #[derive(Default)]
 pub struct DecodeAhead {
-    /// The stream of the source opened last.
-    current: Mutex<Option<Arc<AheadShared>>>,
+    /// The streams of the sources opened and not yet dropped, oldest first.
+    streams: Mutex<Vec<Weak<AheadShared>>>,
 }
 
 impl DecodeAhead {
-    /// Decode one block ahead of the reader of the source opened last.
-    /// `false` when there is nothing to do: the queue is full, another thread
-    /// is decoding, the stream has ended or needs no decoding.
+    /// Decode one block ahead of the reader of an open source, the oldest
+    /// that has room. `false` when there is nothing to do: every queue is
+    /// full or being filled by another thread, or the streams have ended
+    /// or need no decoding.
     pub fn help(&self) -> bool {
-        let Some(shared) = lock(&self.current).clone() else {
-            return false;
+        let streams: Vec<Arc<AheadShared>> = {
+            let mut streams = lock(&self.streams);
+            streams.retain(|stream| stream.strong_count() > 0);
+            streams.iter().filter_map(Weak::upgrade).collect()
         };
-        shared.decode_ahead()
+        streams.iter().any(|stream| stream.decode_ahead())
     }
 
-    fn set(&self, shared: Option<Arc<AheadShared>>) {
-        *lock(&self.current) = shared;
+    fn add(&self, shared: &Arc<AheadShared>) {
+        lock(&self.streams).push(Arc::downgrade(shared));
     }
 }
 

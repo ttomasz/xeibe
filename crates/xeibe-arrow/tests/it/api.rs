@@ -224,7 +224,9 @@ fn several_sources_share_one_schema() {
     let reader = read(sources, "Parcel", None, &ReadOptions::default()).expect("a reader");
     let read = crate::support::collect(reader);
     assert_eq!(read.rows(), 2);
-    assert_eq!(read.i64s("area"), [Some(1), Some(2)]);
+    let mut areas = read.i64s("area");
+    areas.sort();
+    assert_eq!(areas, [Some(1), Some(2)]);
 }
 
 #[test]
@@ -268,7 +270,8 @@ fn small_chunks_still_give_full_batches() {
     let read = read_with(&gml::gml32_collection(&refs), "Parcel", None, &options);
     let sizes: Vec<usize> = read.batches.iter().map(|b| b.num_rows()).collect();
     assert_eq!(sizes, [4, 4, 2]);
-    let areas: Vec<i64> = read.i64s("area").into_iter().flatten().collect();
+    let mut areas: Vec<i64> = read.i64s("area").into_iter().flatten().collect();
+    areas.sort();
     assert_eq!(areas, (0..10).collect::<Vec<_>>());
 }
 
@@ -631,4 +634,108 @@ fn a_read_in_which_every_source_is_skipped_fails() {
         error.to_string().ends_with("found in metadata.xml"),
         "{error}"
     );
+}
+
+/// Six sources of 15 parcels each, numbered on across them, with ISO
+/// metadata (skipped) after the third; `broken` puts a source that isn't
+/// XML after the fourth.
+fn numbered_sources(broken: bool) -> xeibe_core::Sources {
+    let source = |name: String, document: String| {
+        xeibe_core::Source::reader(name, Box::new(std::io::Cursor::new(document.into_bytes())))
+    };
+    let mut list = Vec::new();
+    for s in 0..6 {
+        let features: Vec<String> = (0..15)
+            .map(|i| {
+                let n = s * 15 + i;
+                parcel(&format!("p{n}"), &format!("<app:area>{n}</app:area>"))
+            })
+            .collect();
+        let refs: Vec<&str> = features.iter().map(String::as_str).collect();
+        list.push(source(format!("s{s}.gml"), gml::gml32_collection(&refs)));
+        if s == 2 {
+            list.push(source("metadata.xml".into(), ISO_METADATA.to_string()));
+        }
+        if s == 3 && broken {
+            list.push(source("broken.gml".into(), "<<not xml".to_string()));
+        }
+    }
+    xeibe_core::Sources::from(list)
+}
+
+fn small_chunk_options(threads: usize, preserve_order: bool, sample: u64) -> ReadOptions {
+    ReadOptions {
+        threads,
+        preserve_order,
+        batch_size: 7,
+        sample: SampleOptions {
+            features_per_layer: sample,
+            min_typed_values: 1,
+            ..SampleOptions::default()
+        },
+        splitter: xeibe_core::SplitterOptions {
+            target_chunk_bytes: 1,
+            ..xeibe_core::SplitterOptions::default()
+        },
+        ..ReadOptions::default()
+    }
+}
+
+#[test]
+fn several_sources_read_the_same_rows_on_any_number_of_threads() {
+    // A sample within the first source, one across sources, and one of the
+    // whole input: the workers start in the middle of a source, between
+    // two, or after the end.
+    for threads in [1, 2, 5] {
+        for sample in [4, 40, 1000] {
+            for preserve_order in [true, false] {
+                let options = small_chunk_options(threads, preserve_order, sample);
+                let read = crate::support::collect(
+                    read(numbered_sources(false), "Parcel", None, &options).expect("a reader"),
+                );
+                let mut areas: Vec<i64> = read.i64s("area").into_iter().flatten().collect();
+                if !preserve_order {
+                    areas.sort();
+                }
+                let case = format!("{threads} threads, sample {sample}, order {preserve_order}");
+                assert_eq!(areas, (0..90).collect::<Vec<_>>(), "{case}");
+                let skipped = read
+                    .report
+                    .warnings
+                    .iter()
+                    .filter(|w| w.kind == xeibe_arrow::report::WarningKind::SkippedSource)
+                    .count();
+                assert_eq!(skipped, 1, "{case}");
+            }
+        }
+    }
+}
+
+#[test]
+fn an_error_in_a_later_source_comes_after_the_rows_before_it() {
+    // Without geometry, nothing is sampled: every source goes to the workers.
+    let schema = schema_of(vec![Field::new("area", DataType::Int64, true)]);
+    for threads in [1, 2, 5] {
+        let options = small_chunk_options(threads, true, 1000);
+        let reader = read(
+            numbered_sources(true),
+            "Parcel",
+            Some(schema.clone()),
+            &options,
+        )
+        .expect("a reader");
+        let mut rows = 0;
+        let mut failed = false;
+        for batch in reader {
+            match batch {
+                Ok(batch) => rows += batch.num_rows(),
+                Err(_) => {
+                    failed = true;
+                    break;
+                }
+            }
+        }
+        assert!(failed, "{threads}");
+        assert_eq!(rows, 60, "the four sources before it, {threads} threads");
+    }
 }

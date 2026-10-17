@@ -80,7 +80,7 @@ impl Source {
     }
 
     /// [`Source::open`], for a stream that other threads decode ahead of its
-    /// reader with `ahead`; the source replaces the one `ahead` worked for.
+    /// reader with `ahead`, beside the other sources open with it.
     pub fn open_ahead(
         &self,
         ahead: &crate::decode::DecodeAhead,

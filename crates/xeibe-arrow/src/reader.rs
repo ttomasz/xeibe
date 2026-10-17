@@ -4,7 +4,7 @@ use arrow_array::{RecordBatch, RecordBatchReader};
 use arrow_schema::{ArrowError, SchemaRef};
 
 use crate::ReadReport;
-use crate::pipeline::{Batches, ReadPlan, lock};
+use crate::pipeline::{Batches, ReadPlan, SourceWarnings, lock};
 use crate::report::Warning;
 
 /// Streams one layer's batches. Implements `RecordBatchReader`.
@@ -17,7 +17,7 @@ pub struct LayerReader {
     report: Arc<Mutex<ReadReport>>,
     plan: Arc<ReadPlan>,
     /// Warnings of the source stream (skipped sources).
-    source_warnings: Arc<Mutex<Vec<Warning>>>,
+    source_warnings: SourceWarnings,
     /// An error was returned; the reader is exhausted.
     failed: bool,
     settings: crate::Settings,
@@ -28,7 +28,7 @@ impl LayerReader {
         batches: Batches,
         report: Arc<Mutex<ReadReport>>,
         plan: Arc<ReadPlan>,
-        source_warnings: Arc<Mutex<Vec<Warning>>>,
+        source_warnings: SourceWarnings,
         settings: crate::Settings,
     ) -> Self {
         LayerReader {
@@ -55,7 +55,10 @@ impl LayerReader {
         let mut report = lock(&self.report).clone();
         let (decisions, axis_warnings) = self.plan.axis_report();
         report.axis_decisions = decisions;
-        let mut warnings: Vec<Warning> = lock(&self.source_warnings).clone();
+        // In source order: several sources may be split at once.
+        let mut by_source = lock(&self.source_warnings).clone();
+        by_source.sort_by_key(|(source, _)| *source);
+        let mut warnings: Vec<Warning> = by_source.into_iter().map(|(_, w)| w).collect();
         warnings.extend(axis_warnings);
         warnings.append(&mut report.warnings);
         for warning in warnings {

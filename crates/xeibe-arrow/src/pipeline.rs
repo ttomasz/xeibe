@@ -1,5 +1,6 @@
-//! Read pipeline: `threads` workers take chunks of one layer from the chunk
-//! stream, parse them and build batches; the consumer puts the batches back
+//! Read pipeline: `threads` workers take chunks of one layer from the
+//! sources (several split at once when one can't keep them busy), parse
+//! them and build batches; the consumer puts the batches back
 //! in chunk order (if asked) and combines the small batches that end chunks
 //! into `batch_size` ones. With `threads = 1` it all runs on the consumer's
 //! thread (`xeibe_core::parallel`).
@@ -10,13 +11,16 @@
 
 use std::collections::VecDeque;
 use std::io::Read;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use arrow_select::coalesce::BatchCoalescer;
 use xeibe_core::decode::DecodeAhead;
-use xeibe_core::parallel::{Helper, MapOptions, ParallelMap, panic_message};
+use xeibe_core::parallel::{
+    Helper, MapOptions, ParallelMap, Streams, max_open_streams, panic_message,
+};
 use xeibe_core::reader::{GmlReader, XmlEvent};
 use xeibe_core::{
     FeatureChunk, FeatureSplitter, Location, NamespaceContext, QName, SourceId, Sources, ns,
@@ -129,28 +133,33 @@ impl LayerSelector {
     }
 }
 
-/// Chunks of one layer over every source, one source after another, with
-/// sequence numbers that run on across sources.
+/// Warnings about the sources (skipped ones, members given by reference),
+/// with the source each is about, shared with the read report.
+pub type SourceWarnings = Arc<Mutex<Vec<(SourceId, Warning)>>>;
+
+/// The sources of a read, as streams of chunks of one layer, one per source
+/// ([`Streams`]), so that several sources can be split at once.
 ///
 /// Each source gets `SourceId(i)` in order and one axis context at index `i`.
 /// A source in which the splitter finds no feature collection or feature
 /// member (an ISO metadata member of a zip, say) is skipped with a warning;
-/// if every source is, the stream ends with [`xeibe_core::Error::NoFeatures`].
+/// if every source is, the read ends with [`xeibe_core::Error::NoFeatures`].
 pub struct ChunkStream {
     sources: Sources,
-    options: xeibe_core::SplitterOptions,
-    /// The source being split, and its name.
-    current: Option<(FeatureSplitter<Box<dyn Read + Send>>, String)>,
-    /// Sources split to the end, and the names of those skipped.
-    read_sources: usize,
-    skipped: Vec<String>,
+    shared: Arc<SourceShared>,
     next_source: u32,
-    next_seq: u64,
+}
+
+/// What the streams of a read share.
+struct SourceShared {
+    options: xeibe_core::SplitterOptions,
     contexts: SharedContexts,
-    warnings: Arc<Mutex<Vec<Warning>>>,
-    finished: bool,
-    /// Decoding ahead of the source being split.
+    warnings: SourceWarnings,
+    /// Decoding ahead of the sources being split.
     ahead: Arc<DecodeAhead>,
+    /// Sources split to the end, and those skipped.
+    read: AtomicUsize,
+    skipped: Mutex<Vec<(SourceId, String)>>,
 }
 
 impl ChunkStream {
@@ -161,119 +170,181 @@ impl ChunkStream {
     ) -> Self {
         ChunkStream {
             sources,
-            options,
-            current: None,
-            read_sources: 0,
-            skipped: Vec::new(),
+            shared: Arc::new(SourceShared {
+                options,
+                contexts,
+                warnings: Arc::default(),
+                ahead: Arc::default(),
+                read: AtomicUsize::new(0),
+                skipped: Mutex::new(Vec::new()),
+            }),
             next_source: 0,
-            next_seq: 0,
-            contexts,
-            warnings: Arc::new(Mutex::new(Vec::new())),
-            finished: false,
-            ahead: Arc::default(),
         }
     }
 
     /// What workers waiting for the stream can do meanwhile: decode the
-    /// current source ahead of the splitter.
+    /// sources being split ahead of their splitters.
     pub fn helper(&self) -> Helper {
-        let ahead = self.ahead.clone();
+        let ahead = self.shared.ahead.clone();
         Arc::new(move || ahead.help())
     }
 
     /// Warnings about skipped sources, shared with the read report.
-    pub fn warnings(&self) -> Arc<Mutex<Vec<Warning>>> {
-        self.warnings.clone()
+    pub fn warnings(&self) -> SourceWarnings {
+        self.shared.warnings.clone()
+    }
+}
+
+impl Streams for ChunkStream {
+    type Item = xeibe_core::Result<FeatureChunk>;
+    type Stream = SourceChunks;
+
+    fn next_stream(&mut self) -> Option<SourceChunks> {
+        let state = match self.sources.next()? {
+            Ok(source) => {
+                let id = SourceId(self.next_source);
+                self.next_source += 1;
+                Split::Unopened(source, id)
+            }
+            Err(error) => Split::Failed(error),
+        };
+        Some(SourceChunks {
+            shared: self.shared.clone(),
+            state,
+        })
     }
 
-    /// Open the next source; `Ok(false)` when there is none.
-    fn open_next(&mut self) -> xeibe_core::Result<bool> {
-        let Some(source) = self.sources.next() else {
-            return Ok(false);
-        };
-        let source = source?;
-        let id = SourceId(self.next_source);
-        self.next_source += 1;
-        let mut splitter =
-            FeatureSplitter::new(source.open_ahead(&self.ahead)?, id, self.options.clone());
+    fn ends_input(item: &Self::Item) -> bool {
+        item.is_err()
+    }
+
+    fn finish(&mut self) -> Option<Self::Item> {
+        let mut skipped = std::mem::take(&mut *lock(&self.shared.skipped));
+        if self.shared.read.load(Ordering::Relaxed) > 0 || skipped.is_empty() {
+            return None;
+        }
+        skipped.sort();
+        let names: Vec<String> = skipped.into_iter().map(|(_, name)| name).collect();
+        Some(Err(xeibe_core::Error::no_features_in(&names)))
+    }
+}
+
+/// The chunks of one source; opens it on the first `next`.
+pub struct SourceChunks {
+    shared: Arc<SourceShared>,
+    state: Split,
+}
+
+enum Split {
+    Unopened(xeibe_core::Source, SourceId),
+    /// With the source's name.
+    Splitting(Box<FeatureSplitter<Box<dyn Read + Send>>>, SourceId, String),
+    Failed(xeibe_core::Error),
+    Done,
+}
+
+impl SourceChunks {
+    /// Open the source and read its header; `Ok(None)` when it is skipped.
+    fn open(
+        &self,
+        source: &xeibe_core::Source,
+        id: SourceId,
+    ) -> xeibe_core::Result<Option<FeatureSplitter<Box<dyn Read + Send>>>> {
+        let mut splitter = FeatureSplitter::new(
+            source.open_ahead(&self.shared.ahead)?,
+            id,
+            self.shared.options.clone(),
+        );
         let context = match splitter.header() {
             Ok(header) => Some(xeibe_schema::scan::source_context(header)),
             Err(xeibe_core::Error::NoFeatures(_)) => None,
             Err(error) => return Err(error),
         };
         // One context per source id, also for a skipped source.
-        lock(&self.contexts).push(context.clone().unwrap_or_default());
-        match context {
-            Some(_) => self.current = Some((splitter, source.name())),
-            None => self.skip(source.name()),
+        {
+            let mut contexts = lock(&self.shared.contexts);
+            let index = id.0 as usize;
+            if contexts.len() <= index {
+                contexts.resize_with(index + 1, Default::default);
+            }
+            contexts[index] = context.clone().unwrap_or_default();
         }
-        Ok(true)
+        match context {
+            Some(_) => Ok(Some(splitter)),
+            None => {
+                self.note_skipped(id, source.name());
+                Ok(None)
+            }
+        }
     }
 
     /// A source without a feature collection or feature member.
-    fn skip(&mut self, name: String) {
-        lock(&self.warnings).push(Warning {
-            kind: WarningKind::SkippedSource,
-            location: None,
-            message: format!("skipped {name}: no feature collection or feature member"),
-        });
-        self.skipped.push(name);
+    fn note_skipped(&self, id: SourceId, name: String) {
+        lock(&self.shared.warnings).push((
+            id,
+            Warning {
+                kind: WarningKind::SkippedSource,
+                location: None,
+                message: format!("skipped {name}: no feature collection or feature member"),
+            },
+        ));
+        lock(&self.shared.skipped).push((id, name));
     }
 }
 
-impl Iterator for ChunkStream {
+impl Iterator for SourceChunks {
     type Item = xeibe_core::Result<FeatureChunk>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while !self.finished {
-            if let Some((splitter, _)) = &mut self.current {
-                match splitter.next() {
-                    Some(Ok(mut chunk)) => {
-                        chunk.seq = self.next_seq;
-                        self.next_seq += 1;
-                        return Some(Ok(chunk));
+        if !matches!(self.state, Split::Splitting(..)) {
+            match std::mem::replace(&mut self.state, Split::Done) {
+                Split::Unopened(source, id) => match self.open(&source, id) {
+                    Ok(Some(splitter)) => {
+                        self.state = Split::Splitting(Box::new(splitter), id, source.name());
                     }
-                    // Found at the end of the input: the root was read, but
-                    // nothing in it holds features.
-                    Some(Err(xeibe_core::Error::NoFeatures(_))) => {
-                        let (_, name) = self.current.take().expect("a current source");
-                        self.skip(name);
-                    }
-                    Some(Err(error)) => {
-                        self.finished = true;
-                        return Some(Err(error));
-                    }
-                    None => {
-                        self.read_sources += 1;
-                        let referenced = splitter.referenced_members();
-                        if referenced > 0 {
-                            lock(&self.warnings).push(Warning {
-                                kind: WarningKind::ReferencedMember,
-                                location: None,
-                                message: format!(
-                                    "{referenced} feature members given by reference (not read)"
-                                ),
-                            });
-                        }
-                        self.current = None;
-                    }
-                }
-            }
-            match self.open_next() {
-                Ok(true) => {}
-                Ok(false) => {
-                    self.finished = true;
-                    if self.read_sources == 0 && !self.skipped.is_empty() {
-                        return Some(Err(xeibe_core::Error::no_features_in(&self.skipped)));
-                    }
-                }
-                Err(error) => {
-                    self.finished = true;
-                    return Some(Err(error));
-                }
+                    Ok(None) => return None,
+                    Err(error) => return Some(Err(error)),
+                },
+                Split::Failed(error) => return Some(Err(error)),
+                Split::Splitting(..) | Split::Done => return None,
             }
         }
-        None
+        let Split::Splitting(splitter, id, name) = &mut self.state else {
+            return None;
+        };
+        let next = splitter.next();
+        if let Some(Ok(chunk)) = next {
+            return Some(Ok(chunk));
+        }
+        // The source has ended, or failed.
+        let (id, name, referenced) = (*id, std::mem::take(name), splitter.referenced_members());
+        self.state = Split::Done;
+        match next {
+            Some(Ok(_)) => unreachable!("returned above"),
+            // Found at the end of the input: the root was read, but nothing
+            // in it holds features.
+            Some(Err(xeibe_core::Error::NoFeatures(_))) => {
+                self.note_skipped(id, name);
+                None
+            }
+            Some(Err(error)) => Some(Err(error)),
+            None => {
+                self.shared.read.fetch_add(1, Ordering::Relaxed);
+                if referenced > 0 {
+                    lock(&self.shared.warnings).push((
+                        id,
+                        Warning {
+                            kind: WarningKind::ReferencedMember,
+                            location: None,
+                            message: format!(
+                                "{referenced} feature members given by reference (not read)"
+                            ),
+                        },
+                    ));
+                }
+                None
+            }
+        }
     }
 }
 
@@ -300,26 +371,27 @@ impl Pipeline {
 
     /// Start the workers. `chunks` already contains only this layer's features
     /// (splitter layer filter), starting with any buffered sample chunks.
-    /// `helper`: what a worker can do while another takes a chunk.
+    /// `helper`: what a worker can do while others split.
     pub fn start(
         self,
-        chunks: Box<dyn Iterator<Item = xeibe_core::Result<FeatureChunk>> + Send>,
-        helper: Option<Helper>,
+        chunks: impl Streams<Item = xeibe_core::Result<FeatureChunk>> + 'static,
+        helper: Helper,
     ) -> crate::Result<Batches> {
         let threads = self.options.threads.max(1);
         let options = MapOptions {
             threads,
             in_flight: self.options.queue_depth.max(1) + threads,
+            max_open: max_open_streams(threads),
             preserve_order: self.options.preserve_order,
             name: "xeibe-read".into(),
-            helper,
+            helper: Some(helper),
         };
         // Batches of at least half the size pass through uncopied.
         let batch_size = self.plan.batch_size;
         let coalescer = BatchCoalescer::new(self.plan.schema.clone(), batch_size)
             .with_biggest_coalesce_batch_size(Some(batch_size / 2));
         let pipeline = Arc::new(self);
-        let chunks = ParallelMap::new(options, chunks, move |chunk| {
+        let chunks = ParallelMap::streams(options, chunks, move |chunk| {
             pipeline.process_chunk(&chunk?)
         })
         .map_err(xeibe_core::Error::from)?;
