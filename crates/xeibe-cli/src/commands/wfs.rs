@@ -53,7 +53,9 @@ pub fn run(command: WfsCommand) -> super::Result {
             // `--layer` names the layer in the settings file when it differs
             // from the type name (another prefix, say).
             let layer = layer.unwrap_or_else(|| type_name.clone());
-            let (settings, schema) = super::convert::settings(&schema, &read, &output, &layer)?;
+            // In the order the server sends: the download sets the pace, so
+            // keeping it costs nothing, and `--sort-by` asks for it.
+            let (settings, schema) = super::convert::settings(&schema, &read, true, &layer)?;
             let sources = client.pages(&type_name, Box::new(progress))?;
             let mut reader = xeibe_arrow::read(sources, &type_name, schema, &settings.options)?;
             let primary = settings.options.geometry.primary.clone();

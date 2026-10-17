@@ -76,6 +76,11 @@ impl WfsClient {
     /// needs more features (up to `options.concurrency` pages ahead, kept in order).
     /// A page that fails after retries ends the sequence with an error.
     ///
+    /// Each page is a source of its own: read them with
+    /// `ReadOptions::preserve_order` to keep the order the server sends (as
+    /// `xeibe wfs convert` does). Pages come one request at a time, so the
+    /// download sets the pace either way.
+    ///
     /// Capabilities are fetched (once per client) before this returns, so an
     /// unknown type fails here; no page is requested until the first is pulled.
     pub fn pages(

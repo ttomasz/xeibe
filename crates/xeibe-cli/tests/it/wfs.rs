@@ -1,10 +1,13 @@
 //! `xeibe wfs layers|count|convert` against a scripted local HTTP server
 //! (`docs/wfs.md`). Never a real service.
 
+use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 
+use arrow_array::cast::AsArray;
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::file::reader::FileReader;
 
 use crate::support::*;
@@ -210,4 +213,44 @@ fn wfs_convert_of_an_unknown_type_fails() {
     assert!(!run.success);
     assert!(run.stderr.contains("app:Nothing"), "{}", run.stderr);
     assert!(!out.exists());
+}
+
+#[test]
+fn wfs_convert_writes_the_rows_in_the_order_the_server_sends() {
+    // Six pages, read on four threads.
+    let mut bodies = vec![capabilities()];
+    bodies.extend((0..6).map(|p| {
+        let ids: Vec<u32> = (p * 2 + 1..=(p * 2 + 2).min(11)).collect();
+        page(&ids, 11)
+    }));
+    let server = Server::start(bodies);
+    let dir = out_dir("wfs_order");
+    let out = dir.join("parcels.parquet");
+    xeibe_ok(&[
+        "wfs",
+        "convert",
+        &server.base,
+        "--type-name",
+        "app:Parcel",
+        "--page-size",
+        "2",
+        "--axis-order",
+        "xy",
+        "--threads",
+        "4",
+        "-o",
+        path_str(&out),
+    ]);
+    let ids: Vec<i64> = ParquetRecordBatchReaderBuilder::try_new(File::open(&out).unwrap())
+        .unwrap()
+        .build()
+        .unwrap()
+        .flat_map(|batch| {
+            let batch = batch.unwrap();
+            let column = batch.column_by_name("n").unwrap();
+            let column = column.as_primitive::<arrow_array::types::Int64Type>();
+            column.iter().map(|n| n.unwrap()).collect::<Vec<_>>()
+        })
+        .collect();
+    assert_eq!(ids, (1..=11).collect::<Vec<_>>());
 }

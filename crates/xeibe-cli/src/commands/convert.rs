@@ -16,11 +16,12 @@ use crate::args::{InputArgs, OutputArgs, OutputFormat, ReadArgs, SchemaArgs};
 pub fn run(
     input: InputArgs,
     layer: String,
+    preserve_order: bool,
     output: OutputArgs,
     schema: SchemaArgs,
     read: ReadArgs,
 ) -> super::Result {
-    let (settings, schema) = settings(&schema, &read, &output, &layer)?;
+    let (settings, schema) = settings(&schema, &read, preserve_order, &layer)?;
     let sources = super::sources(&input)?;
     let mut reader = xeibe_arrow::read(sources, &layer, schema, &settings.options)?;
     let rows = write(
@@ -36,17 +37,18 @@ pub fn run(
 
 /// The settings of a conversion (shared with `xeibe wfs convert`), and the
 /// layer's schema from the settings file, or `None` to sample it.
+/// `preserve_order`: keep the input order, whatever the settings file says.
 pub(crate) fn settings(
     schema: &SchemaArgs,
     read: &ReadArgs,
-    output: &OutputArgs,
+    preserve_order: bool,
     layer: &str,
 ) -> super::Result<(Settings, Option<SchemaRef>)> {
     let mut settings = super::settings(schema.settings.as_deref(), read)?;
     if let Some(features) = schema.sample_features {
         settings.options.sample.features_per_layer = features;
     }
-    if output.preserve_order {
+    if preserve_order {
         settings.options.preserve_order = true;
     }
     let schema = match settings.schema(layer) {

@@ -125,7 +125,9 @@ warns that pages may overlap or skip features without transactional consistency.
 
 - Send `SORTBY` on an identifier property. Today it is sent only when the user
   configures one (`WfsOptions::sort_by`, `--sort-by`); detecting one from the data
-  is still to do. Syntax:
+  is still to do. `xeibe wfs convert` writes the rows in the order the server
+  sends them (`ReadOptions::preserve_order`): pages are fetched one at a time,
+  so keeping the order costs nothing. Syntax:
   - 2.0: `SORTBY=prop [ASC|DESC],…` (Table 8);
   - 1.1: `SORTBY=prop [A|D],…` (04-094 Table for GetFeature KVP).
 - Always: check `gml:id` for duplicates across pages and **report** them. Each page

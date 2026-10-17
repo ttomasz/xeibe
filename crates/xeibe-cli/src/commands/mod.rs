@@ -31,10 +31,11 @@ pub fn run(cli: Cli) -> Result {
         Command::Gml(GmlCommand::Convert {
             input,
             layer,
+            preserve_order,
             output,
             schema,
             read,
-        }) => convert::run(input, layer, output, schema, read),
+        }) => convert::run(input, layer, preserve_order, output, schema, read),
         Command::Wfs(command) => wfs::run(command),
     }
 }

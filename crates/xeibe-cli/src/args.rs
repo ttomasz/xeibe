@@ -151,6 +151,18 @@ pub enum GmlCommand {
         /// `xeibe gml scan` lists the layers of an input.
         #[arg(long, value_name = "NAME", verbatim_doc_comment)]
         layer: String,
+        /// Write the rows in the order of the input
+        ///
+        /// Without it, rows are written in the order the threads finish them:
+        /// the same rows, but runs of rows (each a few MB of the input, in
+        /// order) from different parts of the input can be interleaved, and
+        /// several input files are read at once. Keeping the order costs
+        /// speed: the files are then read one after another, and runs finished
+        /// early wait in memory for the ones before them. With `--threads 1`
+        /// the order is always kept. A settings file can ask for it too:
+        /// `"preserve_order": true` in its `options`.
+        #[arg(long, help_heading = OUTPUT, verbatim_doc_comment)]
+        preserve_order: bool,
         #[command(flatten)]
         output: OutputArgs,
         #[command(flatten)]
@@ -194,7 +206,9 @@ pub enum WfsCommand {
     ///
     /// Requests the features page by page and converts them as they
     /// arrive. Without `--settings`, the columns and their types are
-    /// inferred from the first features (`--sample-features`).
+    /// inferred from the first features (`--sample-features`). Rows are
+    /// written in the order the server sends them (sorted with
+    /// `--sort-by`).
     ///
     /// Example:
     ///   xeibe wfs convert https://example.com/geoserver/wfs \
@@ -346,18 +360,6 @@ pub struct OutputArgs {
         verbatim_doc_comment
     )]
     pub row_group_size: NonZeroUsize,
-    /// Write the rows in the order of the input
-    ///
-    /// Without it, rows are written in the order the threads finish them:
-    /// the same rows, but runs of rows (each a few MB of the input, in
-    /// order) from different parts of the input can be interleaved, and
-    /// several input files are read at once. Keeping the order costs
-    /// speed: the files are then read one after another, and runs finished
-    /// early wait in memory for the ones before them. With `--threads 1`
-    /// the order is always kept. A settings file can ask for it too:
-    /// `"preserve_order": true` in its `options`.
-    #[arg(long, help_heading = OUTPUT, verbatim_doc_comment)]
-    pub preserve_order: bool,
 }
 
 /// Where a conversion's schema comes from.
