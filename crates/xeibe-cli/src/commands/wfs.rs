@@ -53,7 +53,7 @@ pub fn run(command: WfsCommand) -> super::Result {
             // `--layer` names the layer in the settings file when it differs
             // from the type name (another prefix, say).
             let layer = layer.unwrap_or_else(|| type_name.clone());
-            let (settings, schema) = super::convert::settings(&schema, &read, &layer)?;
+            let (settings, schema) = super::convert::settings(&schema, &read, &output, &layer)?;
             let sources = client.pages(&type_name, Box::new(progress))?;
             let mut reader = xeibe_arrow::read(sources, &type_name, schema, &settings.options)?;
             let primary = settings.options.geometry.primary.clone();

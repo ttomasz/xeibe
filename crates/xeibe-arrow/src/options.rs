@@ -36,7 +36,12 @@ pub struct ReadOptions {
     /// thread. Network inputs add their I/O threads (`docs/architecture.md`,
     /// "Parallel pipeline").
     pub threads: usize,
-    /// Restore source order of batches (off = faster).
+    /// Return the rows in input order. Off (the default), they come in the
+    /// order the workers finish their chunks: rows within a chunk keep their
+    /// order, but chunks interleave, and several sources are split at once.
+    /// On, sources are split one after another and finished chunks wait
+    /// for the ones before them: slower on multi-file input. With
+    /// `threads <= 1` the order is always kept.
     pub preserve_order: bool,
     /// Chunks a read may have in flight beyond `threads` (backpressure).
     pub queue_depth: usize,
@@ -53,7 +58,8 @@ pub struct ReadOptions {
 
 impl Default for ReadOptions {
     /// Default inference and sampling, stop at the first feature error,
-    /// 8192-row batches, one worker per core, source order kept.
+    /// 8192-row batches, one worker per core, rows in the order they are
+    /// finished.
     fn default() -> Self {
         ReadOptions {
             geometry: GeometryOptions::default(),
@@ -63,7 +69,7 @@ impl Default for ReadOptions {
             splitter: SplitterOptions::default(),
             batch_size: 8192,
             threads: xeibe_core::parallel::default_threads(),
-            preserve_order: true,
+            preserve_order: false,
             queue_depth: 8,
             projection: None,
             namespaces: IndexMap::new(),
@@ -75,8 +81,9 @@ impl ReadOptions {
     /// Set one option from a `key=value` pair, the form in which SQL table
     /// functions and data-source options pass them: `preset` (`default`,
     /// `strings`), `axis_order` (`xy`, `yx`, `crs`, `crs_heuristic`,
-    /// `gml_version`, `auto`), `crs`, `sample_features`, `batch_size` and
-    /// `threads`. `preset` replaces all inference options.
+    /// `gml_version`, `auto`), `crs`, `sample_features`, `batch_size`,
+    /// `threads` and `preserve_order` (`true`, `false`). `preset` replaces
+    /// all inference options.
     pub fn set(&mut self, key: &str, value: &str) -> crate::Result<()> {
         let invalid = || crate::Error::Option {
             key: key.to_string(),
@@ -110,6 +117,7 @@ impl ReadOptions {
             }
             "batch_size" => self.batch_size = value.parse().map_err(|_| invalid())?,
             "threads" => self.threads = value.parse().map_err(|_| invalid())?,
+            "preserve_order" => self.preserve_order = value.parse().map_err(|_| invalid())?,
             _ => {
                 return Err(crate::Error::Option {
                     key: key.to_string(),

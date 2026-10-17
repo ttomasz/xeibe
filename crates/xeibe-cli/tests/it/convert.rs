@@ -852,3 +852,57 @@ fn a_compound_crs_is_written_as_compound_projjson() {
         other => panic!("expected the GEOMETRY logical type, got {other:?}"),
     }
 }
+
+#[test]
+fn preserve_order_writes_the_rows_in_input_order() {
+    // Six zip members of 20 numbered parcels each: without the flag, the
+    // members are read side by side.
+    let members: Vec<(String, Vec<u8>)> = (0..6)
+        .map(|member| {
+            let features: String = (0..20)
+                .map(|i| {
+                    let n = member * 20 + i;
+                    format!(
+                        r#"<gml:featureMember><app:Parcel gml:id="p{n}"><app:n>{n}</app:n></app:Parcel></gml:featureMember>"#
+                    )
+                })
+                .collect();
+            let document = format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?><gml:FeatureCollection xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:app="http://example.com/app">{features}</gml:FeatureCollection>"#
+            );
+            (format!("m{member}.gml"), document.into_bytes())
+        })
+        .collect();
+    let members: Vec<(&str, Vec<u8>)> = members
+        .iter()
+        .map(|(name, bytes)| (name.as_str(), bytes.clone()))
+        .collect();
+    let dir = out_dir("preserve_order");
+    let archive = dir.join("parcels.zip");
+    zip_bytes(&archive, &members);
+    let out = dir.join("parcels.parquet");
+    xeibe_ok(&[
+        "gml",
+        "convert",
+        path_str(&archive),
+        "--layer",
+        "Parcel",
+        "-o",
+        path_str(&out),
+        "--threads",
+        "4",
+        "--preserve-order",
+    ]);
+    let numbers: Vec<i64> = ParquetRecordBatchReaderBuilder::try_new(File::open(&out).unwrap())
+        .unwrap()
+        .build()
+        .unwrap()
+        .flat_map(|batch| {
+            let batch = batch.unwrap();
+            let column = batch.column_by_name("n").unwrap();
+            let column = column.as_primitive::<arrow_array::types::Int64Type>();
+            column.iter().map(|n| n.unwrap()).collect::<Vec<_>>()
+        })
+        .collect();
+    assert_eq!(numbers, (0..120).collect::<Vec<_>>());
+}

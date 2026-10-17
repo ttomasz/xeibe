@@ -276,7 +276,7 @@ fn small_chunks_still_give_full_batches() {
 }
 
 #[test]
-fn rows_keep_their_source_order_by_default() {
+fn rows_keep_their_input_order_when_asked() {
     let features: Vec<String> = (0..20)
         .map(|i| parcel(&format!("p{i}"), &format!("<app:area>{i}</app:area>")))
         .collect();
@@ -284,6 +284,7 @@ fn rows_keep_their_source_order_by_default() {
     let options = ReadOptions {
         threads: 4,
         batch_size: 3,
+        preserve_order: true,
         splitter: xeibe_core::SplitterOptions {
             target_chunk_bytes: 1,
             ..xeibe_core::SplitterOptions::default()
@@ -293,7 +294,7 @@ fn rows_keep_their_source_order_by_default() {
     let read = read_with(&gml::gml32_collection(&refs), "Parcel", None, &options);
     let areas: Vec<i64> = read.i64s("area").into_iter().flatten().collect();
     assert_eq!(areas, (0..20).collect::<Vec<_>>());
-    assert!(ReadOptions::default().preserve_order);
+    assert!(!ReadOptions::default().preserve_order, "off by default");
 }
 
 /// A document whose reads record the threads they run on: the chunk stream

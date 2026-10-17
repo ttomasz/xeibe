@@ -20,7 +20,7 @@ pub fn run(
     schema: SchemaArgs,
     read: ReadArgs,
 ) -> super::Result {
-    let (settings, schema) = settings(&schema, &read, &layer)?;
+    let (settings, schema) = settings(&schema, &read, &output, &layer)?;
     let sources = super::sources(&input)?;
     let mut reader = xeibe_arrow::read(sources, &layer, schema, &settings.options)?;
     let rows = write(
@@ -39,11 +39,15 @@ pub fn run(
 pub(crate) fn settings(
     schema: &SchemaArgs,
     read: &ReadArgs,
+    output: &OutputArgs,
     layer: &str,
 ) -> super::Result<(Settings, Option<SchemaRef>)> {
     let mut settings = super::settings(schema.settings.as_deref(), read)?;
     if let Some(features) = schema.sample_features {
         settings.options.sample.features_per_layer = features;
+    }
+    if output.preserve_order {
+        settings.options.preserve_order = true;
     }
     let schema = match settings.schema(layer) {
         Ok(schema) => Some(schema),

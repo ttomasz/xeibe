@@ -346,6 +346,18 @@ pub struct OutputArgs {
         verbatim_doc_comment
     )]
     pub row_group_size: NonZeroUsize,
+    /// Write the rows in the order of the input
+    ///
+    /// Without it, rows are written in the order the threads finish them:
+    /// the same rows, but runs of rows (each a few MB of the input, in
+    /// order) from different parts of the input can be interleaved, and
+    /// several input files are read at once. Keeping the order costs
+    /// speed: the files are then read one after another, and runs finished
+    /// early wait in memory for the ones before them. With `--threads 1`
+    /// the order is always kept. A settings file can ask for it too:
+    /// `"preserve_order": true` in its `options`.
+    #[arg(long, help_heading = OUTPUT, verbatim_doc_comment)]
+    pub preserve_order: bool,
 }
 
 /// Where a conversion's schema comes from.
