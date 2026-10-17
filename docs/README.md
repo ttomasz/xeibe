@@ -45,6 +45,7 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 | [type-mapping.md](type-mapping.md) | How XML values and structures map to Arrow types; field metadata |
 | [geometry.md](geometry.md) | GML geometry → GeoArrow/WKB, curves, CRS and axis order |
 | [wfs.md](wfs.md) | WFS bulk-read client: paging, pages streamed into a read |
+| [reprojection.md](reprojection.md) | Pure-Rust reprojection from the EPSG data: levels, PROJ's operation selection, validation |
 | [web.md](web.md) | Browser page on WebAssembly: layout, map, inputs, library changes it needs (considering) |
 | [support-matrix.md](support-matrix.md) | Supported, planned and out-of-scope GML/WFS features (progress tracker) |
 | [testing.md](testing.md) | How the test suites are organized: synthetic tests, the samples, the GDAL reference |
@@ -54,7 +55,7 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 
 | Decision | Rationale |
 |---|---|
-| Separate crates: core / crs / geom / schema / arrow / io / wfs / integrations (DataFusion, CLI, Python) | Users who only need geometry don't pull in Arrow. Each part is testable on its own. |
+| Separate crates: core / crs / reproject / geom / schema / arrow / io / wfs / integrations (DataFusion, CLI, Python) | Users who only need geometry don't pull in Arrow. Each part is testable on its own. |
 | Standalone project with a thin DataFusion adapter, instead of developing inside SedonaDB | Faster iteration while the API is unstable. Also usable outside SedonaDB. Upstream an adapter later. |
 | `geo-traits` as the geometry interface | One GML geometry model can feed GeoArrow builders, WKB writers and `geo`. |
 | Schema inference = **observation** (path tree) + **policy** (`InferenceOptions`) | Different rules can be applied to one scan. Decisions can be explained. |

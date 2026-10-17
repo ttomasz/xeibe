@@ -605,7 +605,9 @@ fallback when no PROJJSON is available (a code EPSG doesn't have).
   `urn:ogc:def:crs:EPSG:9.2:4647`) are not mixed: srsNames are the same CRS when
   the parser resolves them to the same one. Unknown srsNames are compared as
   strings, trimmed and ignoring case (`LOCAL:Grid` and ` local:grid ` are one).
-  No reprojection is ever done.
+  A read doesn't reproject. Conversion between CRSs is being built in
+  `xeibe-reproject` ([reprojection.md](reprojection.md)) and is not wired
+  into reads yet.
 
 ### Open questions: srsName → CRS
 

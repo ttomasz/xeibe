@@ -1,0 +1,22 @@
+[package]
+name = "xeibe-reproject"
+description = "Pure-Rust coordinate conversion between CRSs, driven by the PROJJSON in xeibe-crs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+# Some of the projection code is ported from PROJ, which is MIT; see
+# PROJ-NOTICE.md. Everything else is CC0 like the rest of the workspace.
+license = "CC0-1.0 AND MIT"
+publish.workspace = true
+
+[dependencies]
+xeibe-crs.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+xeibe-testkit.workspace = true
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"

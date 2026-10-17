@@ -17,7 +17,7 @@ use those names.
 
 | Path | Contents | In git |
 |---|---|---|
-| `crates/xeibe-*` | Workspace crates: core, crs (generated EPSG tables), geom, schema, arrow, io, wfs, datafusion, cli (binary `xeibe`), py (Python module `xeibe`), testkit (test support only) | yes |
+| `crates/xeibe-*` | Workspace crates: core, crs (generated EPSG tables), reproject (CRS conversion), geom, schema, arrow, io, wfs, datafusion, cli (binary `xeibe`), py (Python module `xeibe`), testkit (test support only) | yes |
 | `docs/` | Design docs | yes |
 | `tests/data/` | Small curated samples, `samples.toml`, generated `samples.json`/`BOM.md`; see `tests/data/README.md` | yes |
 | `scripts/` | Tooling (see below) | yes |

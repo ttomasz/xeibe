@@ -52,9 +52,8 @@ interactively, then carried over to the CLI or Python unchanged.
 
 ## Map
 
-**The map needs lon/lat; xeibe never reprojects** ([geometry.md](geometry.md),
-support matrix: "Reprojection: not planned"). The page reprojects in JavaScript,
-for display only:
+**The map needs lon/lat, and reads don't reproject** ([geometry.md](geometry.md)).
+The page reprojects in JavaScript, for display only:
 
 - proj4js, given the CRS definition from `xeibe_crs::projjson(code)`. proj4js
   parses definitions with `wkt-parser`, which reads WKT1, WKT2 and PROJJSON.
@@ -63,6 +62,10 @@ for display only:
   relying on it.
 - A CRS that can't be reprojected (unknown, engineering, failed parse) falls back
   to a plain Cartesian view with no basemap.
+- Alternative, once it covers the CRSs that matter: `xeibe-reproject`
+  ([reprojection.md](reprojection.md)) in the wasm module, converting to the
+  CRS's own geographic base CRS. That is on the data's datum, not WGS 84, but
+  the difference (about a metre for ETRS89) doesn't show on a map.
 
 Two things the map shows that a table doesn't:
 

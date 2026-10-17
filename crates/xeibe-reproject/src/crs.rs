@@ -1,0 +1,543 @@
+//! A CRS read from PROJJSON, reduced to what conversion needs.
+//!
+//! Only the subset of PROJJSON that `xeibe-crs` produces from the EPSG dataset
+//! is read: geographic, geocentric and projected CRSs. Units can be given as a
+//! name (`"metre"`, `"degree"`, `"unity"`) or as an object with a
+//! `conversion_factor`, and values as a number or as `{value, unit}`.
+
+use std::f64::consts::PI;
+use std::sync::Arc;
+
+use serde_json::Value;
+
+use crate::ellipsoid::Ellipsoid;
+use crate::error::Error;
+use crate::methods::{self, Params, Projection};
+
+/// A coordinate reference system that conversions can start or end in.
+#[derive(Debug, Clone)]
+pub struct Crs {
+    pub(crate) name: String,
+    pub(crate) code: Option<u32>,
+    pub(crate) kind: Kind,
+    pub(crate) axes: Axes,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum Kind {
+    /// Longitude and latitude, plus ellipsoidal height in 3D.
+    Geographic { datum: Datum },
+    /// Earth-centred X, Y, Z.
+    Geocentric { datum: Datum },
+    /// A map projection of a geographic base CRS.
+    Projected {
+        datum: Datum,
+        projection: Arc<dyn Projection>,
+        method: String,
+    },
+}
+
+/// The datum a CRS is on. Two CRSs can be converted between without a datum
+/// transformation only when their datums are the same.
+#[derive(Debug, Clone)]
+pub(crate) struct Datum {
+    /// `EPSG:6258`, or the name when there is no id.
+    pub(crate) key: String,
+    pub(crate) name: String,
+    pub(crate) ellipsoid: Ellipsoid,
+    /// Prime meridian, radians east of Greenwich.
+    pub(crate) prime_meridian: f64,
+}
+
+/// How the CRS's axes relate to the internal order, and their units.
+///
+/// The internal order is (longitude, latitude, height) in radians and metres
+/// for geographic CRSs, (easting, northing, height) in metres for projected
+/// ones and (X, Y, Z) in metres for geocentric ones. Longitudes are counted
+/// from the datum's prime meridian.
+///
+/// Each horizontal axis is a direction in the (east, north) plane: ±east or
+/// ±north for most CRSs, and for the polar ones an axis along a meridian
+/// ("south along 45°E"), which is a rotation. The two horizontal axes form a
+/// 2 × 2 matrix, inverted once here.
+#[derive(Debug, Clone)]
+pub(crate) struct Axes {
+    pub(crate) axes: Vec<Axis>,
+    /// Internal (east, north) from the two horizontal values, in SI units
+    /// and in the order the axes come.
+    inverse: [[f64; 2]; 2],
+    /// The first axis's direction is `north`: xeibe-crs's `NorthOrLat`.
+    first_is_north: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Axis {
+    /// For a horizontal axis, the unit vector it points along in the
+    /// (east, north) plane; zero for the third axis.
+    along: [f64; 2],
+    /// For the third axis (height, Z), +1 or −1 (down); zero otherwise.
+    vertical: f64,
+    /// Size of the unit in radians or metres.
+    pub(crate) factor: f64,
+}
+
+impl Axes {
+    pub(crate) fn dimension(&self) -> usize {
+        self.axes.len()
+    }
+
+    /// Whether the first axis points north, so data in xeibe's east-first
+    /// order has its first two values swapped against this CRS. Matches
+    /// `xeibe_crs::FirstAxis::NorthOrLat`: a southing or westing first axis
+    /// is not swapped.
+    pub(crate) fn first_is_northing(&self) -> bool {
+        self.first_is_north
+    }
+
+    /// Size of the longitude (east or west) axis's unit, for a geographic CRS.
+    pub(crate) fn east_factor(&self) -> Option<f64> {
+        self.axes
+            .iter()
+            .find(|axis| axis.along[1] == 0.0 && axis.along[0] != 0.0)
+            .map(|axis| axis.factor)
+    }
+
+    /// Values in this CRS's axis order to the internal order, in SI units.
+    /// A 2D CRS passes the third value through.
+    pub(crate) fn to_internal(&self, values: [f64; 3]) -> [f64; 3] {
+        let mut horizontal = [0.0; 2];
+        let mut out = [0.0, 0.0, values[2]];
+        let mut h = 0;
+        for (axis, value) in self.axes.iter().zip(values) {
+            if axis.vertical != 0.0 {
+                out[2] = value * axis.factor * axis.vertical;
+            } else {
+                horizontal[h] = value * axis.factor;
+                h += 1;
+            }
+        }
+        let m = self.inverse;
+        out[0] = m[0][0] * horizontal[0] + m[0][1] * horizontal[1];
+        out[1] = m[1][0] * horizontal[0] + m[1][1] * horizontal[1];
+        out
+    }
+
+    /// The reverse of [`Axes::to_internal`].
+    pub(crate) fn to_crs(&self, v: [f64; 3]) -> [f64; 3] {
+        let mut out = [0.0, 0.0, v[2]];
+        for (i, axis) in self.axes.iter().enumerate() {
+            out[i] = if axis.vertical != 0.0 {
+                v[2] * axis.vertical / axis.factor
+            } else {
+                (axis.along[0] * v[0] + axis.along[1] * v[1]) / axis.factor
+            };
+        }
+        out
+    }
+}
+
+impl Crs {
+    /// The CRS with this EPSG code, from the PROJJSON in `xeibe-crs`.
+    pub fn from_epsg(code: u32) -> Result<Self, Error> {
+        let json = xeibe_crs::projjson(code).ok_or(Error::UnknownCode(code))?;
+        Self::from_projjson(json)
+    }
+
+    /// A CRS from a PROJJSON document.
+    pub fn from_projjson(json: &str) -> Result<Self, Error> {
+        let value: Value = serde_json::from_str(json).map_err(|e| Error::Projjson {
+            crs: "PROJJSON".into(),
+            message: e.to_string(),
+        })?;
+        Self::from_value(&value)
+    }
+
+    pub(crate) fn from_value(value: &Value) -> Result<Self, Error> {
+        let name = value["name"].as_str().unwrap_or("unnamed CRS").to_owned();
+        let code = epsg_id(value);
+        let label = match code {
+            Some(code) => format!("EPSG:{code} ({name})"),
+            None => name.clone(),
+        };
+        let ctx = Ctx { crs: &label };
+        let kind_name = value["type"].as_str().unwrap_or("");
+        let (kind, axes) = match kind_name {
+            "GeographicCRS" => {
+                let datum = ctx.datum(value)?;
+                let axes = ctx.axes(&value["coordinate_system"], CsKind::Ellipsoidal, None)?;
+                (Kind::Geographic { datum }, axes)
+            }
+            "GeodeticCRS" => {
+                let datum = ctx.datum(value)?;
+                let cs = &value["coordinate_system"];
+                match cs["subtype"].as_str() {
+                    Some("Cartesian") => {
+                        if datum.prime_meridian != 0.0 {
+                            return Err(ctx.unsupported(
+                                "a geocentric CRS with a prime meridian other than Greenwich",
+                            ));
+                        }
+                        let axes = ctx.axes(cs, CsKind::Geocentric, None)?;
+                        (Kind::Geocentric { datum }, axes)
+                    }
+                    Some("ellipsoidal") => {
+                        let axes = ctx.axes(cs, CsKind::Ellipsoidal, None)?;
+                        (Kind::Geographic { datum }, axes)
+                    }
+                    other => {
+                        return Err(ctx.unsupported(&format!(
+                            "a geodetic CRS with a {} coordinate system",
+                            other.unwrap_or("missing")
+                        )));
+                    }
+                }
+            }
+            "ProjectedCRS" => {
+                let base = &value["base_crs"];
+                let datum = ctx.datum(base)?;
+                let conversion = &value["conversion"];
+                let method = conversion["method"]["name"]
+                    .as_str()
+                    .unwrap_or("unnamed method")
+                    .to_owned();
+                let method_code = epsg_id(&conversion["method"]);
+                let params = ctx.params(conversion)?;
+                let projection = methods::build(method_code, &method, &params, &datum.ellipsoid)
+                    .map_err(|e| match e {
+                        methods::BuildError::UnknownMethod => {
+                            ctx.unsupported(&format!("the projection method {method}"))
+                        }
+                        methods::BuildError::MissingParameter(code) => {
+                            ctx.invalid(&format!("{method}: parameter EPSG:{code} is missing"))
+                        }
+                        methods::BuildError::Invalid(message) => {
+                            ctx.invalid(&format!("{method}: {message}"))
+                        }
+                    })?;
+                // EPSG's longitude-of-origin parameters, in the order methods use them.
+                let origin = [8833, 8802, 8822, 8812]
+                    .into_iter()
+                    .find_map(|code| params.get(code).ok());
+                let axes = ctx.axes(&value["coordinate_system"], CsKind::Projected, origin)?;
+                (
+                    Kind::Projected {
+                        datum,
+                        projection,
+                        method,
+                    },
+                    axes,
+                )
+            }
+            other => {
+                return Err(ctx.unsupported(&format!(
+                    "a CRS of type {}",
+                    if other.is_empty() { "unknown" } else { other }
+                )));
+            }
+        };
+        Ok(Crs {
+            name,
+            code,
+            kind,
+            axes,
+        })
+    }
+
+    /// EPSG's name for the CRS.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The EPSG code, when the PROJJSON has one.
+    pub fn code(&self) -> Option<u32> {
+        self.code
+    }
+
+    /// Number of axes, 2 or 3.
+    pub fn dimension(&self) -> usize {
+        self.axes.dimension()
+    }
+
+    /// EPSG's name for the projection method, for a projected CRS.
+    pub fn method(&self) -> Option<&str> {
+        match &self.kind {
+            Kind::Projected { method, .. } => Some(method),
+            _ => None,
+        }
+    }
+
+    /// A full turn in the unit of the longitude axis, for a geographic CRS.
+    pub(crate) fn longitude_turn(&self) -> Option<f64> {
+        match self.kind {
+            Kind::Geographic { .. } => self
+                .axes
+                .east_factor()
+                .map(|factor| std::f64::consts::TAU / factor),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn datum(&self) -> &Datum {
+        match &self.kind {
+            Kind::Geographic { datum } | Kind::Geocentric { datum } => datum,
+            Kind::Projected { datum, .. } => datum,
+        }
+    }
+
+    pub(crate) fn label(&self) -> String {
+        match self.code {
+            Some(code) => format!("EPSG:{code}"),
+            None => self.name.clone(),
+        }
+    }
+}
+
+fn epsg_id(value: &Value) -> Option<u32> {
+    let id = &value["id"];
+    if id["authority"].as_str() == Some("EPSG") {
+        id["code"]
+            .as_u64()
+            .and_then(|code| u32::try_from(code).ok())
+    } else {
+        None
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum CsKind {
+    Ellipsoidal,
+    Projected,
+    Geocentric,
+}
+
+#[derive(Clone, Copy)]
+enum UnitKind {
+    Angle,
+    Length,
+    Scale,
+}
+
+struct Ctx<'a> {
+    crs: &'a str,
+}
+
+impl Ctx<'_> {
+    fn invalid(&self, message: &str) -> Error {
+        Error::Projjson {
+            crs: self.crs.to_owned(),
+            message: message.to_owned(),
+        }
+    }
+
+    fn unsupported(&self, what: &str) -> Error {
+        Error::Unsupported {
+            crs: self.crs.to_owned(),
+            what: what.to_owned(),
+        }
+    }
+
+    fn datum(&self, crs: &Value) -> Result<Datum, Error> {
+        let datum = match (&crs["datum"], &crs["datum_ensemble"]) {
+            (Value::Object(_), _) => &crs["datum"],
+            (_, Value::Object(_)) => &crs["datum_ensemble"],
+            _ => return Err(self.invalid("no datum or datum ensemble")),
+        };
+        let name = datum["name"].as_str().unwrap_or("unnamed datum").to_owned();
+        let key = match epsg_id(datum) {
+            Some(code) => format!("EPSG:{code}"),
+            None => name.clone(),
+        };
+        let ellipsoid = self.ellipsoid(&datum["ellipsoid"])?;
+        // A datum ensemble carries no prime meridian; EPSG's are all Greenwich.
+        let prime_meridian = match &datum["prime_meridian"] {
+            Value::Null => 0.0,
+            pm => self.value(&pm["longitude"], UnitKind::Angle)?,
+        };
+        Ok(Datum {
+            key,
+            name,
+            ellipsoid,
+            prime_meridian,
+        })
+    }
+
+    fn ellipsoid(&self, value: &Value) -> Result<Ellipsoid, Error> {
+        if value.is_null() {
+            return Err(self.invalid("no ellipsoid"));
+        }
+        if !value["radius"].is_null() {
+            return Ok(Ellipsoid::sphere(
+                self.value(&value["radius"], UnitKind::Length)?,
+            ));
+        }
+        let a = self.value(&value["semi_major_axis"], UnitKind::Length)?;
+        if !value["inverse_flattening"].is_null() {
+            let rf = self.value(&value["inverse_flattening"], UnitKind::Scale)?;
+            Ok(Ellipsoid::from_inverse_flattening(a, rf))
+        } else if !value["semi_minor_axis"].is_null() {
+            let b = self.value(&value["semi_minor_axis"], UnitKind::Length)?;
+            Ok(Ellipsoid::from_semi_axes(a, b))
+        } else {
+            Err(self.invalid("the ellipsoid has neither a flattening nor a semi-minor axis"))
+        }
+    }
+
+    /// A number, or `{value, unit}`, in SI units (radians, metres).
+    fn value(&self, value: &Value, kind: UnitKind) -> Result<f64, Error> {
+        match value {
+            Value::Number(n) => {
+                let n = n.as_f64().unwrap_or(f64::NAN);
+                // A bare number takes PROJJSON's default unit for its kind.
+                Ok(match kind {
+                    UnitKind::Angle => n * PI / 180.0,
+                    UnitKind::Length | UnitKind::Scale => n,
+                })
+            }
+            Value::Object(_) => {
+                let n = value["value"]
+                    .as_f64()
+                    .ok_or_else(|| self.invalid("a value without a number"))?;
+                Ok(n * self.unit(&value["unit"], kind)?)
+            }
+            _ => Err(self.invalid("a missing number")),
+        }
+    }
+
+    /// Size of a unit in radians, metres or as a plain factor.
+    fn unit(&self, unit: &Value, kind: UnitKind) -> Result<f64, Error> {
+        match unit {
+            Value::String(name) => match name.as_str() {
+                "degree" => Ok(PI / 180.0),
+                "metre" | "unity" => Ok(1.0),
+                "radian" => Ok(1.0),
+                other => Err(self.unsupported(&format!("the unit {other}"))),
+            },
+            Value::Object(_) => unit["conversion_factor"]
+                .as_f64()
+                .ok_or_else(|| self.invalid("a unit without a conversion factor")),
+            // PROJJSON's default for the kind.
+            Value::Null => Ok(match kind {
+                UnitKind::Angle => PI / 180.0,
+                UnitKind::Length | UnitKind::Scale => 1.0,
+            }),
+            _ => Err(self.invalid("a malformed unit")),
+        }
+    }
+
+    fn params(&self, conversion: &Value) -> Result<Params, Error> {
+        let mut params = Params::default();
+        for param in conversion["parameters"].as_array().into_iter().flatten() {
+            let Some(code) = epsg_id(param) else {
+                let name = param["name"].as_str().unwrap_or("unnamed");
+                return Err(self.unsupported(&format!("the parameter {name} without an EPSG id")));
+            };
+            let raw = param["value"]
+                .as_f64()
+                .ok_or_else(|| self.invalid("a parameter without a number"))?;
+            let factor = self.unit(&param["unit"], UnitKind::Scale)?;
+            params.push(code, raw * factor);
+        }
+        Ok(params)
+    }
+
+    /// `origin` is the projection's longitude of origin, for axes given
+    /// along a meridian.
+    fn axes(&self, cs: &Value, kind: CsKind, origin: Option<f64>) -> Result<Axes, Error> {
+        let list = cs["axis"]
+            .as_array()
+            .ok_or_else(|| self.invalid("a coordinate system without axes"))?;
+        let mut axes = Vec::with_capacity(list.len());
+        for axis in list {
+            let direction = axis["direction"].as_str().unwrap_or("");
+            let meridian = &axis["meridian"];
+            let (along, vertical) = if !meridian.is_null() && kind == CsKind::Projected {
+                // Polar CRSs: an axis pointing along a meridian, away from
+                // the north pole ("south") or from the south pole ("north").
+                let m = self.value(&meridian["longitude"], UnitKind::Angle)?;
+                let d = m - origin.ok_or_else(|| {
+                    self.unsupported("an axis along a meridian without a longitude of origin")
+                })?;
+                match direction {
+                    "south" => ([d.sin(), -d.cos()], 0.0),
+                    "north" => ([d.sin(), d.cos()], 0.0),
+                    _ => {
+                        return Err(self.unsupported(&format!(
+                            "the axis direction {direction} along a meridian"
+                        )));
+                    }
+                }
+            } else {
+                match (kind, direction) {
+                    (CsKind::Geocentric, "geocentricX") => ([1.0, 0.0], 0.0),
+                    (CsKind::Geocentric, "geocentricY") => ([0.0, 1.0], 0.0),
+                    (CsKind::Geocentric, "geocentricZ") => ([0.0, 0.0], 1.0),
+                    (CsKind::Ellipsoidal | CsKind::Projected, "east") => ([1.0, 0.0], 0.0),
+                    (CsKind::Ellipsoidal | CsKind::Projected, "west") => ([-1.0, 0.0], 0.0),
+                    (CsKind::Ellipsoidal | CsKind::Projected, "north") => ([0.0, 1.0], 0.0),
+                    (CsKind::Ellipsoidal | CsKind::Projected, "south") => ([0.0, -1.0], 0.0),
+                    (CsKind::Ellipsoidal | CsKind::Projected, "up") => ([0.0, 0.0], 1.0),
+                    (CsKind::Ellipsoidal | CsKind::Projected, "down") => ([0.0, 0.0], -1.0),
+                    _ => {
+                        return Err(self.unsupported(&format!("the axis direction {direction}")));
+                    }
+                }
+            };
+            let unit_kind = if kind == CsKind::Ellipsoidal && vertical == 0.0 {
+                UnitKind::Angle
+            } else {
+                UnitKind::Length
+            };
+            let factor = self.unit(&axis["unit"], unit_kind)?;
+            axes.push(Axis {
+                along,
+                vertical,
+                factor,
+            });
+        }
+        let horizontal: Vec<[f64; 2]> = axes
+            .iter()
+            .filter(|axis| axis.vertical == 0.0)
+            .map(|axis| axis.along)
+            .collect();
+        let verticals = axes.len() - horizontal.len();
+        if horizontal.len() != 2 || verticals > 1 {
+            return Err(self.unsupported("a coordinate system without two horizontal axes"));
+        }
+        let [[a, b], [c, d]] = [horizontal[0], horizontal[1]];
+        let det = a * d - b * c;
+        if det.abs() < 1e-9 {
+            return Err(self.invalid("two axes in the same direction"));
+        }
+        // The matrix maps (east, north) to the two values; invert it.
+        let inverse = [[d / det, -b / det], [-c / det, a / det]];
+        let first_is_north = list
+            .first()
+            .is_some_and(|axis| axis["direction"].as_str() == Some("north"));
+        Ok(Axes {
+            axes,
+            inverse,
+            first_is_north,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `AxisOrder::EastFirst` must swap exactly the CRSs whose coordinates a
+    /// read writes swapped, i.e. those `xeibe-crs` marks `NorthOrLat`.
+    #[test]
+    fn east_first_swaps_what_xeibe_crs_marks_north_first() {
+        let mut checked = 0;
+        for record in xeibe_crs::CRS {
+            let Ok(crs) = Crs::from_epsg(record.code) else {
+                continue;
+            };
+            let north = record.first_axis == xeibe_crs::FirstAxis::NorthOrLat;
+            assert_eq!(crs.axes.first_is_northing(), north, "EPSG:{}", record.code);
+            checked += 1;
+        }
+        assert!(checked > 8000, "{checked}");
+    }
+}
