@@ -273,8 +273,8 @@ fn resolve(paths: &[String]) -> PyResult<Vec<Source>> {
 /// `read_options(settings=None, pairs=None) -> dict`: the read options of
 /// `settings` (as [`parse_options`] takes them; default options if `None`)
 /// with `key=value` pairs applied over them (`preset`, `axis_order`, `crs`,
-/// `sample_features`, `batch_size`, `threads`), as the `options` dict
-/// `scan()` and `read()` take.
+/// `sample_features`, `batch_size`, `threads`, `preserve_order`), as the
+/// `options` dict `scan()` and `read()` take.
 #[pyfunction]
 #[pyo3(signature = (settings = None, pairs = None))]
 fn read_options<'py>(

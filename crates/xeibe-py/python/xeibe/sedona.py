@@ -22,8 +22,9 @@ A table is one layer. Options (`options=` of `sd.read()`, or `with_options()`):
   (`{"lokalnyId": "text", "geom": {"type": "geometry", "path": "pozycja"}}`).
 - `settings`: a settings file (path, dict or JSON text): its read options,
   and the layer's schema if it has one.
-- `preset`, `axis_order`, `crs`, `sample_features`, `batch_size`, `threads`:
-  read options, as `key=value` pairs (`{"preset": "strings"}`).
+- `preset`, `axis_order`, `crs`, `sample_features`, `batch_size`, `threads`,
+  `preserve_order`: read options, as `key=value` pairs
+  (`{"preset": "strings"}`).
 
 Without a schema, each file's schema is sampled when the table is created,
 and SedonaDB merges them; files whose types differ make that merge fail.

@@ -21,8 +21,8 @@ use crate::table::{GmlTable, sample_schema};
 /// to table functions, so the path and the layer are positional and options
 /// are `'key=value'` strings: `settings`, `preset` (`default`, `strings`),
 /// `axis_order` (`xy`, `yx`, `crs`, `crs_heuristic`, `gml_version`, `auto`),
-/// `crs`, `sample_features`, `batch_size` and `threads` (see
-/// [`ReadOptions::set`]). A third argument without `=` is
+/// `crs`, `sample_features`, `batch_size`, `threads` and `preserve_order`
+/// (see [`ReadOptions::set`]). A third argument without `=` is
 /// the settings file. The path may also be an array of paths.
 #[derive(Debug, Default)]
 pub struct ReadGmlFunction;
