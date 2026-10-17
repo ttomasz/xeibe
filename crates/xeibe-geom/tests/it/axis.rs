@@ -196,7 +196,10 @@ fn overrides_are_keyed_by_the_srs_name_as_written() {
         !swap_for("urn:ogc:def:crs:EPSG::4326"),
         "matched on the srsName exactly as written, not on the CRS"
     );
-    assert!(!swap_for("epsg:4326"), "case matters: it is another spelling");
+    assert!(
+        !swap_for("epsg:4326"),
+        "case matters: it is another spelling"
+    );
 }
 
 #[test]

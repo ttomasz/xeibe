@@ -289,7 +289,9 @@ impl Parser<'_> {
             [Some(start), Some(end)] => (start, end),
             _ if circle => (0.0, 0.0),
             _ => {
-                return Err(self.invalid(reader, format!("{element} needs startAngle and endAngle")));
+                return Err(
+                    self.invalid(reader, format!("{element} needs startAngle and endAngle"))
+                );
             }
         };
 

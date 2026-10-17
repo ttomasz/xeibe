@@ -67,11 +67,11 @@ pub enum GmlCommand {
     ///
     /// Prints every layer (feature type) with its feature count, geometry
     /// columns, CRS and columns. With `--output/-o`, the result is also saved as
-    /// a settings file; `xeibe gml convert --settings` can use this file to get 
+    /// a settings file; `xeibe gml convert --settings` can use this file to get
     /// settings for conversion.
-    /// 
+    ///
     /// By default scan command reads the entire file(s). With `--sample` you can specify
-    /// max number of features to read. 
+    /// max number of features to read.
     ///
     /// Examples:
     ///   xeibe gml scan parcels.gml
@@ -461,7 +461,7 @@ pub struct ReadArgs {
     /// </gml:Point>
     /// ```
     /// where 10.0 would be longitude or x, and 20.0 would be latitude or y despite specifying EPSG:4326 CRS.
-    /// 
+    ///
     /// Value `auto` decides once per file, srsName and GML version, by the
     /// first of these that gives an answer:
     ///
