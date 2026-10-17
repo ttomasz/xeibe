@@ -251,3 +251,38 @@ pub fn projjson(code: u32) -> Option<&'static str> {
     };
     lines.get(line).map(String::as_str)
 }
+
+// -------------------------------------------------------------------------
+// Coordinate operations
+// -------------------------------------------------------------------------
+
+/// `scripts/gen_crs_tables.py` writes this: a magic, the raw length, then one
+/// zstd frame of JSON.
+static OPERATIONS_BLOB: &[u8] = include_bytes!("../data/operations.bin");
+
+/// EPSG's coordinate operations, as one JSON document, decompressed on first
+/// use (about 1.5 MB) and kept.
+///
+/// It holds what choosing and running a datum transformation needs, the way
+/// PROJ imports it from the same EPSG release (`docs/reprojection.md`,
+/// level 2): `operations` (transformations, concatenated operations and the
+/// conversions they use as steps, with parameters in SI units, areas of use,
+/// accuracy, deprecation and supersession), `geodetic_crs` (code, name, type,
+/// datum, deprecated), `datums` (code, name, publication date, ellipsoid,
+/// prime meridian, ensemble members, deprecated, dynamic, ensemble
+/// accuracy), `extents` (code, description, south, west, north, east) and
+/// `crs_extent` (each CRS's areas of use). `xeibe-reproject` reads it.
+pub fn operations_json() -> &'static str {
+    static JSON: OnceLock<String> = OnceLock::new();
+    JSON.get_or_init(|| {
+        assert_eq!(
+            &OPERATIONS_BLOB[..4],
+            b"XOP1",
+            "data/operations.bin is not an operations blob"
+        );
+        let raw_len = u32::from_le_bytes(OPERATIONS_BLOB[4..8].try_into().unwrap()) as usize;
+        let raw = zstd::bulk::decompress(&OPERATIONS_BLOB[8..], raw_len)
+            .expect("data/operations.bin is a valid zstd frame");
+        String::from_utf8(raw).expect("data/operations.bin is UTF-8")
+    })
+}

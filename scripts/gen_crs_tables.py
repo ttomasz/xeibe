@@ -21,6 +21,9 @@ Outputs (all committed):
     crates/xeibe-crs/src/table.rs      CRS facts, one `CrsRecord` per EPSG code
     crates/xeibe-crs/src/aliases.rs    EPSG's aliases that name one CRS, for srsName lookup
     crates/xeibe-crs/data/projjson.bin zstd-sharded PROJJSON, addressed by code
+    crates/xeibe-crs/data/operations.bin coordinate operations, geodetic CRSs, datums
+                                       and areas of use, as PROJ imports them (one
+                                       zstd frame of JSON)
     crates/xeibe-crs/EPSG-NOTICE.md    provenance and EPSG terms (regenerated)
 """
 
@@ -806,6 +809,324 @@ def emit_table(records: list[dict], version: str, date: str, counts: dict) -> st
 
 
 # --------------------------------------------------------------------------
+# Coordinate operations
+# --------------------------------------------------------------------------
+#
+# What `xeibe-reproject` needs to choose and run datum transformations
+# (`docs/reprojection.md`, level 2): EPSG's transformations and concatenated
+# operations, the geodetic CRSs and datums the choice pivots through, and the
+# areas of use. The choice follows PROJ, so the set of operations follows
+# PROJ's import of EPSG (`scripts/build_db.py` in PROJ 9.8.1): an operation PROJ
+# doesn't import doesn't exist for PROJ's choice, and mustn't for ours.
+
+# build_db.py `fill_helmert_transformation`.
+HELMERT_METHODS = {
+    1031, 1032, 1033, 1034, 1035, 1037, 1038, 1039, 1053, 1054, 1055, 1056, 1057, 1058,
+    1061, 1062, 1063, 1065, 1066, 1132, 1133, 1140, 1149, 9603, 9606, 9607, 9636,
+}  # fmt: skip
+# build_db.py `fill_other_transformation`.
+OTHER_METHODS = {9601, 9616, 9618, 9619, 9624, 9660, 1068, 1069, 1046, 1131, 1136, 9621, 9656, 1143}
+# build_db.py `fill_grid_transformation`: methods selected by name.
+GRID_METHOD_PREFIXES = ("Geographic3D to", "Geog3D to")
+GRID_METHOD_LIKE = (
+    re.compile(r"^Point motion .* grid"),
+    re.compile(r"^Vertical Offset .*rid"),
+    re.compile(r"^Geographic3D Offset .* velocity .*rid"),
+)
+GRID_METHOD_NAMES = {
+    "NADCON", "NADCON5 (2D)", "NADCON5 (3D)", "NTv1", "NTv2", "VERTCON",
+    "Geocentric translations (geog2D domain) by grid (IGN)",
+    "Geocentric translations using NEU velocity grid (gtg)",
+    "Geocen translations by grid (gtg) & Geocen translations NEU velocities (gtg)",
+    "New Zealand Deformation Model", "Cartesian Grid Offsets by TIN Interpolation (JSON)",
+    "Vertical Offset by TIN Interpolation (JSON)", "Geographic2D Offsets by TIN Interpolation (JSON)",
+    "Vertical change by geoid grid difference (NRCan)",
+}  # fmt: skip
+GRID_SKIPPED = {10929}  # SOPAC deformation model for California v1, skipped by build_db.py
+OPERATIONS_MAGIC = b"XOP1"
+
+
+def ensemble_accuracy(e: Epsg, code: int) -> float:
+    return float(e.one("select ensemble_accuracy from epsg_datumensemble where datum_ensemble_code=?", code)[0])
+
+
+def operation_table(row: sqlite3.Row) -> str | None:
+    """The proj.db table PROJ imports an operation into, or None if it doesn't."""
+    method, name, kind = row["coord_op_method_code"], row["coord_op_method_name"] or "", row["coord_op_type"]
+    if kind == "concatenated operation":
+        return "concatenated_operation"
+    if kind == "transformation" and method in HELMERT_METHODS:
+        return "helmert_transformation"
+    if kind in ("transformation", "point motion operation") and method not in (1131, 1136):
+        if (
+            name.startswith(GRID_METHOD_PREFIXES)
+            or any(p.search(name) for p in GRID_METHOD_LIKE)
+            or name in GRID_METHOD_NAMES
+        ):
+            return None if row["coord_op_code"] in GRID_SKIPPED else "grid_transformation"
+    if method in OTHER_METHODS:
+        if method in (1068, 1069) and row["source_crs_code"] is None and row["target_crs_code"] is None:
+            return None
+        return "other_transformation"
+    return None
+
+
+def publication_date(row: sqlite3.Row) -> str | None:
+    """A datum's publication date the way PROJ derives it (build_db.py
+    `compute_publication_date`): the frame reference epoch wins, then the
+    publication date, padded to a full date."""
+    epoch = row["frame_reference_epoch"]
+    if epoch is not None:
+        epoch = float(epoch)
+        year, frac = int(epoch), epoch - int(epoch)
+        if frac == 0:
+            return f"{year:04d}-01-01"
+        if abs(frac - 0.4) < 1e-6:
+            return f"{year:04d}-05-01"
+        if abs(frac - 0.5) < 1e-6:
+            return f"{year:04d}-07-01"
+        raise ValueError(f"datum {row['datum_code']}: unexpected epoch {epoch}")
+    date = row["publication_date"] or ""
+    if not date:
+        return None
+    if len(date) == 4:
+        return date + "-01-01"
+    if len(date) == 7:
+        return date + "-01"
+    if len(date) == 9:
+        m = re.match(r"([0-9]{4})-([0-9]{4})", date)
+        assert m, (row["datum_code"], date)
+        return m.group(1)
+    assert len(date) == 10, (row["datum_code"], date)
+    return date
+
+
+def operation_param(e: Epsg, row: sqlite3.Row) -> list:
+    """One parameter as `[code, value]` in SI units (radians, metres, plain
+    factors, seconds), or `[code, "file name"]` for a grid file."""
+    code = row["parameter_code"]
+    if row["param_value_file_ref"]:
+        return [code, row["param_value_file_ref"]]
+    value, uom = row["parameter_value"], row["uom_code"]
+    if value is None:
+        return [code, None]
+    if uom in SEXAGESIMAL:
+        value, uom = angle(value, uom)
+    factor = e.unit_factor(uom) if uom is not None else 1.0
+    if factor is None:
+        raise ValueError(f"parameter {code}: unit {uom} has no conversion factor")
+    return [code, value * factor]
+
+
+def export_operations(e: Epsg, version: str) -> dict:
+    """The coordinate-operation registry as one JSON document."""
+    # Each object's areas of use, one per usage. xeibe-reproject uses the area
+    # covering them all; PROJ takes only the first in its database's order.
+    usages: dict[int, list[int]] = defaultdict(list)
+    crs_usages: dict[int, list[int]] = defaultdict(list)
+    for row in e.all("select object_table_name, object_code, extent_code from epsg_usage order by usage_code"):
+        if row["object_table_name"] == "epsg_coordoperation":
+            usages[row["object_code"]].append(row["extent_code"])
+        elif row["object_table_name"] == "epsg_coordinatereferencesystem":
+            crs_usages[row["object_code"]].append(row["extent_code"])
+    # PROJ hard-codes WGS 84's domain as the world (factory.cpp).
+    crs_usages[4326] = [1262]
+
+    rows = e.all(
+        "select o.*, m.coord_op_method_name from epsg_coordoperation o "
+        "left join epsg_coordoperationmethod m using (coord_op_method_code) order by coord_op_code"
+    )
+    by_code = {r["coord_op_code"]: r for r in rows}
+    tables = {code: operation_table(r) for code, r in by_code.items()}
+
+    def params(code: int, method: int) -> list:
+        return [
+            operation_param(e, p)
+            for p in e.all(
+                "select v.*, u.sort_order from epsg_coordoperationparamvalue v "
+                "join epsg_coordoperationparamusage u "
+                "on u.coord_op_method_code = v.coord_op_method_code and u.parameter_code = v.parameter_code "
+                "where v.coord_op_code=? and v.coord_op_method_code=? order by u.sort_order",
+                code,
+                method,
+            )
+        ]
+
+    ops: dict[int, dict] = {}
+    for code, row in by_code.items():
+        table = tables[code]
+        if table is None or table == "concatenated_operation":
+            continue
+        p = params(code, row["coord_op_method_code"])
+        if table == "helmert_transformation" and row["deprecated"] and (not p or p[0][1] is None):
+            continue  # build_db.py: "non sense deprecated transforms (like EPSG:1076)"
+        ops[code] = operation_record(row, table, p, usages[code])
+
+    # Concatenated operations exist for PROJ only when every step does;
+    # conversions (e.g. 3D to 2D) count as steps too.
+    conversions: dict[int, dict] = {}
+    for code, row in by_code.items():
+        if tables[code] != "concatenated_operation":
+            continue
+        steps = [
+            r["single_operation_code"]
+            for r in e.all(
+                "select single_operation_code from epsg_coordoperationpath "
+                "where concat_operation_code=? order by op_path_step",
+                code,
+            )
+        ]
+        if not steps:
+            continue
+        ok = True
+        for step in steps:
+            if step in ops:
+                continue
+            step_row = by_code.get(step)
+            if step_row is not None and step_row["coord_op_type"] == "conversion":
+                if step not in conversions:
+                    conversions[step] = operation_record(
+                        step_row, "conversion", params(step, step_row["coord_op_method_code"]), usages[step]
+                    )
+                continue
+            ok = False
+            break
+        if ok:
+            record = operation_record(row, "concatenated_operation", [], usages[code])
+            record["steps"] = steps
+            ops[code] = record
+    ops.update(conversions)
+
+    # Supersession as build_db.py `fill_supersession` records it.
+    crs_names = {
+        r["coord_ref_sys_code"]: r["coord_ref_sys_name"]
+        for r in e.all("select coord_ref_sys_code, coord_ref_sys_name from epsg_coordinatereferencesystem")
+    }
+    for row in e.all(
+        "select object_code, superseded_by from epsg_supersession "
+        "where object_table_name='epsg_coordoperation' and object_code != superseded_by order by supersession_id"
+    ):
+        old, new = row["object_code"], row["superseded_by"]
+        if old not in ops or new not in ops:
+            continue
+        a, b = by_code[old], by_code[new]
+        if (
+            ops[old]["table"] == "grid_transformation"
+            and ops[new]["table"] == "grid_transformation"
+            and a["coord_op_name"].startswith("NAD27 to NAD83")
+        ):
+            continue
+        same = (a["source_crs_code"], a["target_crs_code"]) == (b["source_crs_code"], b["target_crs_code"])
+        if not same:
+            name = lambda c: crs_names.get(c) or ""  # noqa: E731
+            if a["source_crs_code"] == b["source_crs_code"] and name(a["target_crs_code"]).startswith(
+                "ETRS89"
+            ) and name(b["target_crs_code"]).startswith("ETRS89"):
+                same = True
+            elif a["target_crs_code"] == b["target_crs_code"] and name(a["source_crs_code"]).startswith(
+                "ETRS89"
+            ) and name(b["source_crs_code"]).startswith("ETRS89"):
+                same = True
+        ops[old].setdefault("superseded_by", []).append([new, same, ops[new]["table"]])
+
+    crs_extent = {code: sorted(set(codes)) for code, codes in crs_usages.items() if codes}
+    extents_used = sorted(
+        {x for op in ops.values() for x in op["extents"]} | {x for codes in crs_extent.values() for x in codes}
+    )
+    extents = []
+    for code in extents_used:
+        x = e.one("select * from epsg_extent where extent_code=?", code)
+        west, east = x["bbox_west_bound_lon"], x["bbox_east_bound_lon"]
+        # build_db.py `fill_extent` wraps longitudes beyond ±180.
+        if west is not None and west < -180:
+            west += 360
+        if east is not None and east > 180:
+            east -= 360
+        # The description is what PROJ reports as the area's name.
+        extents.append([code, x["extent_description"], x["bbox_south_bound_lat"], west, x["bbox_north_bound_lat"], east])
+
+    # Geodetic CRSs as build_db.py `fill_geodetic_crs` imports them.
+    geodetic = [
+        [r["coord_ref_sys_code"], r["coord_ref_sys_name"], r["coord_ref_sys_kind"], r["datum_code"], r["deprecated"]]
+        for r in e.all(
+            "select * from epsg_coordinatereferencesystem where coord_ref_sys_kind in "
+            "('geographic 2D', 'geographic 3D', 'geocentric') and datum_code is not null "
+            "and not (coord_ref_sys_code > 61000000 and deprecated) order by coord_ref_sys_code"
+        )
+    ]
+    datums = []
+    for r in e.all(
+        "select * from epsg_datum where datum_type in ('geodetic', 'dynamic geodetic', 'ensemble') order by datum_code"
+    ):
+        members = None
+        ellipsoid, pm = r["ellipsoid_code"], r["prime_meridian_code"]
+        if r["datum_type"] == "ensemble":
+            members = [
+                m["datum_code"]
+                for m in e.all(
+                    "select datum_code from epsg_datumensemblemember where datum_ensemble_code=? order by datum_sequence",
+                    r["datum_code"],
+                )
+            ]
+            first = e.one("select * from epsg_datum where datum_code=?", members[0]) if members else None
+            if first is None or first["datum_type"] not in ("geodetic", "dynamic geodetic"):
+                continue  # a vertical ensemble
+            ellipsoid, pm = first["ellipsoid_code"], first["prime_meridian_code"]
+        datums.append(
+            [
+                r["datum_code"],
+                r["datum_name"],
+                None if members is not None else publication_date(r),
+                ellipsoid,
+                pm,
+                members,
+                r["deprecated"],
+                # PROJ makes a datum with a frame reference epoch dynamic.
+                r["frame_reference_epoch"] is not None,
+                # An ensemble's accuracy: how far apart its members may be.
+                ensemble_accuracy(e, r["datum_code"]) if members is not None else None,
+            ]
+        )
+    return {
+        "epsg_version": version,
+        "geodetic_crs": geodetic,
+        "datums": datums,
+        "extents": extents,
+        "crs_extent": [[code, crs_extent[code]] for code in sorted(crs_extent)],
+        "operations": [ops[c] for c in sorted(ops)],
+    }
+
+
+def operation_record(row: sqlite3.Row, table: str, params: list, extents: list[int]) -> dict:
+    record = {
+        "code": row["coord_op_code"],
+        "name": row["coord_op_name"],
+        "table": table,
+        "method": row["coord_op_method_code"],
+        "src": row["source_crs_code"],
+        "dst": row["target_crs_code"],
+        "accuracy": row["coord_op_accuracy"],
+        "deprecated": bool(row["deprecated"]),
+        "extents": extents,
+    }
+    if row["coord_op_variant"]:
+        # EPSG numbers the operations between two CRSs in order of addition.
+        record["variant"] = row["coord_op_variant"]
+    if params:
+        record["params"] = params
+    if "Replaced by" in (row["remarks"] or ""):
+        record["replaced"] = True
+    return record
+
+
+def pack_operations(doc: dict) -> bytes:
+    """One zstd frame of the registry's JSON, after a magic and its raw length."""
+    raw = json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode()
+    frame = zstd.ZstdCompressor(level=19).compress(raw)
+    return OPERATIONS_MAGIC + struct.pack("<I", len(raw)) + frame
+
+
+# --------------------------------------------------------------------------
 # Aliases
 # --------------------------------------------------------------------------
 #
@@ -1132,6 +1453,9 @@ def main() -> None:
 
         blob = pack_projjson(docs)
         (out / "data" / "projjson.bin").write_bytes(blob)
+        operations = export_operations(e, version)
+        ops_blob = pack_operations(operations)
+        (out / "data" / "operations.bin").write_bytes(ops_blob)
         table = emit_table(records, version, date, {"projjson": len(docs)})
         (out / "src" / "table.rs").write_text(table)
         aliases, dropped = crs_aliases(e, records)
@@ -1140,6 +1464,10 @@ def main() -> None:
 
         print(f"wrote {out / 'src' / 'table.rs'}  ({len(table) / 1024:.0f} KiB)")
         print(f"wrote {out / 'data' / 'projjson.bin'}  ({len(blob) / 1024:.0f} KiB)")
+        print(
+            f"wrote {out / 'data' / 'operations.bin'}  ({len(ops_blob) / 1024:.0f} KiB, "
+            f"{len(operations['operations'])} operations)"
+        )
         print(f"wrote {out / 'src' / 'aliases.rs'}  ({len(aliases)} aliases)")
         for reason, n in sorted(dropped.items()):
             print(f"  left out {n}: {reason}")

@@ -52,12 +52,15 @@ impl Transform {
         let (mut north_pole_in_bounds, mut south_pole_in_bounds) = (false, false);
         if degree_output {
             let quarter = turn_out / 4.0;
-            let inverse = self.inverse();
+            let inverse = self.inverse().ok();
             let contains = |lat: f64| {
                 let (px, py) = if output_lon_lat_order {
                     (0.0, lat)
                 } else {
                     (lat, 0.0)
+                };
+                let Some(inverse) = &inverse else {
+                    return false;
                 };
                 match inverse.convert(px, py, None) {
                     Ok((x, y, _)) => xmin < x && x < xmax && ymax > y && y > ymin,

@@ -43,6 +43,7 @@ pub(crate) enum Kind {
 pub(crate) struct Datum {
     /// `EPSG:6258`, or the name when there is no id.
     pub(crate) key: String,
+    #[allow(dead_code)] // in error messages of level 1, kept for diagnostics
     pub(crate) name: String,
     pub(crate) ellipsoid: Ellipsoid,
     /// Prime meridian, radians east of Greenwich.
@@ -92,6 +93,19 @@ impl Axes {
     /// is not swapped.
     pub(crate) fn first_is_northing(&self) -> bool {
         self.first_is_north
+    }
+
+    /// The same axes with an ellipsoidal height in metres added, for a 2D CRS.
+    pub(crate) fn with_height(&self) -> Axes {
+        let mut axes = self.clone();
+        if axes.axes.len() == 2 {
+            axes.axes.push(Axis {
+                along: [0.0, 0.0],
+                vertical: 1.0,
+                factor: 1.0,
+            });
+        }
+        axes
     }
 
     /// Size of the longitude (east or west) axis's unit, for a geographic CRS.
@@ -264,6 +278,15 @@ impl Crs {
             Kind::Projected { method, .. } => Some(method),
             _ => None,
         }
+    }
+
+    /// PROJ's synthetic 3D twin of a geographic 2D CRS: the same CRS with an
+    /// ellipsoidal height, and no EPSG code of its own.
+    pub(crate) fn promoted_to_3d(&self) -> Crs {
+        let mut crs = self.clone();
+        crs.axes = self.axes.with_height();
+        crs.code = None;
+        crs
     }
 
     /// A full turn in the unit of the longitude axis, for a geographic CRS.

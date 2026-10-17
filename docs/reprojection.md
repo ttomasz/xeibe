@@ -1,6 +1,6 @@
 # Reprojection
 
-> **Status: adopted 2026-10-17. Level 1 is implemented** in `crates/xeibe-reproject`.
+> **Status: adopted 2026-10-17. Levels 1 and 2 are implemented** in `crates/xeibe-reproject`.
 > Reads don't reproject yet, so [geometry.md](geometry.md#crs-metadata)'s "no
 > reprojection" still describes what a read does. The numbers below come from
 > EPSG 13.103/13.106, PROJ 9.8.1 and pyproj 3.8.0.
@@ -51,8 +51,12 @@ This level covers data that stays on its datum, e.g. ETRS89 geographic
 Not everything that looks like one family is one datum, though:
 
 - ETRS89 ↔ WGS 84 is a (null) transformation in EPSG, so level 2.
-- PL-2000 (EPSG:2176–2179) is on ETRF2000-PL since EPSG 12, not on the ETRS89
-  ensemble, so PL-1992 ↔ PL-2000 is level 2 as well.
+- PL-2000 (EPSG:2176–2179) is on ETRF2000-PL since EPSG 12, a member of the
+  ETRS89 ensemble rather than the ensemble itself, so PL-1992 ↔ PL-2000 is
+  level 2 as well. EPSG has no direct operation; xeibe passes coordinates
+  unchanged between the member and its ensemble, good to the ensemble's
+  0.1 m. PROJ goes through WGS 84 with two null transformations (stated 2 m),
+  which gives the same coordinates.
 
 ### API
 
@@ -61,9 +65,11 @@ Not everything that looks like one family is one datum, though:
 `convert_xy`, `convert_xyz` or `convert_interleaved` on GeoArrow-shaped buffers,
 in place. `AxisOrder::EastFirst` is the order xeibe writes (first two values
 swapped for a northing-first CRS); `Authority` is the CRS's own. Two CRSs on
-different datums are an error (`DatumMismatch`). A coordinate that can't be
-converted is an error naming its index; NaN (GeoArrow's empty point) passes
-through.
+different datums go through level 2; when no transformation applies, the error
+is `NoTransformation`. `operations()` lists the candidates and
+`operation_for(x, y, z)` names the one a coordinate goes through. A coordinate
+that can't be converted is an error naming its index; NaN (GeoArrow's empty
+point) passes through.
 `convert_bounds` converts a bounding box as PROJ's `proj_trans_bounds` does,
 by densifying its edges (21 points per edge by default), and handles boxes
 across the antimeridian and around a pole.
@@ -143,16 +149,31 @@ Methods PROJ can't convert from EPSG's definition have no vectors:
 
 ## Level 2: datum shifts with automatic selection
 
+**Implemented** (2026-10-17): `Transform::new` between CRSs on different datums
+chooses the transformation per coordinate as PROJ does, among EPSG's operations;
+`Transform::via(src, dst, code)` forces one operation instead.
+
 ### Scope
 
-- Extend `gen_crs_tables.py` to export EPSG's `coordoperation*` tables:
-  transformations, concatenated operations and their parameters.
-- Implement the Helmert-family methods: Geocentric translations, Position Vector,
-  Coordinate Frame, Molodensky-Badekas. Together they cover about 1,300 of the
-  2,776 transformations.
-- Choose the operation automatically by porting PROJ's selection rules (next
-  section). `--via EPSG:nnnn` stays available as an optional override.
-- Write the EPSG code of the operation used into the output metadata.
+- `scripts/gen_crs_tables.py` exports EPSG's operations into
+  `crates/xeibe-crs/data/operations.bin` (`xeibe_crs::operations_json`), the way
+  PROJ's `build_db.py` imports them: only the operations PROJ imports, its
+  supersession rules, concatenated operations only when every step exists,
+  parameters in SI units. Alongside: geodetic CRSs, datums (publication dates as
+  PROJ derives them, ensembles with their accuracy, dynamic flag), areas of use with
+  PROJ's names (the extent description) and each CRS's first area of use, in
+  PROJ's domain order.
+- Methods (`src/operation/`): the Helmert family in its geocentric, geog2D and
+  geog3D domains (geocentric translations, Position Vector, Coordinate Frame,
+  Molodensky-Badekas, full-matrix Coordinate Frame, time-dependent ones at their
+  reference epoch), longitude rotation, geographic offsets, and the plane
+  similarity, affine and grid-offset transformations between projected CRSs.
+- Selection (`src/select/`): a port of PROJ's search, filter, sort and per-point
+  choice; see [Implementation](#implementation).
+- Not in level 2: grid-based operations (level 3), vertical and compound CRSs,
+  and operations needing a coordinate epoch beyond their reference one.
+- Reads don't reproject yet, so the operation used is not yet written into
+  output metadata.
 
 ### Why selection is the hard part
 
@@ -181,7 +202,7 @@ longer than three hops. The difficulty is choosing among valid candidates.
 
 ### PROJ's selection rules
 
-Read from PROJ 9.8.1:
+Read from PROJ 9.8.1 (the port follows all of it, see [Implementation](#implementation)):
 [`coordinateoperationfactory.cpp`](https://github.com/OSGeo/PROJ/blob/9.8.1/src/iso19111/operation/coordinateoperationfactory.cpp)
 (`SortFunction`, about line 900) and
 [`trans.cpp`](https://github.com/OSGeo/PROJ/blob/9.8.1/src/trans.cpp)
@@ -195,7 +216,7 @@ flowchart LR
 ```
 
 **1. Filters, before ranking:**
-- the method is implemented
+- the operation can be run (PROJ: exported to a pipeline)
 - not deprecated
 - not superseded (`discardSuperseded` is on by default)
 - the area of use matches the area of interest
@@ -225,37 +246,150 @@ the comparisons is extremely important". The criteria, in order:
 Coverage of the data comes **before** accuracy.
 
 **3. Per point**, at transform time. Among the ranked candidates, PROJ takes the
-one whose area of use contains the point and has the best accuracy. On a tie it
-takes the smaller area. Areas named "offshore" are skipped in favour of onshore
-ones, and there are exceptions for unknown area names and "priority" operations.
+one whose area of use (converted into the source CRS) contains the point and has
+the best accuracy. On a tie it takes the smaller area. Areas named "offshore" are
+skipped in favour of onshore ones, and there are exceptions for unknown area
+names and "priority" operations. If the chosen one fails, it tries up to two
+more; if none contains the point, the first candidate is used anyway.
 
 These are about 20 explicit, deterministic rules, not 2, and their output is a
 discrete operation code. That makes them practical to port and to test
 exhaustively.
 
+### Implementation
+
+The port follows PROJ 9.8.1's code paths, with the registry in place of
+`proj.db`:
+
+| PROJ | xeibe |
+|---|---|
+| `createOperations`, `createOperationsFromDatabase`, `findOpsInRegistryDirect`, `findsOpsInRegistryWithIntermediate`, `createOperationsWithDatumPivot`, `createOperationsDerivedTo`, `createOperationsGeodToGeod`, `hasTooSmallAreas` | `select/search.rs` |
+| `factory.cpp`: `createFromCoordinateReferenceSystemCodes`, `createFromCRSCodesWithIntermediates`, `createBetweenGeodeticCRSWithDatumBasedIntermediates` | `select/search.rs` |
+| `FilterResults`, `SortFunction` | `select/filter.rs` |
+| `ConcatenatedOperation::createComputeMetadata`, `getAccuracy`, `getExtent`, naming of inverses and concatenations | `select/candidate.rs` |
+| `GeographicBoundingBox`, `Extent` | `extent.rs` |
+| `isSameGeodeticDatum` (replaced: EPSG codes and ensemble membership, see the deviations) | `datum.rs` |
+| `crs_to_crs.cpp` (alternatives, areas in source CRS), `trans.cpp` (per-point choice, retries, fallback) | `select/mod.rs` |
+
+Details that turned out to matter, each found by the differential:
+
+- **Candidates carry PROJ's names** (`Inverse of …`, concatenations joined
+  with ` + `, synthetic `Null geographic offset from …`). They no longer take
+  part in the ranking (see the deviations), but the test matches operations
+  to PROJ's by name.
+- **PROJ's pipeline optimiser.** Between consecutive geog2D-domain operations
+  the transformed height carries over (PROJ drops the `pop`/`push` pair), and a
+  Helmert followed by its own inverse cancels exactly. Run step by step, both
+  leave millimetres.
+- **What PROJ can run.** Time-specific Helmert methods (1065, 1066) have no
+  PROJ pipeline and never compete; time-dependent ones run at their reference
+  epoch when coordinates have no epoch, as in PROJ.
+
 ### Deviations from PROJ (documented, deliberate)
 
-- **No ballpark fallback.** If only ballpark operations remain, the transform
-  fails with an error that lists the candidates.
-- **Grid availability is "exists on the CDN", not "installed locally".** The
-  choice then doesn't depend on the machine, and a failed fetch is an error.
-  PROJ instead silently picks a worse operation (see level 3).
-- **Final tiebreak by EPSG code**, not by name length.
-- **EPSG operations only.** `proj.db` adds 144 PROJ-authority operations plus
-  ESRI, IGNF, NKG and NRCAN ones that we don't have.
+- **The last tie-breaks use EPSG's data, not names.** When candidates tie on
+  area, accuracy, number of operations and pipeline steps, PROJ takes the
+  shorter name, then the reverse alphabetical order, and prefers
+  "NTF (Paris) to NTF (1)" over "(2)" by name. xeibe takes, in order:
+  1. fewer operations run against their published direction;
+  2. a longitude rotation that agrees with its CRSs' prime meridians. NTF is
+     the only case in EPSG: "(1)" uses IGN's Paris meridian, the one EPSG
+     defines it with, "(2)" the Royal Geographic Society's, 1.6 m away, and
+     EPSG notes "OGP prefers value from IGN Paris";
+  3. the newer EPSG variant (EPSG numbers the operations between two CRSs in
+     the order it adds them; codes don't always follow);
+  4. the EPSG codes, so the order is total.
+
+  Measured on 2026-10-18, 38 of 21,132 points in 4 pairs differ from PROJ.
+  In each, EPSG's remarks side with xeibe's choice or call the two
+  equivalent: "MGI 1901 to ETRS89-SVN [D96] (12)" replaces "(1)" (0.25 m);
+  for Bogota 1975 to MAGNA-SIRGAS "OGP recommends" the Molodensky-Badekas
+  version PROJ passes over (2 mm); two LUREF methods are declared equivalent
+  (1 mm); one Slovak route gives the same coordinates. Against all of EPSG's
+  remarks that state a preference between two grid-free operations (153
+  testable cases, 9 points each), PROJ's order picks the operation EPSG calls
+  worse at 121 points, xeibe's at 58, never where PROJ's picks the better
+  one. The remaining 58 are offshore operations that PROJ's per-point rule
+  (kept) doesn't let displace onshore ones.
+
+- **An object's area of use covers all its usages.** EPSG can give a CRS or
+  an operation several areas of use. PROJ takes the first in `proj.db`'s
+  order ("large scale" scopes first, then row order, which is the order of
+  EPSG's data script), so "WGS 72BE to WGS 84 (1)" counts as World rather
+  than "Vietnam - offshore" only by that order. xeibe takes the area that
+  contains the others, else their bounding box: 8 operations and 17 CRSs
+  have several areas, and the results don't change (the selection vectors
+  include every such CRS). PROJ also lists the CRSs on a datum by code
+  compared as text; xeibe sorts them numerically, with no change either.
+
+- **Datums are compared by EPSG code, and an ensemble stands in for its
+  members.** PROJ compares datum names through EPSG's aliases and its own (old
+  EPSG names, short names), so EUREF-FIN, once named "European Terrestrial
+  Reference System 1989", is ETRS89 to it. xeibe instead adds a candidate
+  between a datum ensemble and each of its members: coordinates pass
+  unchanged, with the ensemble's accuracy (0.1 m for ETRS89, 2 m for WGS 84),
+  competing with whatever EPSG publishes. Measured against PROJ (2026-10-18),
+  612 points in 51 pairs go through it:
+  - 46 pairs give the same coordinates, because PROJ reaches the identity
+    another way (two null transformations through WGS 84, its own null
+    offset, or a Helmert and its inverse that cancel);
+  - 5 pairs differ, where EPSG has no direct operation and PROJ goes to an
+    older national datum and back with two separately fitted Helmerts:
+    SWEREF 99 via RT90 (up to 0.62 m), D96 via MGI 1901 (0.81 m), STRS00
+    (0.03 m), BH_ETRS89 (2.0 m) and KOSOVAREF01 (2.2 km);
+  - 22 pairs (WGS 84 and ETRF realizations, a few national ETRS89 ones)
+    transform in xeibe only, where PROJ, ballparks disallowed, has nothing.
+- **Routes through a national realization compete with direct operations.**
+  EPSG has replaced many operations to ETRS89 with ones to a country's
+  realization of it ("RT90 to ETRS89-SWE [SWEREF 99] (1)", 0.1 m, replaces
+  "RT90 to ETRS89 (1)", 0.5 m). When one side is on a datum ensemble, xeibe
+  also tries an EPSG operation to a CRS on one of its members followed by the
+  member identity; PROJ looks for routes through other CRSs only when no
+  direct operation exists. Measured on 2026-10-18, 62 points in 7 pairs take
+  such a route, each with a better stated accuracy: RT90 0.5 → 0.2 m (moving
+  up to 0.30 m), KKJ 1.5 → 0.6 m (0.07 m), GGRS87 2.0 → 1.1 m (1.08 m),
+  MGI 1901 1.0 → 0.4 m (0.18 m), and Pulkovo 1942(83) in Bulgaria, where PROJ
+  falls back to an East German operation outside its area and xeibe uses the
+  Bulgarian one (1.03 m). The two directions now agree: ETRS89 → RT90 already
+  went through SWEREF 99. The search takes about 8% longer.
+
+- **No ballpark fallback.** When no EPSG operation applies, `Transform::new`
+  fails with `NoTransformation`; PROJ would offer a "ballpark" approximation.
+- **Grid-based operations are unavailable** at this level: they are left out
+  as PROJ leaves them out when their grids are missing (`ONLY_BEST=NO`). With
+  level 3, availability becomes "exists on the CDN" (see there).
+- **EPSG operations only.** `proj.db` adds PROJ-authority operations (between
+  ensembles and their members, among others) plus ESRI, IGNF, NKG and NRCAN
+  ones that xeibe doesn't have.
+- **The inverse transform chooses again** for the opposite direction, rather
+  than inverting the chosen list.
 
 ### Validation
 
-1. **Selection differential, the main test.**
-   - For every pair of geographic CRSs with candidates (direct or through a
-     pivot), sample points inside each candidate's area of use.
-   - Compare the operation code xeibe picks with PROJ's pick, using pyproj with
-     `authority="EPSG"` and the network on.
-   - Every mismatch is either a bug or an entry in the deviations list above.
-2. **Coordinate differential with the operation fixed.** Force PROJ onto the same
-   operation, which separates the math from the selection.
-3. **GN 7-2 examples** for each Helmert method, plus explicit tests of the
-   Position Vector and Coordinate Frame rotation signs.
+The oracle is PROJ 9.8.1 (pyproj 3.8.0) on a `proj.db` rebuilt from the same
+EPSG release as `xeibe-crs` by `scripts/build_proj_oracle.py`, which runs PROJ's
+own `build_db.py` on our EPSG archive. PROJ runs without grids or network, with
+ballparks disallowed and `ONLY_BEST=NO`, `authority="EPSG"`.
+`scripts/gen_transformation_vectors.py` writes two kinds of vectors (a committed
+subset in `tests/data/reprojection/`, everything with `--all` into `target/`):
+
+1. **Operation differential**, each EPSG transformation forced
+   (`Transform::via` against PROJ's pipeline for that operation), 12 points in
+   its area of use. On 2026-10-17: all 1,688 grid-free EPSG transformations of
+   the implemented methods match PROJ to within 1e-8 m / 1e-14°, except
+   operations whose CRSs xeibe can't read yet (102 *Geographic2D with Height
+   Offsets* from compound CRSs, one similarity transformation to an engineering
+   CRS).
+2. **Selection differential**, the main test. 2,654 CRS pairs: every pair
+   an EPSG operation joins, every live geographic 2D CRS to WGS 84 and to
+   ETRS89, every tenth projected CRS to WGS 84, and every CRS with several
+   areas of use to both. For 21,132 points in the area of interest, xeibe
+   picks the same operation as PROJ (by name) for every point and gives the
+   same coordinates, except through the ensemble-member identity
+   above (judged by coordinates, with the twelve known deviations listed in
+   the test) and the ties broken by EPSG's data (38 points, listed in the
+   test);
+   871 pairs have no usable transformation on either side.
 
 "Good precision" means choosing the operation with the best accuracy EPSG states.
 That is the best signal available, PROJ included, but it remains a proxy.
@@ -311,10 +445,12 @@ That is the best signal available, PROJ included, but it remains a proxy.
 
 ## Test oracle notes
 
-- `scripts/gdal` (full grids) and the pyproj in `verify_crs_tables.py` (no
-  grids, network off) disagree on grid-based cases. Use the GDAL container, or
-  pyproj with the network explicitly on, and record which grids each test
-  vector depends on.
+- pyproj's bundled `proj.db` lags EPSG (v12.029 for PROJ 9.8.1); level 2's
+  vectors use the database `scripts/build_proj_oracle.py` builds from our EPSG
+  archive instead (`pyproj.datadir.set_data_dir`, since pyproj ignores
+  `PROJ_DATA`). Level 1 doesn't need it: PROJ is given our PROJJSON.
+- `scripts/gdal` (full grids) and pyproj without grids disagree on grid-based
+  cases. For level 3, record which grids each test vector depends on.
 - Test vectors go in `tests/data`, generated by a script, like the other
   samples.
 
@@ -323,13 +459,14 @@ That is the best signal available, PROJ included, but it remains a proxy.
 1. **Reprojection is in scope**, reversing the "no reprojection" rule
    (adopted 2026-10-17). Level 1 first.
 2. **Automatic selection by default**, provided the ported rules pass the
-   selection differential. `--via` is an optional override.
+   selection differential (they do: see level 2's validation).
+   `Transform::via` is the optional override.
 3. **Grids built natively**, using PROJ's CDN or a local copy the user
    downloads.
-4. **Overlap-only oracle comparison.** The selection differential runs on the
-   CRSs and operations that both `xeibe-crs` and the oracle's `proj.db` know.
-   Everything outside that overlap goes on a generated list of untested CRSs,
-   kept next to the test vectors.
+4. **The oracle runs on our EPSG release.** Superseding the earlier
+   "overlap-only comparison": `scripts/build_proj_oracle.py` rebuilds PROJ's
+   `proj.db` from the same EPSG archive as `xeibe-crs` with PROJ's own import
+   script, so nothing falls outside the comparison.
 5. **Per-point selection, as in PROJ and GDAL.** Each coordinate gets the most
    accurate operation whose area of use contains it. A shared vertex always
    lands in the same place, so neighbouring features keep fitting together. The

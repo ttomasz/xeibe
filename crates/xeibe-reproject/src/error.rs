@@ -11,18 +11,14 @@ pub enum Error {
     /// projection method, a CRS type, an axis direction.
     #[error("{crs}: {what} is not supported")]
     Unsupported { crs: String, what: String },
-    /// The two CRSs are on different datums. Only conversions within one datum
-    /// are implemented; datum transformations are not.
+    /// The two CRSs are on different datums and no transformation between
+    /// them can be used: EPSG has none that xeibe can apply (grid-based ones
+    /// are not supported yet). A ballpark approximation is never used instead.
     #[error(
-        "{src} and {dst} are on different datums ({src_datum} and {dst_datum}); \
-         datum transformations are not supported yet"
+        "no usable transformation from {src} to {dst}: EPSG has none that xeibe \
+         can apply, and ballpark approximations are not used"
     )]
-    DatumMismatch {
-        src: String,
-        dst: String,
-        src_datum: String,
-        dst_datum: String,
-    },
+    NoTransformation { src: String, dst: String },
     /// A coordinate could not be converted. `index` is its position in the
     /// buffer, counted in coordinates (not ordinates).
     #[error("coordinate {index} ({x}, {y}): {reason}")]

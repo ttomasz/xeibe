@@ -217,3 +217,19 @@ fn every_alias_names_a_crs_in_the_table() {
         "sorted and unique"
     );
 }
+
+#[test]
+fn operations_hold_the_registry() {
+    let doc: serde_json::Value = serde_json::from_str(xeibe_crs::operations_json()).unwrap();
+    assert_eq!(doc["epsg_version"], xeibe_crs::EPSG_VERSION);
+    let ops = doc["operations"].as_array().unwrap();
+    assert!(ops.len() > 3000, "{}", ops.len());
+    // ETRS89 to WGS 84 (1): a null geocentric translation, good to 1 m.
+    let op = ops.iter().find(|o| o["code"] == 1149).unwrap();
+    assert_eq!(op["method"], 9603);
+    assert_eq!(op["accuracy"], 1.0);
+    assert_eq!(
+        (op["src"].as_u64(), op["dst"].as_u64()),
+        (Some(4258), Some(4326))
+    );
+}

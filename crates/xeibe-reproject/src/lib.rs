@@ -1,11 +1,16 @@
 //! Coordinate conversion between CRSs, in pure Rust, from the PROJJSON that
 //! `xeibe-crs` generates out of the EPSG dataset.
 //!
-//! This is level 1 of `docs/reprojection.md`: conversions within one datum.
-//! Projections, changes of axis order and units, and geographic ↔
-//! geocentric. Datum transformations (level 2) and grids (level 3) are not
-//! implemented; a pair of CRSs on different datums is an error, never a
-//! silent approximation.
+//! Levels 1 and 2 of `docs/reprojection.md`:
+//!
+//! * within one datum, conversions: projections, changes of axis order and
+//!   units, geographic ↔ geocentric;
+//! * between datums, EPSG's transformations, chosen per coordinate the way
+//!   PROJ chooses them ([`Transform::new`]), or forced ([`Transform::via`]).
+//!
+//! Grid-based transformations (level 3) are not implemented yet. When no EPSG
+//! transformation applies, setting up the transform fails; a ballpark
+//! approximation is never used.
 //!
 //! ```
 //! use xeibe_reproject::{AxisOrder, Transform};
@@ -22,9 +27,15 @@
 
 mod bounds;
 mod crs;
+mod datum;
 mod ellipsoid;
 mod error;
+mod extent;
+mod geocentric;
 mod methods;
+mod operation;
+mod registry;
+mod select;
 mod transform;
 
 pub use bounds::DEFAULT_DENSIFY;

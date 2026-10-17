@@ -3,7 +3,9 @@
 EPSG CRS facts and PROJJSON definitions, for the axis-order decision and for
 GeoArrow/GeoParquet CRS metadata, and EPSG's CRS aliases, for srsNames that
 give a name (`PL-1992`) instead of a code. See `docs/geometry.md` for how they
-are used.
+are used. Since 0.2.0 also EPSG's coordinate operations, datums and areas of
+use, from which `xeibe-reproject` chooses datum transformations (see
+`docs/reprojection.md`).
 
 Everything in `src/table.rs`, `src/aliases.rs` and `data/` is **generated** by
 `scripts/gen_crs_tables.py`; do not edit any of it by hand. `src/lib.rs` and the
@@ -29,6 +31,7 @@ flowchart TD
     F -->|"agrees"| H["data/projjson.bin"]
     D --> I["src/table.rs"]
     B --> J["aliases naming<br/>one CRS"] --> K["src/aliases.rs"]
+    B --> L["coordinate operations,<br/>datums, areas of use"] --> M["data/operations.bin"]
 ```
 
 No PROJ, GDAL, pyproj or network access is involved, at generation time or at
@@ -176,8 +179,11 @@ container layout.
   terms would not let us attribute to the dataset. `area_in_axis_order()`
   therefore returns `None` for projected CRSs, so the range check abstains
   rather than comparing metres against degrees.
-- **No coordinate transformations.** Only CRS definitions are extracted. xeibe
-  never reprojects.
+- **Coordinate operations without grid files.** Operations are extracted as
+  PROJ imports them (the same methods, supersession rules and concatenations),
+  parameters included, but grid-based ones only name their grid file: the
+  grids themselves aren't part of the EPSG Dataset (`docs/reprojection.md`,
+  level 3).
 - **CRS names change between EPSG releases** and must never be matched on.
   EPSG:2180 is `ETRS89 / PL-1992` in v13.103 and was `ETRF2000-PL / CS92` in
   v12.029.
@@ -203,3 +209,20 @@ backwards.
 
 `EPSG_VERSION` and `EPSG_DATE` are also exposed as consts, and a test asserts
 they match the Cargo version so the two cannot drift.
+
+## Changelog
+
+The crate's own versions; [`CHANGELOG.md`](CHANGELOG.md) lists the EPSG Dataset
+releases embedded in each.
+
+### 0.2.0
+
+- `operations_json()`: EPSG's coordinate operations (transformations,
+  concatenated operations and the conversions they use), datums with their
+  ensembles, and areas of use, in `data/operations.bin`. `xeibe-reproject`
+  uses them for datum transformations.
+
+### 0.1.0
+
+- First version: CRS facts (`get`, `CRS`), PROJJSON definitions (`projjson`)
+  and EPSG's CRS aliases (`alias`).

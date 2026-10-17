@@ -139,7 +139,7 @@ fn check(vectors: &[Vector]) -> Report {
                 continue;
             }
         };
-        let inverse = forward.inverse();
+        let inverse = forward.inverse().unwrap();
         let record = xeibe_crs::get(v.code);
         let unit_m = record.and_then(|r| r.linear_unit_m).unwrap_or(1.0);
         // A full turn in the source's angular unit, for longitudes on the

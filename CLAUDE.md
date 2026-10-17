@@ -116,6 +116,14 @@ sources, but their contents haven't been checked against the local copies:
   generator's own WKT gate: PROJJSON schema and a pyproj cross-check (both
   cover the ~836 deprecated CRSs EPSG publishes no WKT for), plus a
   regression diff against what is committed. Run it before releasing.
+- `scripts/gen_reprojection_vectors.py` writes level-1 test vectors for
+  `xeibe-reproject` (PROJ via pyproj, fed our PROJJSON);
+  `scripts/build_proj_oracle.py` rebuilds PROJ's `proj.db` from our EPSG
+  archive into `target/proj-oracle/` (PROJ's own `build_db.py`, ~1 min), and
+  `scripts/gen_transformation_vectors.py` writes level-2 vectors with it. Both
+  write committed subsets to `tests/data/reprojection/`; `--all` writes
+  everything to `target/reprojection/` for the `--ignored` tests. See
+  `docs/reprojection.md`.
 - `scripts/check_epsg_release.py` asks the public EPSG API
   (`apps.epsg.org/api/v1/VersionHistory`, no account needed) whether a newer
   Dataset release exists than the one in `crates/xeibe-crs`. Exits 1 if so.

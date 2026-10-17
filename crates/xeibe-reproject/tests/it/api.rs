@@ -22,7 +22,7 @@ fn east_first_order_swaps_northing_first_crss_only() {
 fn round_trip_through_a_projection() {
     let t = Transform::from_epsg(4258, 2180, AxisOrder::EastFirst).unwrap();
     let (x, y, _) = t.convert(WARSAW.0, WARSAW.1, None).unwrap();
-    let (lon, lat, _) = t.inverse().convert(x, y, None).unwrap();
+    let (lon, lat, _) = t.inverse().unwrap().convert(x, y, None).unwrap();
     assert!((lon - WARSAW.0).abs() < 1e-11 && (lat - WARSAW.1).abs() < 1e-11);
 }
 
@@ -40,10 +40,31 @@ fn between_two_projections_on_one_datum() {
 }
 
 #[test]
-fn different_datums_are_an_error() {
-    // ETRS89 / PL-1992 and WGS 84: EPSG relates them by a transformation.
-    let err = Transform::from_epsg(2180, 4326, AxisOrder::EastFirst).unwrap_err();
-    assert!(matches!(err, Error::DatumMismatch { .. }), "{err}");
+fn different_datums_go_through_a_transformation() {
+    // ETRS89 / PL-1992 to WGS 84: EPSG's null transformation, good to 1 m.
+    let t = Transform::from_epsg(2180, 4326, AxisOrder::EastFirst).unwrap();
+    let (x, y, _) = t.convert(637_000.0, 485_000.0, None).unwrap();
+    assert_eq!(
+        t.operation_for(637_000.0, 485_000.0, None),
+        Some("Inverse of Poland CS92 + ETRS89 to WGS 84 (1)")
+    );
+    assert!(
+        (x - 21.005).abs() < 0.01 && (y - 52.215).abs() < 0.01,
+        "{x} {y}"
+    );
+}
+
+#[test]
+fn routes_through_a_national_realization_both_ways() {
+    // RT90 to ETRS89: EPSG's operation to SWEREF 99 (0.1 m) and the ensemble
+    // identity (0.1 m) beat the direct "RT90 to ETRS89 (1)" (0.5 m).
+    let via = "RT90 to ETRS89-SWE [SWEREF 99] (1)";
+    let there = Transform::from_epsg(4124, 4258, AxisOrder::EastFirst).unwrap();
+    let back = Transform::from_epsg(4258, 4124, AxisOrder::EastFirst).unwrap();
+    let there_op = there.operation_for(18.07, 59.33, None).unwrap();
+    let back_op = back.operation_for(18.07, 59.33, None).unwrap();
+    assert!(there_op.starts_with(via), "{there_op}");
+    assert!(back_op.contains(&format!("Inverse of {via}")), "{back_op}");
 }
 
 #[test]
