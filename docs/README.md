@@ -46,7 +46,7 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 | [geometry.md](geometry.md) | GML geometry → GeoArrow/WKB, curves, CRS and axis order |
 | [wfs.md](wfs.md) | WFS bulk-read client: paging, pages streamed into a read |
 | [reprojection.md](reprojection.md) | Pure-Rust reprojection from the EPSG data: levels, PROJ's operation selection, validation |
-| [web.md](web.md) | Browser page on WebAssembly: layout, map, inputs, library changes it needs (considering) |
+| [web.md](web.md) | Browser page on WebAssembly: layout, map views, inputs, network limits, library changes it needs (planned) |
 | [support-matrix.md](support-matrix.md) | Supported, planned and out-of-scope GML/WFS features (progress tracker) |
 | [testing.md](testing.md) | How the test suites are organized: synthetic tests, the samples, the GDAL reference |
 | [links.md](links.md) | External resources for testing, including GDAL's GML autotests |
