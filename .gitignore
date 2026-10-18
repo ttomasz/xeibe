@@ -36,3 +36,8 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# Web page (web/): dependencies, build output, generated wasm bindings
+/web/node_modules
+/web/dist
+/web/src/wasm

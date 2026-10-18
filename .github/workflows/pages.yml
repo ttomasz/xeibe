@@ -1,0 +1,72 @@
+# The web page (docs/web.md): crates/xeibe-wasm built to WebAssembly, web/
+# built with Vite, deployed to GitHub Pages. Needs Pages set to "GitHub
+# Actions" in the repository's settings.
+name: Web page
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Rust with the wasm32 target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: "true"
+
+      # zstd's C code compiles with clang, which the runner has.
+      - name: wasm-bindgen-cli, at the version Cargo.toml pins
+        run: |
+          version=$(sed -n 's/^wasm-bindgen = "=\(.*\)"/\1/p' Cargo.toml)
+          cargo install wasm-bindgen-cli --version "$version" --locked
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build
+        working-directory: web
+        run: |
+          npm ci
+          npm run wasm
+          npm run build
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

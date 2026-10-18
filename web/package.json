@@ -1,0 +1,24 @@
+{
+  "name": "xeibe-web",
+  "private": true,
+  "type": "module",
+  "description": "The xeibe web page: GML read by xeibe compiled to WebAssembly (docs/web.md)",
+  "scripts": {
+    "wasm": "sh scripts/build-wasm.sh",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "check": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@deck.gl/core": "9.4.0",
+    "@deck.gl/layers": "9.4.0",
+    "@deck.gl/mapbox": "9.4.0",
+    "maplibre-gl": "6.12.0"
+  },
+  "devDependencies": {
+    "binaryen": "132.0.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.2"
+  }
+}

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>xeibe — GML in your browser</title>
+    <meta name="description" content="See how xeibe reads a GML file or a saved WFS response: layers, inferred schema, axis order, the data on a map. Nothing is uploaded." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d4ed8'/%3E%3Cpath d='M8 9l16 14M24 9L8 23' stroke='white' stroke-width='3.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <header id="bar">
+      <h1>xeibe</h1>
+      <label class="button primary" for="file">Open GML…</label>
+      <input type="file" id="file" multiple accept=".gml,.xml,.gz,.zst" hidden />
+      <label class="field">Layer <select id="layer" disabled></select></label>
+      <label class="field" title="Stop after this many features; empty reads them all">Max features
+        <input id="limit" type="number" min="1" step="1" value="100000" />
+      </label>
+      <button id="stop" class="button" hidden>Stop</button>
+      <span id="status" role="status"></span>
+      <a class="repo" href="https://github.com/ttomasz/xeibe" target="_blank" rel="noopener">GitHub</a>
+    </header>
+    <main id="main">
+      <section id="mapPane" aria-label="Map">
+        <div id="map"></div>
+        <div id="source"></div>
+        <div id="views" role="group" aria-label="View">
+          <button data-view="map" class="active">Map</button>
+          <button data-view="source">Source CRS</button>
+        </div>
+        <div id="pointer"></div>
+        <div id="mapNote" hidden></div>
+      </section>
+      <div id="divider" role="separator" aria-orientation="vertical" title="Drag to resize"></div>
+      <section id="side">
+        <nav id="tabs" role="tablist">
+          <button role="tab" data-tab="overview" class="active">Overview</button>
+          <button role="tab" data-tab="schema">Schema</button>
+          <button role="tab" data-tab="data">Data</button>
+        </nav>
+        <div id="overview" class="tab active">
+          <div class="intro">
+            <h2>Read GML in your browser</h2>
+            <p>Open or drop a GML file or a saved WFS response (<code>.gml</code>, <code>.xml</code>, also <code>.gz</code> and <code>.zst</code>).
+              <b>Nothing is uploaded</b>: <a href="https://github.com/ttomasz/xeibe">xeibe</a>, compiled to WebAssembly, reads it here, on your machine.</p>
+            <p>You see the layers, the schema xeibe infers and why, how it decided the axis order, the read report,
+              and the data in a table and on a map.</p>
+            <p class="muted">The map converts coordinates with xeibe's own reprojection; datum shifts that need
+              grids fetch them from <code>cdn.proj.org</code>. Basemap © OpenStreetMap contributors.</p>
+          </div>
+        </div>
+        <div id="schema" class="tab"></div>
+        <div id="data" class="tab"></div>
+      </section>
+    </main>
+    <div id="drop" hidden><div>Drop GML files to read them</div></div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
