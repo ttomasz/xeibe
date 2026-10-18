@@ -471,6 +471,36 @@ fn a_sampled_scan_takes_the_first_features_on_any_number_of_threads() {
 }
 
 #[test]
+fn a_sample_of_each_source_sees_every_source() {
+    for threads in [1, 4] {
+        let sampled = Scanner::new(small_chunks(
+            threads,
+            ScanExtent::SamplePerSource { max_features: 3 },
+        ))
+        .run(three_sources())
+        .unwrap();
+        assert!(sampled.sampled, "{threads}");
+        for name in ["Parcel", "Road", "River"] {
+            assert_eq!(
+                sampled.layers[&layer(name)].feature_count,
+                3,
+                "{name} {threads}"
+            );
+        }
+
+        // Every source ends within its budget: not sampled.
+        let whole = Scanner::new(small_chunks(
+            threads,
+            ScanExtent::SamplePerSource { max_features: 4 },
+        ))
+        .run(three_sources())
+        .unwrap();
+        assert!(!whole.sampled, "{threads}");
+        assert_eq!(whole.layers[&layer("River")].feature_count, 4);
+    }
+}
+
+#[test]
 fn the_number_of_threads_does_not_change_the_result() {
     // What a scan is for: the layers, their schemas, and per-source facts.
     // (The distinct values a column keeps are in the order they were merged.)

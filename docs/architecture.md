@@ -446,7 +446,9 @@ flowchart LR
   pause between them, several at once. A sampled scan (`ScanExtent::Sample`)
   splits its sources one at a time and gives each chunk its share of the budget
   when it is taken (each chunk knows its feature count): it is the first N
-  features of the input, on all threads.
+  features of the input, on all threads. A sample of each source
+  (`ScanExtent::SamplePerSource`) gives every source its own budget instead,
+  so its sources run several at once like a full scan's.
 - **Sampling happens before the workers start.** A read without a schema, or an
   `Auto` axis-order decision with a given schema, first takes the layer's chunks
   until they hold `sample.features_per_layer` features and scans them on all

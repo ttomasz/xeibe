@@ -597,7 +597,8 @@ ways to get one:
 
 - `read` without a schema samples the requested layer;
 - `xeibe gml scan --sample N` (`ScanExtent::Sample`) scans only the first N features of
-  the input.
+  the input; `ScanExtent::SamplePerSource` (the web page's sample) scans the first N
+  of each source, so every file of a multi-file input is seen.
 
 ### 6.1 Sampling in a read
 

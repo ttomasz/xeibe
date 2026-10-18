@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::ops::ControlFlow;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use xeibe_core::decode::DecodeAhead;
@@ -31,6 +32,10 @@ pub enum ScanExtent {
     /// The first N features of the input, whatever their layers. Layers that
     /// start later are missing.
     Sample { max_features: u64 },
+    /// The first N features of each source: every file of a multi-file input
+    /// is seen (a layer per file, as in BDOT10k), but layers that start late
+    /// in a file are missing.
+    SamplePerSource { max_features: u64 },
 }
 
 #[derive(Debug, Clone)]
@@ -77,7 +82,7 @@ impl Scanner {
     /// all of it runs on the calling thread. A sampled scan splits its
     /// sources one after another and gives each chunk its share of the
     /// budget as it is split, so it is "the first N features" on any number
-    /// of threads.
+    /// of threads. A sample of each source gives each its own budget.
     ///
     /// A source without a feature collection or feature member is skipped
     /// and listed in [`DatasetObservation::skipped_sources`]; if every
@@ -87,23 +92,23 @@ impl Scanner {
         if self.options.layers.is_some() {
             splitter_options.layers = self.options.layers.clone();
         }
-        let budget = match self.options.extent {
-            ScanExtent::Full => None,
-            ScanExtent::Sample { max_features } => Some(max_features),
+        let (budget, per_source) = match self.options.extent {
+            ScanExtent::Full => (None, None),
+            ScanExtent::Sample { max_features } => (Some(max_features), None),
+            ScanExtent::SamplePerSource { max_features } => (None, Some(max_features)),
         };
         let shared = Arc::new(ScanShared {
             ahead: DecodeAhead::default(),
             splitter_options,
             opened: Mutex::new(Vec::new()),
-            budget: Mutex::new(Budget {
-                left: budget,
-                sampled: false,
-                used_up: false,
-            }),
+            budget: Arc::new(Mutex::new(Budget::new(budget))),
+            per_source,
+            sampled: AtomicBool::new(false),
         });
         let threads = self.options.threads;
         // A sample is the first features of the input: its sources are split
-        // one after another.
+        // one after another. Samples of each source don't depend on the
+        // order.
         let max_open = match budget {
             None => xeibe_core::parallel::max_open_streams(threads),
             Some(_) => 1,
@@ -172,7 +177,7 @@ impl Scanner {
                 }
             }
         }
-        total.sampled = lock(&shared.budget).sampled;
+        total.sampled = shared.sampled.load(Ordering::Relaxed);
         Ok(total)
     }
 
@@ -292,17 +297,29 @@ struct ScanShared {
     splitter_options: xeibe_core::SplitterOptions,
     /// Every source so far, at the index of its id.
     opened: Mutex<Vec<OpenedSource>>,
-    budget: Mutex<Budget>,
+    /// The input's budget (a sample of the input).
+    budget: Arc<Mutex<Budget>>,
+    /// Each source's budget (a sample of each source).
+    per_source: Option<u64>,
+    /// A sampled scan stopped before the end of a source.
+    sampled: AtomicBool,
 }
 
-/// What a sampled scan may still take.
+/// What a sampled scan may still take, of the input or of one source.
 struct Budget {
-    /// Features left; `None` in a full scan.
+    /// Features left; `None`: no limit.
     left: Option<u64>,
-    /// A sampled scan stopped before the end of the input.
-    sampled: bool,
     /// Nothing more is taken.
     used_up: bool,
+}
+
+impl Budget {
+    fn new(left: Option<u64>) -> Self {
+        Budget {
+            left,
+            used_up: false,
+        }
+    }
 }
 
 struct OpenedSource {
@@ -346,8 +363,13 @@ impl Streams for ScanSources {
             }
             Err(error) => SourceState::Failed(error.into()),
         };
+        let budget = match self.shared.per_source {
+            Some(max_features) => Arc::new(Mutex::new(Budget::new(Some(max_features)))),
+            None => self.shared.budget.clone(),
+        };
         Some(SourceScan {
             shared: self.shared.clone(),
+            budget,
             state,
         })
     }
@@ -361,6 +383,8 @@ impl Streams for ScanSources {
 /// budget. Opens the source on its first `next`, and records its header.
 struct SourceScan {
     shared: Arc<ScanShared>,
+    /// The input's budget, or this source's own.
+    budget: Arc<Mutex<Budget>>,
     state: SourceState,
 }
 
@@ -411,20 +435,20 @@ impl SourceScan {
 
     /// This chunk's share of the budget; `None` when it is used up.
     fn share(&self, chunk: &FeatureChunk) -> Option<Option<u64>> {
-        let mut budget = lock(&self.shared.budget);
+        let mut budget = lock(&self.budget);
         let Some(left) = budget.left else {
             return Some(None);
         };
         // The budget is used up, and there is another feature.
         if left == 0 {
-            budget.sampled = true;
+            self.shared.sampled.store(true, Ordering::Relaxed);
             budget.used_up = true;
             return None;
         }
         let take = chunk.features.min(left);
         budget.left = Some(left - take);
         if take < chunk.features {
-            budget.sampled = true;
+            self.shared.sampled.store(true, Ordering::Relaxed);
             budget.used_up = true;
         }
         Some(Some(take))
@@ -443,7 +467,7 @@ impl Iterator for SourceScan {
                     }
                 }
                 SourceState::Splitting(mut splitter, id) => {
-                    if lock(&self.shared.budget).used_up {
+                    if lock(&self.budget).used_up {
                         return None;
                     }
                     match splitter.next() {
