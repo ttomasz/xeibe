@@ -232,6 +232,122 @@ impl ByteSource for BytesSource {
     }
 }
 
+/// Bytes that can be read at any offset without being held whole: bytes in
+/// memory, or a browser `File` read in slices. Zip archives need it (their
+/// directory is at the end); [`RandomAccessSource`] streams one from the
+/// start.
+// `len` is always known here, but an `is_empty` would add nothing.
+#[allow(clippy::len_without_is_empty)]
+pub trait RandomAccess: Send + Sync + std::fmt::Debug {
+    fn len(&self) -> u64;
+
+    /// Read into `buf` from `offset`; fewer bytes (0 at the end) are fine.
+    fn read_at(&self, offset: u64, buf: &mut [u8]) -> std::io::Result<usize>;
+}
+
+impl RandomAccess for bytes::Bytes {
+    fn len(&self) -> u64 {
+        self.as_ref().len() as u64
+    }
+
+    fn read_at(&self, offset: u64, buf: &mut [u8]) -> std::io::Result<usize> {
+        let start = usize::try_from(offset)
+            .unwrap_or(usize::MAX)
+            .min(self.as_ref().len());
+        let n = buf.len().min(self.as_ref().len() - start);
+        buf[..n].copy_from_slice(&self.as_ref()[start..start + n]);
+        Ok(n)
+    }
+}
+
+/// [`RandomAccess`] bytes as a reader of the range `pos..end`, seekable
+/// within the whole.
+#[derive(Debug, Clone)]
+pub struct RandomReader {
+    data: Arc<dyn RandomAccess>,
+    pos: u64,
+    end: u64,
+}
+
+impl RandomReader {
+    /// The whole of `data`.
+    pub fn new(data: Arc<dyn RandomAccess>) -> Self {
+        let end = data.len();
+        Self { data, pos: 0, end }
+    }
+
+    /// `length` bytes from `start` (fewer if `data` ends first).
+    pub fn range(data: Arc<dyn RandomAccess>, start: u64, length: u64) -> Self {
+        let end = start.saturating_add(length).min(data.len());
+        Self {
+            data,
+            pos: start.min(end),
+            end,
+        }
+    }
+}
+
+impl std::io::Read for RandomReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let left = usize::try_from(self.end - self.pos).unwrap_or(usize::MAX);
+        let want = buf.len().min(left);
+        if want == 0 {
+            return Ok(0);
+        }
+        let n = self.data.read_at(self.pos, &mut buf[..want])?;
+        self.pos += n as u64;
+        Ok(n)
+    }
+}
+
+impl std::io::Seek for RandomReader {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        let target = match pos {
+            std::io::SeekFrom::Start(offset) => Some(offset),
+            std::io::SeekFrom::End(delta) => self.end.checked_add_signed(delta),
+            std::io::SeekFrom::Current(delta) => self.pos.checked_add_signed(delta),
+        };
+        match target {
+            Some(target) => {
+                self.pos = target.min(self.end);
+                Ok(self.pos)
+            }
+            None => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "seek before the start",
+            )),
+        }
+    }
+}
+
+/// [`RandomAccess`] bytes read from the start, as one stream, in reads of
+/// [`RANDOM_ACCESS_CHUNK`] (each `read_at` may be costly: a browser `File`
+/// read is a call into JavaScript).
+#[derive(Debug)]
+pub struct RandomAccessSource {
+    pub name: String,
+    pub data: Arc<dyn RandomAccess>,
+}
+
+/// The size of the reads [`RandomAccessSource`] and zip members in a
+/// [`RandomAccess`] archive make.
+pub const RANDOM_ACCESS_CHUNK: usize = 256 << 10;
+
+impl ByteSource for RandomAccessSource {
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn len(&self) -> Option<u64> {
+        Some(self.data.len())
+    }
+    fn open(&self) -> crate::Result<Box<dyn std::io::Read + Send>> {
+        Ok(Box::new(std::io::BufReader::with_capacity(
+            RANDOM_ACCESS_CHUNK,
+            RandomReader::new(self.data.clone()),
+        )))
+    }
+}
+
 /// File names picked up from directories (case-insensitive); zip archives
 /// are expanded into their members.
 const DIRECTORY_SUFFIXES: &[&str] = &[

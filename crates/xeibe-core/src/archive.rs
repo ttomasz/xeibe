@@ -1,30 +1,44 @@
 //! Zip archives, kept minimal (see `docs/architecture.md#zip-archives`).
 //!
-//! Uses the `zip` crate as it is: stored and deflate members, zip64, name decoding.
-//! Other methods and encrypted members are errors. The archive must be a local
-//! file or held in memory (the central directory is at the end); a remote zip
-//! is [`crate::Error::RemoteArchive`]. Nested zips are not opened.
+//! Uses the `zip` crate for the directory: zip64, name decoding. Stored,
+//! deflate and Deflate64 members are read; other methods and encrypted
+//! members are errors, found when the archive is listed. The archive must be
+//! a local file or readable at any offset ([`RandomAccess`]: bytes in memory,
+//! a browser `File`), since the central directory is at the end; a remote
+//! zip is [`crate::Error::RemoteArchive`]. Nested zips are not opened.
 
-use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use crate::source::Source;
+use crate::source::{RANDOM_ACCESS_CHUNK, RandomAccess, RandomReader, Source};
 
-/// Where a zip archive is: a local file, or bytes in memory (a file dropped
-/// on the web page, say). Either way it can be read at any offset.
+/// Where a zip archive is: a local file, or bytes readable at any offset (in
+/// memory, or a file dropped on the web page).
 #[derive(Debug, Clone)]
 pub enum Archive {
     File(PathBuf),
-    Bytes { name: String, bytes: bytes::Bytes },
+    Random {
+        name: String,
+        data: Arc<dyn RandomAccess>,
+    },
 }
 
 impl Archive {
+    /// An archive held in memory.
+    pub fn bytes(name: impl Into<String>, bytes: bytes::Bytes) -> Self {
+        Archive::Random {
+            name: name.into(),
+            data: Arc::new(bytes),
+        }
+    }
+
     /// The path, or the name given with the bytes, for messages and the
     /// members' names (`name!/member`).
     pub fn name(&self) -> String {
         match self {
             Archive::File(path) => path.display().to_string(),
-            Archive::Bytes { name, .. } => name.clone(),
+            Archive::Random { name, .. } => name.clone(),
         }
     }
 
@@ -35,7 +49,11 @@ impl Archive {
                     std::io::Error::new(e.kind(), format!("{}: {e}", path.display()))
                 })?)
             }
-            Archive::Bytes { bytes, .. } => ArchiveReader::Bytes(Cursor::new(bytes.clone())),
+            // The directory is read in small pieces: buffer them.
+            Archive::Random { data, .. } => ArchiveReader::Random(BufReader::with_capacity(
+                64 << 10,
+                RandomReader::new(data.clone()),
+            )),
         };
         zip::ZipArchive::new(reader).map_err(|e| zip_error(self, "", e))
     }
@@ -48,13 +66,10 @@ impl Archive {
                 handle.seek(SeekFrom::Start(start))?;
                 Ok(Box::new(handle.take(length)))
             }
-            Archive::Bytes { bytes, .. } => {
-                let end = start.saturating_add(length).min(bytes.len() as u64);
-                let start = start.min(end);
-                Ok(Box::new(Cursor::new(
-                    bytes.slice(start as usize..end as usize),
-                )))
-            }
+            Archive::Random { data, .. } => Ok(Box::new(BufReader::with_capacity(
+                RANDOM_ACCESS_CHUNK,
+                RandomReader::range(data.clone(), start, length),
+            ))),
         }
     }
 }
@@ -77,17 +92,17 @@ impl From<PathBuf> for Archive {
     }
 }
 
-/// An open archive's bytes: a file or memory.
+/// An open archive's bytes.
 enum ArchiveReader {
     File(std::fs::File),
-    Bytes(Cursor<bytes::Bytes>),
+    Random(BufReader<RandomReader>),
 }
 
 impl Read for ArchiveReader {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         match self {
             ArchiveReader::File(file) => file.read(buf),
-            ArchiveReader::Bytes(cursor) => cursor.read(buf),
+            ArchiveReader::Random(reader) => reader.read(buf),
         }
     }
 }
@@ -96,8 +111,22 @@ impl Seek for ArchiveReader {
     fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
         match self {
             ArchiveReader::File(file) => file.seek(pos),
-            ArchiveReader::Bytes(cursor) => cursor.seek(pos),
+            ArchiveReader::Random(reader) => reader.seek(pos),
         }
+    }
+}
+
+/// A member whose data can't be read, by what is wrong: an encrypted member
+/// or a compression method other than stored, deflate and Deflate64.
+fn unreadable(file: &zip::read::ZipFile<'_, ArchiveReader>) -> Option<String> {
+    if file.encrypted() {
+        return Some("encrypted members are not supported".into());
+    }
+    match file.compression() {
+        zip::CompressionMethod::Stored
+        | zip::CompressionMethod::Deflated
+        | zip::CompressionMethod::Deflate64 => None,
+        other => Some(format!("unsupported compression method {other}")),
     }
 }
 
@@ -145,6 +174,15 @@ pub fn list_candidates(
             && !globs.is_match(name)
         {
             continue;
+        }
+        // Now rather than when the read reaches the member, maybe after
+        // gigabytes of the others.
+        if let Some(message) = unreadable(&file) {
+            return Err(crate::Error::Zip {
+                archive: archive.name(),
+                member: name.to_string(),
+                message,
+            });
         }
         members.push(MemberInfo {
             name: name.to_string(),
@@ -194,9 +232,25 @@ pub(crate) fn open_member(
     member: &str,
 ) -> crate::Result<(Box<dyn Read + Send>, bool)> {
     let mut zip = archive.open()?;
+    // Raw: the `zip` crate would refuse a method it wasn't built to inflate,
+    // and this module inflates members itself.
+    let index = zip
+        .index_for_name(member)
+        .ok_or_else(|| crate::Error::Zip {
+            archive: archive.name(),
+            member: member.to_string(),
+            message: "no such member".into(),
+        })?;
     let file = zip
-        .by_name(member)
+        .by_index_raw(index)
         .map_err(|e| zip_error(archive, member, e))?;
+    if let Some(message) = unreadable(&file) {
+        return Err(crate::Error::Zip {
+            archive: archive.name(),
+            member: member.to_string(),
+            message,
+        });
+    }
     let method = file.compression();
     let compressed_size = file.compressed_size();
     let data_start = file.data_start().ok_or_else(|| crate::Error::Zip {
@@ -213,11 +267,11 @@ pub(crate) fn open_member(
         zip::CompressionMethod::Deflated => {
             Ok((Box::new(flate2::read::DeflateDecoder::new(data)), true))
         }
-        other => Err(crate::Error::Zip {
-            archive: archive.name(),
-            member: member.to_string(),
-            message: format!("unsupported compression method {other}"),
-        }),
+        // Windows writes it for large members; GUGiK's PRG zips have it.
+        zip::CompressionMethod::Deflate64 => {
+            Ok((Box::new(deflate64::Deflate64Decoder::new(data)), true))
+        }
+        _ => unreachable!("checked by unreadable()"),
     }
 }
 

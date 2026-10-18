@@ -21,6 +21,9 @@ pub use error::{Error, Result};
 pub use location::Location;
 pub use namespace::{NamespaceContext, ns};
 pub use qname::QName;
-pub use source::{ByteSource, BytesSource, FileSource, ReaderSource, Source, SourceId, Sources};
+pub use source::{
+    ByteSource, BytesSource, FileSource, RandomAccess, RandomAccessSource, RandomReader,
+    ReaderSource, Source, SourceId, Sources,
+};
 pub use splitter::{FeatureSplitter, MemberRule, SplitterOptions};
 pub use version::{Dialect, GmlVersion};

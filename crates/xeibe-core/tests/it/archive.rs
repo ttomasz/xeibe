@@ -143,10 +143,7 @@ fn an_archive_held_in_memory_reads_like_the_file() {
     let dir = temp_dir("archive-bytes");
     let path = build_archive(&dir);
     let bytes = bytes::Bytes::from(std::fs::read(&path).unwrap());
-    let archive = archive::Archive::Bytes {
-        name: "dropped.zip".into(),
-        bytes,
-    };
+    let archive = archive::Archive::bytes("dropped.zip", bytes);
     let sources = archive::expand(archive, &[]).expect("sources");
     let mut names: Vec<String> = sources.iter().map(Source::name).collect();
     names.sort();
@@ -173,20 +170,17 @@ fn an_archive_held_in_memory_reads_like_the_file() {
         zip.write_all(DOC.as_bytes()).unwrap();
         zip.finish().unwrap();
     }
-    let archive = archive::Archive::Bytes {
-        name: "stored.zip".into(),
-        bytes: stored.into(),
-    };
+    let archive = archive::Archive::bytes("stored.zip", stored.into());
     let sources = archive::expand(archive, &[]).expect("sources");
     assert_eq!(read_to_string(&sources[0]).unwrap(), DOC);
 }
 
 #[test]
 fn bytes_that_arent_a_zip_are_an_error_naming_them() {
-    let archive = archive::Archive::Bytes {
-        name: "fake.zip".into(),
-        bytes: bytes::Bytes::from_static(b"PK\x03\x04 not a zip"),
-    };
+    let archive = archive::Archive::bytes(
+        "fake.zip",
+        bytes::Bytes::from_static(b"PK\x03\x04 not a zip"),
+    );
     match archive::expand(archive, &[]) {
         Err(Error::Zip { archive, .. }) => assert_eq!(archive, "fake.zip"),
         other => panic!("expected a zip error, got {other:?}"),
@@ -285,4 +279,59 @@ fn a_remote_archive_asks_the_user_to_download_it() {
     let error = xeibe_core::source::expand_sources(&["https://example.com/data.zip!/a.gml".into()])
         .expect_err("a remote archive");
     assert!(matches!(error, Error::RemoteArchive(_)), "got {error:?}");
+}
+
+#[test]
+fn deflate64_members_are_read() {
+    let expected = String::from_utf8(xeibe_testkit::read_data("archives/parcels.gml")).unwrap();
+    let path = xeibe_testkit::data_dir().join("archives/deflate64.zip");
+    let sources = archive::expand(&path, &[]).expect("sources");
+    assert_eq!(read_to_string(&sources[0]).unwrap(), expected);
+    // In memory too.
+    let bytes = bytes::Bytes::from(std::fs::read(&path).unwrap());
+    let sources = archive::expand(archive::Archive::bytes("d.zip", bytes), &[]).unwrap();
+    assert_eq!(read_to_string(&sources[0]).unwrap(), expected);
+}
+
+#[test]
+fn a_member_that_cant_be_read_fails_when_the_archive_is_listed() {
+    // Not when a read reaches it, maybe after gigabytes of the others.
+    let path = xeibe_testkit::data_dir().join("archives/bzip2.zip");
+    match archive::expand(&path, &[]) {
+        Err(Error::Zip {
+            member, message, ..
+        }) => {
+            assert_eq!(member, "parcels.gml");
+            assert!(
+                message.contains("BZIP2") || message.contains("compression method"),
+                "{message}"
+            );
+        }
+        other => panic!("expected a zip error, got {other:?}"),
+    }
+}
+
+#[test]
+fn random_access_bytes_are_a_source_read_from_the_start() {
+    use std::sync::Arc;
+    use xeibe_core::{RandomAccess, RandomAccessSource, RandomReader};
+    let data: Arc<dyn RandomAccess> = Arc::new(bytes::Bytes::from_static(DOC.as_bytes()));
+    let source = Source::Stream(Arc::new(RandomAccessSource {
+        name: "doc.gml".into(),
+        data: data.clone(),
+    }));
+    assert_eq!(read_to_string(&source).unwrap(), DOC);
+    assert_eq!(read_to_string(&source).unwrap(), DOC);
+    // A range stops at its end, or at the data's.
+    let mut range = String::new();
+    std::io::Read::read_to_string(&mut RandomReader::range(data.clone(), 6, 7), &mut range)
+        .unwrap();
+    assert_eq!(range, &DOC[6..13]);
+    let mut tail = String::new();
+    std::io::Read::read_to_string(
+        &mut RandomReader::range(data, DOC.len() as u64 - 5, 1000),
+        &mut tail,
+    )
+    .unwrap();
+    assert_eq!(tail, &DOC[DOC.len() - 5..]);
 }

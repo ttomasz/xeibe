@@ -14,6 +14,7 @@ encoding_rs.workspace = true
 flate2.workspace = true
 zstd.workspace = true
 zip.workspace = true
+deflate64.workspace = true
 bytes.workspace = true
 # `rc`: `QName` serializes its `Arc<str>` fields.
 serde = { workspace = true, features = ["rc"] }

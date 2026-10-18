@@ -85,8 +85,10 @@ globset = "0.4"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls-no-provider", "gzip", "deflate"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 url = "2"
-# Reading only: `deflate` would also bring the zopfli encoder.
-zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+# Reading only: `deflate` would also bring the zopfli encoder. `deflate64`
+# names method 9, which xeibe-core inflates itself with `deflate64` (pure Rust).
+zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs", "deflate64"] }
+deflate64 = "0.1"
 object_store = { version = "0.13", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 clap = { version = "4", features = ["derive"] }

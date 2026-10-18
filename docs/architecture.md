@@ -567,16 +567,20 @@ Real GML distributions (INSPIRE portals, geoportal.gov.pl) are usually zip files
 so zip is supported, but kept minimal. No mainstream Arrow engine (DataFusion,
 Spark, Polars) reads zip at all. Only GDAL does.
 
-- Zip files are read with the `zip` crate as it is: stored and deflate members,
-  zip64, and member-name decoding. Other methods (deflate64, bzip2, LZMA, zstd) and
-  encrypted members fail with an error naming the method. There is no zip-specific
-  code beyond that.
-- **Only local zip files, or zips held in memory.** The central directory is at
-  the end of the archive, so zip needs random access. A remote zip is an error
-  (`RemoteArchive`) that tells the user to download it first. Zips are never read
-  from start to end. An archive in memory (`archive::Archive::Bytes`, a file
-  dropped on the web page) reads like a local one; a member's stream is then a
-  slice of the bytes.
+- Zip directories are read with the `zip` crate as it is: zip64 and member-name
+  decoding. Members are stored, deflate or **Deflate64**, which xeibe inflates
+  itself (`flate2`, `deflate64`, both pure Rust). Deflate64 is what Windows
+  writes for large members: GUGiK's national PRG zip has 16 of them, next to 17
+  deflate ones. Other methods (bzip2, LZMA, zstd) and encrypted members are an
+  error naming the member and the method, raised **when the archive is listed**,
+  not when a read reaches the member after gigabytes of the others.
+- **Only local zip files, or zips readable at any offset.** The central
+  directory is at the end of the archive, so zip needs random access. A remote
+  zip is an error (`RemoteArchive`) that tells the user to download it first.
+  Zips are never read from start to end. `archive::Archive::Random` takes
+  anything that implements `RandomAccess` (`read_at`): bytes in memory, or the
+  web page's browser `File`, read in slices. A member's stream is then a range
+  of it, read in 256 KiB pieces.
 - **Member selection:** `.gml`, `.xml`, `.gml.gz` and `.xml.gz` members are
   candidates. A candidate in which the splitter finds no feature collection or
   feature member (for example ISO metadata `gmd:MD_Metadata`, or an empty NAS

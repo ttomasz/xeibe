@@ -33,6 +33,11 @@ Small samples committed to the repository.
   `selection-vertical.jsonl` and `selection-vertical-grids.jsonl` the same
   with heights, without grids and with these (`--vertical`).
 
+- `archives/` – zip fixtures made with 7-Zip 23.01 from `parcels.gml` (200
+  synthetic parcels): `deflate64.zip` (`7z a -tzip -mm=Deflate64 -mx=9`, the
+  method Windows uses for large members, as in GUGiK's PRG zips) and
+  `bzip2.zip` (`-mm=BZip2`, a method xeibe doesn't read).
+
 Rebuild after changing `samples.toml` (needs `example_data/` and Docker for GDAL):
 
     scripts/corpus/reference_data.py          # once: PRG + Natural Earth boundaries (~400 MB)
