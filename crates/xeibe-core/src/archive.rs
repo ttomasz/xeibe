@@ -7,11 +7,11 @@
 //! a browser `File`), since the central directory is at the end; a remote
 //! zip is [`crate::Error::RemoteArchive`]. Nested zips are not opened.
 
-use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::source::{RANDOM_ACCESS_CHUNK, RandomAccess, RandomReader, Source};
+use crate::source::{RandomAccess, RandomReader, Source};
 
 /// Where a zip archive is: a local file, or bytes readable at any offset (in
 /// memory, or a file dropped on the web page).
@@ -49,11 +49,7 @@ impl Archive {
                     std::io::Error::new(e.kind(), format!("{}: {e}", path.display()))
                 })?)
             }
-            // The directory is read in small pieces: buffer them.
-            Archive::Random { data, .. } => ArchiveReader::Random(BufReader::with_capacity(
-                64 << 10,
-                RandomReader::new(data.clone()),
-            )),
+            Archive::Random { data, .. } => ArchiveReader::Random(RandomReader::new(data.clone())),
         };
         zip::ZipArchive::new(reader).map_err(|e| zip_error(self, "", e))
     }
@@ -66,10 +62,9 @@ impl Archive {
                 handle.seek(SeekFrom::Start(start))?;
                 Ok(Box::new(handle.take(length)))
             }
-            Archive::Random { data, .. } => Ok(Box::new(BufReader::with_capacity(
-                RANDOM_ACCESS_CHUNK,
-                RandomReader::range(data.clone(), start, length),
-            ))),
+            Archive::Random { data, .. } => {
+                Ok(Box::new(RandomReader::range(data.clone(), start, length)))
+            }
         }
     }
 }
@@ -95,7 +90,7 @@ impl From<PathBuf> for Archive {
 /// An open archive's bytes.
 enum ArchiveReader {
     File(std::fs::File),
-    Random(BufReader<RandomReader>),
+    Random(RandomReader),
 }
 
 impl Read for ArchiveReader {

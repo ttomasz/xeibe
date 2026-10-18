@@ -261,19 +261,28 @@ impl RandomAccess for bytes::Bytes {
 }
 
 /// [`RandomAccess`] bytes as a reader of the range `pos..end`, seekable
-/// within the whole.
+/// within the whole, in reads of [`RANDOM_ACCESS_CHUNK`]: each `read_at` may
+/// be costly (a browser `File` read is a call into the browser).
+///
+/// The bytes of the last `read_at` stay until a read falls outside them,
+/// across seeks: a zip's directory, read entry by entry with seeks in
+/// between, is one `read_at`, where a `BufReader` (which drops its buffer on
+/// every seek) made one per entry.
 #[derive(Debug, Clone)]
 pub struct RandomReader {
     data: Arc<dyn RandomAccess>,
     pos: u64,
     end: u64,
+    window: Vec<u8>,
+    /// Where `window` starts in `data`.
+    window_start: u64,
 }
 
 impl RandomReader {
     /// The whole of `data`.
     pub fn new(data: Arc<dyn RandomAccess>) -> Self {
         let end = data.len();
-        Self { data, pos: 0, end }
+        Self::range(data, 0, end)
     }
 
     /// `length` bytes from `start` (fewer if `data` ends first).
@@ -283,18 +292,46 @@ impl RandomReader {
             data,
             pos: start.min(end),
             end,
+            window: Vec::new(),
+            window_start: 0,
         }
+    }
+
+    /// Read `window` afresh from `pos`.
+    fn fill(&mut self) -> std::io::Result<()> {
+        let size = usize::try_from(self.end - self.pos)
+            .unwrap_or(usize::MAX)
+            .min(RANDOM_ACCESS_CHUNK);
+        self.window.resize(size, 0);
+        let mut filled = 0;
+        while filled < size {
+            let n = self
+                .data
+                .read_at(self.pos + filled as u64, &mut self.window[filled..])?;
+            if n == 0 {
+                break;
+            }
+            filled += n;
+        }
+        self.window.truncate(filled);
+        self.window_start = self.pos;
+        Ok(())
     }
 }
 
 impl std::io::Read for RandomReader {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let left = usize::try_from(self.end - self.pos).unwrap_or(usize::MAX);
-        let want = buf.len().min(left);
-        if want == 0 {
+        if self.pos >= self.end || buf.is_empty() {
             return Ok(0);
         }
-        let n = self.data.read_at(self.pos, &mut buf[..want])?;
+        let in_window = self.pos >= self.window_start
+            && self.pos < self.window_start + self.window.len() as u64;
+        if !in_window {
+            self.fill()?;
+        }
+        let at = (self.pos - self.window_start) as usize;
+        let n = buf.len().min(self.window.len() - at);
+        buf[..n].copy_from_slice(&self.window[at..at + n]);
         self.pos += n as u64;
         Ok(n)
     }
@@ -320,17 +357,14 @@ impl std::io::Seek for RandomReader {
     }
 }
 
-/// [`RandomAccess`] bytes read from the start, as one stream, in reads of
-/// [`RANDOM_ACCESS_CHUNK`] (each `read_at` may be costly: a browser `File`
-/// read is a call into JavaScript).
+/// [`RandomAccess`] bytes read from the start, as one stream.
 #[derive(Debug)]
 pub struct RandomAccessSource {
     pub name: String,
     pub data: Arc<dyn RandomAccess>,
 }
 
-/// The size of the reads [`RandomAccessSource`] and zip members in a
-/// [`RandomAccess`] archive make.
+/// The size of the reads a [`RandomReader`] makes.
 pub const RANDOM_ACCESS_CHUNK: usize = 256 << 10;
 
 impl ByteSource for RandomAccessSource {
@@ -341,10 +375,7 @@ impl ByteSource for RandomAccessSource {
         Some(self.data.len())
     }
     fn open(&self) -> crate::Result<Box<dyn std::io::Read + Send>> {
-        Ok(Box::new(std::io::BufReader::with_capacity(
-            RANDOM_ACCESS_CHUNK,
-            RandomReader::new(self.data.clone()),
-        )))
+        Ok(Box::new(RandomReader::new(self.data.clone())))
     }
 }
 
