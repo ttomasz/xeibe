@@ -12,8 +12,8 @@ pub enum Error {
     #[error("{crs}: {what} is not supported")]
     Unsupported { crs: String, what: String },
     /// The two CRSs are on different datums and no transformation between
-    /// them can be used: EPSG has none that xeibe can apply (grid-based ones
-    /// are not supported yet). A ballpark approximation is never used instead.
+    /// them can be used: EPSG has none that xeibe can apply (with the grids
+    /// allowed). A ballpark approximation is never used instead.
     #[error(
         "no usable transformation from {src} to {dst}: EPSG has none that xeibe \
          can apply, and ballpark approximations are not used"
@@ -28,6 +28,9 @@ pub enum Error {
         y: f64,
         reason: CoordinateError,
     },
+    /// Grid data handed to a transform couldn't be used.
+    #[error("grid {file}: {message}")]
+    Grid { file: String, message: String },
 }
 
 /// Why one coordinate could not be converted.
@@ -47,4 +50,15 @@ pub enum CoordinateError {
     /// An iterative inverse did not converge.
     #[error("did not converge")]
     NoConvergence,
+    /// The point is outside the grid of the operation chosen for it, and no
+    /// other operation applies.
+    #[error("outside the transformation's grid")]
+    OutsideGrid,
+    /// The grid the coordinate needs hasn't been loaded: see
+    /// `Transform::grid_requests`.
+    #[error("the transformation's grid is not loaded")]
+    GridNotLoaded,
+    /// The grid file couldn't be read.
+    #[error("the transformation's grid file is invalid")]
+    InvalidGrid,
 }

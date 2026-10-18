@@ -1,7 +1,9 @@
 //! A CRS read from PROJJSON, reduced to what conversion needs.
 //!
 //! Only the subset of PROJJSON that `xeibe-crs` produces from the EPSG dataset
-//! is read: geographic, geocentric and projected CRSs. Units can be given as a
+//! is read: geographic, geocentric, projected, vertical (plain or derived by
+//! a change of unit or of direction), compound and engineering CRSs. Units can
+//! be given as a
 //! name (`"metre"`, `"degree"`, `"unity"`) or as an object with a
 //! `conversion_factor`, and values as a number or as `{value, unit}`.
 
@@ -35,6 +37,38 @@ pub(crate) enum Kind {
         projection: Arc<dyn Projection>,
         method: String,
     },
+    /// A gravity-related height or depth. Internally a height in metres,
+    /// up, as the third value; the first two carry the horizontal position
+    /// from the CRS before it in a pipeline, which vertical operations read.
+    Vertical { datum: VerticalDatum },
+    /// A horizontal CRS with a vertical one: the horizontal CRS's internal
+    /// values, and the vertical CRS's height in metres, up.
+    Compound {
+        horizontal: Box<Crs>,
+        vertical: Box<Crs>,
+    },
+    /// A local grid (a site, a plant, an airport), on an engineering datum
+    /// with no tie to the Earth's shape. Internally (east, north) in metres
+    /// in the grid's own plane, as its axes name them.
+    Engineering { datum: EngineeringDatum },
+}
+
+/// The datum of an engineering CRS.
+#[derive(Debug, Clone)]
+pub(crate) struct EngineeringDatum {
+    /// `EPSG:9301`, or the name when there is no id.
+    pub(crate) key: String,
+    #[allow(dead_code)] // kept for diagnostics
+    pub(crate) name: String,
+}
+
+/// The datum (or datum ensemble) of a vertical CRS.
+#[derive(Debug, Clone)]
+pub(crate) struct VerticalDatum {
+    /// `EPSG:5181`, or the name when there is no id.
+    pub(crate) key: String,
+    #[allow(dead_code)] // kept for diagnostics
+    pub(crate) name: String,
 }
 
 /// The datum a CRS is on. Two CRSs can be converted between without a datum
@@ -242,6 +276,47 @@ impl Crs {
                     axes,
                 )
             }
+            "VerticalCRS" => {
+                let datum = ctx.vertical_datum(value)?;
+                let axes = ctx.axes(&value["coordinate_system"], CsKind::Vertical, None)?;
+                (Kind::Vertical { datum }, axes)
+            }
+            "DerivedVerticalCRS" => {
+                // A change of unit or of direction (height to depth) of its
+                // base: both are in the axis, so only the datum comes from
+                // the base.
+                let method = epsg_id(&value["conversion"]["method"]);
+                if !matches!(method, Some(1068 | 1069 | 1104)) {
+                    let name = value["conversion"]["method"]["name"].as_str().unwrap_or("");
+                    return Err(ctx.unsupported(&format!("a vertical CRS derived by {name}")));
+                }
+                let datum = ctx.vertical_datum(&value["base_crs"])?;
+                let axes = ctx.axes(&value["coordinate_system"], CsKind::Vertical, None)?;
+                (Kind::Vertical { datum }, axes)
+            }
+            "EngineeringCRS" => {
+                let datum = ctx.engineering_datum(value)?;
+                let cs = &value["coordinate_system"];
+                if cs["subtype"].as_str() != Some("Cartesian") {
+                    return Err(ctx.unsupported(&format!(
+                        "an engineering CRS with a {} coordinate system",
+                        cs["subtype"].as_str().unwrap_or("missing")
+                    )));
+                }
+                let axes = ctx.axes(cs, CsKind::Engineering, None)?;
+                (Kind::Engineering { datum }, axes)
+            }
+            "CompoundCRS" => {
+                let components = value["components"].as_array().map(Vec::as_slice);
+                let Some([h, v]) = components else {
+                    return Err(ctx.unsupported("a compound CRS without two components"));
+                };
+                return Crs::compound(&Crs::from_value(h)?, &Crs::from_value(v)?).map(|mut c| {
+                    c.name = name;
+                    c.code = code;
+                    c
+                });
+            }
             other => {
                 return Err(ctx.unsupported(&format!(
                     "a CRS of type {}",
@@ -253,6 +328,44 @@ impl Crs {
             name,
             code,
             kind,
+            axes,
+        })
+    }
+
+    /// A compound CRS of a horizontal CRS (geographic 2D or projected) and a
+    /// vertical one, as GML names it with both codes
+    /// (`urn:ogc:def:crs,crs:EPSG::4258,crs:EPSG::7837`). It has no code of
+    /// its own; its name is PROJ's, "horizontal + vertical".
+    pub fn compound(horizontal: &Crs, vertical: &Crs) -> Result<Crs, Error> {
+        let name = format!("{} + {}", horizontal.name, vertical.name);
+        let unsupported = |what: &str| Error::Unsupported {
+            crs: name.clone(),
+            what: what.to_owned(),
+        };
+        let two_d = horizontal.dimension() == 2
+            && matches!(
+                horizontal.kind,
+                Kind::Geographic { .. } | Kind::Projected { .. }
+            );
+        if !two_d {
+            return Err(unsupported(
+                "a compound CRS whose first part is not a 2D geographic or projected CRS",
+            ));
+        }
+        if !matches!(vertical.kind, Kind::Vertical { .. }) {
+            return Err(unsupported(
+                "a compound CRS whose second part is not a vertical CRS",
+            ));
+        }
+        let mut axes = horizontal.axes.clone();
+        axes.axes.extend(vertical.axes.axes.iter().copied());
+        Ok(Crs {
+            name,
+            code: None,
+            kind: Kind::Compound {
+                horizontal: Box::new(horizontal.clone()),
+                vertical: Box::new(vertical.clone()),
+            },
             axes,
         })
     }
@@ -272,9 +385,10 @@ impl Crs {
         self.axes.dimension()
     }
 
-    /// EPSG's name for the projection method, for a projected CRS.
+    /// EPSG's name for the projection method, for a projected CRS (or a
+    /// compound CRS whose horizontal part is one).
     pub fn method(&self) -> Option<&str> {
-        match &self.kind {
+        match &self.horizontal().kind {
             Kind::Projected { method, .. } => Some(method),
             _ => None,
         }
@@ -291,7 +405,7 @@ impl Crs {
 
     /// A full turn in the unit of the longitude axis, for a geographic CRS.
     pub(crate) fn longitude_turn(&self) -> Option<f64> {
-        match self.kind {
+        match self.horizontal().kind {
             Kind::Geographic { .. } => self
                 .axes
                 .east_factor()
@@ -300,10 +414,48 @@ impl Crs {
         }
     }
 
-    pub(crate) fn datum(&self) -> &Datum {
+    /// The geodetic datum, of the horizontal part for a compound CRS; none
+    /// for a vertical or an engineering CRS.
+    pub(crate) fn datum(&self) -> Option<&Datum> {
         match &self.kind {
-            Kind::Geographic { datum } | Kind::Geocentric { datum } => datum,
-            Kind::Projected { datum, .. } => datum,
+            Kind::Geographic { datum } | Kind::Geocentric { datum } => Some(datum),
+            Kind::Projected { datum, .. } => Some(datum),
+            Kind::Compound { horizontal, .. } => horizontal.datum(),
+            Kind::Vertical { .. } | Kind::Engineering { .. } => None,
+        }
+    }
+
+    /// The datum of an engineering CRS.
+    pub(crate) fn engineering_datum(&self) -> Option<&EngineeringDatum> {
+        match &self.kind {
+            Kind::Engineering { datum } => Some(datum),
+            _ => None,
+        }
+    }
+
+    /// +1 when the height axis points up, −1 for a depth axis; +1 without one.
+    pub(crate) fn height_direction(&self) -> f64 {
+        self.axes
+            .axes
+            .iter()
+            .find(|a| a.vertical != 0.0)
+            .map_or(1.0, |a| a.vertical)
+    }
+
+    /// The horizontal CRS: the CRS itself, or a compound CRS's first part.
+    pub(crate) fn horizontal(&self) -> &Crs {
+        match &self.kind {
+            Kind::Compound { horizontal, .. } => horizontal,
+            _ => self,
+        }
+    }
+
+    /// The vertical datum, of a vertical CRS or a compound CRS's second part.
+    pub(crate) fn vertical_datum(&self) -> Option<&VerticalDatum> {
+        match &self.kind {
+            Kind::Vertical { datum } => Some(datum),
+            Kind::Compound { vertical, .. } => vertical.vertical_datum(),
+            _ => None,
         }
     }
 
@@ -326,11 +478,18 @@ fn epsg_id(value: &Value) -> Option<u32> {
     }
 }
 
+/// The components of a diagonal direction (northEast and the like).
+const DIAGONAL: f64 = std::f64::consts::FRAC_1_SQRT_2;
+
 #[derive(Clone, Copy, PartialEq)]
 enum CsKind {
     Ellipsoidal,
     Projected,
     Geocentric,
+    Vertical,
+    /// A local grid: compass directions name the grid's own axes, the
+    /// diagonal ones included, and a platform's axes are its own.
+    Engineering,
 }
 
 #[derive(Clone, Copy)]
@@ -357,6 +516,33 @@ impl Ctx<'_> {
             crs: self.crs.to_owned(),
             what: what.to_owned(),
         }
+    }
+
+    fn engineering_datum(&self, crs: &Value) -> Result<EngineeringDatum, Error> {
+        let datum = &crs["datum"];
+        if !datum.is_object() {
+            return Err(self.invalid("no datum"));
+        }
+        let name = datum["name"].as_str().unwrap_or("unnamed datum").to_owned();
+        let key = match epsg_id(datum) {
+            Some(code) => format!("EPSG:{code}"),
+            None => name.clone(),
+        };
+        Ok(EngineeringDatum { key, name })
+    }
+
+    fn vertical_datum(&self, crs: &Value) -> Result<VerticalDatum, Error> {
+        let datum = match (&crs["datum"], &crs["datum_ensemble"]) {
+            (Value::Object(_), _) => &crs["datum"],
+            (_, Value::Object(_)) => &crs["datum_ensemble"],
+            _ => return Err(self.invalid("no datum or datum ensemble")),
+        };
+        let name = datum["name"].as_str().unwrap_or("unnamed datum").to_owned();
+        let key = match epsg_id(datum) {
+            Some(code) => format!("EPSG:{code}"),
+            None => name.clone(),
+        };
+        Ok(VerticalDatum { key, name })
     }
 
     fn datum(&self, crs: &Value) -> Result<Datum, Error> {
@@ -500,6 +686,24 @@ impl Ctx<'_> {
                     (CsKind::Ellipsoidal | CsKind::Projected, "south") => ([0.0, -1.0], 0.0),
                     (CsKind::Ellipsoidal | CsKind::Projected, "up") => ([0.0, 0.0], 1.0),
                     (CsKind::Ellipsoidal | CsKind::Projected, "down") => ([0.0, 0.0], -1.0),
+                    (CsKind::Engineering, "east") => ([1.0, 0.0], 0.0),
+                    (CsKind::Engineering, "west") => ([-1.0, 0.0], 0.0),
+                    (CsKind::Engineering, "north") => ([0.0, 1.0], 0.0),
+                    (CsKind::Engineering, "south") => ([0.0, -1.0], 0.0),
+                    (CsKind::Engineering, "northEast") => ([DIAGONAL, DIAGONAL], 0.0),
+                    (CsKind::Engineering, "northWest") => ([-DIAGONAL, DIAGONAL], 0.0),
+                    (CsKind::Engineering, "southEast") => ([DIAGONAL, -DIAGONAL], 0.0),
+                    (CsKind::Engineering, "southWest") => ([-DIAGONAL, -DIAGONAL], 0.0),
+                    // A moving platform's frame, right-handed: starboard,
+                    // forward, up.
+                    (CsKind::Engineering, "starboard") => ([1.0, 0.0], 0.0),
+                    (CsKind::Engineering, "port") => ([-1.0, 0.0], 0.0),
+                    (CsKind::Engineering, "forward") => ([0.0, 1.0], 0.0),
+                    (CsKind::Engineering, "aft") => ([0.0, -1.0], 0.0),
+                    (CsKind::Engineering, "up") => ([0.0, 0.0], 1.0),
+                    (CsKind::Engineering, "down") => ([0.0, 0.0], -1.0),
+                    (CsKind::Vertical, "up") => ([0.0, 0.0], 1.0),
+                    (CsKind::Vertical, "down") => ([0.0, 0.0], -1.0),
                     _ => {
                         return Err(self.unsupported(&format!("the axis direction {direction}")));
                     }
@@ -523,6 +727,16 @@ impl Ctx<'_> {
             .map(|axis| axis.along)
             .collect();
         let verticals = axes.len() - horizontal.len();
+        if kind == CsKind::Vertical {
+            if axes.len() != 1 || verticals != 1 {
+                return Err(self.unsupported("a vertical coordinate system without one axis"));
+            }
+            return Ok(Axes {
+                axes,
+                inverse: [[1.0, 0.0], [0.0, 1.0]],
+                first_is_north: false,
+            });
+        }
         if horizontal.len() != 2 || verticals > 1 {
             return Err(self.unsupported("a coordinate system without two horizontal axes"));
         }

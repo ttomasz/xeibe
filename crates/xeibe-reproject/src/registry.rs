@@ -44,6 +44,9 @@ pub(crate) struct Operation {
     pub(crate) deprecated: bool,
     /// EPSG's remarks say "Replaced by".
     pub(crate) replaced: bool,
+    /// The operations EPSG's remarks say this one emulates with another
+    /// method ("Emulation using NTv2 method of …, code 9327").
+    pub(crate) emulates: Vec<u32>,
     /// Extent codes, one per usage.
     pub(crate) extents: Vec<u32>,
     /// The area covering all its usages' areas (`Extent::covering`). PROJ
@@ -65,6 +68,43 @@ impl Operation {
             _ => None,
         })
     }
+
+    /// A file parameter by EPSG code.
+    pub(crate) fn file(&self, code: u32) -> Option<&str> {
+        self.params.iter().find_map(|(c, v)| match v {
+            ParamValue::File(f) if *c == code => Some(f.as_str()),
+            _ => None,
+        })
+    }
+
+    /// Every grid file the operation reads, as EPSG names them (for NADCON's
+    /// pair of files, the latitude one).
+    pub(crate) fn grid_names(&self) -> Vec<&str> {
+        match crate::operation::grid::file_parameter(self.method) {
+            Some(code) => self.file(code).into_iter().collect(),
+            None => self
+                .params
+                .iter()
+                .filter_map(|(_, v)| match v {
+                    ParamValue::File(f) => Some(f.as_str()),
+                    _ => None,
+                })
+                .collect(),
+        }
+    }
+
+    /// The grid file PROJ reads for this operation, as EPSG names it: for
+    /// NADCON's pair of files, the latitude one, which PROJ's catalog maps
+    /// to the single GeoTIFF.
+    pub(crate) fn grid_name(&self) -> Option<&str> {
+        match crate::operation::grid::file_parameter(self.method) {
+            Some(code) => self.file(code),
+            None => self.params.iter().find_map(|(_, v)| match v {
+                ParamValue::File(f) => Some(f.as_str()),
+                _ => None,
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -72,6 +112,16 @@ pub(crate) struct GeodeticCrs {
     pub(crate) code: u32,
     pub(crate) name: String,
     pub(crate) kind: GeodeticKind,
+    pub(crate) datum: u32,
+    pub(crate) deprecated: bool,
+}
+
+/// A vertical CRS, with the datum PROJ gives it: a CRS derived from another
+/// (depth, another unit) has its base's.
+#[derive(Debug, Clone)]
+pub(crate) struct VerticalCrs {
+    pub(crate) code: u32,
+    pub(crate) name: String,
     pub(crate) datum: u32,
     pub(crate) deprecated: bool,
 }
@@ -101,6 +151,10 @@ pub(crate) struct Datum {
     pub(crate) dynamic: bool,
     /// For a datum ensemble: how far apart its members may be, in metres.
     pub(crate) ensemble_accuracy: Option<f64>,
+    /// The anchor epoch, as a decimal year.
+    pub(crate) anchor_epoch: Option<f64>,
+    /// A vertical datum, or an ensemble of them.
+    pub(crate) vertical: bool,
 }
 
 #[derive(Debug)]
@@ -109,6 +163,9 @@ pub(crate) struct Registry {
     /// Operations with this CRS as source or target, by code.
     pub(crate) by_crs: HashMap<u32, Vec<u32>>,
     pub(crate) geodetic: HashMap<u32, GeodeticCrs>,
+    pub(crate) vertical: HashMap<u32, VerticalCrs>,
+    /// Live vertical CRSs on each datum, by code.
+    pub(crate) vertical_by_datum: HashMap<u32, Vec<u32>>,
     /// Live geodetic CRSs on each datum, by code.
     pub(crate) crs_by_datum: HashMap<u32, Vec<u32>>,
     pub(crate) datums: HashMap<u32, Datum>,
@@ -188,6 +245,7 @@ impl Registry {
                 variant: code(&o["variant"]).unwrap_or(0),
                 deprecated: o["deprecated"].as_bool().unwrap_or(false),
                 replaced: o["replaced"].as_bool().unwrap_or(false),
+                emulates: codes(&o["emulates"]),
                 extents: codes(&o["extents"]),
                 area: None,
                 params,
@@ -227,6 +285,27 @@ impl Registry {
             list.sort_unstable();
         }
 
+        let mut vertical = HashMap::new();
+        let mut vertical_by_datum: HashMap<u32, Vec<u32>> = HashMap::new();
+        for v in doc["vertical_crs"].as_array().into_iter().flatten() {
+            let crs = VerticalCrs {
+                code: code(&v[0]).unwrap_or(0),
+                name: v[1].as_str().unwrap_or("").to_owned(),
+                datum: code(&v[2]).unwrap_or(0),
+                deprecated: v[3].as_u64() == Some(1) || v[3].as_bool() == Some(true),
+            };
+            if !crs.deprecated {
+                vertical_by_datum
+                    .entry(crs.datum)
+                    .or_default()
+                    .push(crs.code);
+            }
+            vertical.insert(crs.code, crs);
+        }
+        for list in vertical_by_datum.values_mut() {
+            list.sort_unstable();
+        }
+
         let mut datums = HashMap::new();
         for d in doc["datums"].as_array().into_iter().flatten() {
             let datum = Datum {
@@ -239,6 +318,8 @@ impl Registry {
                 deprecated: d[6].as_u64() == Some(1) || d[6].as_bool() == Some(true),
                 dynamic: d[7].as_bool().unwrap_or(false),
                 ensemble_accuracy: d[8].as_f64(),
+                anchor_epoch: d[9].as_f64(),
+                vertical: d[10].as_bool().unwrap_or(false),
             };
             datums.insert(datum.code, datum);
         }
@@ -276,6 +357,8 @@ impl Registry {
             ops,
             by_crs,
             geodetic,
+            vertical,
+            vertical_by_datum,
             crs_by_datum,
             datums,
             crs_extent,

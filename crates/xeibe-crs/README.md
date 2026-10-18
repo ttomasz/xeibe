@@ -219,8 +219,12 @@ releases embedded in each.
 
 - `operations_json()`: EPSG's coordinate operations (transformations,
   concatenated operations and the conversions they use), datums with their
-  ensembles, and areas of use, in `data/operations.bin`. `xeibe-reproject`
-  uses them for datum transformations.
+  ensembles and anchor epochs, vertical CRSs and datums, and areas of use, in
+  `data/operations.bin`.
+  Operations note the ones EPSG's remarks say they emulate, and EPSG's
+  supersessions are kept as published (PROJ's import skips three for NAD27
+  to NAD83). `xeibe-reproject` uses them for datum transformations, grid
+  files named as EPSG names them.
 
 ### 0.1.0
 

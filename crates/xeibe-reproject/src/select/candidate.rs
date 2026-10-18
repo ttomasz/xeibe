@@ -9,6 +9,7 @@
 
 use super::crs::{CrsCache, CrsKind, CrsRef};
 use crate::extent::{Extent, world};
+use crate::grid::Grids;
 use crate::registry::{Table, registry};
 
 pub(crate) const INVERSE_OF: &str = "Inverse of ";
@@ -17,6 +18,9 @@ pub(crate) const NULL_GEOCENTRIC_TRANSLATION: &str = "Null geocentric translatio
 pub(crate) const BALLPARK_GEOCENTRIC_TRANSLATION: &str = "Ballpark geocentric translation";
 pub(crate) const BALLPARK_GEOGRAPHIC_OFFSET: &str = "Ballpark geographic offset";
 pub(crate) const ENSEMBLE_MEMBER: &str = "Ensemble member identity";
+pub(crate) const BALLPARK_VERTICAL_TRANSFORMATION: &str = "ballpark vertical transformation";
+pub(crate) const BALLPARK_VERTICAL_NO_ELLIPSOID: &str =
+    "ballpark vertical transformation, without ellipsoid height to vertical height correction";
 
 /// What a single step does.
 #[derive(Debug, Clone, PartialEq)]
@@ -32,6 +36,23 @@ pub(crate) enum SingleKind {
     /// Between a datum ensemble and one of its members: coordinates pass
     /// unchanged, good to the ensemble's accuracy (`datum.rs`).
     EnsembleMember,
+    /// Between vertical CRSs on one datum (another unit, height to depth),
+    /// PROJ's "Conversion from … to …"; heights are internal metres up, so
+    /// nothing to do.
+    VerticalConversion,
+    /// PROJ's ballpark between two vertical datums, or from one to a
+    /// geographic CRS's ellipsoidal height: the height passes unchanged.
+    /// Ballparks are disallowed, so it only steers the search.
+    BallparkVertical,
+    /// One operation PROJ builds from others (a `PROJBasedOperation`): a
+    /// horizontal operation and a vertical one, or the vertical one between
+    /// a horizontal operation to its interpolation CRS and one back. It
+    /// counts as one step. With `save_horizontal` the horizontal position
+    /// at its start comes back at its end (PROJ's `push`/`pop +v_1 +v_2`).
+    Composite {
+        parts: Vec<Single>,
+        save_horizontal: bool,
+    },
 }
 
 /// One step of a candidate, between two CRSs.
@@ -48,6 +69,8 @@ pub(crate) struct Single {
     pub(crate) is_conversion: bool,
     /// Has an identifier (an EPSG code, or the inverse of one).
     pub(crate) identified: bool,
+    /// PROJ's `hasBallparkTransformation`.
+    pub(crate) ballpark: bool,
 }
 
 /// A candidate operation from the source to the target CRS.
@@ -100,10 +123,51 @@ impl Candidate {
         }
     }
 
-    /// Uses a grid-based operation.
+    /// PROJ's `setCRSs`: the operation between other CRSs; its steps keep
+    /// theirs.
+    pub(crate) fn with_crs(mut self, src: CrsRef, dst: CrsRef) -> Candidate {
+        self.src = src;
+        self.dst = dst;
+        self
+    }
+
+    /// PROJ's `hasBallparkTransformation`: a step is a ballpark.
+    pub(crate) fn has_ballpark(&self) -> bool {
+        self.steps.iter().any(|s| s.ballpark)
+    }
+
+    /// The operations it runs, inside combined operations too.
+    pub(crate) fn leaves(&self) -> Vec<&Single> {
+        let mut out = Vec::new();
+        for s in &self.steps {
+            s.collect_leaves(&mut out);
+        }
+        out
+    }
+
+    /// Every grid it uses is available: PROJ's `gridsNeeded` with known
+    /// grids counted as available, which with `Grids::ProjData` means that
+    /// PROJ's catalog puts the grid on `cdn.proj.org`.
+    pub(crate) fn grids_available(&self, grids: Grids) -> bool {
+        self.leaves().iter().all(|s| match s.kind {
+            SingleKind::Registry { code, .. } => {
+                let op = &registry().ops[&code];
+                let names = op.grid_names();
+                names.is_empty()
+                    || (grids == Grids::ProjData
+                        && names
+                            .iter()
+                            .all(|n| crate::grid::on_cdn(n, &op.name).is_some()))
+            }
+            _ => true,
+        })
+    }
+
+    /// Uses a grid (PROJ's non-empty `gridsNeeded`): any operation with a
+    /// grid file, whichever table PROJ keeps it in.
     pub(crate) fn has_grids(&self) -> bool {
-        self.steps.iter().any(|s| match s.kind {
-            SingleKind::Registry { code, .. } => registry().ops[&code].table == Table::Grid,
+        self.leaves().iter().any(|s| match s.kind {
+            SingleKind::Registry { code, .. } => !registry().ops[&code].grid_names().is_empty(),
             _ => false,
         })
     }
@@ -165,11 +229,32 @@ impl Single {
             },
             SingleKind::SameDatum => SingleKind::SameDatum,
             SingleKind::EnsembleMember => SingleKind::EnsembleMember,
+            SingleKind::VerticalConversion => SingleKind::VerticalConversion,
+            SingleKind::BallparkVertical => SingleKind::BallparkVertical,
+            SingleKind::Composite {
+                parts,
+                save_horizontal,
+            } => SingleKind::Composite {
+                parts: parts.iter().rev().map(|p| p.inverse(crs)).collect(),
+                save_horizontal: *save_horizontal,
+            },
         };
         let name = match &self.kind {
             // Synthetic operations are named after their CRSs.
             SingleKind::SameDatum => same_datum_name(crs, self.dst, self.src),
             SingleKind::EnsembleMember => op_name(crs, ENSEMBLE_MEMBER, self.dst, self.src),
+            SingleKind::VerticalConversion => {
+                if self.identified {
+                    // A conversion step of a registered concatenation.
+                    self.name.clone()
+                } else {
+                    conversion_name(crs, self.dst, self.src)
+                }
+            }
+            SingleKind::BallparkVertical | SingleKind::Composite { .. } => inverse_name(
+                &self.name,
+                matches!(self.kind, SingleKind::Composite { .. }),
+            ),
             SingleKind::Registry { code, inverse }
             | SingleKind::Projection { crs: code, inverse } => {
                 if *inverse {
@@ -196,7 +281,77 @@ impl Single {
             extent: self.extent.clone(),
             is_conversion: self.is_conversion,
             identified: self.identified,
+            ballpark: self.ballpark,
         }
+    }
+
+    fn collect_leaves<'a>(&'a self, out: &mut Vec<&'a Single>) {
+        match &self.kind {
+            SingleKind::Composite { parts, .. } => {
+                for p in parts {
+                    p.collect_leaves(out);
+                }
+            }
+            _ => out.push(self),
+        }
+    }
+}
+
+/// PROJ's `buildConvName`.
+pub(crate) fn conversion_name(crs: &mut CrsCache, src: CrsRef, dst: CrsRef) -> String {
+    format!("Conversion from {} to {}", crs.name(src), crs.name(dst))
+}
+
+/// `createPropertiesForInverse` for an operation PROJ builds: a combined
+/// one ("A + B", or one starting "Inverse of") inverts part by part, in
+/// reverse order; anything else gets "Inverse of".
+pub(crate) fn inverse_name(name: &str, combined: bool) -> String {
+    if combined && (name.starts_with(INVERSE_OF) || name.contains(" + ")) {
+        let mut tokens: Vec<String> = Vec::new();
+        let mut cur = String::new();
+        let mut in_string = false;
+        let bytes: Vec<char> = name.chars().collect();
+        let mut i = 0;
+        while i < bytes.len() {
+            let c = bytes[i];
+            if in_string {
+                cur.push(c);
+                if c == '\'' {
+                    in_string = false;
+                }
+            } else if i + 3 < bytes.len() && bytes[i..i + 3] == [' ', '+', ' '] {
+                tokens.push(std::mem::take(&mut cur));
+                i += 2;
+            } else {
+                if c == '\'' {
+                    in_string = true;
+                }
+                cur.push(c);
+            }
+            i += 1;
+        }
+        if !cur.is_empty() {
+            tokens.push(cur);
+        }
+        return tokens
+            .iter()
+            .rev()
+            .map(|t| match t.strip_prefix(INVERSE_OF) {
+                Some(rest) => rest.to_owned(),
+                None if t == "axis order change (2D)"
+                    || t == "axis order change (geographic3D horizontal)" =>
+                {
+                    t.clone()
+                }
+                None => format!("{INVERSE_OF}{t}"),
+            })
+            .collect::<Vec<_>>()
+            .join(" + ");
+    }
+    if name.contains(" + ") {
+        format!("{INVERSE_OF}'{name}'")
+    } else {
+        format!("{INVERSE_OF}{name}")
     }
 }
 
@@ -231,6 +386,7 @@ pub(crate) fn registry_single(code: u32, inverse: bool) -> Single {
         extent: if is_conversion { Some(world()) } else { extent },
         is_conversion,
         identified: true,
+        ballpark: false,
     };
     if !inverse {
         return forward;
@@ -260,12 +416,79 @@ pub(crate) fn registry_candidate(
     // The steps' directions follow from chaining their CRSs, as PROJ does.
     let mut steps = Vec::new();
     let mut cur = CrsRef::Epsg(op.src?);
-    for &step in &op.steps {
+    for (i, &step) in op.steps.iter().enumerate() {
         let s = &registry().ops[&step];
+        if s.table == Table::Conversion && (s.src.is_none() || s.dst.is_none()) {
+            // A conversion takes its CRSs from its neighbours (PROJ's
+            // `ConcatenatedOperation::fixSteps`). Handled: a projected CRS's
+            // deriving conversion, inverse when the coordinates are already
+            // in that CRS, forward into the next step's source CRS.
+            let next_src = op
+                .steps
+                .get(i + 1)
+                .and_then(|n| registry().ops[n].src)
+                .map(CrsRef::Epsg);
+            // Between vertical CRSs (height to depth, a change of unit): to
+            // the next step's CRS on the same datum, or the operation's
+            // target.
+            if crs.kind(cur) == CrsKind::Vertical {
+                let datum = crs.vertical_datum(cur);
+                let target = match op.steps.get(i + 1) {
+                    Some(n) => {
+                        let n = &registry().ops[n];
+                        [n.src, n.dst]
+                            .into_iter()
+                            .flatten()
+                            .map(CrsRef::Epsg)
+                            .find(|&c| crs.vertical_datum(c) == datum)?
+                    }
+                    None => CrsRef::Epsg(op.dst?),
+                };
+                steps.push(Single {
+                    kind: SingleKind::VerticalConversion,
+                    src: cur,
+                    dst: target,
+                    name: s.name.clone(),
+                    accuracy: 0.0,
+                    extent: Some(world()),
+                    is_conversion: true,
+                    identified: true,
+                    ballpark: false,
+                });
+                cur = target;
+                continue;
+            }
+            // By code, or by name where the PROJJSON gives the conversion
+            // no id.
+            let derives = |p: CrsRef, crs: &mut CrsCache| {
+                crs.get(p)
+                    .and_then(|f| f.conversion.clone())
+                    .is_some_and(|(name, code)| match code {
+                        Some(code) => code == step,
+                        None => name == s.name,
+                    })
+            };
+            let single = if derives(cur, crs) {
+                projection(crs, crs_code(cur), true)?
+            } else {
+                let p = next_src.filter(|&p| derives(p, crs))?;
+                projection(crs, crs_code(p), false)?
+            };
+            if single.src != cur {
+                steps.push(same_datum(crs, cur, single.src)?);
+            }
+            cur = single.dst;
+            steps.push(single);
+            continue;
+        }
         let (a, b) = (CrsRef::Epsg(s.src?), CrsRef::Epsg(s.dst?));
-        let forward = if a == cur {
+        // A compound CRS stands for its vertical part when the chain is at
+        // that vertical CRS ("SVD2006 height to SVD2024 height (1)" runs
+        // through operations to "ETRS89-NOR [EUREF89] + SVD2006 height").
+        let vertical_of = |c: CrsRef, crs: &mut CrsCache| crs.components(c).map(|(_, v)| v);
+        let forward = if a == cur || vertical_of(a, crs) == Some(cur) {
             true
-        } else if b == cur {
+        } else if b == cur || vertical_of(b, crs) == Some(cur) {
             false
         } else {
             // Different CRSs on one datum (2D vs 3D, geographic vs geocentric).
@@ -279,14 +502,14 @@ pub(crate) fn registry_candidate(
             }
         };
         let single = registry_single(step, !forward);
-        if single.src != cur {
+        if single.src != cur && crs.components(single.src).map(|(_, v)| v) != Some(cur) {
             steps.push(same_datum(crs, cur, single.src)?);
         }
         cur = single.dst;
         steps.push(single);
     }
     let dst = CrsRef::Epsg(op.dst?);
-    if cur != dst {
+    if cur != dst && crs.components(cur).map(|(_, v)| v) != Some(dst) {
         steps.push(same_datum(crs, cur, dst)?);
     }
     let extent = op.area.clone();
@@ -316,6 +539,10 @@ pub(crate) fn registry_candidate(
     })
 }
 
+fn crs_code(c: CrsRef) -> u32 {
+    c.code()
+}
+
 /// The deriving conversion of a projected CRS, forward (base to projected)
 /// or inverse.
 pub(crate) fn projection(crs: &mut CrsCache, projected: u32, inverse: bool) -> Option<Single> {
@@ -340,6 +567,7 @@ pub(crate) fn projection(crs: &mut CrsCache, projected: u32, inverse: bool) -> O
         extent: Some(world()),
         is_conversion: true,
         identified: true,
+        ballpark: false,
     })
 }
 
@@ -407,6 +635,7 @@ pub(crate) fn same_datum(crs: &mut CrsCache, src: CrsRef, dst: CrsRef) -> Option
         extent: Some(extent),
         is_conversion: conversion,
         identified: false,
+        ballpark: false,
     })
 }
 
@@ -430,6 +659,7 @@ pub(crate) fn ensemble_member(crs: &mut CrsCache, src: CrsRef, dst: CrsRef) -> O
         extent: Some(extent),
         is_conversion: false,
         identified: false,
+        ballpark: false,
     })
 }
 

@@ -10,8 +10,9 @@
 //! `createFromCRSCodesWithIntermediates`,
 //! `createBetweenGeodeticCRSWithDatumBasedIntermediates`), with the EPSG
 //! registry in place of PROJ's SQLite database, for EPSG operations only,
-//! ballpark operations disallowed and grid-based operations treated as
-//! missing (level 2 has no grids).
+//! ballpark operations disallowed, and grids available when PROJ-data
+//! publishes them (PROJ's `KNOWN_AVAILABLE`, its choice with network access)
+//! or never ([`Grids::None`], PROJ without grids).
 //!
 //! PROJ's SQL queries return rows in an order SQLite leaves open where their
 //! `ORDER BY` ties; here ties keep registry order (operation code, then
@@ -26,7 +27,10 @@ use super::candidate::{
 use super::crs::{CrsCache, CrsKind, CrsRef};
 use super::filter::{Areas, filter_out, is_exportable, is_null_transformation};
 use crate::extent::Extent;
+use crate::grid::Grids;
 use crate::registry::{Operation, registry};
+
+mod vertical;
 
 /// PROJ's recursion limit for `createOperations`.
 const MAX_RECURSION: usize = 10;
@@ -36,10 +40,15 @@ pub(crate) struct Search {
     pub(crate) areas: Areas,
     recursion: usize,
     in_datum_pivot: bool,
+    grids: Grids,
+    /// PROJ's guards against the vertical searches calling themselves.
+    in_geog_to_vert_intermediate: bool,
+    in_vert_to_vert_intermediate: bool,
+    in_geog_to_vert_alternative: bool,
 }
 
 impl Search {
-    pub(crate) fn new(mut crs: CrsCache, src: CrsRef, dst: CrsRef) -> Search {
+    pub(crate) fn new(mut crs: CrsCache, src: CrsRef, dst: CrsRef, grids: Grids) -> Search {
         let extent1 = crs.extent(src);
         let extent2 = crs.extent(dst);
         Search {
@@ -47,6 +56,10 @@ impl Search {
             areas: Areas::new(extent1, extent2),
             recursion: 0,
             in_datum_pivot: false,
+            grids,
+            in_geog_to_vert_intermediate: false,
+            in_vert_to_vert_intermediate: false,
+            in_geog_to_vert_alternative: false,
         }
     }
 
@@ -101,6 +114,25 @@ impl Search {
         if derived_dst {
             let reverse = self.create_operations(t, s);
             return self.inverse_all(reverse);
+        }
+        let (vs, vt) = (ks == CrsKind::Vertical, kt == CrsKind::Vertical);
+        let (cs, ct) = (ks == CrsKind::Compound, kt == CrsKind::Compound);
+        if vs && vt {
+            self.vert_to_vert(s, t, &mut res);
+        } else if vs && kt.is_geographic() {
+            self.vert_to_geog(s, t, &mut res);
+        } else if vt && ks.is_geographic() {
+            let reverse = self.create_operations(t, s);
+            return self.inverse_all(reverse);
+        } else if cs && kt.is_geographic() {
+            self.compound_to_geog(s, t, &mut res);
+        } else if cs && kt == CrsKind::Geocentric {
+            self.compound_to_geocentric(s, t, &mut res);
+        } else if ks.is_geodetic() && ct {
+            let reverse = self.create_operations(t, s);
+            return self.inverse_all(reverse);
+        } else if cs && ct {
+            self.compound_to_compound(s, t, &mut res);
         }
         res
     }
@@ -171,7 +203,13 @@ impl Search {
     }
 
     fn query_registry(&mut self, s: CrsRef, t: CrsRef, res: &mut Vec<Candidate>) -> bool {
+        self.vertical_prelude(s, t, res);
+        if !res.is_empty() {
+            return true;
+        }
         let geod = self.crs.kind(s).is_geodetic() && self.crs.kind(t).is_geodetic();
+        let vertical =
+            self.crs.kind(s) == CrsKind::Vertical || self.crs.kind(t) == CrsKind::Vertical;
         let mut non_empty_before = false;
         *res = self.find_ops_direct(s, t, &mut non_empty_before);
         if self.has_perfect_accuracy(res) {
@@ -179,7 +217,9 @@ impl Search {
         }
         let mut do_filter = false;
         let mut same = false;
-        if geod {
+        if vertical {
+            self.vertical_database(s, t, res, &mut non_empty_before);
+        } else if geod {
             same = self.same_datum(s, t);
             if res.is_empty() && !same && !self.in_datum_pivot {
                 self.with_datum_pivot(res, s, t);
@@ -301,10 +341,20 @@ impl Search {
     }
 
     /// The replacement of `op` (same CRSs, same table) present in `set`.
+    /// PROJ ignores a replacement whose grid it doesn't know.
     fn superseded_in(op: &Operation, set: &HashSet<u32>) -> bool {
-        op.superseded_by
-            .iter()
-            .any(|(code, same, table)| *same && *table == op.table && set.contains(code))
+        let r = registry();
+        op.superseded_by.iter().any(|(code, same, table)| {
+            *same
+                && *table == op.table
+                && set.contains(code)
+                && r.ops.get(code).is_none_or(|new| {
+                    new.table != crate::registry::Table::Grid
+                        || new
+                            .grid_name()
+                            .is_some_and(|n| crate::grid::lookup(n, &new.name).is_some())
+                })
+        })
     }
 
     fn intersects_crs_areas(&self, x: &Extent) -> bool {
@@ -378,7 +428,7 @@ impl Search {
             }
             let inverse = r.ops[&row.code].src != Some(s);
             if let Some(c) = registry_candidate(row.code, inverse, &mut self.crs)
-                && !c.has_grids()
+                && c.grids_available(self.grids)
             {
                 out.push(c);
             }
@@ -600,7 +650,7 @@ impl Search {
                     continue;
                 };
                 if let Some(c) = concatenate(vec![c1, c2], false, &mut self.crs)
-                    && !c.has_grids()
+                    && c.grids_available(self.grids)
                 {
                     out.push(c);
                 }
@@ -795,7 +845,7 @@ impl Search {
                 }
             }
             if let Some(c) = concatenate(steps, false, &mut self.crs)
-                && !c.has_grids()
+                && c.grids_available(self.grids)
             {
                 out.push(c);
             }
@@ -823,10 +873,8 @@ impl Search {
         let (ks, kt) = (self.crs.kind(s), self.crs.kind(t));
         if ks.is_geographic() && kt.is_geographic() {
             // Same datum: an axis order change, or a null geographic offset.
-            let lat_first = |c: CrsRef| match c {
-                CrsRef::Epsg(code) | CrsRef::Promoted(code) => {
-                    xeibe_crs::get(code).map(|r| r.first_axis == xeibe_crs::FirstAxis::NorthOrLat)
-                }
+            let lat_first = |c: CrsRef| {
+                xeibe_crs::get(c.code()).map(|r| r.first_axis == xeibe_crs::FirstAxis::NorthOrLat)
             };
             if lat_first(s) != lat_first(t) {
                 let three = ks == CrsKind::Geographic3d || kt == CrsKind::Geographic3d;
@@ -844,6 +892,7 @@ impl Search {
                     extent: Some(crate::extent::world()),
                     is_conversion: true,
                     identified: true,
+                    ballpark: false,
                 }));
                 return;
             }
@@ -1027,6 +1076,15 @@ impl Search {
             if !is_null_third {
                 parts.push(third.clone());
             }
+            // PROJ gives the first part the source CRS and the last the
+            // target CRS (`setCRSs`): a single operation found between 3D
+            // CRSs for 2D ones becomes 2D, which keeps the height.
+            let head = parts.remove(0);
+            let head_dst = head.dst;
+            parts.insert(0, head.with_crs(s, head_dst));
+            let tail = parts.pop().expect("a part");
+            let tail_src = tail.src;
+            parts.push(tail.with_crs(tail_src, t));
             if let Some(mut c) = concatenate(parts, true, &mut self.crs) {
                 c.src = s;
                 c.dst = t;
@@ -1038,8 +1096,12 @@ impl Search {
 
 /// `CoordinateOperationFactory::createOperations`: all candidates from `src`
 /// to `dst`, filtered and sorted as PROJ would.
-pub(crate) fn create_operations(src: CrsRef, dst: CrsRef) -> (Vec<Candidate>, CrsCache) {
-    let mut search = Search::new(CrsCache::default(), src, dst);
+pub(crate) fn create_operations(
+    src: CrsRef,
+    dst: CrsRef,
+    grids: Grids,
+) -> (Vec<Candidate>, CrsCache) {
+    let mut search = Search::new(CrsCache::default(), src, dst, grids);
     let res = search.create_operations(src, dst);
     let areas = search.areas.clone();
     let mut crs = search.crs;

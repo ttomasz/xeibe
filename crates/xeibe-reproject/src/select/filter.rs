@@ -8,8 +8,9 @@
 //! The source warns that "the order of the comparisons is extremely
 //! important"; it is kept, up to the last tie-breaks. Where PROJ compares
 //! names, xeibe uses EPSG's data (`docs/reprojection.md`, level 2,
-//! deviations): fewer operations run backwards, a longitude rotation that
-//! agrees with the prime meridians, then the newer EPSG variant.
+//! deviations): no emulation where EPSG has the operation it emulates,
+//! fewer operations run backwards, a longitude rotation that agrees with the
+//! prime meridians, then the newer EPSG variant.
 
 use std::cmp::Ordering;
 
@@ -67,24 +68,28 @@ pub(crate) fn is_null_transformation(name: &str) -> bool {
 
 /// Whether xeibe can run every step: PROJ's "exportable to a PROJ string".
 pub(crate) fn is_exportable(c: &Candidate) -> bool {
-    c.steps.iter().all(|s| match s.kind {
+    c.leaves().iter().all(|s| match s.kind {
         SingleKind::Registry { code, .. } => {
             let op = &registry().ops[&code];
-            op.table == crate::registry::Table::Conversion
-                || crate::operation::is_implemented(op.method)
+            op.table == crate::registry::Table::Conversion || crate::operation::is_exportable(op)
         }
         _ => true,
     })
 }
 
-/// `FilterResults::filterOut` with no desired accuracy and no ballparks.
-/// `strict` is PROJ's `forceStrictContainmentTest`.
+/// `FilterResults::filterOut` with no desired accuracy and ballparks
+/// disallowed. `strict` is PROJ's `forceStrictContainmentTest`.
 pub(crate) fn filter_out(list: &[Candidate], areas: &Areas, strict: bool) -> Vec<Candidate> {
     let mut res = Vec::new();
     let mut has_non_ballpark_op_with_extent = false;
+    let mut has_non_ballpark_without_extent = false;
     for op in list {
+        if op.has_ballpark() {
+            continue;
+        }
         if let Some(interest) = &areas.interest {
             let Some(extent) = &op.extent else {
+                has_non_ballpark_without_extent = true;
                 continue;
             };
             has_non_ballpark_op_with_extent = true;
@@ -97,8 +102,13 @@ pub(crate) fn filter_out(list: &[Candidate], areas: &Areas, strict: bool) -> Vec
         }
         res.push(op.clone());
     }
-    if res.is_empty() && !has_non_ballpark_op_with_extent {
-        res = list.to_vec();
+    // Ballparks never get in, so "only ballparks" means none.
+    if res.is_empty() && (!has_non_ballpark_op_with_extent || has_non_ballpark_without_extent) {
+        res = list
+            .iter()
+            .filter(|op| !op.has_ballpark())
+            .cloned()
+            .collect();
     }
     res
 }
@@ -122,12 +132,17 @@ struct Keys {
     null_transformation: bool,
     step_count: usize,
     proj_step_count: usize,
+    /// Registry operations that emulate another one (an NTv2 version of a
+    /// geocentric grid method, by EPSG's remarks).
+    emulations: usize,
     /// Registry operations run against their published direction.
     inverted: usize,
     /// Longitude rotations that disagree with their CRSs' prime meridians.
     off_meridian: usize,
     /// The registry operations, in order: (EPSG variant, code, inverse).
     registry: Vec<(u32, u32, bool)>,
+    /// PROJ's duplicate test: the pipeline and the area.
+    duplicate: String,
 }
 
 fn area_for_sort(op: &Candidate, areas: &Areas) -> f64 {
@@ -154,10 +169,19 @@ fn area_for_sort(op: &Candidate, areas: &Areas) -> f64 {
     }
 }
 
+/// What PROJ's `removeDuplicateOps` compares: the pipeline and the area.
+fn duplicate_key(op: &Candidate, crs: &mut CrsCache) -> String {
+    let mut key = format!("{:?}", pipeline_tokens(op, crs));
+    if let Some(e) = &op.extent {
+        key += &format!("-{}-{}-{}-{}", e.west, e.south, e.east, e.north);
+    }
+    key
+}
+
 fn keys(op: &Candidate, areas: &Areas, crs: &mut CrsCache) -> Keys {
     let registry: Vec<(u32, u32, bool)> = op
-        .steps
-        .iter()
+        .leaves()
+        .into_iter()
         .filter_map(|s| match s.kind {
             SingleKind::Registry { code, inverse } => {
                 Some((registry().ops[&code].variant, code, inverse))
@@ -172,8 +196,22 @@ fn keys(op: &Candidate, areas: &Areas, crs: &mut CrsCache) -> Keys {
         has_grids: op.has_grids(),
         null_transformation: is_null_transformation(&op.name),
         step_count: op.steps.len(),
-        proj_step_count: pipeline_tokens(op, crs).len() + 1,
+        // PROJ leaves pipelines with `xyzgridshift` out of this comparison:
+        // they have more steps but are more precise.
+        proj_step_count: if registry.iter().any(|(_, code, _)| {
+            crate::operation::grid::XYZGRIDSHIFT_METHODS
+                .contains(&crate::registry::registry().ops[code].method)
+        }) {
+            0
+        } else {
+            pipeline_tokens(op, crs).len() + 1
+        },
+        emulations: registry
+            .iter()
+            .filter(|(_, code, _)| !crate::registry::registry().ops[code].emulates.is_empty())
+            .count(),
         inverted: registry.iter().filter(|(_, _, inverse)| *inverse).count(),
+        duplicate: duplicate_key(op, crs),
         off_meridian: registry
             .iter()
             .filter(|(_, code, _)| off_meridian(*code))
@@ -195,7 +233,7 @@ fn off_meridian(code: u32) -> bool {
     let meridian = |c: Option<u32>| {
         crate::crs::Crs::from_epsg(c?)
             .ok()
-            .map(|crs| crs.datum().prime_meridian)
+            .map(|crs| crs.datum().map_or(0.0, |d| d.prime_meridian))
     };
     match (meridian(op.src), meridian(op.dst)) {
         (Some(src), Some(dst)) => (angle - (src - dst)).abs() > 1e-12,
@@ -254,8 +292,19 @@ fn before(a: &Candidate, ka: &Keys, b: &Candidate, kb: &Keys) -> bool {
     {
         return ka.proj_step_count < kb.proj_step_count;
     }
+    // Two operations with the same pipeline and area differ by name only,
+    // and nothing in EPSG's data tells them apart: PROJ's order, the
+    // shorter name first (its duplicate removal then keeps that one).
+    if ka.duplicate == kb.duplicate && a.name.len() != b.name.len() {
+        return a.name.len() < b.name.len();
+    }
     // From here PROJ compares names: the shorter first, then the reverse
     // alphabetical order, with a preference for one of the NTF operations.
+    // xeibe prefers the operation EPSG defines over its emulation by
+    // another method, whichever direction either is published in.
+    if ka.emulations != kb.emulations {
+        return ka.emulations < kb.emulations;
+    }
     if ka.inverted != kb.inverted {
         return ka.inverted < kb.inverted;
     }
@@ -360,13 +409,7 @@ fn remove_duplicate_ops(res: &mut Vec<Candidate>, crs: &mut CrsCache) {
         return;
     }
     let mut seen = std::collections::HashSet::new();
-    res.retain(|op| {
-        let mut key = format!("{:?}", pipeline_tokens(op, crs));
-        if let Some(e) = &op.extent {
-            key += &format!("-{}-{}-{}-{}", e.west, e.south, e.east, e.north);
-        }
-        seen.insert(key)
-    });
+    res.retain(|op| seen.insert(duplicate_key(op, crs)));
 }
 
 /// A model of the PROJ pipeline a candidate exports to, for PROJ's
@@ -406,7 +449,49 @@ fn ellipsoid_of(crs: &mut CrsCache, c: super::crs::CrsRef) -> u32 {
 pub(crate) fn pipeline_tokens(op: &Candidate, crs: &mut CrsCache) -> Vec<Token> {
     let mut tokens: Vec<Token> = Vec::new();
     for s in &op.steps {
+        step_tokens(s, crs, &mut tokens);
+    }
+    // Remove neighbours that undo each other, repeatedly.
+    loop {
+        let mut changed = false;
+        let mut i = 0;
+        while i + 1 < tokens.len() {
+            if tokens[i].inverse() == tokens[i + 1] {
+                tokens.drain(i..i + 2);
+                changed = true;
+            } else {
+                i += 1;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    tokens
+}
+
+/// The pipeline steps PROJ writes for one step.
+fn step_tokens(s: &super::candidate::Single, crs: &mut CrsCache, tokens: &mut Vec<Token>) {
+    {
         let mut t = match &s.kind {
+            SingleKind::Composite {
+                parts,
+                save_horizontal,
+            } => {
+                if *save_horizontal {
+                    tokens.push(Token::Step("push v_1 v_2".into(), false));
+                }
+                for p in parts {
+                    step_tokens(p, crs, tokens);
+                }
+                if *save_horizontal {
+                    tokens.push(Token::Step("pop v_1 v_2".into(), false));
+                }
+                return;
+            }
+            // Heights are metres up throughout; PROJ's unit conversions and
+            // axis swaps for them aren't counted.
+            SingleKind::VerticalConversion | SingleKind::BallparkVertical => vec![],
             SingleKind::SameDatum | SingleKind::EnsembleMember => {
                 let (a, b) = (crs.kind(s.src), crs.kind(s.dst));
                 match (a, b) {
@@ -430,27 +515,29 @@ pub(crate) fn pipeline_tokens(op: &Candidate, crs: &mut CrsCache) -> Vec<Token> 
         };
         tokens.append(&mut t);
     }
-    // Remove neighbours that undo each other, repeatedly.
-    loop {
-        let mut changed = false;
-        let mut i = 0;
-        while i + 1 < tokens.len() {
-            if tokens[i].inverse() == tokens[i + 1] {
-                tokens.drain(i..i + 2);
-                changed = true;
-            } else {
-                i += 1;
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-    tokens
 }
 
 fn registry_tokens(code: u32, crs: &mut CrsCache) -> Vec<Token> {
     let op = &registry().ops[&code];
+    // A grid step is PROJ-data's file, inverted when the file goes the
+    // other way: two EPSG operations on one file can cancel.
+    if op.table == crate::registry::Table::Grid
+        && let Some(entry) = op
+            .grid_name()
+            .and_then(|n| crate::grid::lookup(n, &op.name))
+    {
+        // What PROJ runs: a geoid model is `vgridshift` backwards whichever
+        // EPSG method names it, an offset grid `vgridshift` with its sign.
+        let step = if crate::operation::is_geoid_grid(op.method) {
+            "vgridshift".to_owned()
+        } else if let Some(sign) = crate::operation::offset_grid_sign(op.method) {
+            format!("vgridshift {sign}")
+        } else {
+            op.method.to_string()
+        };
+        let inverse = entry.inverse != crate::operation::is_geoid_grid(op.method);
+        return vec![Token::Step(format!("{step} {}", entry.file), inverse)];
+    }
     let src = super::crs::CrsRef::Epsg(op.src.unwrap_or(0));
     let dst = super::crs::CrsRef::Epsg(op.dst.unwrap_or(0));
     let params: Vec<String> = op

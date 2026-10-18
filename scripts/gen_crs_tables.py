@@ -1010,12 +1010,10 @@ def export_operations(e: Epsg, version: str) -> dict:
         if old not in ops or new not in ops:
             continue
         a, b = by_code[old], by_code[new]
-        if (
-            ops[old]["table"] == "grid_transformation"
-            and ops[new]["table"] == "grid_transformation"
-            and a["coord_op_name"].startswith("NAD27 to NAD83")
-        ):
-            continue
+        # PROJ's build_db.py skips the three NAD27 to NAD83 supersessions
+        # (NTv1 by NTv2 in Canada and Quebec) and raises the NTv1
+        # operations' accuracy instead so that NTv2 wins; keeping EPSG's
+        # supersession makes the same choice.
         same = (a["source_crs_code"], a["target_crs_code"]) == (b["source_crs_code"], b["target_crs_code"])
         if not same:
             name = lambda c: crs_names.get(c) or ""  # noqa: E731
@@ -1054,12 +1052,29 @@ def export_operations(e: Epsg, version: str) -> dict:
             "and not (coord_ref_sys_code > 61000000 and deprecated) order by coord_ref_sys_code"
         )
     ]
+    # Vertical CRSs as build_db.py `fill_vertical_crs` imports them: a CRS
+    # derived from another (depth, another unit) takes its base's datum, or
+    # its base's base's.
+    vertical = []
+    for r in e.all(
+        "select * from epsg_coordinatereferencesystem where coord_ref_sys_kind='vertical' order by coord_ref_sys_code"
+    ):
+        datum, base = r["datum_code"], r["base_crs_code"]
+        for _ in range(2):
+            if datum is not None or base is None:
+                break
+            b = e.one("select datum_code, base_crs_code from epsg_coordinatereferencesystem where coord_ref_sys_code=?", base)
+            datum, base = b["datum_code"], b["base_crs_code"]
+        if datum is not None:
+            vertical.append([r["coord_ref_sys_code"], r["coord_ref_sys_name"], datum, r["deprecated"]])
     datums = []
     for r in e.all(
-        "select * from epsg_datum where datum_type in ('geodetic', 'dynamic geodetic', 'ensemble') order by datum_code"
+        "select * from epsg_datum where datum_type in "
+        "('geodetic', 'dynamic geodetic', 'vertical', 'dynamic vertical', 'ensemble') order by datum_code"
     ):
         members = None
         ellipsoid, pm = r["ellipsoid_code"], r["prime_meridian_code"]
+        is_vertical = r["datum_type"] in ("vertical", "dynamic vertical")
         if r["datum_type"] == "ensemble":
             members = [
                 m["datum_code"]
@@ -1069,8 +1084,9 @@ def export_operations(e: Epsg, version: str) -> dict:
                 )
             ]
             first = e.one("select * from epsg_datum where datum_code=?", members[0]) if members else None
-            if first is None or first["datum_type"] not in ("geodetic", "dynamic geodetic"):
-                continue  # a vertical ensemble
+            if first is None:
+                continue
+            is_vertical = first["datum_type"] in ("vertical", "dynamic vertical")
             ellipsoid, pm = first["ellipsoid_code"], first["prime_meridian_code"]
         datums.append(
             [
@@ -1085,16 +1101,25 @@ def export_operations(e: Epsg, version: str) -> dict:
                 r["frame_reference_epoch"] is not None,
                 # An ensemble's accuracy: how far apart its members may be.
                 ensemble_accuracy(e, r["datum_code"]) if members is not None else None,
+                # The anchor epoch (decimal year): velocity-grid operations
+                # move coordinates from the source's to the target's.
+                float(r["anchor_epoch"]) if r["anchor_epoch"] is not None else None,
+                # A vertical datum (or ensemble of them).
+                is_vertical,
             ]
         )
     return {
         "epsg_version": version,
         "geodetic_crs": geodetic,
+        "vertical_crs": vertical,
         "datums": datums,
         "extents": extents,
         "crs_extent": [[code, crs_extent[code]] for code in sorted(crs_extent)],
         "operations": [ops[c] for c in sorted(ops)],
     }
+
+
+EMULATION = re.compile(r"\bEmulation\b[^.]*?\bcodes? (\d{4,5})", re.I)
 
 
 def operation_record(row: sqlite3.Row, table: str, params: list, extents: list[int]) -> dict:
@@ -1116,6 +1141,11 @@ def operation_record(row: sqlite3.Row, table: str, params: list, extents: list[i
         record["params"] = params
     if "Replaced by" in (row["remarks"] or ""):
         record["replaced"] = True
+    # "Emulation using NTv2 method of NTF to ETRS89-FRA [RGF93 v1] (1),
+    # code 9327": the operation this one reproduces with another method.
+    emulates = [int(c) for c in EMULATION.findall(row["remarks"] or "")]
+    if emulates:
+        record["emulates"] = emulates
     return record
 
 

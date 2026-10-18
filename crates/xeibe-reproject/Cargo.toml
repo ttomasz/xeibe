@@ -11,6 +11,7 @@ publish.workspace = true
 
 [dependencies]
 xeibe-crs.workspace = true
+flate2.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 

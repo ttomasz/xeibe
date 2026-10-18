@@ -1,14 +1,18 @@
 //! Coordinate conversion between CRSs, in pure Rust, from the PROJJSON that
 //! `xeibe-crs` generates out of the EPSG dataset.
 //!
-//! Levels 1 and 2 of `docs/reprojection.md`:
+//! Levels 1 to 3 of `docs/reprojection.md`:
 //!
 //! * within one datum, conversions: projections, changes of axis order and
 //!   units, geographic ↔ geocentric;
 //! * between datums, EPSG's transformations, chosen per coordinate the way
-//!   PROJ chooses them ([`Transform::new`]), or forced ([`Transform::via`]).
+//!   PROJ chooses them ([`Transform::new`]), or forced ([`Transform::via`]);
+//! * grid-based ones among them, with PROJ-data's grids, which the caller
+//!   loads: [`Transform::grid_requests`] lists what to fetch from
+//!   [`CDN`] or a local copy, and a coordinate whose grid isn't loaded is an
+//!   error ([`CoordinateError::GridNotLoaded`]).
 //!
-//! Grid-based transformations (level 3) are not implemented yet. When no EPSG
+//! Vertical and compound CRSs are not supported yet. When no EPSG
 //! transformation applies, setting up the transform fails; a ballpark
 //! approximation is never used.
 //!
@@ -32,6 +36,7 @@ mod ellipsoid;
 mod error;
 mod extent;
 mod geocentric;
+mod grid;
 mod methods;
 mod operation;
 mod registry;
@@ -41,4 +46,5 @@ mod transform;
 pub use bounds::DEFAULT_DENSIFY;
 pub use crs::Crs;
 pub use error::{CoordinateError, Error};
+pub use grid::{CDN, GridRequest, Grids};
 pub use transform::{AxisOrder, Transform};

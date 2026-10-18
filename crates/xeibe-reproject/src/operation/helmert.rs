@@ -37,7 +37,7 @@ pub(super) const METHODS: &[u32] = &[
     // Not the time-specific variants (1065, 1066): PROJ can't run them
     // either, so they never compete in its choice.
     // Coordinate Frame with the full (exact) rotation matrix.
-    1132, 1133, 1140,
+    1132, 1133, 1140, 1149,
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -84,6 +84,9 @@ fn classify(method: u32) -> Option<(Kind7, Domain)> {
         1132 => (CoordinateFrame, Geocentric),
         1133 => (CoordinateFrame, Geog2d),
         1140 => (CoordinateFrame, Geog3d),
+        // Coordinate Frame (geog3D to compound): the height goes into the
+        // compound CRS's vertical part.
+        1149 => (CoordinateFrame, Geog3d),
         _ => return None,
     })
 }
@@ -182,10 +185,15 @@ impl Helmert {
     }
 }
 
+/// Whether the method is one of the Helmert family handled here.
+pub(crate) fn is_helmert(method: u32) -> bool {
+    classify(method).is_some()
+}
+
 /// A geographic CRS's ellipsoid and prime meridian, or an error naming why
 /// the CRS isn't one.
 fn geographic(crs: &Crs) -> Result<(Ellipsoid, f64), MethodError> {
-    match &crs.kind {
+    match &crs.horizontal().kind {
         Kind::Geographic { datum } => Ok((datum.ellipsoid, datum.prime_meridian)),
         _ => Err(MethodError::WrongCrs("a geographic CRS")),
     }

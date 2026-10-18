@@ -5,8 +5,10 @@ use std::sync::Arc;
 use crate::crs::{Axes, Crs, Kind};
 use crate::error::{CoordinateError, Error};
 use crate::geocentric::{cartesian, geodetic};
+use crate::grid::Grids;
 use crate::methods::{LAT_LIMIT, adjlon};
 use crate::select::Candidates;
+use crate::select::crs::CrsRef;
 
 /// The order coordinates are given and returned in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -28,6 +30,7 @@ pub struct Transform {
     src: Crs,
     dst: Crs,
     order: AxisOrder,
+    grids: Grids,
     plan: Plan,
 }
 
@@ -44,34 +47,42 @@ enum Plan {
 impl Transform {
     /// Set up the conversion from `src` to `dst`. On one datum this is a
     /// conversion; between datums the transformation is chosen per
-    /// coordinate as PROJ chooses it, among EPSG's operations
-    /// (`docs/reprojection.md`, level 2).
+    /// coordinate as PROJ chooses it, among EPSG's operations, the
+    /// grid-based ones included (`docs/reprojection.md`, levels 2 and 3).
+    /// Grids must be loaded before converting coordinates that need them:
+    /// see [`Transform::grid_requests`].
     pub fn new(src: &Crs, dst: &Crs, order: AxisOrder) -> Result<Self, Error> {
-        let (a, b) = (src.datum(), dst.datum());
-        let epsg = |key: &str| {
-            key.strip_prefix("EPSG:")
-                .and_then(|c| c.parse::<u32>().ok())
-        };
-        let same = match (epsg(&a.key), epsg(&b.key)) {
-            // Same EPSG datum code; an ensemble and its member differ by a transformation.
-            (Some(x), Some(y)) => crate::datum::same(x, y),
-            _ => a.key == b.key,
-        };
-        let plan = if same && a.ellipsoid == b.ellipsoid && a.prime_meridian == b.prime_meridian {
+        Self::with_grids(src, dst, order, Grids::default())
+    }
+
+    /// [`Transform::new`] with a choice of which grids the selection may
+    /// use: [`Grids::None`] keeps to operations without grids.
+    pub fn with_grids(src: &Crs, dst: &Crs, order: AxisOrder, grids: Grids) -> Result<Self, Error> {
+        for crs in [src, dst] {
+            if matches!(crs.kind, Kind::Vertical { .. }) {
+                return Err(Error::Unsupported {
+                    crs: crs.label(),
+                    what: "a vertical CRS on its own (a compound CRS gives its heights a position)"
+                        .into(),
+                });
+            }
+        }
+        let plan = if same_datums(src, dst) {
             Plan::Conversion
         } else {
-            let (Some(sc), Some(dc)) = (src.code(), dst.code()) else {
+            let (Some(sc), Some(dc)) = (crs_ref(src), crs_ref(dst)) else {
                 return Err(Error::NoTransformation {
                     src: src.label(),
                     dst: dst.label(),
                 });
             };
-            Plan::Operations(Arc::new(Candidates::new(src, dst, sc, dc)?))
+            Plan::Operations(Arc::new(Candidates::new(src, dst, sc, dc, grids)?))
         };
         Ok(Transform {
             src: src.clone(),
             dst: dst.clone(),
             order,
+            grids,
             plan,
         })
     }
@@ -80,7 +91,7 @@ impl Transform {
     /// the automatic choice: the operation must join the two CRSs' datums
     /// (in either direction) and is used for every coordinate.
     pub fn via(src: &Crs, dst: &Crs, operation: u32, order: AxisOrder) -> Result<Self, Error> {
-        let (Some(sc), Some(dc)) = (src.code(), dst.code()) else {
+        let (Some(sc), Some(dc)) = (crs_ref(src), crs_ref(dst)) else {
             return Err(Error::NoTransformation {
                 src: src.label(),
                 dst: dst.label(),
@@ -90,11 +101,20 @@ impl Transform {
             src: src.clone(),
             dst: dst.clone(),
             order,
+            grids: Grids::ProjData,
             plan: Plan::Via(
                 operation,
                 Arc::new(Candidates::with_operation(src, dst, sc, dc, operation)?),
             ),
         })
+    }
+
+    /// The candidates between datums, if any.
+    pub(crate) fn candidates(&self) -> Option<&Candidates> {
+        match &self.plan {
+            Plan::Conversion => None,
+            Plan::Operations(c) | Plan::Via(_, c) => Some(c),
+        }
     }
 
     /// Names of the candidate operations, best first; empty for a
@@ -142,9 +162,12 @@ impl Transform {
                 src: self.dst.clone(),
                 dst: self.src.clone(),
                 order: self.order,
+                grids: self.grids,
                 plan: Plan::Conversion,
             }),
-            Plan::Operations(_) => Transform::new(&self.dst, &self.src, self.order),
+            Plan::Operations(_) => {
+                Transform::with_grids(&self.dst, &self.src, self.order, self.grids)
+            }
             Plan::Via(code, _) => Transform::via(&self.dst, &self.src, code, self.order),
         }
     }
@@ -165,7 +188,7 @@ impl Transform {
         }
         let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)])?;
         let out = match &self.plan {
-            Plan::Conversion => from_geographic(&self.dst, to_geographic(&self.src, internal)?)?,
+            Plan::Conversion => on_one_datum(&self.src, &self.dst, internal)?,
             Plan::Operations(candidates) | Plan::Via(_, candidates) => {
                 candidates.run(&self.src, &self.dst, internal)?
             }
@@ -237,8 +260,75 @@ fn coordinate_error(index: usize, x: f64, y: f64, reason: CoordinateError) -> Er
     }
 }
 
+/// The CRS as the selection knows it: its EPSG code, or a compound CRS's
+/// two codes.
+fn crs_ref(crs: &Crs) -> Option<CrsRef> {
+    if let Some(code) = crs.code() {
+        return Some(CrsRef::Epsg(code));
+    }
+    match &crs.kind {
+        Kind::Compound {
+            horizontal,
+            vertical,
+        } => Some(CrsRef::Compound(horizontal.code()?, vertical.code()?)),
+        _ => None,
+    }
+}
+
+/// Whether two CRSs differ only by a conversion: the same geodetic datum,
+/// and heights that need no transformation. A gravity-related height
+/// converts to one on the same vertical datum (another unit, or depth), and
+/// to or from a CRS without heights, which drops it or carries the value
+/// through (PROJ's horizontal-only operation); not to an ellipsoidal height.
+fn same_datums(src: &Crs, dst: &Crs) -> bool {
+    // An engineering datum has no tie to any other: only CRSs on it
+    // convert, whatever their axes and units (PROJ's identity between
+    // equivalent engineering CRSs).
+    match (src.engineering_datum(), dst.engineering_datum()) {
+        (Some(a), Some(b)) => return a.key == b.key,
+        (None, None) => {}
+        _ => return false,
+    }
+    let (Some(a), Some(b)) = (src.datum(), dst.datum()) else {
+        return false;
+    };
+    let epsg = |key: &str| {
+        key.strip_prefix("EPSG:")
+            .and_then(|c| c.parse::<u32>().ok())
+    };
+    let same = match (epsg(&a.key), epsg(&b.key)) {
+        // Same EPSG datum code; an ensemble and its member differ by a transformation.
+        (Some(x), Some(y)) => crate::datum::same(x, y),
+        _ => a.key == b.key,
+    };
+    if !(same && a.ellipsoid == b.ellipsoid && a.prime_meridian == b.prime_meridian) {
+        return false;
+    }
+    let heightless = |c: &Crs| c.dimension() == 2;
+    match (src.vertical_datum(), dst.vertical_datum()) {
+        (None, None) => true,
+        (Some(x), Some(y)) => x.key == y.key,
+        (Some(_), None) => heightless(dst),
+        (None, Some(_)) => heightless(src),
+    }
+}
+
+/// Internal coordinates of one CRS to another on the same datum: through
+/// geographic coordinates, or, on an engineering datum, the same position in
+/// the grid's plane.
+pub(crate) fn on_one_datum(
+    src: &Crs,
+    dst: &Crs,
+    internal: [f64; 3],
+) -> Result<[f64; 3], CoordinateError> {
+    if src.engineering_datum().is_some() {
+        return Ok(internal);
+    }
+    from_geographic(dst, to_geographic(src, internal)?)
+}
+
 /// From the caller's order and units to the internal order in radians and metres.
-fn to_internal(
+pub(crate) fn to_internal(
     axes: &Axes,
     order: AxisOrder,
     mut v: [f64; 3],
@@ -274,6 +364,12 @@ pub(crate) fn to_geographic(crs: &Crs, internal: [f64; 3]) -> Result<[f64; 3], C
             [adjlon(lon), lat, internal[2]]
         }
         Kind::Geocentric { datum } => geodetic(internal, &datum.ellipsoid),
+        // The height stays what it is: gravity-related, not ellipsoidal.
+        Kind::Compound { horizontal, .. } => to_geographic(horizontal, internal)?,
+        Kind::Vertical { .. } => internal,
+        // A local grid has no position on the ellipsoid: only an operation
+        // leaves it.
+        Kind::Engineering { .. } => return Err(CoordinateError::OutsideDomain),
     })
 }
 
@@ -293,6 +389,9 @@ pub(crate) fn from_geographic(
             [e, n, h]
         }
         Kind::Geocentric { datum } => cartesian(check_geographic(geographic)?, &datum.ellipsoid),
+        Kind::Compound { horizontal, .. } => from_geographic(horizontal, geographic)?,
+        Kind::Vertical { .. } => geographic,
+        Kind::Engineering { .. } => return Err(CoordinateError::OutsideDomain),
     })
 }
 

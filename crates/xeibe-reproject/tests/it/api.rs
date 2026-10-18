@@ -74,9 +74,98 @@ fn unknown_codes_are_an_error() {
 
 #[test]
 fn unsupported_crs_types_are_an_error() {
-    // EPSG:5783 is a vertical CRS (DHHN92 height).
-    let err = Crs::from_epsg(5783).unwrap_err();
+    // EPSG:22300 is on the Tunisia Mining Grid, a method not implemented.
+    let err = Crs::from_epsg(22300).unwrap_err();
     assert!(matches!(err, Error::Unsupported { .. }), "{err}");
+}
+
+#[test]
+fn a_vertical_crs_needs_a_horizontal_one() {
+    // EPSG:5783 is DHHN92 height: heights alone have no position.
+    let err = Transform::from_epsg(5783, 5783, AxisOrder::EastFirst).unwrap_err();
+    assert!(matches!(err, Error::Unsupported { .. }), "{err}");
+}
+
+#[test]
+fn compound_crss_convert_their_heights_on_one_vertical_datum() {
+    let crs = |h: u32, v: u32| {
+        Crs::compound(&Crs::from_epsg(h).unwrap(), &Crs::from_epsg(v).unwrap()).unwrap()
+    };
+    // PL-1992 + PL-EVRF2007 height to ETRS89 + the same height: the
+    // horizontal part converts, the height stays.
+    let t = Transform::new(&crs(2180, 9651), &crs(4258, 9651), AxisOrder::EastFirst).unwrap();
+    assert!(t.operations().is_empty());
+    let (lon, lat, h) = t.convert(500_000.0, 500_000.0, Some(123.4)).unwrap();
+    assert!(
+        (lon - 19.0).abs() < 1e-9 && (lat - 52.366).abs() < 1e-3,
+        "{lon} {lat}"
+    );
+    assert_eq!(h, Some(123.4));
+    // MSL height to MSL depth (EPSG:5715): the sign.
+    let t = Transform::new(&crs(4326, 5714), &crs(4326, 5715), AxisOrder::EastFirst).unwrap();
+    assert_eq!(t.convert(10.0, 50.0, Some(12.5)).unwrap().2, Some(-12.5));
+    // NAVD88 height in metres to US survey feet (EPSG:6360).
+    let t = Transform::new(&crs(4269, 5703), &crs(4269, 6360), AxisOrder::EastFirst).unwrap();
+    let ft = t.convert(-100.0, 40.0, Some(1200.0)).unwrap().2.unwrap();
+    assert!(
+        (ft - 1200.0 / 0.304_800_609_601_219_24).abs() < 1e-9,
+        "{ft}"
+    );
+    // To a CRS without heights, the height is dropped (handed back as is).
+    let t = Transform::new(
+        &crs(2180, 9651),
+        &Crs::from_epsg(4258).unwrap(),
+        AxisOrder::EastFirst,
+    )
+    .unwrap();
+    assert_eq!(
+        t.convert(500_000.0, 500_000.0, Some(5.0)).unwrap().2,
+        Some(5.0)
+    );
+    // An EPSG compound CRS reads the same: ETRS89 + EVRF2000 height.
+    let epsg = Crs::from_epsg(7409).unwrap();
+    assert_eq!(epsg.dimension(), 3);
+    assert_eq!(epsg.name(), "ETRS89 + EVRF2000 height");
+}
+
+#[test]
+fn offsets_run_between_axes_of_one_direction() {
+    let crs = |h: u32, v: u32| {
+        Crs::compound(&Crs::from_epsg(h).unwrap(), &Crs::from_epsg(v).unwrap()).unwrap()
+    };
+    // Hong Kong Principal Datum height to Chart Datum depth: EPSG's
+    // operation converts the height to one above Chart Datum, 0.146 m
+    // lower, and turns it into a depth.
+    let (src, dst) = (crs(4326, 5738), crs(4326, 5739));
+    let t = Transform::new(&src, &dst, AxisOrder::EastFirst).unwrap();
+    let depth = t.convert(114.2, 22.3, Some(10.0)).unwrap().2.unwrap();
+    assert!((depth + 10.146).abs() < 1e-9, "{depth}");
+    // EPSG's deprecated offset straight from the height to the depth is
+    // outside what its formula covers (one axis direction and unit).
+    let err = Transform::via(&src, &dst, 5454, AxisOrder::EastFirst).unwrap_err();
+    assert!(matches!(err, Error::Unsupported { .. }), "{err}");
+}
+
+#[test]
+fn engineering_crss_convert_on_their_datum_and_through_epsg_operations() {
+    // Barcelona Grid B1 and B2: one engineering datum, so one grid.
+    let t = Transform::from_epsg(5801, 5802, AxisOrder::Authority).unwrap();
+    assert!(t.operations().is_empty());
+    assert_eq!(
+        t.convert(300_000.0, 500_000.0, None).unwrap(),
+        (300_000.0, 500_000.0, None)
+    );
+    // Heathrow Airport Grid from British National Grid: EPSG's similarity
+    // transformation (PROJ: 6809.315948037705, 5889.0115063533885).
+    let t = Transform::from_epsg(27700, 11378, AxisOrder::Authority).unwrap();
+    let (e, n, _) = t.convert(507_000.0, 176_000.0, None).unwrap();
+    assert!(
+        (e - 6_809.315_948).abs() < 1e-6 && (n - 5_889.011_506).abs() < 1e-6,
+        "{e} {n}"
+    );
+    // Nothing ties a local grid to anything else.
+    let err = Transform::from_epsg(11378, 4326, AxisOrder::EastFirst).unwrap_err();
+    assert!(matches!(err, Error::NoTransformation { .. }), "{err}");
 }
 
 #[test]

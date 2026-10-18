@@ -1,5 +1,5 @@
 //! Coordinate operations between datums: the methods behind EPSG's
-//! transformations (`docs/reprojection.md`, level 2).
+//! transformations (`docs/reprojection.md`, levels 2 and 3).
 //!
 //! A method works on the internal coordinates of its operation's own source
 //! and target CRSs (see `crs.rs`): longitude (from the datum's prime
@@ -12,11 +12,16 @@ use std::sync::Arc;
 
 use crate::crs::Crs;
 use crate::error::CoordinateError;
+use crate::grid::store::GridFile;
 use crate::registry::Operation;
 
-mod helmert;
+pub(crate) mod grid;
+pub(crate) mod helmert;
 mod offsets;
 mod plane;
+mod tin;
+mod velocity;
+mod vertical;
 
 /// One operation's math, set up with its parameters and CRSs.
 pub(crate) trait Method: Send + Sync + std::fmt::Debug {
@@ -40,6 +45,11 @@ pub(crate) trait Method: Send + Sync + std::fmt::Debug {
     fn inverse_3d(&self, c: [f64; 3]) -> Result<[f64; 3], CoordinateError> {
         self.inverse(c)
     }
+
+    /// The grid files the method reads.
+    fn grid_files(&self) -> Vec<Arc<GridFile>> {
+        Vec::new()
+    }
 }
 
 /// Why an operation can't be set up.
@@ -51,6 +61,8 @@ pub(crate) enum MethodError {
     MissingParameter(u32),
     /// The operation's CRSs aren't of the kind the method works between.
     WrongCrs(&'static str),
+    /// The grid (as EPSG names it) isn't one PROJ-data publishes.
+    GridUnavailable(String),
 }
 
 /// EPSG parameter codes used by the methods.
@@ -89,6 +101,44 @@ pub(crate) fn is_implemented(method: u32) -> bool {
     helmert::METHODS.contains(&method)
         || offsets::METHODS.contains(&method)
         || plane::METHODS.contains(&method)
+        || grid::METHODS.contains(&method)
+        || velocity::METHODS.contains(&method)
+        || tin::METHODS.contains(&method)
+        || vertical::is_method(method)
+}
+
+/// Whether xeibe can run this operation: its method is implemented and, for
+/// the few methods with conditions on the operation, PROJ could write it as
+/// a pipeline. Whether its grid is available is a separate question.
+pub(crate) fn is_exportable(op: &Operation) -> bool {
+    if grid::METHODS.contains(&op.method) {
+        return grid::is_exportable(op);
+    }
+    if velocity::METHODS.contains(&op.method) {
+        return velocity::is_exportable(op);
+    }
+    if vertical::is_method(op.method) {
+        return vertical::is_exportable(op);
+    }
+    is_implemented(op.method)
+}
+
+/// A geoid model read from a grid (`vgridshift` backwards in PROJ).
+/// A datum shift that models the ellipsoidal height too (the Helmert
+/// family, NADCON5 3D): it changes an ellipsoidal height, and leaves any
+/// other height alone.
+pub(crate) fn shifts_ellipsoidal_height(method: u32) -> bool {
+    helmert::is_helmert(method) || method == grid::NADCON5_3D
+}
+
+pub(crate) fn is_geoid_grid(method: u32) -> bool {
+    vertical::GEOID_GRID_METHODS.contains(&method)
+}
+
+/// The sign a vertical offset grid applies its value with (`vgridshift`
+/// forwards), for the methods that are one.
+pub(crate) fn offset_grid_sign(method: u32) -> Option<f64> {
+    vertical::offset_grid_sign(method)
 }
 
 /// The math for one registry operation between its two CRSs.
@@ -101,6 +151,18 @@ pub(crate) fn build(op: &Operation, src: &Crs, dst: &Crs) -> Result<Arc<dyn Meth
     }
     if plane::METHODS.contains(&op.method) {
         return plane::build(op, src, dst);
+    }
+    if grid::METHODS.contains(&op.method) {
+        return grid::build(op, src, dst);
+    }
+    if velocity::METHODS.contains(&op.method) {
+        return velocity::build(op, src, dst);
+    }
+    if tin::METHODS.contains(&op.method) {
+        return tin::build(op, src, dst);
+    }
+    if vertical::is_method(op.method) {
+        return vertical::build(op, src, dst);
     }
     Err(MethodError::NotImplemented)
 }

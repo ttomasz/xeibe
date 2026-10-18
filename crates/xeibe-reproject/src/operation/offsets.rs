@@ -29,8 +29,10 @@ struct Offsets {
 }
 
 pub(super) fn build(op: &Operation, src: &Crs, dst: &Crs) -> Result<Arc<dyn Method>, MethodError> {
+    // Geographic2D with Height Offsets starts from a compound CRS: its
+    // horizontal part is geographic.
     for crs in [src, dst] {
-        if !matches!(crs.kind, Kind::Geographic { .. }) {
+        if !matches!(crs.horizontal().kind, Kind::Geographic { .. }) {
             return Err(MethodError::WrongCrs("a geographic CRS"));
         }
     }

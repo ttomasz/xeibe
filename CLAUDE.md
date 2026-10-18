@@ -107,6 +107,13 @@ sources, but their contents haven't been checked against the local copies:
   records this in its `license` field and `EPSG-NOTICE.md`. Its version
   carries the EPSG version as semver build metadata (`0.1.0+epsg-13.103`),
   which the script rewrites; the semver core stays hand-maintained.
+  Its output isn't bit-identical across environments. SQLite parses EPSG's
+  decimal literals, and SQLite 3.45 (Ubuntu's, which the EPSG workflow's
+  system Python uses) rounds `100.38109386` one step off, so a local run
+  with uv's managed Python (newer SQLite) changes EPSG:25311's longitude
+  of origin by 2e-14° in `data/projjson.bin`. The unpinned `zstandard`
+  can also change the compressed bytes. Both are harmless: restore the file
+  with `git checkout` unless EPSG's data changed.
 - `scripts/fetch_epsg_dataset.py` signs in to epsg.org and downloads the
   current EPSG archives into `example_data/`. Needs `EPSG_LOGIN_USER` and
   `EPSG_LOGIN_PASSWORD` in the environment or in a git-ignored `.env`
@@ -120,9 +127,16 @@ sources, but their contents haven't been checked against the local copies:
   `xeibe-reproject` (PROJ via pyproj, fed our PROJJSON);
   `scripts/build_proj_oracle.py` rebuilds PROJ's `proj.db` from our EPSG
   archive into `target/proj-oracle/` (PROJ's own `build_db.py`, ~1 min), and
-  `scripts/gen_transformation_vectors.py` writes level-2 vectors with it. Both
-  write committed subsets to `tests/data/reprojection/`; `--all` writes
-  everything to `target/reprojection/` for the `--ignored` tests. See
+  `scripts/gen_transformation_vectors.py` writes level-2 vectors with it (and
+  level-3 vectors with `--grids DIR`, and between CRSs with heights with
+  `--vertical`). Both write committed subsets to
+  `tests/data/reprojection/`; `--all` writes everything to
+  `target/reprojection/` for the `--ignored` tests. Level 3 (grids):
+  `scripts/fetch_proj_grids.py` copies PROJ-data's grids out of the GDAL image
+  into `target/proj-grids/` (~800 MB, the oracle's and the `--ignored` tests'
+  grids); `scripts/gen_grid_fixtures.py` writes the small committed grids and
+  PROJ's results on them; `scripts/gen_grid_catalog.py` regenerates the
+  EPSG-to-PROJ-data grid name table from PROJ's `grid_alternatives`. See
   `docs/reprojection.md`.
 - `scripts/check_epsg_release.py` asks the public EPSG API
   (`apps.epsg.org/api/v1/VersionHistory`, no account needed) whether a newer
