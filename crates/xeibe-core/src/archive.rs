@@ -2,13 +2,104 @@
 //!
 //! Uses the `zip` crate as it is: stored and deflate members, zip64, name decoding.
 //! Other methods and encrypted members are errors. The archive must be a local
-//! file (the central directory is at the end); a remote zip is
-//! [`crate::Error::RemoteArchive`]. Nested zips are not opened.
+//! file or held in memory (the central directory is at the end); a remote zip
+//! is [`crate::Error::RemoteArchive`]. Nested zips are not opened.
 
-use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
+use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
 
 use crate::source::Source;
+
+/// Where a zip archive is: a local file, or bytes in memory (a file dropped
+/// on the web page, say). Either way it can be read at any offset.
+#[derive(Debug, Clone)]
+pub enum Archive {
+    File(PathBuf),
+    Bytes { name: String, bytes: bytes::Bytes },
+}
+
+impl Archive {
+    /// The path, or the name given with the bytes, for messages and the
+    /// members' names (`name!/member`).
+    pub fn name(&self) -> String {
+        match self {
+            Archive::File(path) => path.display().to_string(),
+            Archive::Bytes { name, .. } => name.clone(),
+        }
+    }
+
+    fn open(&self) -> crate::Result<zip::ZipArchive<ArchiveReader>> {
+        let reader = match self {
+            Archive::File(path) => {
+                ArchiveReader::File(std::fs::File::open(path).map_err(|e| {
+                    std::io::Error::new(e.kind(), format!("{}: {e}", path.display()))
+                })?)
+            }
+            Archive::Bytes { bytes, .. } => ArchiveReader::Bytes(Cursor::new(bytes.clone())),
+        };
+        zip::ZipArchive::new(reader).map_err(|e| zip_error(self, "", e))
+    }
+
+    /// `length` bytes from `start`, as a stream of their own.
+    fn range(&self, start: u64, length: u64) -> crate::Result<Box<dyn Read + Send>> {
+        match self {
+            Archive::File(path) => {
+                let mut handle = std::fs::File::open(path)?;
+                handle.seek(SeekFrom::Start(start))?;
+                Ok(Box::new(handle.take(length)))
+            }
+            Archive::Bytes { bytes, .. } => {
+                let end = start.saturating_add(length).min(bytes.len() as u64);
+                let start = start.min(end);
+                Ok(Box::new(Cursor::new(
+                    bytes.slice(start as usize..end as usize),
+                )))
+            }
+        }
+    }
+}
+
+impl From<&Path> for Archive {
+    fn from(path: &Path) -> Self {
+        Archive::File(path.to_path_buf())
+    }
+}
+
+impl From<&PathBuf> for Archive {
+    fn from(path: &PathBuf) -> Self {
+        Archive::File(path.clone())
+    }
+}
+
+impl From<PathBuf> for Archive {
+    fn from(path: PathBuf) -> Self {
+        Archive::File(path)
+    }
+}
+
+/// An open archive's bytes: a file or memory.
+enum ArchiveReader {
+    File(std::fs::File),
+    Bytes(Cursor<bytes::Bytes>),
+}
+
+impl Read for ArchiveReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            ArchiveReader::File(file) => file.read(buf),
+            ArchiveReader::Bytes(cursor) => cursor.read(buf),
+        }
+    }
+}
+
+impl Seek for ArchiveReader {
+    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+        match self {
+            ArchiveReader::File(file) => file.seek(pos),
+            ArchiveReader::Bytes(cursor) => cursor.seek(pos),
+        }
+    }
+}
 
 /// Member names considered as GML candidates (case-insensitive).
 pub const CANDIDATE_SUFFIXES: &[&str] = &[".gml", ".xml", ".gml.gz", ".xml.gz"];
@@ -27,9 +118,13 @@ pub struct MemberInfo {
 ///
 /// Members are listed in archive order. A glob is matched against the whole
 /// member name; `*` does not cross `/`.
-pub fn list_candidates(archive: &Path, member_globs: &[String]) -> crate::Result<Vec<MemberInfo>> {
+pub fn list_candidates(
+    archive: impl Into<Archive>,
+    member_globs: &[String],
+) -> crate::Result<Vec<MemberInfo>> {
+    let archive = &archive.into();
     let globs = build_globs(archive, member_globs)?;
-    let mut zip = open_archive(archive)?;
+    let mut zip = archive.open()?;
     let mut members = Vec::new();
     for index in 0..zip.len() {
         let file = zip
@@ -62,10 +157,11 @@ pub fn list_candidates(archive: &Path, member_globs: &[String]) -> crate::Result
 
 /// One source per candidate. Members in which the splitter finds no feature
 /// collection or feature member are dropped later and reported, not here.
-pub fn expand(archive: &Path, member_globs: &[String]) -> crate::Result<Vec<Source>> {
-    let members = list_candidates(archive, member_globs)?;
+pub fn expand(archive: impl Into<Archive>, member_globs: &[String]) -> crate::Result<Vec<Source>> {
+    let archive = archive.into();
+    let members = list_candidates(archive.clone(), member_globs)?;
     if members.is_empty() {
-        let mut name = archive.display().to_string();
+        let mut name = archive.name();
         if !member_globs.is_empty() {
             name.push_str(&format!(" matching {}", member_globs.join(", ")));
         }
@@ -74,7 +170,7 @@ pub fn expand(archive: &Path, member_globs: &[String]) -> crate::Result<Vec<Sour
     Ok(members
         .into_iter()
         .map(|member| Source::ZipMember {
-            archive: archive.to_path_buf(),
+            archive: archive.clone(),
             member: member.name,
         })
         .collect())
@@ -90,50 +186,42 @@ pub fn split_member_path(input: &str) -> Option<(&str, &str)> {
 /// decoded), and whether it is compressed.
 ///
 /// The `zip` crate's member readers borrow the archive, so the member's data
-/// is located through the archive and then streamed from a file handle of its
-/// own: the reader is `'static` and holds no more than the decompressor's
-/// state, however large the member is.
+/// is located through the archive and then streamed from a file handle (or a
+/// slice of the bytes) of its own: the reader is `'static` and holds no more
+/// than the decompressor's state, however large the member is.
 pub(crate) fn open_member(
-    archive: &Path,
+    archive: &Archive,
     member: &str,
 ) -> crate::Result<(Box<dyn Read + Send>, bool)> {
-    let mut zip = open_archive(archive)?;
+    let mut zip = archive.open()?;
     let file = zip
         .by_name(member)
         .map_err(|e| zip_error(archive, member, e))?;
     let method = file.compression();
     let compressed_size = file.compressed_size();
     let data_start = file.data_start().ok_or_else(|| crate::Error::Zip {
-        archive: archive.display().to_string(),
+        archive: archive.name(),
         member: member.to_string(),
         message: "the member's data could not be located".into(),
     })?;
     drop(file);
     drop(zip);
 
-    let mut handle = std::fs::File::open(archive)?;
-    handle.seek(SeekFrom::Start(data_start))?;
-    let data = handle.take(compressed_size);
+    let data = archive.range(data_start, compressed_size)?;
     match method {
         zip::CompressionMethod::Stored => Ok((Box::new(data), false)),
         zip::CompressionMethod::Deflated => {
             Ok((Box::new(flate2::read::DeflateDecoder::new(data)), true))
         }
         other => Err(crate::Error::Zip {
-            archive: archive.display().to_string(),
+            archive: archive.name(),
             member: member.to_string(),
             message: format!("unsupported compression method {other}"),
         }),
     }
 }
 
-fn open_archive(archive: &Path) -> crate::Result<zip::ZipArchive<std::fs::File>> {
-    let file = std::fs::File::open(archive)
-        .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", archive.display())))?;
-    zip::ZipArchive::new(file).map_err(|e| zip_error(archive, "", e))
-}
-
-fn build_globs(archive: &Path, globs: &[String]) -> crate::Result<Option<globset::GlobSet>> {
+fn build_globs(archive: &Archive, globs: &[String]) -> crate::Result<Option<globset::GlobSet>> {
     if globs.is_empty() {
         return Ok(None);
     }
@@ -143,22 +231,22 @@ fn build_globs(archive: &Path, globs: &[String]) -> crate::Result<Option<globset
             .literal_separator(true)
             .build()
             .map_err(|e| crate::Error::Zip {
-                archive: archive.display().to_string(),
+                archive: archive.name(),
                 member: glob.clone(),
                 message: e.to_string(),
             })?;
         set.add(glob);
     }
     set.build().map(Some).map_err(|e| crate::Error::Zip {
-        archive: archive.display().to_string(),
+        archive: archive.name(),
         member: String::new(),
         message: e.to_string(),
     })
 }
 
-fn zip_error(archive: &Path, member: &str, error: zip::result::ZipError) -> crate::Error {
+fn zip_error(archive: &Archive, member: &str, error: zip::result::ZipError) -> crate::Error {
     crate::Error::Zip {
-        archive: archive.display().to_string(),
+        archive: archive.name(),
         member: member.to_string(),
         message: error.to_string(),
     }

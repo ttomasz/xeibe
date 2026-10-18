@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::archive;
+use crate::archive::{self, Archive};
 
 /// Index of a source within one scan or read, in the order sources were consumed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -39,9 +39,10 @@ pub trait ByteSource: Send + Sync + std::fmt::Debug {
 #[derive(Debug, Clone)]
 pub enum Source {
     Stream(Arc<dyn ByteSource>),
-    /// Member of a zip archive (see [`crate::archive`]). Archives must be local files.
+    /// Member of a zip archive (see [`crate::archive`]): a local file, or one
+    /// held in memory.
     ZipMember {
-        archive: PathBuf,
+        archive: Archive,
         member: String,
     },
 }
@@ -55,7 +56,7 @@ impl Source {
         let path = path.into();
         if let Some((archive, member)) = path.to_str().and_then(archive::split_member_path) {
             return Ok(Source::ZipMember {
-                archive: PathBuf::from(archive),
+                archive: Archive::File(PathBuf::from(archive)),
                 member: member.to_string(),
             });
         }
@@ -70,7 +71,7 @@ impl Source {
     pub fn name(&self) -> String {
         match self {
             Source::Stream(source) => source.name().to_string(),
-            Source::ZipMember { archive, member } => format!("{}!/{member}", archive.display()),
+            Source::ZipMember { archive, member } => format!("{}!/{member}", archive.name()),
         }
     }
 

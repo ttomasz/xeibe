@@ -1,7 +1,7 @@
 //! Sources and zip archives (`docs/architecture.md`, "Sources and remote
 //! input" and "Zip archives").
 //!
-//! Zip is deliberately minimal: local files only, `.gml`/`.xml`(`.gz`) members,
+//! Zip is deliberately minimal: local files or bytes in memory, `.gml`/`.xml`(`.gz`) members,
 //! `archive.zip!/member` for one member, no zips inside zips.
 
 use std::io::Write;
@@ -135,6 +135,61 @@ fn every_member_of_an_archive_is_a_source() {
     for source in &sources {
         assert_eq!(read_to_string(source).unwrap(), DOC);
         assert!(matches!(source, Source::ZipMember { .. }));
+    }
+}
+
+#[test]
+fn an_archive_held_in_memory_reads_like_the_file() {
+    let dir = temp_dir("archive-bytes");
+    let path = build_archive(&dir);
+    let bytes = bytes::Bytes::from(std::fs::read(&path).unwrap());
+    let archive = archive::Archive::Bytes {
+        name: "dropped.zip".into(),
+        bytes,
+    };
+    let sources = archive::expand(archive, &[]).expect("sources");
+    let mut names: Vec<String> = sources.iter().map(Source::name).collect();
+    names.sort();
+    assert_eq!(
+        names,
+        [
+            "dropped.zip!/a.gml",
+            "dropped.zip!/meta/metadata.xml",
+            "dropped.zip!/sub/b.XML"
+        ]
+    );
+    for source in &sources {
+        assert_eq!(read_to_string(source).unwrap(), DOC);
+        // Opened again for a read after a scan.
+        assert_eq!(read_to_string(source).unwrap(), DOC);
+    }
+    // Stored members too: a slice of the bytes, nothing to inflate.
+    let mut stored = Vec::new();
+    {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut stored));
+        let options: zip::write::FileOptions<'_, ()> =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        zip.start_file("one.gml", options).unwrap();
+        zip.write_all(DOC.as_bytes()).unwrap();
+        zip.finish().unwrap();
+    }
+    let archive = archive::Archive::Bytes {
+        name: "stored.zip".into(),
+        bytes: stored.into(),
+    };
+    let sources = archive::expand(archive, &[]).expect("sources");
+    assert_eq!(read_to_string(&sources[0]).unwrap(), DOC);
+}
+
+#[test]
+fn bytes_that_arent_a_zip_are_an_error_naming_them() {
+    let archive = archive::Archive::Bytes {
+        name: "fake.zip".into(),
+        bytes: bytes::Bytes::from_static(b"PK\x03\x04 not a zip"),
+    };
+    match archive::expand(archive, &[]) {
+        Err(Error::Zip { archive, .. }) => assert_eq!(archive, "fake.zip"),
+        other => panic!("expected a zip error, got {other:?}"),
     }
 }
 
