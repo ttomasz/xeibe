@@ -35,7 +35,7 @@ the map stacks above the tabs.
 
 | Area | Contents |
 |---|---|
-| Top bar | File picker and drop zone, layer selector (BDOT10k-style files have dozens of layers), "Try a sample", progress |
+| Top bar | File picker and drop zone, "Change files…" (the open dialog again), layer selector (BDOT10k-style files have dozens of layers), "Try a sample", progress |
 | Left half | Map, in one of two views (see [Map](#map)) |
 | Right half | Tabs, below |
 
@@ -48,6 +48,23 @@ the map stacks above the tabs.
 
 Selecting a row zooms the map to its feature; clicking a feature on the map
 selects its row.
+
+Opening files shows a dialog first, before anything is scanned:
+
+- **The files**, with their sizes, and a zip archive's GML members with their
+  sizes, unpacked and compressed. Every GML file and member is checked; the
+  user unchecks what they don't want. A member xeibe can't read (encrypted, or
+  a compression method other than stored, deflate and Deflate64) is listed
+  greyed out with the reason, rather than failing the whole archive; other
+  members are counted, not listed.
+- **How much to scan for the schema**: the whole files, with the time that
+  should take, or the first N features of each file (10,000 by default). The
+  dialog suggests the sample above 150 MB of XML.
+
+Stopping a scan brings the dialog back with the sample chosen, and "Change
+files…" reopens it with the last choices, without opening the files again.
+After a sampled scan the Overview says so and offers a full scan of the same
+files.
 
 The Options tab is what makes the page more than a viewer: options are tried
 interactively, then carried over to the CLI or Python unchanged.
@@ -132,7 +149,8 @@ flowchart LR
 - **`crates/xeibe-wasm`**: wasm-bindgen bindings. Not a default workspace member,
   like `xeibe-py`. Kept thin, so the unstable Rust API doesn't spread into
   JavaScript: JSON text and typed arrays cross, nothing else. `Dataset` holds
-  the dropped files, scans them and starts a read; `Reader` reads a batch at a
+  the dropped files, lists them (a zip archive's members too), scans the
+  files and members chosen, and starts a read with the scan's schema; `Reader` reads a batch at a
   time (with an optional row limit), lists the grid ranges the map needs for
   it, takes the grid data, lays the batch out for the map and keeps it for
   the table. The work is in plain Rust (`session.rs`, `display.rs`), tested
@@ -160,7 +178,7 @@ flowchart LR
 |---|---|
 | `.gml`, `.xml`, saved WFS responses | Read from the browser's `File` in slices, as a scan or read needs them (`RandomAccessSource`) |
 | `.gz`, `.zst` | As above; `Source::open` decompresses |
-| `.zip` | The same `File`, read at any offset (`archive::Archive::Random`); its `.gml`, `.xml` and `.gml.gz`/`.xml.gz` members are the sources, as for a local zip in the CLI ([architecture.md](architecture.md#zip-archives)). The Overview lists them under the archive |
+| `.zip` | The same `File`, read at any offset (`archive::Archive::Random`). Its directory is read when it is opened (`archive::list_members`), and the open dialog lists its `.gml`, `.xml` and `.gml.gz`/`.xml.gz` members to choose from; the chosen ones are the sources, as for a local zip in the CLI ([architecture.md](architecture.md#zip-archives)). The Overview lists them under the archive |
 | Live WFS | Out of scope at first (see [Network](#network)). Maybe later as best effort for servers that allow it |
 
 Files are never held whole. The page hands the worker the `File` objects
@@ -182,6 +200,17 @@ the read went from 3.8 to 2.1 s (1.8 s with the zip copied into memory).
 A scan runs to the end in one call into the module. Its progress comes from
 the bytes read (a callback every 8 MiB), and Stop ends it by replacing the
 worker. A read stops between batches and keeps the rows read so far.
+
+A sampled scan reads the first N features of each file
+(`ScanExtent::SamplePerSource`), not of the input: BDOT10k has a layer per
+file, and a sample of the input would only see the first. Each file still
+loses the layers that start late in it: PRG's address points come after
+about 10,000 localities and streets, so a sample of 10,000 misses them in the
+older exports. A layer's feature count is then a lower bound ("≥" in the layer
+selector, "at least" in the Overview) until a read of the whole layer counts
+it. The read takes the scan's schema, so the Schema tab shows the columns
+read; with a sample, a later value that doesn't fit its column's type stops
+the read (`on_feature_error` is `error`), as it would in the CLI.
 
 ### Network
 
@@ -242,10 +271,11 @@ brings the same C dependency as above.
   (100,000 by default) stops a read after N rows, which with an inline read
   also stops the parsing.
 - **Time.** One thread, so several times slower than the CLI on a multi-core
-  machine. A scan reads everything, at about 80 MB/s of XML: seconds for
+  machine. A full scan reads everything, at about 80 MB/s of XML: seconds for
   hundreds of MB, minutes for tens of GB. The national PRG zip (1.8 GB, 33
   members holding about 25 GB of XML) scans in 6.7 minutes; that is a job for
-  the CLI.
+  the CLI, or for a sample. A read of one layer still goes through every
+  chosen file, but skips the other layers' features without parsing them.
 - **Bundle size.** The module is 6.8 MB after `wasm-opt`, 2.6 MB gzipped
   (EPSG tables and operations, arrow, geoarrow, the reprojection engine). The
   JavaScript is 1.8 MB, 0.5 MB gzipped, most of it deck.gl and MapLibre.
@@ -257,12 +287,15 @@ brings the same C dependency as above.
   3.4 s, and its 24,026 buildings read in 2.1 s; the 1.5 GB PRG file of
   mazowieckie scans in 17 s and the 3.3 GB one in 41 s, with the browser at
   2.0 and 2.3 GB of memory in all (1.2 GB with a small file); the national PRG
-  zip in 401 s, at 1.7 GB.
+  zip in 401 s, at 1.7 GB. With a sample of 10,000 features of each file, 4
+  members of that zip (4.5 GB of XML) scan in 1.6 s, and their 10,198
+  localities read in 6.8 s.
 - **Network** rules out most live WFS endpoints (see [Network](#network)).
 
 ## Phases
 
-1. **First version** (built 2026-10-18). Drop or open files; layer selector;
+1. **First version** (built 2026-10-18). Drop or open files, and choose
+   them, a zip archive's members and the scan's extent in a dialog; layer selector;
    a row limit (100,000 by default) and a stop button; Overview, Schema and
    Data tabs; the map in both views, with grids, the area-of-use ring and
    selection both ways; the GitHub Pages workflow.

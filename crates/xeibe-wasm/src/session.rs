@@ -12,7 +12,7 @@ use arrow_schema::{DataType, Field, TimeUnit};
 use serde_json::{Value, json};
 use xeibe_arrow::report::Warning;
 use xeibe_arrow::{LayerReader, ReadOptions, ReadReport, ScanResult};
-use xeibe_core::archive::{self, Archive};
+use xeibe_core::archive::{self, Archive, MemberInfo};
 use xeibe_core::{Location, RandomAccess, RandomAccessSource, Source};
 use xeibe_geom::{AxisDecision, AxisKey, SrsName};
 use xeibe_reproject::{AxisOrder, Crs, GridRequest, Grids, Transform};
@@ -26,40 +26,147 @@ const MAX_CELL: usize = 300;
 
 pub type Result<T> = std::result::Result<T, String>;
 
-/// The files dropped on the page, as sources (a zip archive is its
-/// members), and the last scan of them.
+/// The files dropped on the page, the sources chosen from them (a file, or
+/// a zip archive's members), and the last scan of those.
 #[derive(Default)]
 pub struct Dataset {
+    files: Vec<InputFile>,
     sources: Vec<Source>,
-    /// The files' sizes, for progress.
+    /// The chosen files' sizes (a member's compressed size), for progress.
     sizes: u64,
     scan: Option<ScanResult>,
 }
 
+struct InputFile {
+    name: String,
+    data: Arc<dyn RandomAccess>,
+    /// A zip archive's files; `None` for any other file.
+    members: Option<Vec<MemberInfo>>,
+    /// Why the file can't be read (a `.zip` that isn't one).
+    error: Option<String>,
+}
+
+/// One source to scan and read: a file, or a member of a zip archive.
+#[derive(Debug, serde::Deserialize)]
+pub struct Choice {
+    /// The file's index, in the order the files were added.
+    pub file: usize,
+    pub member: Option<String>,
+}
+
 impl Dataset {
     /// Add a file held in memory: see [`Dataset::add_data`].
-    pub fn add_file(&mut self, name: String, bytes: Vec<u8>) -> Result<()> {
+    pub fn add_file(&mut self, name: String, bytes: Vec<u8>) {
         self.add_data(name, Arc::new(bytes::Bytes::from(bytes)))
     }
 
-    /// Add a file, read in pieces as it is needed. A zip archive adds its
-    /// GML members (`name!/member`), as a local zip does in the CLI; one
-    /// without any, or with one xeibe can't read, is an error.
-    pub fn add_data(&mut self, name: String, data: Arc<dyn RandomAccess>) -> Result<()> {
-        self.scan = None;
-        self.sizes += data.len();
-        if name.to_ascii_lowercase().ends_with(".zip") {
-            let archive = Archive::Random { name, data };
-            let members = archive::expand(archive, &[]).map_err(|e| e.to_string())?;
-            self.sources.extend(members);
+    /// Add a file, read in pieces as it is needed. A zip archive's directory
+    /// is read now, for [`Dataset::files`].
+    pub fn add_data(&mut self, name: String, data: Arc<dyn RandomAccess>) {
+        let (members, error) = if name.to_ascii_lowercase().ends_with(".zip") {
+            let archive = Archive::Random {
+                name: name.clone(),
+                data: data.clone(),
+            };
+            match archive::list_members(archive) {
+                Ok(members) => (Some(members), None),
+                Err(error) => (Some(Vec::new()), Some(error.to_string())),
+            }
         } else {
-            self.sources
-                .push(Source::Stream(Arc::new(RandomAccessSource { name, data })));
+            (None, None)
+        };
+        self.files.push(InputFile {
+            name,
+            data,
+            members,
+            error,
+        });
+    }
+
+    /// The files added, with their sizes, and a zip archive's members with
+    /// whether xeibe can read them.
+    pub fn files(&self) -> Value {
+        let files: Vec<Value> = self
+            .files
+            .iter()
+            .map(|file| {
+                json!({
+                    "name": file.name,
+                    "size": file.data.len(),
+                    "error": file.error,
+                    "members": file.members.as_ref().map(|members| members
+                        .iter()
+                        .map(|member| json!({
+                            "name": member.name,
+                            "size": member.size,
+                            "compressed_size": member.compressed_size,
+                            "gml": member.candidate,
+                            "unreadable": member.unreadable,
+                        }))
+                        .collect::<Vec<_>>()),
+                })
+            })
+            .collect();
+        json!(files)
+    }
+
+    /// Scan and read these files and members, in this order. A zip archive
+    /// chosen without a member stands for its GML members.
+    pub fn choose(&mut self, choices: &[Choice]) -> Result<()> {
+        let mut sources = Vec::new();
+        let mut sizes = 0;
+        for choice in choices {
+            let file = self
+                .files
+                .get(choice.file)
+                .ok_or_else(|| format!("no file {}", choice.file))?;
+            if let Some(error) = &file.error {
+                return Err(format!("{}: {error}", file.name));
+            }
+            let archive = || Archive::Random {
+                name: file.name.clone(),
+                data: file.data.clone(),
+            };
+            match (&file.members, &choice.member) {
+                (None, None) => {
+                    sizes += file.data.len();
+                    sources.push(Source::Stream(Arc::new(RandomAccessSource {
+                        name: file.name.clone(),
+                        data: file.data.clone(),
+                    })));
+                }
+                (None, Some(_)) => return Err(format!("{} isn't a zip archive", file.name)),
+                (Some(_), None) => {
+                    let members = archive::expand(archive(), &[]).map_err(|e| e.to_string())?;
+                    sizes += file.data.len();
+                    sources.extend(members);
+                }
+                (Some(members), Some(name)) => {
+                    let member = members
+                        .iter()
+                        .find(|member| &member.name == name)
+                        .ok_or_else(|| format!("{} has no member {name}", file.name))?;
+                    if let Some(reason) = &member.unreadable {
+                        return Err(format!("{name} in {}: {reason}", file.name));
+                    }
+                    sizes += member.compressed_size;
+                    sources.push(Source::ZipMember {
+                        archive: archive(),
+                        member: name.clone(),
+                    });
+                }
+            }
         }
+        if sources.is_empty() {
+            return Err("nothing chosen".into());
+        }
+        self.sources = sources;
+        self.sizes = sizes;
+        self.scan = None;
         Ok(())
     }
 
-    /// The total size of the files, for progress.
+    /// The chosen files' size, for progress.
     pub fn size(&self) -> u64 {
         self.sizes
     }
@@ -73,12 +180,18 @@ impl Dataset {
         self.sources.iter().map(Source::name).collect()
     }
 
-    /// Scan every file in full. Returns the Overview's JSON.
-    pub fn scan(&mut self, options: Option<&str>) -> Result<Value> {
+    /// Scan the chosen files: in full, or the first `sample` features of
+    /// each. Returns the Overview's JSON.
+    pub fn scan(&mut self, options: Option<&str>, sample: Option<u64>) -> Result<Value> {
         let options = parse_options(options)?;
-        let scan = xeibe_arrow::scan(self.sources(), ScanExtent::Full, &options)
-            .map_err(|e| e.to_string())?;
-        let json = scan_json(&scan, &self.names());
+        let extent = match sample {
+            Some(max_features) => ScanExtent::SamplePerSource { max_features },
+            None => ScanExtent::Full,
+        };
+        let scan =
+            xeibe_arrow::scan(self.sources(), extent, &options).map_err(|e| e.to_string())?;
+        let mut json = scan_json(&scan, &self.names());
+        json["sample"] = json!(sample);
         self.scan = Some(scan);
         Ok(json)
     }
@@ -95,11 +208,16 @@ impl Dataset {
         }))
     }
 
-    /// Start reading `layer`, at most `limit` rows.
+    /// Start reading `layer`, at most `limit` rows, with the schema the
+    /// last scan inferred (the Schema tab's).
     pub fn read(&self, layer: &str, options: Option<&str>, limit: Option<u64>) -> Result<Reader> {
         let options = parse_options(options)?;
-        let reader =
-            xeibe_arrow::read(self.sources(), layer, None, &options).map_err(|e| e.to_string())?;
+        let schema = match &self.scan {
+            Some(scan) => Some(scan.arrow_schema(layer).map_err(|e| e.to_string())?),
+            None => None,
+        };
+        let reader = xeibe_arrow::read(self.sources(), layer, schema, &options)
+            .map_err(|e| e.to_string())?;
         Ok(Reader::new(reader, &options, limit, self.names()))
     }
 }

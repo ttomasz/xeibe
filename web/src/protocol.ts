@@ -26,14 +26,23 @@ export interface GridRequest {
   length: number | null;
 }
 
+/** A file to scan and read, or one member of a zip archive. */
+export interface Choice {
+  /** The file's index in the files opened. */
+  file: number;
+  member?: string;
+}
+
 export type ToWorker =
   | { type: 'open'; files: File[] }
+  | { type: 'scan'; choices: Choice[]; sample: number | null }
   | { type: 'schema'; layer: string }
   | { type: 'read'; id: number; layer: string; limit: number | null }
   | { type: 'stop'; id: number }
   | { type: 'rows'; id: number; request: number; start: number; count: number };
 
 export type FromWorker =
+  | { type: 'files'; files: InputFile[] }
   | { type: 'progress'; bytes: number; total: number }
   | { type: 'scanned'; scan: Scan; ms: number }
   | { type: 'schema'; layer: string; schema: Schema }
@@ -54,6 +63,25 @@ export type FromWorker =
   | { type: 'error'; message: string };
 
 // JSON from crates/xeibe-wasm/src/session.rs.
+
+export interface InputFile {
+  name: string;
+  size: number;
+  /** Why the file can't be read (a .zip that isn't one). */
+  error: string | null;
+  /** A zip archive's files; null for any other file. */
+  members:
+    | {
+        name: string;
+        size: number;
+        compressed_size: number;
+        /** Named like GML. */
+        gml: boolean;
+        /** Why xeibe can't read it. */
+        unreadable: string | null;
+      }[]
+    | null;
+}
 
 export interface CrsInfo {
   srs_name: string;
@@ -76,13 +104,18 @@ export interface AxisDecision {
 
 export interface Scan {
   files: string[];
+  /** false: the sample stopped before the end of a file. */
   complete: boolean;
+  /** The features scanned of each file; null: the whole files. */
+  sample: number | null;
   skipped_sources: string[];
   extent: [number, number, number, number] | null;
   layers: {
     name: string;
     qname: string;
     feature_count: number;
+    /** Counted by a read of the whole layer (the page sets it). */
+    counted?: boolean;
     geometry_columns: string[];
     crs: CrsInfo[];
     extent: [number, number, number, number] | null;

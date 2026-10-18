@@ -55,16 +55,26 @@ export function overview(s: OverviewState): string {
   const { scan } = s;
   const layer = scan.layers.find((l) => l.name === s.layer);
   const parts: string[] = [];
+  const scanned =
+    scan.sample === null
+      ? 'Scanned'
+      : `Scanned the first ${number.format(scan.sample)} feature${scan.sample === 1 ? '' : 's'} of each file`;
   parts.push(`<section><h2>Input</h2>
-    <p>${inputs(scan.files)} Scanned in ${number.format(Math.round(s.scanMs))} ms:
+    <p>${inputs(scan.files)} ${scanned} in ${number.format(Math.round(s.scanMs))} ms:
     ${scan.layers.length} layer${scan.layers.length === 1 ? '' : 's'}.</p>
+    ${
+      scan.complete
+        ? ''
+        : `<p class="sampled">The schema comes from a sample: layers that start later in a file are missing, and the
+        feature counts are what the sample saw. <button class="button" data-action="full-scan">Scan the whole files</button></p>`
+    }
     ${scan.skipped_sources.length ? `<p class="warn">Skipped (no GML features): ${scan.skipped_sources.map(escape).join(', ')}</p>` : ''}
   </section>`);
   if (layer) {
     parts.push(`<section><h2>Layer <code>${escape(layer.name)}</code></h2>
       <dl>
         <dt>Name</dt><dd><code>${escape(layer.qname)}</code></dd>
-        <dt>Features</dt><dd>${number.format(layer.feature_count)}</dd>
+        <dt>Features</dt><dd>${scan.complete || layer.counted ? '' : 'at least '}${number.format(layer.feature_count)}</dd>
         <dt>Geometry</dt><dd>${layer.geometry_columns.length ? layer.geometry_columns.map((c) => `<code>${escape(c)}</code>`).join(', ') : '<em>none</em>'}</dd>
         <dt>CRS</dt><dd>${layer.crs.length ? layer.crs.map(crs).join('<br>') : '<em>no srsName</em>'}</dd>
         <dt>Extent</dt><dd>${extent(layer.extent)} <span class="muted">as the collection's boundedBy says</span></dd>

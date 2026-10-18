@@ -36,8 +36,8 @@ impl Dataset {
     /// Add a file (`.gml`, `.xml`, `.gz`, `.zst`, or a `.zip` of them) by
     /// name and content.
     #[wasm_bindgen(js_name = addFile)]
-    pub fn add_file(&mut self, name: String, bytes: Vec<u8>) -> Result<(), JsError> {
-        self.0.add_file(name, bytes).map_err(error)
+    pub fn add_file(&mut self, name: String, bytes: Vec<u8>) {
+        self.0.add_file(name, bytes);
     }
 
     /// Add a dropped `File` (any `Blob`), read in slices as the scan and
@@ -46,20 +46,43 @@ impl Dataset {
     #[wasm_bindgen(js_name = addBlob)]
     pub fn add_blob(&mut self, name: String, blob: web_sys::Blob) -> Result<(), JsError> {
         let data = blob::BlobData::new(blob).map_err(error)?;
-        self.0
-            .add_data(name, std::sync::Arc::new(data))
-            .map_err(error)
+        self.0.add_data(name, std::sync::Arc::new(data));
+        Ok(())
     }
 
-    /// The files' total size in bytes.
+    /// JSON: the files added, with their sizes, and a zip archive's members
+    /// with whether they can be read.
+    pub fn files(&self) -> String {
+        self.0.files().to_string()
+    }
+
+    /// Choose the files and members to scan and read: JSON, a list of
+    /// `{"file": index, "member": name}` (no member: the whole file, or a
+    /// zip archive's GML members).
+    pub fn choose(&mut self, choices: &str) -> Result<(), JsError> {
+        let choices: Vec<session::Choice> = serde_json::from_str(choices).map_err(error)?;
+        self.0.choose(&choices).map_err(error)
+    }
+
+    /// The chosen files' size in bytes (a member's compressed size).
     pub fn size(&self) -> f64 {
         self.0.size() as f64
     }
 
-    /// Scan every file in full; `options` is the JSON of the read options.
-    /// Returns JSON: layers, axis decisions, skipped sources, extent.
-    pub fn scan(&mut self, options: Option<String>) -> Result<String, JsError> {
-        Ok(self.0.scan(options.as_deref()).map_err(error)?.to_string())
+    /// Scan the chosen files: in full, or the first `sample` features of
+    /// each; `options` is the JSON of the read options. Returns JSON:
+    /// layers, axis decisions, skipped sources, extent.
+    pub fn scan(
+        &mut self,
+        options: Option<String>,
+        sample: Option<f64>,
+    ) -> Result<String, JsError> {
+        let sample = sample.map(|n| n.max(1.0) as u64);
+        Ok(self
+            .0
+            .scan(options.as_deref(), sample)
+            .map_err(error)?
+            .to_string())
     }
 
     /// JSON: the columns the scan inferred for `layer`, and its reasoning.

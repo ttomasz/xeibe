@@ -12,6 +12,7 @@
       <h1>xeibe</h1>
       <label class="button primary" for="file">Open GML…</label>
       <input type="file" id="file" multiple accept=".gml,.xml,.gz,.zst,.zip" hidden />
+      <button id="change" class="button" hidden title="Choose other files or members, or scan differently">Change files…</button>
       <label class="field">Layer <select id="layer" disabled></select></label>
       <label class="field" title="Stop after this many features; empty reads them all">Max features
         <input id="limit" type="number" min="1" step="1" value="100000" />
@@ -53,6 +54,27 @@
         <div id="data" class="tab"></div>
       </section>
     </main>
+    <dialog id="open" aria-labelledby="openTitle">
+      <form method="dialog">
+        <h2 id="openTitle">Open</h2>
+        <div class="files" role="group" aria-label="Files"></div>
+        <p class="selected muted"></p>
+        <fieldset>
+          <legend>Schema</legend>
+          <label class="choice"><input type="radio" name="extent" value="full" />
+            <span><b>Scan the whole files</b><span class="full-time muted"></span>
+              <span class="hint">Every layer, exact feature counts, types from all the values.</span></span></label>
+          <label class="choice"><input type="radio" name="extent" value="sample" />
+            <span><b>Scan the first <input name="sample" type="number" min="1" step="1" aria-label="Features to scan in each file" /> features of each file</b>
+              <span class="hint">Starts reading the data sooner. A layer that only starts later in a file isn't found, and a
+                value later on that doesn't fit its column's type stops the read.</span></span></label>
+        </fieldset>
+        <div class="actions">
+          <button class="button" value="cancel" formnovalidate>Cancel</button>
+          <button class="button primary" value="open">Scan and read</button>
+        </div>
+      </form>
+    </dialog>
     <div id="drop" hidden><div>Drop GML files to read them</div></div>
     <script type="module" src="./src/main.ts"></script>
   </body>

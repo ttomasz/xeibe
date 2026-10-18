@@ -24,6 +24,7 @@ geoarrow-array.workspace = true
 geoarrow-schema.workspace = true
 bytes.workspace = true
 earcut.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 wasm-bindgen.workspace = true
 

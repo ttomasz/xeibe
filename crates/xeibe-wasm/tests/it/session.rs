@@ -1,14 +1,24 @@
 //! Scan, read, the map's geometry and its grids, the table's rows.
 
+use serde_json::json;
 use xeibe_testkit::read_data;
-use xeibe_wasm::session::{Dataset, Reader};
+use xeibe_wasm::session::{Choice, Dataset, Reader};
 
+/// The files, all chosen.
 fn dataset(files: &[&str]) -> Dataset {
     let mut dataset = Dataset::default();
     for file in files {
-        dataset.add_file(file.to_string(), read_data(file)).unwrap();
+        dataset.add_file(file.to_string(), read_data(file));
     }
+    choose_all(&mut dataset, files.len());
     dataset
+}
+
+fn choose_all(dataset: &mut Dataset, files: usize) {
+    let choices: Vec<Choice> = (0..files)
+        .map(|file| Choice { file, member: None })
+        .collect();
+    dataset.choose(&choices).unwrap();
 }
 
 /// Read every batch, loading grids from the committed fixtures as the
@@ -45,7 +55,8 @@ fn load_grids(reader: &mut Reader) {
 #[test]
 fn a_layer_goes_onto_the_map_and_into_the_table() {
     let mut dataset = dataset(&["samples/pl/prg-address-points.gml"]);
-    let scan = dataset.scan(None).unwrap();
+    let scan = dataset.scan(None, None).unwrap();
+    assert_eq!(scan["complete"], true);
     let layers: Vec<&str> = scan["layers"]
         .as_array()
         .unwrap()
@@ -135,7 +146,8 @@ fn puerto_rico() -> Vec<u8> {
 #[test]
 fn the_map_waits_for_the_grids_it_needs() {
     let mut dataset = Dataset::default();
-    dataset.add_file("pr.gml".into(), puerto_rico()).unwrap();
+    dataset.add_file("pr.gml".into(), puerto_rico());
+    choose_all(&mut dataset, 1);
     let mut reader = dataset.read("Site", None, None).unwrap();
     assert!(reader.next_batch().unwrap());
     let requests = reader.grid_requests();
@@ -165,7 +177,8 @@ fn the_map_waits_for_the_grids_it_needs() {
 #[test]
 fn a_grid_that_cant_be_fetched_leaves_the_map_without_grids_and_says_so() {
     let mut dataset = Dataset::default();
-    dataset.add_file("pr.gml".into(), puerto_rico()).unwrap();
+    dataset.add_file("pr.gml".into(), puerto_rico());
+    choose_all(&mut dataset, 1);
     let mut reader = dataset.read("Site", None, None).unwrap();
     assert!(reader.next_batch().unwrap());
     assert!(!reader.grid_requests().is_empty());
@@ -178,40 +191,92 @@ fn a_grid_that_cant_be_fetched_leaves_the_map_without_grids_and_says_so() {
     assert_eq!(drawing.map.unwrap().point_rows, [0]);
 }
 
-/// A zip of two samples, as a dropped file: its members are the sources.
-#[test]
-fn a_zip_archive_is_read_from_memory() {
+/// A zip of two samples and a PDF, as a dropped file.
+fn prg_zip() -> Vec<u8> {
     use std::io::Write;
     let mut zip_bytes = Vec::new();
-    {
-        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut zip_bytes));
-        let options: zip::write::FileOptions<'_, ()> =
-            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-        for (name, file) in [
-            ("data/addresses.gml", "samples/pl/prg-address-points.gml"),
-            ("data/more.xml", "samples/pl/prg-address-points.gml"),
-        ] {
-            zip.start_file(name, options).unwrap();
-            zip.write_all(&read_data(file)).unwrap();
-        }
-        zip.start_file("readme.pdf", options).unwrap();
-        zip.write_all(b"%PDF").unwrap();
-        zip.finish().unwrap();
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut zip_bytes));
+    let options: zip::write::FileOptions<'_, ()> =
+        zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    for (name, file) in [
+        ("data/addresses.gml", "samples/pl/prg-address-points.gml"),
+        ("data/more.xml", "samples/pl/prg-address-points.gml"),
+    ] {
+        zip.start_file(name, options).unwrap();
+        zip.write_all(&read_data(file)).unwrap();
     }
+    zip.start_file("readme.pdf", options).unwrap();
+    zip.write_all(b"%PDF").unwrap();
+    zip.finish().unwrap();
+    zip_bytes
+}
+
+#[test]
+fn a_zip_archive_lists_its_members() {
     let mut dataset = Dataset::default();
-    dataset.add_file("prg.zip".into(), zip_bytes).unwrap();
-    let scan = dataset.scan(None).unwrap();
+    dataset.add_file("prg.zip".into(), prg_zip());
+    dataset.add_file(
+        "a.gml".into(),
+        read_data("samples/pl/prg-address-points.gml"),
+    );
+    let files = dataset.files();
+    assert_eq!(files[0]["name"], "prg.zip");
+    let members: Vec<(&str, bool)> = files[0]["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| (m["name"].as_str().unwrap(), m["gml"].as_bool().unwrap()))
+        .collect();
+    assert_eq!(
+        members,
+        [
+            ("data/addresses.gml", true),
+            ("data/more.xml", true),
+            ("readme.pdf", false)
+        ]
+    );
+    assert!(files[0]["members"][0]["unreadable"].is_null());
+    assert!(files[1]["members"].is_null());
+    assert!(files[1]["size"].as_u64().unwrap() > 0);
+}
+
+#[test]
+fn a_zip_archive_is_read_from_memory() {
+    let mut dataset = Dataset::default();
+    dataset.add_file("prg.zip".into(), prg_zip());
+    choose_all(&mut dataset, 1);
+    let scan = dataset.scan(None, None).unwrap();
     assert_eq!(
         scan["files"],
-        serde_json::json!(["prg.zip!/data/addresses.gml", "prg.zip!/data/more.xml"])
+        json!(["prg.zip!/data/addresses.gml", "prg.zip!/data/more.xml"])
     );
     assert_eq!(scan["layers"][2]["feature_count"], 4);
     let mut reader = dataset.read("AD_PunktAdresowy", None, None).unwrap();
     read_all(&mut reader);
     assert_eq!(reader.rows_read(), 4);
 
+    // One member.
+    dataset
+        .choose(&[Choice {
+            file: 0,
+            member: Some("data/more.xml".into()),
+        }])
+        .unwrap();
+    let scan = dataset.scan(None, None).unwrap();
+    assert_eq!(scan["files"], json!(["prg.zip!/data/more.xml"]));
+    let mut reader = dataset.read("AD_PunktAdresowy", None, None).unwrap();
+    read_all(&mut reader);
+    assert_eq!(reader.rows_read(), 2);
+
+    // A member that isn't GML can't be read; a zip without GML can't be
+    // chosen whole.
+    let pdf = dataset.choose(&[Choice {
+        file: 0,
+        member: Some("missing.gml".into()),
+    }]);
+    assert!(pdf.unwrap_err().contains("missing.gml"));
     let mut empty = Dataset::default();
-    let error = empty.add_file("empty.zip".into(), {
+    empty.add_file("empty.zip".into(), {
         let mut bytes = Vec::new();
         let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut bytes));
         zip.start_file("readme.pdf", zip::write::FileOptions::<'_, ()>::default())
@@ -219,5 +284,39 @@ fn a_zip_archive_is_read_from_memory() {
         zip.finish().unwrap();
         bytes
     });
+    let error = empty.choose(&[Choice {
+        file: 0,
+        member: None,
+    }]);
     assert!(error.unwrap_err().contains("empty.zip"));
+
+    // Bytes that aren't a zip are listed with the error.
+    let mut broken = Dataset::default();
+    broken.add_file("broken.zip".into(), b"not a zip".to_vec());
+    assert!(broken.files()[0]["error"].is_string());
+}
+
+#[test]
+fn a_sample_of_each_file_is_enough_for_the_schema() {
+    let mut dataset = dataset(&[
+        "samples/pl/prg-address-points.gml",
+        "samples/be/wallonia-lpis-ecological-focus-area-gml33.gml",
+    ]);
+    let scan = dataset.scan(None, Some(1)).unwrap();
+    assert_eq!(scan["complete"], false);
+    assert_eq!(scan["sample"], 1);
+    // The first feature of each file: PRG's first layer, and Wallonia's.
+    let layers: Vec<&str> = scan["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(layers, ["AD_Miejscowosc", "EcologicalFocusArea"]);
+    // The read takes the scan's schema, and reads every feature.
+    let mut reader = dataset.read("EcologicalFocusArea", None, None).unwrap();
+    let schema = dataset.schema("EcologicalFocusArea").unwrap();
+    assert_eq!(reader.info()["columns"], schema["columns"]);
+    read_all(&mut reader);
+    assert!(reader.rows_read() > 1);
 }

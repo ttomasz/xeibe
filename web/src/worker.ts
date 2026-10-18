@@ -37,13 +37,23 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
         reader = null;
         dataset?.free();
         dataset = new Dataset();
-        // Files are read in slices as they are needed, never copied whole.
+        // Files are read in slices as they are needed, never copied whole;
+        // a zip archive's directory is read now.
         for (const file of message.files) dataset.addBlob(file.name, file);
+        post({ type: 'files', files: JSON.parse(dataset.files()) });
+        break;
+      }
+      case 'scan': {
+        if (!dataset) return;
+        wanted = 0;
+        reader?.free();
+        reader = null;
+        dataset.choose(JSON.stringify(message.choices));
         const total = dataset.size();
         const started = performance.now();
         onProgress((bytes: number) => post({ type: 'progress', bytes, total }));
         try {
-          const scan = JSON.parse(dataset.scan(undefined));
+          const scan = JSON.parse(dataset.scan(undefined, message.sample ?? undefined));
           post({ type: 'scanned', scan, ms: performance.now() - started });
         } finally {
           onProgress(undefined);

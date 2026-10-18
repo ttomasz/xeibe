@@ -2,7 +2,8 @@
 
 import './style.css';
 import { MapPane, type View } from './map';
-import type { FromWorker, ReadInfo, Report, Scan, Schema, ToWorker } from './protocol';
+import { bytes, DEFAULT_SAMPLE, OpenDialog, type OpenRequest } from './open';
+import type { Choice, FromWorker, InputFile, ReadInfo, Report, Scan, Schema, ToWorker } from './protocol';
 import { Table } from './table';
 import { escape, overview, schema as schemaView } from './views';
 
@@ -12,10 +13,12 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 let worker = startWorker();
 const send = (message: ToWorker, transfer: Transferable[] = []) => worker.postMessage(message, transfer);
 
+/** A new worker, holding the same files. */
 function restartWorker() {
   worker.terminate();
   worker = startWorker();
   state.scanning = false;
+  if (state.files.length) send({ type: 'open', files: state.files });
 }
 
 function startWorker(): Worker {
@@ -26,6 +29,14 @@ function startWorker(): Worker {
 }
 
 const state = {
+  /** The files opened, and what is in them. */
+  files: [] as File[],
+  listing: null as InputFile[] | null,
+  /** Show the dialog when the worker has listed the files. */
+  choose: false,
+  /** What the dialog asked for last. */
+  choices: null as Choice[] | null,
+  sample: null as number | null,
   scan: null as Scan | null,
   scanMs: 0,
   layer: null as string | null,
@@ -46,6 +57,7 @@ const status = $('status');
 const layerSelect = $<HTMLSelectElement>('layer');
 const limitInput = $<HTMLInputElement>('limit');
 const stopButton = $<HTMLButtonElement>('stop');
+const changeButton = $<HTMLButtonElement>('change');
 const pointer = $('pointer');
 const mapNote = $('mapNote');
 
@@ -62,10 +74,6 @@ function updateMapNote() {
   }
   mapNote.textContent = note;
   mapNote.hidden = note === '';
-}
-
-function gigabytes(bytes: number): string {
-  return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1e6))} MB`;
 }
 
 function plural(n: number, word: string): string {
@@ -105,21 +113,53 @@ function setStatus(text: string, error = false) {
 
 // Files
 
+const dialog = new OpenDialog(scan);
+
+/** List the files: the dialog then asks what to read. */
 function open(files: File[]) {
   if (files.length === 0) return;
+  state.files = files;
+  state.listing = null;
+  state.choices = null;
+  state.choose = true;
   // The worker can't take a message while it scans: start over.
   if (state.scanning) restartWorker();
+  else send({ type: 'open', files });
+  setStatus(`Opening ${files.length === 1 ? files[0].name : `${files.length} files`}…`);
+}
+
+function scan(request: OpenRequest) {
+  state.choices = request.choices;
+  state.sample = request.sample;
   state.scan = null;
   state.layer = null;
+  state.info = null;
+  state.report = null;
+  // Batches of a read still on their way are for the old files.
+  state.readId++;
   state.schemas.clear();
   layerSelect.disabled = true;
   state.scanning = true;
   stopButton.hidden = false;
-  setStatus(`Scanning ${files.length === 1 ? files[0].name : `${files.length} files`}…`);
+  setStatus('Scanning…');
   state.started = performance.now();
-  // The files themselves: the worker reads them in slices.
-  send({ type: 'open', files });
+  send({ type: 'scan', choices: request.choices, sample: request.sample });
 }
+
+changeButton.addEventListener('click', () => {
+  if (!state.listing) return;
+  if (state.scanning) {
+    restartWorker();
+    stopButton.hidden = true;
+    setStatus('Scan stopped');
+  }
+  dialog.show(state.listing, state.choices, state.sample);
+});
+
+$('overview').addEventListener('click', (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action=full-scan]');
+  if (button && state.choices) scan({ choices: state.choices, sample: null });
+});
 
 $<HTMLInputElement>('file').addEventListener('change', (event) => {
   const input = event.target as HTMLInputElement;
@@ -178,19 +218,36 @@ stopButton.addEventListener('click', () => {
     send({ type: 'stop', id: state.readId });
     return;
   }
+  // Back to the dialog, to choose less or a sample.
+  state.choose = true;
+  const sample = state.sample ?? DEFAULT_SAMPLE;
   restartWorker();
   stopButton.hidden = true;
   layerSelect.replaceChildren();
   setStatus('Scan stopped');
+  state.sample = sample;
 });
 
 function receive(message: FromWorker) {
   if ('id' in message && message.type !== 'rows' && message.id !== state.readId) return;
   switch (message.type) {
+    case 'files':
+      state.listing = message.files;
+      changeButton.hidden = false;
+      if (state.choose) {
+        state.choose = false;
+        dialog.show(message.files, state.choices, state.choices ? state.sample : undefined);
+        if (!state.choices) setStatus('');
+      }
+      break;
     case 'progress': {
-      const share = message.total > 0 ? Math.min(100, (100 * message.bytes) / message.total) : 0;
       const seconds = (performance.now() - state.started) / 1000;
-      setStatus(`Scanning… ${share.toFixed(0)}% of ${gigabytes(message.total)} in ${seconds.toFixed(0)} s`);
+      if (state.sample !== null) {
+        setStatus(`Scanning the first ${plural(state.sample, 'feature')} of each file… ${bytes(message.bytes)} read in ${seconds.toFixed(0)} s`);
+      } else {
+        const share = message.total > 0 ? Math.min(100, (100 * message.bytes) / message.total) : 0;
+        setStatus(`Scanning… ${share.toFixed(0)}% of ${bytes(message.total)} in ${seconds.toFixed(0)} s`);
+      }
       break;
     }
     case 'scanned': {
@@ -199,8 +256,10 @@ function receive(message: FromWorker) {
       state.scan = message.scan;
       state.scanMs = message.ms;
       const layers = message.scan.layers;
+      // A sample's counts are only the features it saw.
+      const atLeast = message.scan.complete ? '' : '≥ ';
       layerSelect.replaceChildren(
-        ...layers.map((l) => new Option(`${l.name} (${l.feature_count.toLocaleString('en')})`, l.name)),
+        ...layers.map((l) => new Option(`${l.name} (${atLeast}${l.feature_count.toLocaleString('en')})`, l.name)),
       );
       layerSelect.disabled = layers.length === 0;
       if (layers.length === 0) {
@@ -239,6 +298,7 @@ function receive(message: FromWorker) {
       state.reading = false;
       state.report = message.report;
       if (message.type === 'done') state.info = message.info;
+      if (message.type === 'done') countLayer(message.report);
       stopButton.hidden = true;
       map.fit();
       const seconds = ((performance.now() - state.started) / 1000).toFixed(1);
@@ -265,6 +325,18 @@ function receive(message: FromWorker) {
       renderOverview(message.message);
       break;
   }
+}
+
+/** After a sampled scan, a read that went through every file counts its
+ * layer exactly. */
+function countLayer(report: Report) {
+  const layer = state.scan?.layers.find((l) => l.name === state.layer);
+  const limited = state.limit !== null && report.rows >= state.limit;
+  if (!layer || state.scan!.complete || limited) return;
+  layer.feature_count = report.rows + report.skipped.length;
+  layer.counted = true;
+  const option = [...layerSelect.options].find((o) => o.value === layer.name);
+  if (option) option.text = `${layer.name} (${layer.feature_count.toLocaleString('en')})`;
 }
 
 // Tabs
