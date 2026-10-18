@@ -1,9 +1,12 @@
 [package]
 name = "xeibe-io"
-description = "Byte sources for GML input: HTTP and object stores, read as streams"
+description = "HTTP(S) and object-store (S3, GCS, Azure) byte sources for xeibe, each read as one sequential stream. Experimental: AI-generated, not thoroughly tested, unstable API"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+keywords = ["gml", "http", "object-store", "gis"]
+categories = ["science::geo"]
 license.workspace = true
 publish.workspace = true
 

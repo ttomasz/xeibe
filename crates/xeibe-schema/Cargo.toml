@@ -1,9 +1,12 @@
 [package]
 name = "xeibe-schema"
-description = "Scan → path tree (observations), InferenceOptions (policy) → Arrow schema, binding given schemas, --explain"
+description = "Arrow schema inference for GML: scan features into a path tree with value statistics, apply configurable inference rules, bind given schemas. Experimental: AI-generated, not thoroughly tested, unstable API"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+keywords = ["gml", "arrow", "schema", "gis"]
+categories = ["science::geo"]
 license.workspace = true
 publish.workspace = true
 

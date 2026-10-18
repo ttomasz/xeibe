@@ -1,6 +1,6 @@
 //! Full geometry parser: GML element subtree → [`Geometry`] in output axis order.
 //!
-//! One recursive-descent [`Parser`] per geometry. It reads the element tree
+//! One recursive-descent `Parser` per geometry. It reads the element tree
 //! through [`GmlReader`], builds the model in the order the coordinates are
 //! written, and applies the axis decision once at the end: the decision key
 //! includes the dialect, which is only known once the geometry's structure

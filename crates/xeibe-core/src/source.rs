@@ -389,8 +389,9 @@ const DIRECTORY_SUFFIXES: &[&str] = &[
 /// into individual sources. Remote URLs are resolved by `xeibe-io`.
 ///
 /// Directories are walked recursively and contribute files with a GML
-/// suffix (see [`DIRECTORY_SUFFIXES`]); a glob contributes every file it
-/// matches. Results of one directory or glob are sorted by path. The member
+/// suffix (`.gml`, `.xml`, either one with `.gz` or `.zst`, and `.zip`);
+/// a glob contributes every file it matches. Results of one directory or
+/// glob are sorted by path. The member
 /// of `archive.zip!/member` may be a glob too (`archive.zip!/data/*.gml`),
 /// matched against the archive's candidate members.
 pub fn expand_sources(inputs: &[String]) -> crate::Result<Vec<Source>> {

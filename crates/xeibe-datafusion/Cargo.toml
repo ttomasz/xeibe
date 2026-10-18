@@ -1,9 +1,12 @@
 [package]
 name = "xeibe-datafusion"
-description = "DataFusion integration: a table per GML layer, read_gml() table function (SedonaDB-ready)"
+description = "DataFusion integration for xeibe: a table provider per GML layer and a read_gml() table function. Experimental: AI-generated, not thoroughly tested, unstable API"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+keywords = ["gml", "datafusion", "geoarrow", "sql", "gis"]
+categories = ["science::geo", "database"]
 license.workspace = true
 publish.workspace = true
 

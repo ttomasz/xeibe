@@ -1,4 +1,13 @@
-//! WFS bulk-read client: pages streamed into a read. See `docs/wfs.md`.
+//! WFS bulk-read client: pages streamed into a read. See the
+//! [WFS document](https://github.com/ttomasz/xeibe/blob/main/docs/wfs.md).
+//!
+//! <div class="warning">
+//!
+//! **Experimental, not for production use.** This crate is AI-generated and
+//! has not been thoroughly tested yet. Its interfaces are not stable and will
+//! change in the near future, in breaking ways.
+//!
+//! </div>
 
 pub mod capabilities;
 pub mod error;

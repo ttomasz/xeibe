@@ -2,10 +2,17 @@
 
 EPSG CRS facts and PROJJSON definitions, for the axis-order decision and for
 GeoArrow/GeoParquet CRS metadata, and EPSG's CRS aliases, for srsNames that
-give a name (`PL-1992`) instead of a code. See `docs/geometry.md` for how they
-are used. Since 0.2.0 also EPSG's coordinate operations, datums and areas of
-use, from which `xeibe-reproject` chooses datum transformations (see
-`docs/reprojection.md`).
+give a name (`PL-1992`) instead of a code. Part of
+[xeibe](https://github.com/ttomasz/xeibe); see its
+[geometry document](https://github.com/ttomasz/xeibe/blob/main/docs/geometry.md) for how they are used. Since 0.2.0 also
+EPSG's coordinate operations, datums and areas of use, from which
+`xeibe-reproject` chooses datum transformations (see the
+[reprojection document](https://github.com/ttomasz/xeibe/blob/main/docs/reprojection.md)).
+
+> **Warning: experimental, not for production use.** This crate is
+> AI-generated and has not been thoroughly tested yet. Its interfaces are not
+> stable and will change in the near future, in breaking ways. Do not use it in
+> production.
 
 Everything in `src/table.rs`, `src/aliases.rs` and `data/` is **generated** by
 `scripts/gen_crs_tables.py`; do not edit any of it by hand. `src/lib.rs` and the
@@ -182,8 +189,8 @@ container layout.
 - **Coordinate operations without grid files.** Operations are extracted as
   PROJ imports them (the same methods, supersession rules and concatenations),
   parameters included, but grid-based ones only name their grid file: the
-  grids themselves aren't part of the EPSG Dataset (`docs/reprojection.md`,
-  level 3).
+  grids themselves aren't part of the EPSG Dataset
+  ([reprojection document](https://github.com/ttomasz/xeibe/blob/main/docs/reprojection.md), level 3).
 - **CRS names change between EPSG releases** and must never be matched on.
   EPSG:2180 is `ETRS89 / PL-1992` in v13.103 and was `ETRF2000-PL / CS92` in
   v12.029.

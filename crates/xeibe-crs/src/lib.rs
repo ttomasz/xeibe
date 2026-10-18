@@ -1,5 +1,13 @@
 //! EPSG CRS facts and PROJJSON definitions, generated from the EPSG dataset.
 //!
+//! <div class="warning">
+//!
+//! **Experimental, not for production use.** This crate is AI-generated and
+//! has not been thoroughly tested yet. Its interfaces are not stable and will
+//! change in the near future, in breaking ways.
+//!
+//! </div>
+//!
 //! Two tables, with deliberately different shapes because they are used very
 //! differently (plus [`alias`], EPSG's other names for its CRSs):
 //!

@@ -2,8 +2,9 @@
 
 Some of the code in this crate is ported from PROJ 9.8.1
 (<https://proj.org>, <https://github.com/OSGeo/PROJ>). Each ported module says
-so at the top, with the PROJ source file it follows. PROJ's licence applies to
-those parts:
+so at the top, with the PROJ source file it follows. The grid name table in
+`src/grid/catalog.rs` is generated from PROJ's data
+(`data/sql/grid_alternatives*.sql`). PROJ's licence applies to those parts:
 
 ```text
 All source, data files and other contents of the PROJ package are

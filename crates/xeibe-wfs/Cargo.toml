@@ -1,9 +1,12 @@
 [package]
 name = "xeibe-wfs"
-description = "WFS 1.0/1.1/2.0 bulk read: capabilities, paging, pages streamed into a read"
+description = "OGC WFS 1.0/1.1/2.0 bulk-read client for xeibe: capabilities, paging, pages streamed into one Arrow read. Experimental: AI-generated, not thoroughly tested, unstable API"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+keywords = ["wfs", "ogc", "gml", "gis"]
+categories = ["science::geo", "web-programming::http-client"]
 license.workspace = true
 publish.workspace = true
 

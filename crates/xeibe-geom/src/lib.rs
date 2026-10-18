@@ -1,6 +1,15 @@
 //! GML geometry → internal model → `geo-traits` / ISO WKB.
 //!
-//! See `docs/geometry.md`. This crate has no Arrow dependency.
+//! <div class="warning">
+//!
+//! **Experimental, not for production use.** This crate is AI-generated and
+//! has not been thoroughly tested yet. Its interfaces are not stable and will
+//! change in the near future, in breaking ways.
+//!
+//! </div>
+//!
+//! See the [geometry document](https://github.com/ttomasz/xeibe/blob/main/docs/geometry.md). This crate has no Arrow
+//! dependency.
 
 pub mod arcs;
 pub mod axis;

@@ -1,7 +1,16 @@
-//! Streaming GML reading primitives shared by all other crates.
+//! Streaming GML reading primitives shared by the other
+//! [xeibe](https://github.com/ttomasz/xeibe) crates.
 //!
-//! This crate has no Arrow dependency. See `docs/architecture.md` for the
-//! overall data flow.
+//! <div class="warning">
+//!
+//! **Experimental, not for production use.** This crate is AI-generated and
+//! has not been thoroughly tested yet. Its interfaces are not stable and will
+//! change in the near future, in breaking ways.
+//!
+//! </div>
+//!
+//! This crate has no Arrow dependency. See the
+//! [architecture document](https://github.com/ttomasz/xeibe/blob/main/docs/architecture.md) for the overall data flow.
 
 pub mod archive;
 pub mod chunk;

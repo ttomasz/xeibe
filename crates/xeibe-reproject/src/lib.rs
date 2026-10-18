@@ -1,7 +1,15 @@
 //! Coordinate conversion between CRSs, in pure Rust, from the PROJJSON that
 //! `xeibe-crs` generates out of the EPSG dataset.
 //!
-//! Levels 1 to 3 of `docs/reprojection.md`:
+//! <div class="warning">
+//!
+//! **Experimental, not for production use.** This crate is AI-generated and
+//! has not been thoroughly tested yet. Its interfaces are not stable and will
+//! change in the near future, in breaking ways.
+//!
+//! </div>
+//!
+//! Levels 1 to 3 of the [reprojection document](https://github.com/ttomasz/xeibe/blob/main/docs/reprojection.md):
 //!
 //! * within one datum, conversions: projections, changes of axis order and
 //!   units, geographic ↔ geocentric;

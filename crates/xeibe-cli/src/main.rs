@@ -1,4 +1,13 @@
-//! `xeibe` command-line tool. See `docs/architecture.md` "CLI".
+//! `xeibe` command-line tool. See "CLI" in the
+//! [architecture document](https://github.com/ttomasz/xeibe/blob/main/docs/architecture.md).
+//!
+//! <div class="warning">
+//!
+//! **Experimental, not for production use.** This tool is AI-generated and
+//! has not been thoroughly tested yet. Its interfaces are not stable and will
+//! change in the near future, in breaking ways.
+//!
+//! </div>
 
 mod args;
 mod commands;

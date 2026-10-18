@@ -1,9 +1,12 @@
 [package]
 name = "xeibe-crs"
-description = "EPSG CRS facts, PROJJSON definitions and coordinate operations, generated from the EPSG Geodetic Parameter Dataset"
+description = "EPSG CRS facts, PROJJSON definitions and coordinate operations, generated from the EPSG Geodetic Parameter Dataset. Experimental: AI-generated, not thoroughly tested, unstable API"
 version = "0.2.0+epsg-13.106"
 edition.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+keywords = ["epsg", "crs", "projjson", "gis"]
+categories = ["science::geo"]
 publish.workspace = true
 
 # NOT the workspace licence. The xeibe code in this crate is CC0-1.0 like the

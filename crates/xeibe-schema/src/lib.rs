@@ -1,7 +1,16 @@
 //! Schema inference: observation (path tree) + policy (`InferenceOptions`), and
 //! binding a given schema to XML paths.
 //!
-//! See `docs/schema-inference.md` and `docs/type-mapping.md`.
+//! <div class="warning">
+//!
+//! **Experimental, not for production use.** This crate is AI-generated and
+//! has not been thoroughly tested yet. Its interfaces are not stable and will
+//! change in the near future, in breaking ways.
+//!
+//! </div>
+//!
+//! See the [schema inference](https://github.com/ttomasz/xeibe/blob/main/docs/schema-inference.md) and
+//! [type mapping](https://github.com/ttomasz/xeibe/blob/main/docs/type-mapping.md) documents.
 
 pub mod bind;
 pub mod error;

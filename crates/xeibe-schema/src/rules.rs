@@ -1,7 +1,7 @@
 //! Rule engine: one walk over a layer's tree → a flat Arrow schema
 //! (`docs/schema-inference.md` §3–§4).
 //!
-//! The walk emits one [`Col`] per leaf (an element's text, an attribute, a
+//! The walk emits one `Col` per leaf (an element's text, an attribute, a
 //! geometry property) with its path in the settings-file syntax: local names,
 //! `*` for a type wrapper, `[]` on the anchor of a list, a prefix only where
 //! siblings differ only by namespace. Names are chosen afterwards, shortest

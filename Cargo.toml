@@ -37,6 +37,7 @@ edition = "2024"
 # geoarrow-array/geoarrow-schema 0.9 need 1.95 (DataFusion 55 needs 1.94).
 rust-version = "1.95"
 license = "CC0-1.0"
+repository = "https://github.com/ttomasz/xeibe"
 publish = false
 
 [workspace.dependencies]

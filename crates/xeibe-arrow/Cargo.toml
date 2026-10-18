@@ -1,9 +1,12 @@
 [package]
 name = "xeibe-arrow"
-description = "GML features → Arrow RecordBatches with GeoArrow geometry: scan, read, settings file, parallel pipeline"
+description = "Read GML into Arrow record batches with GeoArrow geometry columns: layer scan, schema inference, parallel streaming reads. Experimental: AI-generated, not thoroughly tested, unstable API"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+keywords = ["gml", "arrow", "geoarrow", "gis"]
+categories = ["science::geo", "parser-implementations", "encoding"]
 license.workspace = true
 publish.workspace = true
 

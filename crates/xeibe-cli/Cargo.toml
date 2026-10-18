@@ -1,9 +1,12 @@
 [package]
 name = "xeibe-cli"
-description = "xeibe: scan layers and schemas, convert one layer to Parquet/Arrow IPC, read WFS"
+description = "The xeibe command: list the layers and inferred schemas of GML files and WFS services, convert a layer to (Geo)Parquet or Arrow IPC. Experimental: AI-generated, not thoroughly tested, unstable API"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+keywords = ["gml", "wfs", "parquet", "geoparquet", "gis"]
+categories = ["command-line-utilities", "science::geo"]
 license.workspace = true
 publish.workspace = true
 

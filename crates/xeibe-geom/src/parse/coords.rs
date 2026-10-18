@@ -85,7 +85,7 @@ pub fn parse_pos_list(text: &str, dimension: usize, count: Option<usize>) -> cra
 /// Lenient where GDAL is: when `ts` is whitespace, any run of whitespace
 /// separates tuples. With the default separators and no comma at all, the
 /// text is read as whitespace-separated numbers: 3 values are one 3D
-/// position, otherwise pairs. **[GDAL]** A mix of 2D and 3D tuples becomes 3D,
+/// position, otherwise pairs. **\[GDAL\]** A mix of 2D and 3D tuples becomes 3D,
 /// with Z = 0 for the 2D ones.
 pub fn parse_coordinates(text: &str, format: &CoordinatesFormat) -> crate::Result<Coords> {
     let (decimal, cs, ts) = format.validate()?;

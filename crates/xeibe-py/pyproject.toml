@@ -4,12 +4,24 @@ build-backend = "maturin"
 
 [project]
 name = "xeibe-py"
-description = "Read GML files and WFS responses into Arrow/GeoArrow"
+description = "Read GML files into Arrow/GeoArrow (experimental, AI-generated, unstable API)"
+readme = "README.md"
+license = "CC0-1.0"
 requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: GIS",
+]
 dynamic = ["version"]
 # Schemas and streams are arro3 objects (`arro3.core`), which any library that
 # speaks the Arrow PyCapsule interface takes (`pyarrow.schema(s)`, …).
 dependencies = ["arro3-core>=0.8"]
+
+[project.urls]
+Repository = "https://github.com/ttomasz/xeibe"
+Documentation = "https://github.com/ttomasz/xeibe/tree/main/docs"
 
 [project.optional-dependencies]
 # `xeibe.sedona`: GML as a SedonaDB data source.

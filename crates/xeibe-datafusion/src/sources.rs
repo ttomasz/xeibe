@@ -13,7 +13,7 @@ use xeibe_io::IoOptions;
 
 /// Resolve inputs against `runtime`'s object store registry. Blocking: listing
 /// a prefix or glob waits on the store, so call it in `spawn_blocking` (or
-/// [`blocking`]), never on a tokio worker thread.
+/// `blocking`), never on a tokio worker thread.
 ///
 /// `file://` URLs use the registry too (DataFusion registers a local store for
 /// them); a zip archive must be given as a plain path.

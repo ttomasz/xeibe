@@ -1,9 +1,12 @@
 [package]
 name = "xeibe-core"
-description = "Streaming GML reading primitives: namespaces, version detection, feature-boundary splitting, byte sources, zip"
+description = "Streaming GML reading primitives for xeibe: byte sources, compression and zip, encodings, namespaces, GML version detection, splitting documents into features. Experimental: AI-generated, not thoroughly tested, unstable API"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+keywords = ["gml", "xml", "gis", "streaming"]
+categories = ["science::geo", "parser-implementations"]
 license.workspace = true
 publish.workspace = true
 
