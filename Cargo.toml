@@ -12,10 +12,12 @@ members = [
     "crates/xeibe-datafusion",
     "crates/xeibe-cli",
     "crates/xeibe-py",
+    "crates/xeibe-wasm",
     "crates/xeibe-testkit",
 ]
-# xeibe-datafusion and xeibe-py pull in heavy dependencies (DataFusion, pyo3);
-# build them explicitly with `-p` or `--workspace`.
+# xeibe-datafusion and xeibe-py pull in heavy dependencies (DataFusion, pyo3),
+# and xeibe-wasm is for wasm32-unknown-unknown; build them explicitly with
+# `-p` or `--workspace`.
 default-members = [
     "crates/xeibe-core",
     "crates/xeibe-crs",
@@ -54,6 +56,7 @@ arrow-array = "59"
 arrow-buffer = "59"
 arrow-select = "59"
 arrow-ipc = "59"
+arrow-cast = "59"
 arrow-schema = { version = "59", features = ["serde"] }
 parquet = { version = "59", default-features = false, features = ["arrow", "zstd", "geospatial"] }
 geoarrow-array = "0.9"
@@ -89,6 +92,10 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 clap = { version = "4", features = ["derive"] }
 async-trait = "0.1"
 futures-util = { version = "0.3", default-features = false }
+# The web page's bindings (xeibe-wasm). The page's build pins wasm-bindgen-cli
+# to the same version.
+wasm-bindgen = "=0.2.129"
+earcut = "0.4"
 pyo3 = { version = "0.29", features = ["extension-module", "abi3-py311"] }
 # Arrow objects for Python (arro3), built on the same arrow and pyo3 versions.
 # No `buffer_protocol`: xeibe hands no buffers to Python.

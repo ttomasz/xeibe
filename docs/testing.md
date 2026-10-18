@@ -22,6 +22,7 @@ files in `tests/data`.
 | `crates/<crate>/tests/it/` | One integration-test binary per crate, with a module per topic and a `support` module. Everything goes through the public API |
 | `crates/<crate>/tests/it/samples.rs` | The same crate tested against the real samples in `tests/data` |
 | `crates/xeibe-py/tests/*.py` | The Python package, run against a built wheel: `smoke.py` (`scan`, `read`, settings, options) and `sedona.py` (`xeibe.sedona` in SedonaDB). Not part of `cargo test`; see below |
+| `crates/xeibe-wasm/tests/it/` | The web page's session run natively: scan, read, the map's buffers, grids loaded from `tests/data/reprojection/grids`, the table's rows. The JavaScript in `web/` has no automated tests yet: `npm run check` type-checks it |
 
 The Python tests are PEP 723 scripts. Build the wheel first, then run each
 with it:
