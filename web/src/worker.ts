@@ -2,7 +2,7 @@
 // It holds the dropped files and the current read; the UI thread gets JSON,
 // table rows on demand, and the map's buffers (transferred, not copied).
 
-import init, { Dataset, Reader } from './wasm/xeibe_wasm.js';
+import init, { Dataset, Reader, onProgress } from './wasm/xeibe_wasm.js';
 import wasmUrl from './wasm/xeibe_wasm_bg.wasm?url';
 import type { FromWorker, GridRequest, Space, ToWorker } from './protocol';
 
@@ -37,12 +37,17 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
         reader = null;
         dataset?.free();
         dataset = new Dataset();
-        for (const file of message.files) {
-          dataset.addFile(file.name, new Uint8Array(file.buffer));
-        }
+        // Files are read in slices as they are needed, never copied whole.
+        for (const file of message.files) dataset.addBlob(file.name, file);
+        const total = dataset.size();
         const started = performance.now();
-        const scan = JSON.parse(dataset.scan(undefined));
-        post({ type: 'scanned', scan, ms: performance.now() - started });
+        onProgress((bytes: number) => post({ type: 'progress', bytes, total }));
+        try {
+          const scan = JSON.parse(dataset.scan(undefined));
+          post({ type: 'scanned', scan, ms: performance.now() - started });
+        } finally {
+          onProgress(undefined);
+        }
         break;
       }
       case 'schema': {

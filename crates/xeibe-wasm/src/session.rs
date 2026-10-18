@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use xeibe_arrow::report::Warning;
 use xeibe_arrow::{LayerReader, ReadOptions, ReadReport, ScanResult};
 use xeibe_core::archive::{self, Archive};
-use xeibe_core::{BytesSource, Location, Source};
+use xeibe_core::{Location, RandomAccess, RandomAccessSource, Source};
 use xeibe_geom::{AxisDecision, AxisKey, SrsName};
 use xeibe_reproject::{AxisOrder, Crs, GridRequest, Grids, Transform};
 use xeibe_schema::ScanExtent;
@@ -31,24 +31,37 @@ pub type Result<T> = std::result::Result<T, String>;
 #[derive(Default)]
 pub struct Dataset {
     sources: Vec<Source>,
+    /// The files' sizes, for progress.
+    sizes: u64,
     scan: Option<ScanResult>,
 }
 
 impl Dataset {
-    /// Add a file. A zip archive adds its GML members (`name!/member`), as
-    /// a local zip does in the CLI; one without any is an error.
+    /// Add a file held in memory: see [`Dataset::add_data`].
     pub fn add_file(&mut self, name: String, bytes: Vec<u8>) -> Result<()> {
-        let bytes = bytes::Bytes::from(bytes);
+        self.add_data(name, Arc::new(bytes::Bytes::from(bytes)))
+    }
+
+    /// Add a file, read in pieces as it is needed. A zip archive adds its
+    /// GML members (`name!/member`), as a local zip does in the CLI; one
+    /// without any, or with one xeibe can't read, is an error.
+    pub fn add_data(&mut self, name: String, data: Arc<dyn RandomAccess>) -> Result<()> {
         self.scan = None;
+        self.sizes += data.len();
         if name.to_ascii_lowercase().ends_with(".zip") {
-            let archive = Archive::Bytes { name, bytes };
+            let archive = Archive::Random { name, data };
             let members = archive::expand(archive, &[]).map_err(|e| e.to_string())?;
             self.sources.extend(members);
         } else {
             self.sources
-                .push(Source::Stream(Arc::new(BytesSource { name, bytes })));
+                .push(Source::Stream(Arc::new(RandomAccessSource { name, data })));
         }
         Ok(())
+    }
+
+    /// The total size of the files, for progress.
+    pub fn size(&self) -> u64 {
+        self.sizes
     }
 
     fn sources(&self) -> Vec<Source> {

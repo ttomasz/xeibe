@@ -27,13 +27,14 @@ export interface GridRequest {
 }
 
 export type ToWorker =
-  | { type: 'open'; files: { name: string; buffer: ArrayBuffer }[] }
+  | { type: 'open'; files: File[] }
   | { type: 'schema'; layer: string }
   | { type: 'read'; id: number; layer: string; limit: number | null }
   | { type: 'stop'; id: number }
   | { type: 'rows'; id: number; request: number; start: number; count: number };
 
 export type FromWorker =
+  | { type: 'progress'; bytes: number; total: number }
   | { type: 'scanned'; scan: Scan; ms: number }
   | { type: 'schema'; layer: string; schema: Schema }
   | { type: 'info'; id: number; info: ReadInfo }

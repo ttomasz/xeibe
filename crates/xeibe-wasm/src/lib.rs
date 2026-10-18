@@ -9,6 +9,8 @@
 //! Everything runs on the calling thread (`threads = 1`), in the page's Web
 //! Worker.
 
+#[cfg(target_arch = "wasm32")]
+mod blob;
 pub mod display;
 pub mod session;
 mod wkt;
@@ -36,6 +38,22 @@ impl Dataset {
     #[wasm_bindgen(js_name = addFile)]
     pub fn add_file(&mut self, name: String, bytes: Vec<u8>) -> Result<(), JsError> {
         self.0.add_file(name, bytes).map_err(error)
+    }
+
+    /// Add a dropped `File` (any `Blob`), read in slices as the scan and
+    /// the reads need it: never copied whole. Only in a worker.
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen(js_name = addBlob)]
+    pub fn add_blob(&mut self, name: String, blob: web_sys::Blob) -> Result<(), JsError> {
+        let data = blob::BlobData::new(blob).map_err(error)?;
+        self.0
+            .add_data(name, std::sync::Arc::new(data))
+            .map_err(error)
+    }
+
+    /// The files' total size in bytes.
+    pub fn size(&self) -> f64 {
+        self.0.size() as f64
     }
 
     /// Scan every file in full; `options` is the JSON of the read options.
@@ -199,4 +217,12 @@ impl Drawing {
             Ok(&self.0.source)
         }
     }
+}
+
+/// Call `callback(bytes)` as files are read, every 8 MiB, counting from now
+/// (for a scan's progress); `undefined` stops it.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = onProgress)]
+pub fn on_progress(callback: Option<js_sys::Function>) {
+    blob::on_progress(callback);
 }

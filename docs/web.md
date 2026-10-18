@@ -158,14 +158,30 @@ flowchart LR
 
 | Input | How |
 |---|---|
-| `.gml`, `.xml`, saved WFS responses | Read into memory, wrapped in an in-memory `ByteSource` |
+| `.gml`, `.xml`, saved WFS responses | Read from the browser's `File` in slices, as a scan or read needs them (`RandomAccessSource`) |
 | `.gz`, `.zst` | As above; `Source::open` decompresses |
-| `.zip` | Held in memory; its `.gml`, `.xml` and `.gml.gz`/`.xml.gz` members are the sources, as for a local zip in the CLI ([architecture.md](architecture.md#zip-archives)). The Overview lists them under the archive |
+| `.zip` | The same `File`, read at any offset (`archive::Archive::Random`); its `.gml`, `.xml` and `.gml.gz`/`.xml.gz` members are the sources, as for a local zip in the CLI ([architecture.md](architecture.md#zip-archives)). The Overview lists them under the archive |
 | Live WFS | Out of scope at first (see [Network](#network)). Maybe later as best effort for servers that allow it |
 
-A streaming `ByteSource` over `Blob.slice()` with `FileReaderSync` (available in
-workers) would avoid holding the whole file in memory. That is a later
-improvement, not needed for the first version.
+Files are never held whole. The page hands the worker the `File` objects
+themselves (no bytes are copied), and the module reads 256 KiB slices with
+`FileReaderSync`, which only a worker has (`crates/xeibe-wasm/src/blob.rs`).
+So a file's size isn't limited by the module's memory, nor by the largest
+`ArrayBuffer` a browser allocates: Chrome refuses to read a 3.3 GB file into
+one. Each slice is a new `ArrayBuffer` left for the garbage collector, which
+costs about 1 GB of memory in the worker during a long scan, whatever the
+file's size.
+
+Each slice is a call into the browser, so the number of calls counts more
+than the bytes. `RandomReader` keeps its last slice across seeks: the zip
+crate reads an archive's directory entry by entry with seeks in between, and a
+`BufReader`, which drops its buffer on every seek, made each entry a call. On
+the BDOT10k zip that was 6,068 calls for a read of one layer; it is 519, and
+the read went from 3.8 to 2.1 s (1.8 s with the zip copied into memory).
+
+A scan runs to the end in one call into the module. Its progress comes from
+the bytes read (a callback every 8 MiB), and Stop ends it by replacing the
+worker. A read stops between batches and keeps the rows read so far.
 
 ### Network
 
@@ -221,13 +237,15 @@ brings the same C dependency as above.
 ## Limits
 
 - **Memory.** wasm32 addresses at most 4 GB; in practice browsers manage 1–2 GB.
-  Files of a few hundred MB are fine. For bigger ones the page offers "first N
-  features": it stops pulling batches after N rows, which with an inline read
-  also stops the parsing. That bounds the Arrow output but not the input, which
-  is in memory until reads stream from the `Blob` (see [Inputs](#inputs)). Beyond
-  that, the page points to the CLI.
-- **Speed.** One thread, so several times slower than the CLI on a multi-core
-  machine. Fine for previewing.
+  The input isn't held (see [Inputs](#inputs)); what is held is the Arrow data
+  of the rows read, for the table, and the map's buffers. "Max features"
+  (100,000 by default) stops a read after N rows, which with an inline read
+  also stops the parsing.
+- **Time.** One thread, so several times slower than the CLI on a multi-core
+  machine. A scan reads everything, at about 80 MB/s of XML: seconds for
+  hundreds of MB, minutes for tens of GB. The national PRG zip (1.8 GB, 33
+  members holding about 25 GB of XML) scans in 6.7 minutes; that is a job for
+  the CLI.
 - **Bundle size.** The module is 6.8 MB after `wasm-opt`, 2.6 MB gzipped
   (EPSG tables and operations, arrow, geoarrow, the reprojection engine). The
   JavaScript is 1.8 MB, 0.5 MB gzipped, most of it deck.gl and MapLibre.
@@ -236,8 +254,10 @@ brings the same C dependency as above.
   buildings) scans in 0.6 s and reads onto the map in 0.8 s; the 657 MB PRG
   file of lubelskie scans in 7.7 s, and its first 100,000 address points read
   in 2.2 s; BDOT10k 0808 as a zip (63 MB, 73 members, 315 MB unpacked) scans in
-  3.0 s, and its 24,026 buildings read in 1.8 s. A file is copied into the module's memory, so it takes about twice
-  its size while it loads.
+  3.4 s, and its 24,026 buildings read in 2.1 s; the 1.5 GB PRG file of
+  mazowieckie scans in 17 s and the 3.3 GB one in 41 s, with the browser at
+  2.0 and 2.3 GB of memory in all (1.2 GB with a small file); the national PRG
+  zip in 401 s, at 1.7 GB.
 - **Network** rules out most live WFS endpoints (see [Network](#network)).
 
 ## Phases

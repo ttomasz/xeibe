@@ -8,8 +8,22 @@ import { escape, overview, schema as schemaView } from './views';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
-const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+// A scan is one call into the module: stopping it means a new worker.
+let worker = startWorker();
 const send = (message: ToWorker, transfer: Transferable[] = []) => worker.postMessage(message, transfer);
+
+function restartWorker() {
+  worker.terminate();
+  worker = startWorker();
+  state.scanning = false;
+}
+
+function startWorker(): Worker {
+  const w = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+  w.onmessage = (event: MessageEvent<FromWorker>) => receive(event.data);
+  w.onerror = (event) => setStatus(`The worker failed: ${event.message}`, true);
+  return w;
+}
 
 const state = {
   scan: null as Scan | null,
@@ -19,6 +33,7 @@ const state = {
   info: null as ReadInfo | null,
   report: null as Report | null,
   reading: false,
+  scanning: false,
   rows: 0,
   limit: 100000 as number | null,
   grids: new Set<string>(),
@@ -47,6 +62,10 @@ function updateMapNote() {
   }
   mapNote.textContent = note;
   mapNote.hidden = note === '';
+}
+
+function gigabytes(bytes: number): string {
+  return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1e6))} MB`;
 }
 
 function plural(n: number, word: string): string {
@@ -86,17 +105,20 @@ function setStatus(text: string, error = false) {
 
 // Files
 
-async function open(files: File[]) {
+function open(files: File[]) {
   if (files.length === 0) return;
-  setStatus(`Reading ${files.length === 1 ? files[0].name : `${files.length} files`}…`);
-  const loaded = await Promise.all(files.map(async (f) => ({ name: f.name, buffer: await f.arrayBuffer() })));
+  // The worker can't take a message while it scans: start over.
+  if (state.scanning) restartWorker();
   state.scan = null;
   state.layer = null;
   state.schemas.clear();
   layerSelect.disabled = true;
-  setStatus('Scanning…');
+  state.scanning = true;
+  stopButton.hidden = false;
+  setStatus(`Scanning ${files.length === 1 ? files[0].name : `${files.length} files`}…`);
   state.started = performance.now();
-  send({ type: 'open', files: loaded }, loaded.map((f) => f.buffer));
+  // The files themselves: the worker reads them in slices.
+  send({ type: 'open', files });
 }
 
 $<HTMLInputElement>('file').addEventListener('change', (event) => {
@@ -151,13 +173,29 @@ limitInput.addEventListener('change', () => {
   state.limit = limitInput.value.trim() === '' || !(value > 0) ? null : Math.floor(value);
   if (state.layer) startRead(state.layer);
 });
-stopButton.addEventListener('click', () => send({ type: 'stop', id: state.readId }));
+stopButton.addEventListener('click', () => {
+  if (!state.scanning) {
+    send({ type: 'stop', id: state.readId });
+    return;
+  }
+  restartWorker();
+  stopButton.hidden = true;
+  layerSelect.replaceChildren();
+  setStatus('Scan stopped');
+});
 
-worker.onmessage = (event: MessageEvent<FromWorker>) => {
-  const message = event.data;
+function receive(message: FromWorker) {
   if ('id' in message && message.type !== 'rows' && message.id !== state.readId) return;
   switch (message.type) {
+    case 'progress': {
+      const share = message.total > 0 ? Math.min(100, (100 * message.bytes) / message.total) : 0;
+      const seconds = (performance.now() - state.started) / 1000;
+      setStatus(`Scanning… ${share.toFixed(0)}% of ${gigabytes(message.total)} in ${seconds.toFixed(0)} s`);
+      break;
+    }
     case 'scanned': {
+      state.scanning = false;
+      stopButton.hidden = true;
       state.scan = message.scan;
       state.scanMs = message.ms;
       const layers = message.scan.layers;
@@ -220,15 +258,14 @@ worker.onmessage = (event: MessageEvent<FromWorker>) => {
       if (message.layer === state.layer) renderSchema();
       break;
     case 'error':
+      state.scanning = false;
       state.reading = false;
       stopButton.hidden = true;
       setStatus(message.message, true);
       renderOverview(message.message);
       break;
   }
-};
-
-worker.onerror = (event) => setStatus(`The worker failed: ${event.message}`, true);
+}
 
 // Tabs
 
