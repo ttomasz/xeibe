@@ -128,26 +128,23 @@ fn unreadable(file: &zip::read::ZipFile<'_, ArchiveReader>) -> Option<String> {
 /// Member names considered as GML candidates (case-insensitive).
 pub const CANDIDATE_SUFFIXES: &[&str] = &[".gml", ".xml", ".gml.gz", ".xml.gz"];
 
-/// A candidate member, before content checks.
+/// A member, before content checks.
 #[derive(Debug, Clone)]
 pub struct MemberInfo {
     /// Name as decoded by the `zip` crate.
     pub name: String,
     pub compressed_size: u64,
     pub size: u64,
+    /// Named like GML ([`CANDIDATE_SUFFIXES`]).
+    pub candidate: bool,
+    /// Why its data can't be read: encrypted, or compressed with a method
+    /// other than stored, deflate and Deflate64.
+    pub unreadable: Option<String>,
 }
 
-/// List candidate members, optionally filtered by member globs
-/// (`archive.zip!/<glob>`).
-///
-/// Members are listed in archive order. A glob is matched against the whole
-/// member name; `*` does not cross `/`.
-pub fn list_candidates(
-    archive: impl Into<Archive>,
-    member_globs: &[String],
-) -> crate::Result<Vec<MemberInfo>> {
+/// Every file in the archive, in archive order, readable or not.
+pub fn list_members(archive: impl Into<Archive>) -> crate::Result<Vec<MemberInfo>> {
     let archive = &archive.into();
-    let globs = build_globs(archive, member_globs)?;
     let mut zip = archive.open()?;
     let mut members = Vec::new();
     for index in 0..zip.len() {
@@ -157,35 +154,52 @@ pub fn list_candidates(
         if !file.is_file() {
             continue;
         }
-        let name = file.name();
-        let lower = name.to_ascii_lowercase();
-        if !CANDIDATE_SUFFIXES
-            .iter()
-            .any(|suffix| lower.ends_with(suffix))
-        {
-            continue;
-        }
-        if let Some(globs) = &globs
-            && !globs.is_match(name)
-        {
-            continue;
-        }
-        // Now rather than when the read reaches the member, maybe after
-        // gigabytes of the others.
-        if let Some(message) = unreadable(&file) {
-            return Err(crate::Error::Zip {
-                archive: archive.name(),
-                member: name.to_string(),
-                message,
-            });
-        }
+        let lower = file.name().to_ascii_lowercase();
         members.push(MemberInfo {
-            name: name.to_string(),
+            name: file.name().to_string(),
             compressed_size: file.compressed_size(),
             size: file.size(),
+            candidate: CANDIDATE_SUFFIXES
+                .iter()
+                .any(|suffix| lower.ends_with(suffix)),
+            unreadable: unreadable(&file),
         });
     }
     Ok(members)
+}
+
+/// List candidate members, optionally filtered by member globs
+/// (`archive.zip!/<glob>`).
+///
+/// Members are listed in archive order. A glob is matched against the whole
+/// member name; `*` does not cross `/`. A candidate that can't be read is an
+/// error now rather than when the read reaches it, maybe after gigabytes of
+/// the others.
+pub fn list_candidates(
+    archive: impl Into<Archive>,
+    member_globs: &[String],
+) -> crate::Result<Vec<MemberInfo>> {
+    let archive = &archive.into();
+    let globs = build_globs(archive, member_globs)?;
+    let mut candidates = Vec::new();
+    for member in list_members(archive.clone())? {
+        if !member.candidate
+            || globs
+                .as_ref()
+                .is_some_and(|globs| !globs.is_match(&member.name))
+        {
+            continue;
+        }
+        if let Some(message) = member.unreadable {
+            return Err(crate::Error::Zip {
+                archive: archive.name(),
+                member: member.name,
+                message,
+            });
+        }
+        candidates.push(member);
+    }
+    Ok(candidates)
 }
 
 /// One source per candidate. Members in which the splitter finds no feature

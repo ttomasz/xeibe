@@ -312,6 +312,35 @@ fn a_member_that_cant_be_read_fails_when_the_archive_is_listed() {
 }
 
 #[test]
+fn every_member_can_be_listed_with_what_xeibe_can_read() {
+    let dir = temp_dir("archive-members");
+    let path = build_archive(&dir);
+    let members = archive::list_members(&path).expect("listing");
+    let names: Vec<(&str, bool)> = members
+        .iter()
+        .map(|member| (member.name.as_str(), member.candidate))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            ("a.gml", true),
+            ("sub/b.XML", true),
+            ("readme.pdf", false),
+            ("meta/metadata.xml", true),
+            ("inner.zip", false),
+        ]
+    );
+    assert!(members.iter().all(|member| member.unreadable.is_none()));
+    assert_eq!(members[0].size, DOC.len() as u64);
+
+    // A member that can't be read is listed, with the reason.
+    let bzip2 = archive::list_members(xeibe_testkit::data_dir().join("archives/bzip2.zip"))
+        .expect("listing");
+    assert_eq!(bzip2.len(), 1);
+    assert!(bzip2[0].unreadable.is_some());
+}
+
+#[test]
 fn random_access_bytes_are_a_source_read_from_the_start() {
     use std::sync::Arc;
     use xeibe_core::{RandomAccess, RandomAccessSource, RandomReader};
