@@ -12,6 +12,7 @@ use arrow_schema::{DataType, Field, TimeUnit};
 use serde_json::{Value, json};
 use xeibe_arrow::report::Warning;
 use xeibe_arrow::{LayerReader, ReadOptions, ReadReport, ScanResult};
+use xeibe_core::archive::{self, Archive};
 use xeibe_core::{BytesSource, Location, Source};
 use xeibe_geom::{AxisDecision, AxisKey, SrsName};
 use xeibe_reproject::{AxisOrder, Crs, GridRequest, Grids, Transform};
@@ -25,33 +26,38 @@ const MAX_CELL: usize = 300;
 
 pub type Result<T> = std::result::Result<T, String>;
 
-/// The files dropped on the page, and the last scan of them.
+/// The files dropped on the page, as sources (a zip archive is its
+/// members), and the last scan of them.
 #[derive(Default)]
 pub struct Dataset {
-    files: Vec<(String, bytes::Bytes)>,
+    sources: Vec<Source>,
     scan: Option<ScanResult>,
 }
 
 impl Dataset {
-    pub fn add_file(&mut self, name: String, bytes: Vec<u8>) {
-        self.files.push((name, bytes.into()));
+    /// Add a file. A zip archive adds its GML members (`name!/member`), as
+    /// a local zip does in the CLI; one without any is an error.
+    pub fn add_file(&mut self, name: String, bytes: Vec<u8>) -> Result<()> {
+        let bytes = bytes::Bytes::from(bytes);
         self.scan = None;
+        if name.to_ascii_lowercase().ends_with(".zip") {
+            let archive = Archive::Bytes { name, bytes };
+            let members = archive::expand(archive, &[]).map_err(|e| e.to_string())?;
+            self.sources.extend(members);
+        } else {
+            self.sources
+                .push(Source::Stream(Arc::new(BytesSource { name, bytes })));
+        }
+        Ok(())
     }
 
     fn sources(&self) -> Vec<Source> {
-        self.files
-            .iter()
-            .map(|(name, bytes)| {
-                Source::Stream(Arc::new(BytesSource {
-                    name: name.clone(),
-                    bytes: bytes.clone(),
-                }))
-            })
-            .collect()
+        self.sources.clone()
     }
 
+    /// Source names, by `SourceId`.
     fn names(&self) -> Vec<String> {
-        self.files.iter().map(|(name, _)| name.clone()).collect()
+        self.sources.iter().map(Source::name).collect()
     }
 
     /// Scan every file in full. Returns the Overview's JSON.

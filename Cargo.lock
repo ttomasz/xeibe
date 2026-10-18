@@ -4473,6 +4473,7 @@ dependencies = [
  "xeibe-reproject",
  "xeibe-schema",
  "xeibe-testkit",
+ "zip",
 ]
 
 [[package]]

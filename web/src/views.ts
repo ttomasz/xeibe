@@ -56,7 +56,7 @@ export function overview(s: OverviewState): string {
   const layer = scan.layers.find((l) => l.name === s.layer);
   const parts: string[] = [];
   parts.push(`<section><h2>Input</h2>
-    <p>${scan.files.map((f) => `<code>${escape(f)}</code>`).join(', ')} — scanned in ${number.format(Math.round(s.scanMs))} ms,
+    <p>${inputs(scan.files)} Scanned in ${number.format(Math.round(s.scanMs))} ms:
     ${scan.layers.length} layer${scan.layers.length === 1 ? '' : 's'}.</p>
     ${scan.skipped_sources.length ? `<p class="warn">Skipped (no GML features): ${scan.skipped_sources.map(escape).join(', ')}</p>` : ''}
   </section>`);
@@ -79,6 +79,23 @@ export function overview(s: OverviewState): string {
     : axisTable(scan.axis_decisions.filter((d) => !layer || d.layer === layer.name), severalFiles);
   parts.push(`<section><h2>Axis order</h2>${decisions}</section>`);
   return parts.join('');
+}
+
+/** The sources, with a zip's members under the archive's name. */
+function inputs(files: string[]): string {
+  const groups = new Map<string, string[]>();
+  for (const file of files) {
+    const [archive, member] = file.includes('!/') ? file.split('!/', 2) : [file, ''];
+    if (!groups.has(archive)) groups.set(archive, []);
+    if (member) groups.get(archive)!.push(member);
+  }
+  return [...groups]
+    .map(([name, members]) => {
+      if (members.length === 0) return `<code>${escape(name)}</code>.`;
+      const list = members.map((m) => `<li><code>${escape(m)}</code></li>`).join('');
+      return `<details><summary><code>${escape(name)}</code>: ${number.format(members.length)} GML member${members.length === 1 ? '' : 's'}</summary><ul class="members">${list}</ul></details>`;
+    })
+    .join('');
 }
 
 function mapSection(info: ReadInfo, report: Report | null, grids: string[]): string {

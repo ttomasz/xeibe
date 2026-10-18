@@ -29,3 +29,4 @@ wasm-bindgen.workspace = true
 
 [dev-dependencies]
 xeibe-testkit.workspace = true
+zip = { workspace = true, features = ["deflate-flate2-zlib-rs"] }

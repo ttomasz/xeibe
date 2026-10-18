@@ -347,6 +347,11 @@ table.grid td {
 }
 
 table.grid td {
+  overflow-wrap: break-word;
+}
+
+table.grid td code,
+table.grid td .muted {
   overflow-wrap: anywhere;
 }
 
@@ -477,4 +482,15 @@ pre.explain {
   .repo {
     margin-left: 0;
   }
+}
+
+details summary {
+  cursor: pointer;
+}
+
+ul.members {
+  max-height: 16em;
+  overflow: auto;
+  margin: 4px 0;
+  padding-left: 20px;
 }

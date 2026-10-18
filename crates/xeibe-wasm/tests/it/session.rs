@@ -6,7 +6,7 @@ use xeibe_wasm::session::{Dataset, Reader};
 fn dataset(files: &[&str]) -> Dataset {
     let mut dataset = Dataset::default();
     for file in files {
-        dataset.add_file(file.to_string(), read_data(file));
+        dataset.add_file(file.to_string(), read_data(file)).unwrap();
     }
     dataset
 }
@@ -135,7 +135,7 @@ fn puerto_rico() -> Vec<u8> {
 #[test]
 fn the_map_waits_for_the_grids_it_needs() {
     let mut dataset = Dataset::default();
-    dataset.add_file("pr.gml".into(), puerto_rico());
+    dataset.add_file("pr.gml".into(), puerto_rico()).unwrap();
     let mut reader = dataset.read("Site", None, None).unwrap();
     assert!(reader.next_batch().unwrap());
     let requests = reader.grid_requests();
@@ -165,7 +165,7 @@ fn the_map_waits_for_the_grids_it_needs() {
 #[test]
 fn a_grid_that_cant_be_fetched_leaves_the_map_without_grids_and_says_so() {
     let mut dataset = Dataset::default();
-    dataset.add_file("pr.gml".into(), puerto_rico());
+    dataset.add_file("pr.gml".into(), puerto_rico()).unwrap();
     let mut reader = dataset.read("Site", None, None).unwrap();
     assert!(reader.next_batch().unwrap());
     assert!(!reader.grid_requests().is_empty());
@@ -176,4 +176,48 @@ fn a_grid_that_cant_be_fetched_leaves_the_map_without_grids_and_says_so() {
     let drawing = reader.take().unwrap();
     // Converted all the same, by an operation without grids.
     assert_eq!(drawing.map.unwrap().point_rows, [0]);
+}
+
+/// A zip of two samples, as a dropped file: its members are the sources.
+#[test]
+fn a_zip_archive_is_read_from_memory() {
+    use std::io::Write;
+    let mut zip_bytes = Vec::new();
+    {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut zip_bytes));
+        let options: zip::write::FileOptions<'_, ()> =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        for (name, file) in [
+            ("data/addresses.gml", "samples/pl/prg-address-points.gml"),
+            ("data/more.xml", "samples/pl/prg-address-points.gml"),
+        ] {
+            zip.start_file(name, options).unwrap();
+            zip.write_all(&read_data(file)).unwrap();
+        }
+        zip.start_file("readme.pdf", options).unwrap();
+        zip.write_all(b"%PDF").unwrap();
+        zip.finish().unwrap();
+    }
+    let mut dataset = Dataset::default();
+    dataset.add_file("prg.zip".into(), zip_bytes).unwrap();
+    let scan = dataset.scan(None).unwrap();
+    assert_eq!(
+        scan["files"],
+        serde_json::json!(["prg.zip!/data/addresses.gml", "prg.zip!/data/more.xml"])
+    );
+    assert_eq!(scan["layers"][2]["feature_count"], 4);
+    let mut reader = dataset.read("AD_PunktAdresowy", None, None).unwrap();
+    read_all(&mut reader);
+    assert_eq!(reader.rows_read(), 4);
+
+    let mut empty = Dataset::default();
+    let error = empty.add_file("empty.zip".into(), {
+        let mut bytes = Vec::new();
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut bytes));
+        zip.start_file("readme.pdf", zip::write::FileOptions::<'_, ()>::default())
+            .unwrap();
+        zip.finish().unwrap();
+        bytes
+    });
+    assert!(error.unwrap_err().contains("empty.zip"));
 }

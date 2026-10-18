@@ -4,14 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>xeibe — GML in your browser</title>
-    <meta name="description" content="See how xeibe reads a GML file or a saved WFS response: layers, inferred schema, axis order, the data on a map. Nothing is uploaded." />
+    <meta name="description" content="See how xeibe reads a GML file, a zip of them or a saved WFS response: layers, inferred schema, axis order, the data on a map. Nothing is uploaded." />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d4ed8'/%3E%3Cpath d='M8 9l16 14M24 9L8 23' stroke='white' stroke-width='3.5' stroke-linecap='round'/%3E%3C/svg%3E" />
   </head>
   <body>
     <header id="bar">
       <h1>xeibe</h1>
       <label class="button primary" for="file">Open GML…</label>
-      <input type="file" id="file" multiple accept=".gml,.xml,.gz,.zst" hidden />
+      <input type="file" id="file" multiple accept=".gml,.xml,.gz,.zst,.zip" hidden />
       <label class="field">Layer <select id="layer" disabled></select></label>
       <label class="field" title="Stop after this many features; empty reads them all">Max features
         <input id="limit" type="number" min="1" step="1" value="100000" />
@@ -41,7 +41,8 @@
         <div id="overview" class="tab active">
           <div class="intro">
             <h2>Read GML in your browser</h2>
-            <p>Open or drop a GML file or a saved WFS response (<code>.gml</code>, <code>.xml</code>, also <code>.gz</code> and <code>.zst</code>).
+            <p>Open or drop a GML file or a saved WFS response (<code>.gml</code>, <code>.xml</code>, also <code>.gz</code> and <code>.zst</code>),
+              or a <code>.zip</code> of them, such as a BDOT10k package.
               <b>Nothing is uploaded</b>: <a href="https://github.com/ttomasz/xeibe">xeibe</a>, compiled to WebAssembly, reads it here, on your machine.</p>
             <p>You see the layers, the schema xeibe infers and why, how it decided the axis order, the read report,
               and the data in a table and on a map.</p>

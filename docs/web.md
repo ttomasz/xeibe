@@ -160,7 +160,7 @@ flowchart LR
 |---|---|
 | `.gml`, `.xml`, saved WFS responses | Read into memory, wrapped in an in-memory `ByteSource` |
 | `.gz`, `.zst` | As above; `Source::open` decompresses |
-| `.zip` | Needs an in-memory archive source (below); until then the page says so |
+| `.zip` | Held in memory; its `.gml`, `.xml` and `.gml.gz`/`.xml.gz` members are the sources, as for a local zip in the CLI ([architecture.md](architecture.md#zip-archives)). The Overview lists them under the archive |
 | Live WFS | Out of scope at first (see [Network](#network)). Maybe later as best effort for servers that allow it |
 
 A streaming `ByteSource` over `Blob.slice()` with `FileReaderSync` (available in
@@ -208,14 +208,10 @@ same way by `.github/workflows/pages.yml`, which needs GitHub Pages set to
 | WKB back to geometry | Done: `xeibe_geom::wkb::read_wkb`, the writer's inverse (curves included, OGC/EWKB codes too), so the map can draw WKB columns |
 | Threads | Done: `threads = 1` runs a scan or read on the calling thread, and it is the default where the number of cores can't be known ([architecture.md](architecture.md#parallel-pipeline)). Asking for more is an error, not a panic. Checked on 2026-10-17 with a test module run in Node: reads and scans of 500 features with `threads` 0 and 1, an error with 4 |
 
-Still needed:
+| Zip archives in memory | Done: `Source::ZipMember` takes an `archive::Archive`, a local file or bytes with a name |
 
-1. **In-memory zip archives.** `Source::ZipMember` holds a `PathBuf` and
-   `archive.rs` opens it with `std::fs::File`. The `zip` crate itself only needs
-   `Read + Seek`, so an archive held in memory (`Cursor<Bytes>`) is a small
-   addition.
-2. **zstd.** Builds with clang. If linking or CI makes it a problem, the
-   pure-Rust `ruzstd` decoder can replace it on wasm only.
+zstd's C code builds with clang. If linking or CI makes it a problem, the
+pure-Rust `ruzstd` decoder can replace it on wasm only.
 
 With export, later: the GeoParquet writer (`GeoColumns`, the `geo` and
 `gml:settings` metadata) moves out of `xeibe-cli` into a library crate, so the
@@ -232,14 +228,15 @@ brings the same C dependency as above.
   that, the page points to the CLI.
 - **Speed.** One thread, so several times slower than the CLI on a multi-core
   machine. Fine for previewing.
-- **Bundle size.** The module is 6.5 MB after `wasm-opt`, 2.5 MB gzipped
+- **Bundle size.** The module is 6.8 MB after `wasm-opt`, 2.6 MB gzipped
   (EPSG tables and operations, arrow, geoarrow, the reprojection engine). The
   JavaScript is 1.8 MB, 0.5 MB gzipped, most of it deck.gl and MapLibre.
   Loaded once, then cached.
 - **Measured** in headless Chromium on 2026-10-18: a 35 MB BDOT10k file (24,026
   buildings) scans in 0.6 s and reads onto the map in 0.8 s; the 657 MB PRG
   file of lubelskie scans in 7.7 s, and its first 100,000 address points read
-  in 2.2 s. A file is copied into the module's memory, so it takes about twice
+  in 2.2 s; BDOT10k 0808 as a zip (63 MB, 73 members, 315 MB unpacked) scans in
+  3.0 s, and its 24,026 buildings read in 1.8 s. A file is copied into the module's memory, so it takes about twice
   its size while it loads.
 - **Network** rules out most live WFS endpoints (see [Network](#network)).
 
@@ -249,8 +246,8 @@ brings the same C dependency as above.
    a row limit (100,000 by default) and a stop button; Overview, Schema and
    Data tabs; the map in both views, with grids, the area-of-use ring and
    selection both ways; the GitHub Pages workflow.
-2. **Options and inputs.** Options tab with the CLI, Python and settings
-   output; zip inputs. Samples ("Try a sample") maybe, not decided.
+2. **Options.** Options tab with the CLI, Python and settings output. Zip
+   inputs: done (2026-10-18). Samples ("Try a sample") maybe, not decided.
 3. **Later.** Export (GeoParquet, Arrow IPC); streaming reads of large files;
    grids cached in browser storage; WFS against servers that allow it; a target
    CRS in the Options tab once reads reproject.

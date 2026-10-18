@@ -31,10 +31,11 @@ impl Dataset {
         Dataset::default()
     }
 
-    /// Add a file (`.gml`, `.xml`, `.gz`, `.zst`) by name and content.
+    /// Add a file (`.gml`, `.xml`, `.gz`, `.zst`, or a `.zip` of them) by
+    /// name and content.
     #[wasm_bindgen(js_name = addFile)]
-    pub fn add_file(&mut self, name: String, bytes: Vec<u8>) {
-        self.0.add_file(name, bytes);
+    pub fn add_file(&mut self, name: String, bytes: Vec<u8>) -> Result<(), JsError> {
+        self.0.add_file(name, bytes).map_err(error)
     }
 
     /// Scan every file in full; `options` is the JSON of the read options.

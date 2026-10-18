@@ -88,11 +88,6 @@ function setStatus(text: string, error = false) {
 
 async function open(files: File[]) {
   if (files.length === 0) return;
-  const zips = files.filter((f) => f.name.toLowerCase().endsWith('.zip'));
-  if (zips.length) {
-    setStatus(`${zips[0].name}: zip archives aren't supported yet; unzip it and open the GML files`, true);
-    return;
-  }
   setStatus(`Reading ${files.length === 1 ? files[0].name : `${files.length} files`}…`);
   const loaded = await Promise.all(files.map(async (f) => ({ name: f.name, buffer: await f.arrayBuffer() })));
   state.scan = null;
