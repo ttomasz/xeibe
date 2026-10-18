@@ -44,7 +44,7 @@ const OSM_STYLE: StyleSpecification = {
       tileSize: 256,
       maxzoom: 19,
       attribution:
-        '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+        'basemap © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
     },
   },
   layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
