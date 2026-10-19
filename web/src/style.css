@@ -397,6 +397,8 @@ pre.explain {
 
 .vt-sizer {
   position: relative;
+  /* Rows past its end mustn't make the table taller. */
+  overflow-y: clip;
 }
 
 .vt-body {

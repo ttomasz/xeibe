@@ -215,7 +215,12 @@ flowchart LR
   stop, another layer). The map's buffers cross to the UI thread transferred,
   not copied. The batches stay in the worker; the table asks for the rows in
   view, formatted by Arrow's formatter in Rust, so cells read as they do
-  elsewhere. Timestamps with a time zone show as UTC instants (`…Z`): naming
+  elsewhere. Browsers cap an element's height (Chrome near 33.5 million
+  pixels, Firefox near 17.9 million: 1.29 million and 690,000 rows of 26
+  pixels), so past 15 million pixels the scrollbar stands for the rows
+  rather than measuring them, and the wheel moves by its own distance in
+  the rows. Checked 2026-10-19 with 3,000,000 rows: the scrollbar's end
+  shows the last row, its middle row 1,500,000. Timestamps with a time zone show as UTC instants (`…Z`): naming
   zones would need Arrow's time-zone database in the module.
 - **Single-threaded.** WebAssembly threads need `SharedArrayBuffer`, which needs
   COOP/COEP headers, which GitHub Pages can't set. The read runs with
