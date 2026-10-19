@@ -33,6 +33,8 @@ interface Batch {
   /** The points' typical spacing in each space: their box's area shared
    * among them. */
   spacing?: { map: number | null; source: number | null };
+  /** The box around the batch's features in each space. */
+  box?: { map: Box | null; source: Box | null };
 }
 
 /** What a pickable layer draws, to say what is under the pointer. */
@@ -60,6 +62,7 @@ interface SelectedVertex {
 }
 
 type Rgba = [number, number, number, number];
+type Box = [number, number, number, number];
 const FILL: Rgba = [37, 99, 235, 60];
 const OUTLINE: Rgba = [29, 78, 216, 230];
 const LINE: Rgba = [29, 78, 216, 230];
@@ -87,6 +90,10 @@ const VERTEX_MARGIN = 0.5;
 const MAX_VERTICES_IN_VIEW = 200_000;
 /** The view settled this long: collect the vertices in it. */
 const VERTEX_DELAY_MS = 150;
+/** More features than this in view: no picking as the pointer moves (it
+ * draws every feature again, off screen, for each move), only on a click.
+ * 2.7 million address points: hovering took 20 ms a frame with it. */
+const HOVER_LIMIT = 500_000;
 /** Polygon outlines show once a typical segment is this long on screen.
  * Below it a polygon is a few pixels across: one dot shows it, where its
  * outline would cost twice as much a frame, and its fill alone might cover
@@ -155,6 +162,8 @@ export class MapPane {
   /** The vertices drawn, and when to collect them again. */
   private inView: InView | null = null;
   private inViewTimer = 0;
+  /** Too many features in view to pick under the moving pointer. */
+  private hoverOff = false;
 
   constructor(
     mapContainer: HTMLElement,
@@ -220,6 +229,11 @@ export class MapPane {
     this.origin = null;
     this.selected = null;
     this.moved = { map: false, source: false };
+    if (this.hoverOff) {
+      this.hoverOff = false;
+      this.overlay.setProps({ _pickable: true });
+      this.deck.setProps({ _pickable: true });
+    }
     // Without a conversion there is only the source view.
     this.setView(info.map.target ? this.view : 'source');
     this.render();
@@ -240,6 +254,7 @@ export class MapPane {
     if (this.unmerged > 1 && (rows >= GROUP_ROWS || vertices >= GROUP_VERTICES)) this.merge();
     this.render();
     if (this.batches.length === 1) this.fit();
+    this.updatePicking();
   }
 
   /** The read has ended: merge the batches left over. */
@@ -261,6 +276,7 @@ export class MapPane {
       map: batch.map ? pointSpacing(batch.map) : null,
       source: pointSpacing(batch.source),
     };
+    batch.box = { map: batch.map ? featuresBox(batch.map) : null, source: featuresBox(batch.source) };
     return batch;
   }
 
@@ -312,6 +328,7 @@ export class MapPane {
     // A hidden view has no size to fit: fit it once it shows.
     const source = view === 'source' && !this.moved.source ? this.bounds('source') : null;
     if (source) this.fitSource(source);
+    this.viewMoved(view);
   }
 
   currentView(): View {
@@ -428,13 +445,44 @@ export class MapPane {
 
   /** A view moved: once it settles, draw the vertices now in view. */
   private viewMoved(view: View) {
-    if (view !== this.view || !this.batches.some((b) => this.spreadOut(b, view, VERTEX_SPACING))) return;
+    if (view !== this.view) return;
     window.clearTimeout(this.inViewTimer);
-    this.inViewTimer = window.setTimeout(() => this.render(), VERTEX_DELAY_MS);
+    this.inViewTimer = window.setTimeout(() => {
+      this.updatePicking();
+      if (this.batches.some((b) => this.spreadOut(b, view, VERTEX_SPACING)) || this.inView) this.render();
+    }, VERTEX_DELAY_MS);
   }
 
-  /** The view's extent in its coordinates, with the margin around it. */
-  private viewExtent(view: View): [number, number, number, number] | null {
+  /** Pick under the moving pointer only with few enough features in view:
+   * estimated from the batches' boxes, each batch's rows spread evenly in
+   * its box. */
+  private updatePicking() {
+    const view = this.view;
+    const rows = this.batches.reduce((n, b) => n + b.rows, 0);
+    let off = false;
+    const extent = rows > HOVER_LIMIT ? this.viewExtent(view, 0) : null;
+    if (extent) {
+      let estimate = 0;
+      for (const batch of this.batches) {
+        const box = batch.box?.[view];
+        if (!box) continue;
+        const w = Math.min(box[2], extent[2]) - Math.max(box[0], extent[0]);
+        const h = Math.min(box[3], extent[3]) - Math.max(box[1], extent[1]);
+        if (w < 0 || h < 0) continue;
+        const area = (box[2] - box[0]) * (box[3] - box[1]);
+        estimate += area > 0 ? (batch.rows * w * h) / area : batch.rows;
+      }
+      off = estimate > HOVER_LIMIT;
+    }
+    if (off === this.hoverOff) return;
+    this.hoverOff = off;
+    this.overlay.setProps({ _pickable: !off });
+    this.deck.setProps({ _pickable: !off });
+    if (off) this.map.getCanvas().style.cursor = '';
+  }
+
+  /** The view's extent in its coordinates, with `margin` of it around. */
+  private viewExtent(view: View, margin = VERTEX_MARGIN): [number, number, number, number] | null {
     let b: [number, number, number, number];
     if (view === 'map') {
       const bounds = this.map.getBounds();
@@ -444,8 +492,8 @@ export class MapPane {
       if (!viewport) return null;
       b = viewport.getBounds() as [number, number, number, number];
     }
-    const dx = (b[2] - b[0]) * VERTEX_MARGIN;
-    const dy = (b[3] - b[1]) * VERTEX_MARGIN;
+    const dx = (b[2] - b[0]) * margin;
+    const dy = (b[3] - b[1]) * margin;
     return [b[0] - dx, b[1] - dy, b[2] + dx, b[3] + dy];
   }
 
@@ -507,7 +555,15 @@ export class MapPane {
   }
 
   private click(info: PickingInfo) {
-    const row = this.rowOf(info);
+    let row = this.rowOf(info);
+    // Without picking as the pointer moves, a click picks on its own.
+    if (row === null && this.hoverOff) {
+      const target = this.view === 'map' ? this.overlay : this.deck;
+      target.setProps({ _pickable: true });
+      const picked = target.pickObject({ x: info.x, y: info.y, radius: PICKING_RADIUS });
+      target.setProps({ _pickable: false });
+      if (picked) row = this.rowOf(picked);
+    }
     if (row !== null) this.onSelect(row);
   }
 
@@ -1007,6 +1063,24 @@ function countRow(rows: Uint32Array, i: number): number {
  * survives. */
 function coordinate(value: number): string {
   return String(Number(value.toPrecision(15)));
+}
+
+/** The box around a space's features (their bounds); `null` if none has
+ * any. */
+function featuresBox(s: Space): Box | null {
+  let box: Box | null = null;
+  const b = s.bounds;
+  for (let i = 0; i < b.length; i += 4) {
+    if (Number.isNaN(b[i])) continue;
+    if (!box) box = [b[i], b[i + 1], b[i + 2], b[i + 3]];
+    else {
+      box[0] = Math.min(box[0], b[i]);
+      box[1] = Math.min(box[1], b[i + 1]);
+      box[2] = Math.max(box[2], b[i + 2]);
+      box[3] = Math.max(box[3], b[i + 3]);
+    }
+  }
+  return box;
 }
 
 /** The points' typical spacing: the area of their box shared among them;

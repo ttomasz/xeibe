@@ -151,6 +151,13 @@ with 2,722,651 PRG address points zoomed out, hovering took 29 ms a frame
 (full CPU) and 34 ms (CPU slowed 4×) with circles, and takes 20 and 28 ms
 with dots; panning went from 31 ms to 16.7 ms.
 
+**Hover picking** stops with more than 500,000 features in view (estimated
+from each group's box and rows, as the view settles): deck.gl picks under the
+moving pointer by drawing every feature again off screen. Then the cursor,
+highlight and tooltips wait until the view holds fewer, and a click picks on
+its own. With 2,722,651 address points zoomed out, hovering went from 20 ms
+a frame (28 ms with the CPU slowed 4×) to 16.7 ms.
+
 **deck.gl's own arrays** (picking colours, tesselated paths and polygons)
 are allocated at their size and not pooled (`_typedArrayManagerProps:
 {overAlloc: 1, poolSize: 0}`): by default deck.gl makes them twice the size
