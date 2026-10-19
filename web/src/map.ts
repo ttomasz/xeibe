@@ -35,7 +35,18 @@ interface Batch {
 /** What a pickable layer draws, to say what is under the pointer. */
 interface Picked {
   batch: Batch;
-  kind: 'polygon' | 'polygon-dot' | 'line' | 'point' | 'polygon-vertex' | 'line-vertex' | 'selected-vertex';
+  kind: 'polygon' | 'polygon-dot' | 'line' | 'point' | 'view-vertex' | 'selected-vertex';
+}
+
+/** The vertices drawn: of the features in view, in batches zoomed in far
+ * enough to tell their vertices apart. Item i is vertex `k[i]` of the
+ * polygons (`part` 0) or lines (1) of `batches[batch[i]]`. */
+interface InView {
+  batches: Batch[];
+  batch: Uint16Array;
+  part: Uint8Array;
+  k: Uint32Array;
+  positions: Float64Array;
 }
 
 /** A vertex of the selected feature: its index in the polygons' or the
@@ -66,6 +77,13 @@ const PICKING_RADIUS = 6;
 const ARRAYS = { overAlloc: 1, poolSize: 0 };
 /** Vertices show once a typical segment is this long on screen. */
 const VERTEX_SPACING = 10;
+/** Vertices are drawn for the features in view and this much of the view
+ * around it, so that a short pan needs nothing new. */
+const VERTEX_MARGIN = 0.5;
+/** More vertices than this in view: only the selected feature's. */
+const MAX_VERTICES_IN_VIEW = 200_000;
+/** The view settled this long: collect the vertices in it. */
+const VERTEX_DELAY_MS = 150;
 /** Polygon outlines show once a typical segment is this long on screen.
  * Below it a polygon is a few pixels across: one dot shows it, where its
  * outline would cost twice as much a frame, and its fill alone might cover
@@ -127,6 +145,9 @@ export class MapPane {
   /** Which batches show their vertices and outlines, by view: rendered
    * again when it changes. */
   private detailKey = '';
+  /** The vertices drawn, and when to collect them again. */
+  private inView: InView | null = null;
+  private inViewTimer = 0;
 
   constructor(
     mapContainer: HTMLElement,
@@ -146,6 +167,7 @@ export class MapPane {
       if ((event as { originalEvent?: unknown }).originalEvent) this.moved.map = true;
     });
     this.map.on('zoom', () => this.zoomed('map', this.map.getZoom()));
+    this.map.on('moveend', () => this.viewMoved('map'));
     this.overlay = new MapboxOverlay({
       interleaved: false,
       layers: [],
@@ -170,6 +192,7 @@ export class MapPane {
       getTooltip: (info) => this.tooltip(info, 'source'),
       onViewStateChange: ({ viewState }) => {
         this.zoomed('source', (viewState as { zoom: number }).zoom);
+        this.viewMoved('source');
         return viewState;
       },
       onInteractionStateChange: (state) => {
@@ -349,6 +372,7 @@ export class MapPane {
       initialViewState: { target: [(x0 + x1) / 2, (y0 + y1) / 2, 0], zoom, transitionDuration: 0 },
     });
     this.zoomed('source', zoom);
+    this.viewMoved('source');
   }
 
   /** Screen pixels per unit of a view's coordinates. */
@@ -378,6 +402,86 @@ export class MapPane {
   private zoomed(view: View, zoom: number) {
     this.zoom[view] = zoom;
     if (view === this.view && this.details(view) !== this.detailKey) this.render();
+  }
+
+  /** A view moved: once it settles, draw the vertices now in view. */
+  private viewMoved(view: View) {
+    if (view !== this.view || !this.batches.some((b) => this.spreadOut(b, view, VERTEX_SPACING))) return;
+    window.clearTimeout(this.inViewTimer);
+    this.inViewTimer = window.setTimeout(() => this.render(), VERTEX_DELAY_MS);
+  }
+
+  /** The view's extent in its coordinates, with the margin around it. */
+  private viewExtent(view: View): [number, number, number, number] | null {
+    let b: [number, number, number, number];
+    if (view === 'map') {
+      const bounds = this.map.getBounds();
+      b = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
+    } else {
+      const viewport = this.deck.getViewports()[0];
+      if (!viewport) return null;
+      b = viewport.getBounds() as [number, number, number, number];
+    }
+    const dx = (b[2] - b[0]) * VERTEX_MARGIN;
+    const dy = (b[3] - b[1]) * VERTEX_MARGIN;
+    return [b[0] - dx, b[1] - dy, b[2] + dx, b[3] + dy];
+  }
+
+  /** The vertices of the features in view, of the batches zoomed in far
+   * enough; `null` if there are none, or too many. */
+  private verticesInView(view: View): InView | null {
+    const batches = this.batches.filter((b) => this.spreadOut(b, view, VERTEX_SPACING));
+    const extent = batches.length ? this.viewExtent(view) : null;
+    if (!extent) return null;
+    const [x0, y0, x1, y1] = extent;
+    /** Each part's items (rings, lines) of features in view, as
+     * [batch, part, first position, end]. */
+    const runs: number[] = [];
+    let count = 0;
+    batches.forEach((batch, bi) => {
+      const s = view === 'map' ? batch.map : batch.source;
+      if (!s) return;
+      const add = (part: number, starts: Uint32Array, rows: Uint32Array) => {
+        for (let i = 0; i < rows.length; i++) {
+          const f = 4 * (rows[i] - batch.firstRow);
+          const b = s.bounds;
+          if (b[f] > x1 || b[f + 2] < x0 || b[f + 1] > y1 || b[f + 3] < y0) continue;
+          runs.push(bi, part, starts[i], starts[i + 1]);
+          count += starts[i + 1] - starts[i];
+        }
+      };
+      add(0, s.ringStarts, s.ringRows);
+      add(1, s.lineStarts, s.lineRows);
+    });
+    if (count === 0 || count > MAX_VERTICES_IN_VIEW) return null;
+    const out: InView = {
+      batches,
+      batch: new Uint16Array(count),
+      part: new Uint8Array(count),
+      k: new Uint32Array(count),
+      positions: new Float64Array(2 * count),
+    };
+    let at = 0;
+    for (let r = 0; r < runs.length; r += 4) {
+      const [bi, part, from, to] = [runs[r], runs[r + 1], runs[r + 2], runs[r + 3]];
+      const batch = batches[bi];
+      const s = (view === 'map' ? batch.map : batch.source)!;
+      const positions = part === 0 ? s.polygons : s.lines;
+      out.positions.set(positions.subarray(2 * from, 2 * to), 2 * at);
+      for (let k = from; k < to; k++, at++) {
+        out.batch[at] = bi;
+        out.part[at] = part;
+        out.k[at] = k;
+      }
+    }
+    return out;
+  }
+
+  /** A vertex drawn in view: its batch, part and position index. */
+  private vertexInView(i: number): { batch: Batch; part: 'polygon' | 'line'; k: number } | null {
+    const v = this.inView;
+    if (!v || i >= v.k.length) return null;
+    return { batch: v.batches[v.batch[i]], part: v.part[i] === 0 ? 'polygon' : 'line', k: v.k[i] };
   }
 
   private click(info: PickingInfo) {
@@ -413,10 +517,14 @@ export class MapPane {
         return s.lineRows[info.index];
       case 'point':
         return s.pointRows[info.index];
-      case 'polygon-vertex':
-        return s.ringRows[containing(s.ringStarts, info.index)];
-      case 'line-vertex':
-        return s.lineRows[containing(s.lineStarts, info.index)];
+      case 'view-vertex': {
+        const vertex = this.vertexInView(info.index);
+        const v = vertex && (this.view === 'map' ? vertex.batch.map : vertex.batch.source);
+        if (!vertex || !v) return null;
+        return vertex.part === 'polygon'
+          ? v.ringRows[containing(v.ringStarts, vertex.k)]
+          : v.lineRows[containing(v.lineStarts, vertex.k)];
+      }
       case 'selected-vertex':
         return this.selected;
     }
@@ -427,18 +535,16 @@ export class MapPane {
   private tooltip(info: PickingInfo, view: View) {
     const picked = info.layer ? this.picked.get(info.layer.id) : undefined;
     if (!picked || info.index < 0) return null;
-    const { batch } = picked;
-    const s = view === 'map' ? batch.map : batch.source;
-    if (!s) return null;
+    let { batch } = picked;
     let part: 'polygon' | 'line' | 'point';
     let k: number;
     switch (picked.kind) {
-      case 'polygon-vertex':
-        [part, k] = ['polygon', info.index];
+      case 'view-vertex': {
+        const vertex = this.vertexInView(info.index);
+        if (!vertex) return null;
+        ({ batch, part, k } = vertex);
         break;
-      case 'line-vertex':
-        [part, k] = ['line', info.index];
-        break;
+      }
       case 'point':
         [part, k] = ['point', info.index];
         break;
@@ -450,6 +556,8 @@ export class MapPane {
       default:
         return null;
     }
+    const s = view === 'map' ? batch.map : batch.source;
+    if (!s) return null;
     const lines = [...this.coordinates(batch, view, part, k), ...where(s, part, k)];
     return { text: lines.join('\n'), style: TOOLTIP_STYLE };
   }
@@ -494,12 +602,34 @@ export class MapPane {
     for (const batch of this.batches) {
       const space = view === 'map' ? batch.map : batch.source;
       if (space) {
-        const vertices = this.spreadOut(batch, view, VERTEX_SPACING);
         const outlines = this.spreadOut(batch, view, OUTLINE_SPACING);
-        layers.push(...this.batchLayers(`${view}-${batch.id}`, batch, space, coordinateSystem, vertices, outlines));
+        layers.push(...this.batchLayers(`${view}-${batch.id}`, batch, space, coordinateSystem, outlines));
       }
     }
     this.detailKey = this.details(view);
+    this.inView = this.verticesInView(view);
+    if (this.inView) {
+      const id = `${view}-vertices-in-view`;
+      this.picked.set(id, { batch: this.inView.batches[0], kind: 'view-vertex' });
+      layers.push(
+        new ScatterplotLayer({
+          id,
+          coordinateSystem,
+          pickable: true,
+          autoHighlight: true,
+          highlightColor: HOVER,
+          // A new object each time: the layer takes the new vertices.
+          data: { length: this.inView.k.length, attributes: { getPosition: { value: this.inView.positions, size: 2 } } },
+          getFillColor: VERTEX,
+          getRadius: 2.5,
+          radiusUnits: 'pixels',
+          stroked: true,
+          getLineColor: VERTEX_LINE,
+          lineWidthUnits: 'pixels',
+          getLineWidth: 1,
+        }),
+      );
+    }
     layers.push(...this.selectedLayers(view, coordinateSystem));
     if (view === 'map') {
       this.overlay.setProps({ layers });
@@ -533,7 +663,6 @@ export class MapPane {
     batch: Batch,
     s: Space,
     coordinateSystem: CoordinateSystem,
-    vertices: boolean,
     outlines: boolean,
   ): Layer[] {
     const layers: Layer[] = [];
@@ -542,24 +671,6 @@ export class MapPane {
       pickable: true,
       autoHighlight: true,
       highlightColor: HOVER,
-    };
-    const vertexLayer = (id: string, positions: Float64Array, kind: Picked['kind']) => {
-      this.picked.set(id, { batch, kind });
-      return new ScatterplotLayer({
-        ...common,
-        id,
-        data: this.data(id, () => ({
-          length: positions.length / 2,
-          attributes: { getPosition: { value: positions, size: 2 } },
-        })),
-        getFillColor: VERTEX,
-        getRadius: 2.5,
-        radiusUnits: 'pixels',
-        stroked: true,
-        getLineColor: VERTEX_LINE,
-        lineWidthUnits: 'pixels',
-        getLineWidth: 1,
-      });
     };
     if (s.polygonRows.length > 0) {
       const id = `${key}-fill`;
@@ -619,7 +730,6 @@ export class MapPane {
           widthUnits: 'pixels',
         }),
       );
-      if (vertices) layers.push(vertexLayer(`${key}-polygon-vertices`, s.polygons, 'polygon-vertex'));
     }
     if (s.lineRows.length > 0) {
       const id = `${key}-lines`;
@@ -639,7 +749,6 @@ export class MapPane {
           widthUnits: 'pixels',
         }),
       );
-      if (vertices) layers.push(vertexLayer(`${key}-line-vertices`, s.lines, 'line-vertex'));
     }
     if (s.pointRows.length > 0) {
       const id = `${key}-points`;

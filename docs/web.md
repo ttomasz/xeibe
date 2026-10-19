@@ -162,7 +162,14 @@ batch and nothing per frame: not worth it.)
 
 **Vertices** show as small markers in either view once the view is zoomed in
 far enough that they are spread out: a typical segment of the batch (the
-median of a sample) at least 10 pixels long. Hovering a vertex or a point
+median of a sample) at least 10 pixels long. They are drawn only for the
+features in view, and half a view around it, collected from the features'
+bounds 150 ms after the view settles; with more than 200,000 of them in view,
+only the selected feature's. Measured with 300,000 polygons (2.7 million
+vertices) and the CPU slowed 4×: drawing every vertex of a group that had
+reached the zoom froze the page for 120–150 ms at each zoom in and took 43 MB
+of GPU memory; collecting the 5,445 in view at the widest such zoom takes
+5 ms, and nothing shows on the GPU. Hovering a vertex or a point
 shows its coordinates as read (in the Map view also its longitude and
 latitude) and where it is in its feature: the row, the polygon or line of a
 multi-geometry, the ring (exterior or interior N) and the vertex's number in
