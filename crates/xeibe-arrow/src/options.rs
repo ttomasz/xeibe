@@ -45,6 +45,13 @@ pub struct ReadOptions {
     pub preserve_order: bool,
     /// Chunks a read may have in flight beyond `threads` (backpressure).
     pub queue_depth: usize,
+    /// Add a last column of this name with where each row's feature is
+    /// written: `source` (its input's index, in the order the inputs were
+    /// given), `start` and `end` (byte offsets of the feature's element, from
+    /// `<` to the end of its end tag, in that input's decompressed UTF-8
+    /// text). `None` (the default): no such column.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location_column: Option<String>,
     /// Only build these columns (projection pushdown); `None` = all.
     #[serde(skip)]
     pub projection: Option<Vec<String>>,
@@ -71,6 +78,7 @@ impl Default for ReadOptions {
             threads: xeibe_core::parallel::default_threads(),
             preserve_order: false,
             queue_depth: 8,
+            location_column: None,
             projection: None,
             namespaces: IndexMap::new(),
         }

@@ -14,8 +14,8 @@ use std::io::Read;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use arrow_array::RecordBatch;
-use arrow_schema::SchemaRef;
+use arrow_array::{ArrayRef, RecordBatch, StructArray, UInt32Array, UInt64Array};
+use arrow_schema::{DataType, Field, Fields, SchemaRef};
 use arrow_select::coalesce::BatchCoalescer;
 use xeibe_core::decode::DecodeAhead;
 use xeibe_core::parallel::{
@@ -40,8 +40,14 @@ pub struct ReadPlan {
     /// The layer name as the caller gave it (report key).
     pub layer_name: String,
     pub selector: LayerSelector,
-    /// The output schema: the projection of the read's schema.
+    /// The output schema: the projection of the read's schema, and the
+    /// location column if asked for.
     pub schema: SchemaRef,
+    /// The columns built from the features: the output without the
+    /// location column.
+    pub built: SchemaRef,
+    /// Add the location column (`ReadOptions::location_column`).
+    pub location: bool,
     pub routes: RouteTree,
     /// One per geometry column, in `routes.geometry_columns` order.
     pub axis: Vec<AxisDecisions>,
@@ -54,6 +60,21 @@ pub struct ReadPlan {
 }
 
 impl ReadPlan {
+    /// The rows built so far as a batch of the output schema.
+    fn finish(
+        &self,
+        builder: &mut LayerBatchBuilder,
+        locations: &mut Locations,
+    ) -> crate::Result<RecordBatch> {
+        let batch = builder.finish()?;
+        if !self.location {
+            return Ok(batch);
+        }
+        let mut columns = batch.columns().to_vec();
+        columns.push(locations.finish());
+        Ok(RecordBatch::try_new(self.schema.clone(), columns)?)
+    }
+
     /// The applied axis decisions and the warnings about them.
     pub fn axis_report(
         &self,
@@ -416,11 +437,11 @@ impl Pipeline {
         };
         let features = FeatureReader::new(plan, GeometryParser::new(&plan.geometry), axis)
             .with_inherited(inherited);
-        let mut builder = LayerBatchBuilder::new(plan.schema.clone(), plan.batch_size.min(4096))?;
+        let mut builder = LayerBatchBuilder::new(plan.built.clone(), plan.batch_size.min(4096))?;
+        let mut locations = Locations::default();
         let mut report = ReadReport::default();
         let mut batches = Vec::new();
-        let mut reader = GmlReader::new(&chunk.bytes, &chunk.namespaces, chunk.byte_offset)
-            .with_source(chunk.source);
+        let mut reader = GmlReader::for_chunk(chunk);
         let mut index = 0u64;
         let mut rows = 0u64;
         loop {
@@ -436,6 +457,8 @@ impl Pipeline {
                             *local == "id" && matches!(*namespace, Some(ns::GML | ns::GML_32))
                         })
                         .map(|(_, _, value)| value.into_owned());
+                    let start_position = reader.last_start_position();
+                    let start = reader.stream_offset(start_position);
                     let location = Location {
                         source: chunk.source,
                         byte_offset: reader.location().byte_offset,
@@ -447,9 +470,16 @@ impl Pipeline {
                         == FeatureOutcome::Row
                     {
                         rows += 1;
+                        if plan.location {
+                            // A feature is as long in the chunk as in the
+                            // stream; its end is where the next one starts
+                            // in the chunk.
+                            let end = start + (reader.position() - start_position) as u64;
+                            locations.push(chunk.source.0, start, end);
+                        }
                     }
                     if builder.len() >= plan.batch_size {
-                        batches.push(builder.finish()?);
+                        batches.push(plan.finish(&mut builder, &mut locations)?);
                     }
                 }
                 XmlEvent::Text(_) | XmlEvent::End { .. } => {}
@@ -457,7 +487,7 @@ impl Pipeline {
             }
         }
         if !builder.is_empty() {
-            batches.push(builder.finish()?);
+            batches.push(plan.finish(&mut builder, &mut locations)?);
         }
         *report
             .features_per_layer
@@ -465,6 +495,44 @@ impl Pipeline {
             .or_default() += rows;
         lock(&self.report).merge(report);
         Ok(batches)
+    }
+}
+
+/// The location column (`ReadOptions::location_column`).
+pub(crate) fn location_field(name: &str) -> Field {
+    Field::new(name, DataType::Struct(location_fields()), false)
+}
+
+fn location_fields() -> Fields {
+    Fields::from(vec![
+        Field::new("source", DataType::UInt32, false),
+        Field::new("start", DataType::UInt64, false),
+        Field::new("end", DataType::UInt64, false),
+    ])
+}
+
+/// Where the rows of a batch being built are written.
+#[derive(Default)]
+struct Locations {
+    source: Vec<u32>,
+    start: Vec<u64>,
+    end: Vec<u64>,
+}
+
+impl Locations {
+    fn push(&mut self, source: u32, start: u64, end: u64) {
+        self.source.push(source);
+        self.start.push(start);
+        self.end.push(end);
+    }
+
+    fn finish(&mut self) -> ArrayRef {
+        let columns: Vec<ArrayRef> = vec![
+            Arc::new(UInt32Array::from(std::mem::take(&mut self.source))),
+            Arc::new(UInt64Array::from(std::mem::take(&mut self.start))),
+            Arc::new(UInt64Array::from(std::mem::take(&mut self.end))),
+        ];
+        Arc::new(StructArray::new(location_fields(), columns, None))
     }
 }
 

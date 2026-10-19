@@ -183,10 +183,20 @@ pub struct ReadOptions {
     pub threads: usize,                  // all threads used; 1 = the calling thread only
     pub preserve_order: bool,            // off (default): rows in the order chunks finish
     pub queue_depth: usize,              // chunks in flight beyond `threads` (backpressure)
+    pub location_column: Option<String>, // a last column with where each row is written
     pub projection: Option<Vec<String>>, // not serialized
     pub namespaces: IndexMap<String, String>, // prefix → URI for path steps; not serialized
 }
 ```
+
+`location_column` adds a last column, a struct of `source` (the input's index),
+`start` and `end`: the byte range of the row's feature element, from its `<` to
+the end of its end tag, in that input's decoded text (decompressed, UTF-8, no
+BOM). A chunk holds only its features, without what was between them in the
+stream, so it carries where each feature started (`FeatureChunk::feature_offsets`),
+and readers of a chunk (`GmlReader::for_chunk`) give every location, error
+locations included, in the stream. The web page uses the column to show a
+row's XML.
 
 `geometry` holds the only geometry options: axis order, CRS override, curve
 linearization and the primary geometry column (see

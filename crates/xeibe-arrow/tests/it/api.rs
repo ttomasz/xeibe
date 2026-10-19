@@ -740,3 +740,63 @@ fn an_error_in_a_later_source_comes_after_the_rows_before_it() {
         assert_eq!(rows, 60, "the four sources before it, {threads} threads");
     }
 }
+
+#[test]
+fn a_location_column_says_where_each_row_is_written() {
+    use arrow_array::Array;
+    use arrow_array::cast::AsArray;
+    use arrow_array::types::{UInt32Type, UInt64Type};
+
+    let document = document();
+    // A chunk holds only the parcels: the road between them is left out.
+    for (threads, target_chunk_bytes) in [(1, 1 << 20), (1, 1), (4, 1)] {
+        let options = ReadOptions {
+            threads,
+            location_column: Some("at".into()),
+            splitter: xeibe_core::SplitterOptions {
+                target_chunk_bytes,
+                ..xeibe_core::SplitterOptions::default()
+            },
+            preserve_order: true,
+            ..ReadOptions::default()
+        };
+        let read = read_with(&document, "Parcel", None, &options);
+        let at = read.schema.field(read.schema.fields().len() - 1);
+        assert_eq!(at.name(), "at");
+        let mut written = Vec::new();
+        for batch in &read.batches {
+            let at = batch.column_by_name("at").unwrap().as_struct();
+            let source = at.column(0).as_primitive::<UInt32Type>();
+            let start = at.column(1).as_primitive::<UInt64Type>();
+            let end = at.column(2).as_primitive::<UInt64Type>();
+            for row in 0..at.len() {
+                assert_eq!(source.value(row), 0);
+                written.push(&document[start.value(row) as usize..end.value(row) as usize]);
+            }
+        }
+        let parcels: Vec<String> = ["p1", "p2"]
+            .iter()
+            .map(|id| {
+                let from = document
+                    .find(&format!("<app:Parcel gml:id=\"{id}\""))
+                    .unwrap();
+                let to = from + document[from..].find("</app:Parcel>").unwrap();
+                document[from..to + "</app:Parcel>".len()].to_string()
+            })
+            .collect();
+        assert_eq!(
+            written, parcels,
+            "threads {threads}, chunks of {target_chunk_bytes} bytes"
+        );
+    }
+
+    // The name can't be a column's already.
+    let options = ReadOptions {
+        location_column: Some("area".into()),
+        ..ReadOptions::default()
+    };
+    let error = read(sources(&document), "Parcel", None, &options)
+        .err()
+        .unwrap();
+    assert!(error.to_string().contains("area"), "{error}");
+}

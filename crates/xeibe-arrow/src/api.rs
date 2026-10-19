@@ -163,8 +163,22 @@ pub fn read(
             columns.push(None);
         }
     }
-    let output = Arc::new(Schema::new_with_metadata(fields, base.metadata().clone()));
-    let routes = RouteTree::new(&layer_schema, &columns, output.fields())?;
+    let built = Arc::new(Schema::new_with_metadata(fields, base.metadata().clone()));
+    let routes = RouteTree::new(&layer_schema, &columns, built.fields())?;
+    let output = match &options.location_column {
+        None => built.clone(),
+        Some(name) => {
+            if built.field_with_name(name).is_ok() {
+                return Err(crate::Error::Option {
+                    key: "location_column".into(),
+                    message: format!("the layer already has a column {name:?}"),
+                });
+            }
+            let mut fields = built.fields().to_vec();
+            fields.push(Arc::new(crate::pipeline::location_field(name)));
+            Arc::new(Schema::new_with_metadata(fields, built.metadata().clone()))
+        }
+    };
     let empty = DatasetObservation::default();
     let observation = sample.as_ref().map_or(&empty, |sample| &sample.observation);
     let axis = routes
@@ -196,6 +210,8 @@ pub fn read(
         layer_name: layer.to_string(),
         selector,
         schema: output,
+        built,
+        location: options.location_column.is_some(),
         has_geometry: !routes.geometry_columns.is_empty(),
         routes,
         axis,
