@@ -58,6 +58,12 @@ const VERTEX_LINE: Rgba = [30, 41, 59, 255];
 
 /** Pixels around the pointer that still hit a feature. */
 const PICKING_RADIUS = 6;
+/** deck.gl's arrays (picking colours, tesselated paths and polygons) at
+ * their size, and none kept for reuse: by default they are twice the size
+ * asked for, so that a growing layer needn't reallocate, and up to 100
+ * freed ones are kept. A layer here never grows. The setting is deck.gl's,
+ * shared by both views. */
+const ARRAYS = { overAlloc: 1, poolSize: 0 };
 /** Vertices show once a typical segment is this long on screen. */
 const VERTEX_SPACING = 10;
 /** Polygon outlines show once a typical segment is this long on screen.
@@ -144,6 +150,7 @@ export class MapPane {
       interleaved: false,
       layers: [],
       pickingRadius: PICKING_RADIUS,
+      _typedArrayManagerProps: ARRAYS,
       onClick: (info) => this.click(info),
       onHover: (info) => this.hover(info, 'map'),
       getTooltip: (info) => this.tooltip(info, 'map'),
@@ -157,6 +164,7 @@ export class MapPane {
       initialViewState: { target: [0, 0, 0], zoom: 0 },
       layers: [],
       pickingRadius: PICKING_RADIUS,
+      _typedArrayManagerProps: ARRAYS,
       onClick: (info) => this.click(info),
       onHover: (info) => this.hover(info, 'source'),
       getTooltip: (info) => this.tooltip(info, 'source'),

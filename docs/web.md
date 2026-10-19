@@ -144,6 +144,14 @@ Measured 2026-10-19 in Chromium on a Radeon RX 7700 XT with the CPU slowed 4×
 polygons, took 33 ms a frame (95th percentile 50 and 67 ms) with a layer per
 batch, and keeps to 16.7 ms (60 fps) with groups.
 
+**deck.gl's own arrays** (picking colours, tesselated paths and polygons)
+are allocated at their size and not pooled (`_typedArrayManagerProps:
+{overAlloc: 1, poolSize: 0}`): by default deck.gl makes them twice the size
+asked for, for layers that grow, and keeps up to 100 freed ones, and a layer
+here never grows. Measured 2026-10-19 on the page with 300,000 polygons,
+after a forced garbage collection: 324 MB of arrays instead of 483 MB, and
+132 MB on the GPU instead of 151 MB.
+
 **Polygon outlines** are drawn only while a typical segment is at least 3
 pixels on screen. Below that, outlines double the cost of a frame and cover
 the polygons anyway, and a fill alone may cover no pixel: each polygon is
