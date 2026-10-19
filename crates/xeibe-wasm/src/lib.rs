@@ -178,6 +178,17 @@ impl Reader {
     pub fn report(&self) -> String {
         self.0.report().to_string()
     }
+
+    /// JSON: where row `row` is written (source, byte offsets) and its XML,
+    /// at most `max` bytes of it.
+    #[wasm_bindgen(js_name = featureXml)]
+    pub fn feature_xml(&self, row: f64, max: f64) -> Result<String, JsError> {
+        Ok(self
+            .0
+            .feature_xml(row as u64, max as u64)
+            .map_err(error)?
+            .to_string())
+    }
 }
 
 /// One batch laid out for the map: see [`display::Buffers`].

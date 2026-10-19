@@ -39,7 +39,8 @@ export type ToWorker =
   | { type: 'schema'; layer: string }
   | { type: 'read'; id: number; layer: string; limit: number | null }
   | { type: 'stop'; id: number }
-  | { type: 'rows'; id: number; request: number; start: number; count: number };
+  | { type: 'rows'; id: number; request: number; start: number; count: number }
+  | { type: 'xml'; id: number; row: number };
 
 export type FromWorker =
   | { type: 'files'; files: InputFile[] }
@@ -60,6 +61,7 @@ export type FromWorker =
   | { type: 'done'; id: number; report: Report; info: ReadInfo; ms: number }
   | { type: 'stopped'; id: number; report: Report }
   | { type: 'rows'; id: number; request: number; rows: string[][] }
+  | { type: 'xml'; id: number; row: number; xml: FeatureXml | null; error: string | null }
   | { type: 'error'; message: string };
 
 // JSON from crates/xeibe-wasm/src/session.rs.
@@ -121,6 +123,18 @@ export interface Scan {
     extent: [number, number, number, number] | null;
   }[];
   axis_decisions: AxisDecision[];
+}
+
+/** Where a row is written, and its XML. */
+export interface FeatureXml {
+  row: number;
+  source: string;
+  /** Byte offsets in the source's decompressed UTF-8 text. */
+  start: number;
+  end: number;
+  xml: string;
+  /** Only the first bytes of a long feature. */
+  truncated: boolean;
 }
 
 export interface Column {

@@ -71,6 +71,21 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
       case 'stop':
         if (message.id === wanted) wanted = 0;
         break;
+      case 'xml': {
+        // Within the module's limits for a string, and the page's for a <pre>.
+        const max = 2 << 20;
+        if (!reader || message.id !== readerId) {
+          post({ type: 'xml', id: message.id, row: message.row, xml: null, error: 'the read has ended' });
+          break;
+        }
+        try {
+          const xml = JSON.parse(reader.featureXml(message.row, max));
+          post({ type: 'xml', id: message.id, row: message.row, xml, error: null });
+        } catch (error) {
+          post({ type: 'xml', id: message.id, row: message.row, xml: null, error: errorMessage(error) });
+        }
+        break;
+      }
       case 'rows': {
         const rows =
           reader && message.id === readerId ? JSON.parse(reader.rows(message.start, message.count)) : [];

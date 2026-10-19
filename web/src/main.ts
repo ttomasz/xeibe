@@ -3,9 +3,10 @@
 import './style.css';
 import { MapPane, type View } from './map';
 import { bytes, DEFAULT_SAMPLE, OpenDialog, type OpenRequest } from './open';
-import type { Choice, FromWorker, InputFile, ReadInfo, Report, Scan, Schema, ToWorker } from './protocol';
+import type { Choice, FeatureXml, FromWorker, InputFile, ReadInfo, Report, Scan, Schema, ToWorker } from './protocol';
 import { Table } from './table';
 import { escape, overview, schema as schemaView } from './views';
+import { wantsIndent, xmlView } from './xml';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -51,6 +52,12 @@ const state = {
   schemas: new Map<string, Schema>(),
   tab: 'overview',
   started: 0,
+  /** The row selected on the map or in the table. */
+  selected: null as number | null,
+  /** The selected row's XML, once the worker has read it. */
+  xml: null as FeatureXml | null,
+  /** Indent the XML: `null` until the user chooses, then what they chose. */
+  indent: null as boolean | null,
 };
 
 const status = $('status');
@@ -101,10 +108,49 @@ const table = new Table(
 );
 
 function select(row: number, from: 'map' | 'table') {
+  state.selected = row;
+  // The table shows first: a hidden one can't scroll to the row.
+  if (from === 'map' && state.tab !== 'xml') showTab('data');
   table.select(row, from === 'map');
   map.select(row, from === 'table');
-  if (from === 'map') showTab('data');
+  if (state.tab === 'xml') loadXml();
 }
+
+const xmlTab = $('xml');
+
+/** The selected row's XML, read again from its file by the worker. */
+function loadXml() {
+  const row = state.selected;
+  if (row === null) {
+    xmlTab.innerHTML = '<p class="muted">Select a feature on the map or a row in the Data tab to see its XML.</p>';
+    return;
+  }
+  if (state.xml?.row === row) return renderXml();
+  state.xml = null;
+  xmlTab.innerHTML = `<p class="muted">Reading the XML of row ${(row + 1).toLocaleString('en')}…</p>`;
+  send({ type: 'xml', id: state.readId, row });
+}
+
+function renderXml() {
+  const xml = state.xml;
+  if (!xml) return;
+  xmlTab.innerHTML = xmlView(xml, state.indent ?? wantsIndent(xml.xml));
+}
+
+xmlTab.addEventListener('change', (event) => {
+  const box = event.target as HTMLInputElement;
+  if (box.dataset.action !== 'indent') return;
+  state.indent = box.checked;
+  renderXml();
+});
+xmlTab.addEventListener('click', (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action=copy]');
+  if (!button || !state.xml) return;
+  void navigator.clipboard.writeText(state.xml.xml).then(
+    () => (button.textContent = 'Copied'),
+    () => (button.textContent = "Can't copy"),
+  );
+});
 
 function setStatus(text: string, error = false) {
   status.textContent = text;
@@ -197,6 +243,8 @@ function startRead(layer: string) {
   state.report = null;
   state.reading = true;
   state.rows = 0;
+  state.selected = null;
+  state.xml = null;
   state.grids.clear();
   state.started = performance.now();
   mapNote.hidden = true;
@@ -205,6 +253,7 @@ function startRead(layer: string) {
   send({ type: 'read', id: state.readId, layer, limit: state.limit });
   renderOverview();
   if (state.tab === 'schema') loadSchema();
+  if (state.tab === 'xml') loadXml();
 }
 
 layerSelect.addEventListener('change', () => startRead(layerSelect.value));
@@ -309,6 +358,15 @@ function receive(message: FromWorker) {
       renderOverview();
       break;
     }
+    case 'xml':
+      if (message.id !== state.readId || message.row !== state.selected) break;
+      if (message.xml) {
+        state.xml = message.xml;
+        if (state.tab === 'xml') renderXml();
+      } else if (state.tab === 'xml') {
+        xmlTab.innerHTML = `<p class="error">Couldn't read the XML: ${escape(message.error)}</p>`;
+      }
+      break;
     case 'rows':
       rowAnswers.get(message.request)?.(message.rows);
       rowAnswers.delete(message.request);
@@ -349,6 +407,7 @@ function showTab(tab: string) {
   });
   document.querySelectorAll<HTMLElement>('.tab').forEach((t) => t.classList.toggle('active', t.id === tab));
   if (tab === 'schema') loadSchema();
+  if (tab === 'xml') loadXml();
 }
 
 document.querySelectorAll<HTMLElement>('#tabs [data-tab]').forEach((b) =>

@@ -320,3 +320,69 @@ fn a_sample_of_each_file_is_enough_for_the_schema() {
     read_all(&mut reader);
     assert!(reader.rows_read() > 1);
 }
+
+#[test]
+fn a_rows_xml_is_read_back_from_its_file() {
+    let prg = read_data("samples/pl/prg-address-points.gml");
+    let text = String::from_utf8(prg.clone()).unwrap();
+    let gzipped = {
+        use std::io::Write;
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        encoder.write_all(&prg).unwrap();
+        encoder.finish().unwrap()
+    };
+    let mut dataset = Dataset::default();
+    dataset.add_file("prg.zip".into(), prg_zip());
+    dataset.add_file("a.gml".into(), prg.clone());
+    dataset.add_file("a.gml.gz".into(), gzipped);
+    let choices = [
+        Choice {
+            file: 0,
+            member: Some("data/more.xml".into()),
+        },
+        Choice {
+            file: 1,
+            member: None,
+        },
+        Choice {
+            file: 2,
+            member: None,
+        },
+    ];
+    dataset.choose(&choices).unwrap();
+    dataset.scan(None, None).unwrap();
+    let mut reader = dataset.read("AD_PunktAdresowy", None, None).unwrap();
+    read_all(&mut reader);
+    assert_eq!(reader.rows_read(), 6);
+    // The location isn't one of the table's columns.
+    let columns = reader.info()["columns"].to_string();
+    assert!(!columns.contains("xeibe:location"), "{columns}");
+    assert_eq!(
+        reader.rows(0, 1)[0].len(),
+        reader.info()["columns"].as_array().unwrap().len()
+    );
+    let mut sources = Vec::new();
+    for row in 0..6 {
+        let xml = reader.feature_xml(row, 1 << 20).unwrap();
+        let text_xml = xml["xml"].as_str().unwrap();
+        assert!(
+            text_xml.starts_with("<prgad:AD_PunktAdresowy"),
+            "{text_xml}"
+        );
+        assert!(
+            text_xml.ends_with("</prgad:AD_PunktAdresowy>"),
+            "{text_xml}"
+        );
+        assert!(text.contains(text_xml));
+        assert_eq!(xml["truncated"], false);
+        sources.push(xml["source"].as_str().unwrap().to_string());
+    }
+    // Natively, on several threads, the files' rows interleave.
+    sources.sort();
+    sources.dedup();
+    assert_eq!(sources, ["a.gml", "a.gml.gz", "prg.zip!/data/more.xml"]);
+    let short = reader.feature_xml(0, 10).unwrap();
+    assert_eq!(short["xml"].as_str().unwrap().len(), 10);
+    assert_eq!(short["truncated"], true);
+    assert!(reader.feature_xml(6, 10).is_err());
+}

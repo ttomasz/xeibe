@@ -621,3 +621,52 @@ ul.members {
 .sampled .button {
   margin-left: 4px;
 }
+
+/* The XML tab */
+
+.xml-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.xml-head code {
+  overflow-wrap: anywhere;
+}
+
+.xml-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+pre.xml {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+  tab-size: 2;
+}
+
+.x-tag {
+  color: #1d4ed8;
+}
+
+.x-attr {
+  color: #7c3aed;
+}
+
+.x-value {
+  color: #047857;
+}
+
+.x-comment {
+  color: var(--muted);
+  font-style: italic;
+}

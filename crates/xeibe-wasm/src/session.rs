@@ -24,6 +24,10 @@ use crate::display::{Drawing, Parts, draw};
 /// The longest text a table cell shows.
 const MAX_CELL: usize = 300;
 
+/// The read's location column (`ReadOptions::location_column`): where each
+/// row is written, for its XML. Not shown as a column.
+const LOCATION: &str = "xeibe:location";
+
 pub type Result<T> = std::result::Result<T, String>;
 
 /// The files dropped on the page, the sources chosen from them (a file, or
@@ -32,6 +36,8 @@ pub type Result<T> = std::result::Result<T, String>;
 pub struct Dataset {
     files: Vec<InputFile>,
     sources: Vec<Source>,
+    /// A chosen file's data, by source; `None` for a zip member.
+    direct: Vec<Option<Arc<dyn RandomAccess>>>,
     /// The chosen files' sizes (a member's compressed size), for progress.
     sizes: u64,
     scan: Option<ScanResult>,
@@ -114,6 +120,7 @@ impl Dataset {
     /// chosen without a member stands for its GML members.
     pub fn choose(&mut self, choices: &[Choice]) -> Result<()> {
         let mut sources = Vec::new();
+        let mut direct = Vec::new();
         let mut sizes = 0;
         for choice in choices {
             let file = self
@@ -134,11 +141,13 @@ impl Dataset {
                         name: file.name.clone(),
                         data: file.data.clone(),
                     })));
+                    direct.push(Some(file.data.clone()));
                 }
                 (None, Some(_)) => return Err(format!("{} isn't a zip archive", file.name)),
                 (Some(_), None) => {
                     let members = archive::expand(archive(), &[]).map_err(|e| e.to_string())?;
                     sizes += file.data.len();
+                    direct.extend(members.iter().map(|_| None));
                     sources.extend(members);
                 }
                 (Some(members), Some(name)) => {
@@ -154,6 +163,7 @@ impl Dataset {
                         archive: archive(),
                         member: name.clone(),
                     });
+                    direct.push(None);
                 }
             }
         }
@@ -161,6 +171,7 @@ impl Dataset {
             return Err("nothing chosen".into());
         }
         self.sources = sources;
+        self.direct = direct;
         self.sizes = sizes;
         self.scan = None;
         Ok(())
@@ -211,15 +222,82 @@ impl Dataset {
     /// Start reading `layer`, at most `limit` rows, with the schema the
     /// last scan inferred (the Schema tab's).
     pub fn read(&self, layer: &str, options: Option<&str>, limit: Option<u64>) -> Result<Reader> {
-        let options = parse_options(options)?;
+        let mut options = parse_options(options)?;
+        options.location_column = Some(LOCATION.into());
         let schema = match &self.scan {
             Some(scan) => Some(scan.arrow_schema(layer).map_err(|e| e.to_string())?),
             None => None,
         };
         let reader = xeibe_arrow::read(self.sources(), layer, schema, &options)
             .map_err(|e| e.to_string())?;
-        Ok(Reader::new(reader, &options, limit, self.names()))
+        let inputs = Inputs {
+            sources: self.sources.clone(),
+            direct: self.direct.clone(),
+        };
+        Ok(Reader::new(reader, &options, limit, self.names(), inputs))
     }
+}
+
+/// The sources of a read, to read a feature's XML back from.
+#[derive(Default)]
+struct Inputs {
+    sources: Vec<Source>,
+    /// A plain file's data: read where the feature is rather than decoded
+    /// from the start.
+    direct: Vec<Option<Arc<dyn RandomAccess>>>,
+}
+
+impl Inputs {
+    /// Bytes `start..end` of a source's decoded (decompressed, UTF-8) text.
+    fn read(&self, source: usize, start: u64, end: u64) -> Result<Vec<u8>> {
+        use std::io::Read;
+        let len = end.saturating_sub(start);
+        if let Some(Some(data)) = self.direct.get(source)
+            && let Some(skip) = plain_utf8(data.as_ref())
+        {
+            let mut buf = vec![0; len as usize];
+            let mut done = 0;
+            while done < buf.len() {
+                let n = data
+                    .read_at(skip + start + done as u64, &mut buf[done..])
+                    .map_err(|e| e.to_string())?;
+                if n == 0 {
+                    return Err("the file ended before the feature".into());
+                }
+                done += n;
+            }
+            return Ok(buf);
+        }
+        let source = self.sources.get(source).ok_or("no such source")?;
+        let mut stream = source.open().map_err(|e| e.to_string())?;
+        std::io::copy(&mut (&mut stream).take(start), &mut std::io::sink())
+            .map_err(|e| e.to_string())?;
+        let mut buf = Vec::with_capacity(len as usize);
+        stream
+            .take(len)
+            .read_to_end(&mut buf)
+            .map_err(|e| e.to_string())?;
+        Ok(buf)
+    }
+}
+
+/// A file whose decoded text is its bytes: not compressed, UTF-8. The
+/// bytes to skip: a BOM.
+fn plain_utf8(data: &dyn RandomAccess) -> Option<u64> {
+    use xeibe_core::decode::{Compression, detect_compression, detect_encoding};
+    let mut head = vec![0; 1024];
+    let n = data.read_at(0, &mut head).ok()?;
+    let head = &head[..n];
+    if !matches!(detect_compression(head), Compression::None)
+        || detect_encoding(head).name() != "UTF-8"
+    {
+        return None;
+    }
+    Some(if head.starts_with(b"\xEF\xBB\xBF") {
+        3
+    } else {
+        0
+    })
 }
 
 fn parse_options(options: Option<&str>) -> Result<ReadOptions> {
@@ -257,6 +335,10 @@ fn geometry_kind(field: &Field) -> Option<&str> {
 pub struct Reader {
     reader: LayerReader,
     files: Vec<String>,
+    inputs: Inputs,
+    /// Where each batch's rows are written (the location column, taken out
+    /// of `batches`).
+    locations: Vec<arrow_array::StructArray>,
     limit: Option<u64>,
     /// The batches read so far, for the table.
     batches: Vec<RecordBatch>,
@@ -277,6 +359,7 @@ impl Reader {
         options: &ReadOptions,
         limit: Option<u64>,
         files: Vec<String>,
+        inputs: Inputs,
     ) -> Self {
         let schema = reader.schema();
         let column = drawn_column(&schema, options);
@@ -288,6 +371,8 @@ impl Reader {
         Reader {
             reader,
             files,
+            inputs,
+            locations: Vec::new(),
             limit,
             batches: Vec::new(),
             rows: 0,
@@ -305,7 +390,12 @@ impl Reader {
     pub fn info(&self) -> Value {
         let schema = self.reader.schema();
         json!({
-            "columns": schema.fields().iter().map(|f| column_json(f)).collect::<Vec<_>>(),
+            "columns": schema
+                .fields()
+                .iter()
+                .filter(|f| f.name() != LOCATION)
+                .map(|f| column_json(f))
+                .collect::<Vec<_>>(),
             "geometry_column": self.column.map(|i| schema.field(i).name().clone()),
             "map": self.map.json(),
         })
@@ -329,6 +419,17 @@ impl Reader {
             && (batch.num_rows() as u64) > left
         {
             batch = batch.slice(0, left as usize);
+        }
+        // The location column, kept apart: the table's columns are the rest.
+        let last = batch.num_columns() - 1;
+        let location = batch
+            .column(last)
+            .as_struct_opt()
+            .filter(|_| batch.schema().field(last).name() == LOCATION)
+            .cloned();
+        if let Some(location) = location {
+            batch.remove_column(last);
+            self.locations.push(location);
         }
         let parts = match self.column {
             Some(column) => Parts::decode(&batch, column)?,
@@ -434,6 +535,34 @@ impl Reader {
             }
         }
         out
+    }
+
+    /// Where row `row` is written: its source's name, byte offsets in the
+    /// source's decoded text, and its XML, at most `max` bytes of it.
+    pub fn feature_xml(&self, row: u64, max: u64) -> Result<Value> {
+        use arrow_array::types::{UInt32Type, UInt64Type};
+        let mut first = 0u64;
+        for location in &self.locations {
+            let n = location.len() as u64;
+            if row < first + n {
+                let i = (row - first) as usize;
+                let source = location.column(0).as_primitive::<UInt32Type>().value(i) as usize;
+                let start = location.column(1).as_primitive::<UInt64Type>().value(i);
+                let end = location.column(2).as_primitive::<UInt64Type>().value(i);
+                let shown = end.min(start + max);
+                let bytes = self.inputs.read(source, start, shown)?;
+                return Ok(json!({
+                    "row": row,
+                    "source": self.files.get(source),
+                    "start": start,
+                    "end": end,
+                    "xml": String::from_utf8_lossy(&bytes),
+                    "truncated": shown < end,
+                }));
+            }
+            first += n;
+        }
+        Err(format!("no row {row}"))
     }
 
     /// The read report, and what the map couldn't show.

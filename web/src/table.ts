@@ -10,6 +10,8 @@ export class Table {
   private blocks = new Map<number, string[][]>();
   private pending = new Set<number>();
   private selected: number | null = null;
+  /** A row to scroll to once the table shows: a hidden one can't scroll. */
+  private scrollTo: number | null = null;
   /** Bumped by each reset: answers for an older read are dropped. */
   private generation = 0;
   private readonly sizer: HTMLDivElement;
@@ -32,7 +34,10 @@ export class Table {
     this.sizer.append(this.body);
     container.append(this.head, this.sizer);
     container.addEventListener('scroll', () => this.render(), { passive: true });
-    new ResizeObserver(() => this.render()).observe(container);
+    new ResizeObserver(() => {
+      if (this.scrollTo !== null && this.container.clientHeight > 0) this.scrollIntoView(this.scrollTo);
+      this.render();
+    }).observe(container);
     this.body.addEventListener('click', (event) => {
       const row = (event.target as HTMLElement).closest<HTMLElement>('.vt-row');
       if (row?.dataset.row) this.onSelect(Number(row.dataset.row));
@@ -67,14 +72,21 @@ export class Table {
 
   select(row: number | null, scroll: boolean) {
     this.selected = row;
+    this.scrollTo = null;
     if (row !== null && scroll) {
-      const top = row * ROW_HEIGHT;
-      const view = this.container.clientHeight - ROW_HEIGHT * 2;
-      if (top < this.container.scrollTop || top > this.container.scrollTop + view) {
-        this.container.scrollTop = Math.max(0, top - view / 2);
-      }
+      if (this.container.clientHeight > 0) this.scrollIntoView(row);
+      else this.scrollTo = row;
     }
     this.render();
+  }
+
+  private scrollIntoView(row: number) {
+    this.scrollTo = null;
+    const top = row * ROW_HEIGHT;
+    const view = this.container.clientHeight - ROW_HEIGHT * 2;
+    if (top < this.container.scrollTop || top > this.container.scrollTop + view) {
+      this.container.scrollTop = Math.max(0, top - view / 2);
+    }
   }
 
   private render() {

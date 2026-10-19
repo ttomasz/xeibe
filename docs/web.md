@@ -44,6 +44,7 @@ the map stacks above the tabs.
 | Overview | Feature count, extent, CRS, axis-order decisions with their reasons, read report (skipped features, warnings, skipped sources, whether the scan was complete) | `ScanResult::layers`, `extent`, `axis_decisions`, `is_complete`, `skipped_sources`; the read report |
 | Schema | Columns with Arrow type and source path, and the inference reasoning | `ScanResult::schema`, `explain` |
 | Data | Virtualized table of the read rows | the record batches |
+| XML | The selected row's feature as written in its file (see [Map](#map)) | the read's location column |
 | Options | Form for the read options (preset, overrides, axis order, CRS, linearization, …) and the equivalent `xeibe` command, Python snippet and settings file, ready to copy | `ReadOptions`, `ScanResult::to_settings` |
 
 Selecting a row zooms the map to its feature; clicking a feature on the map
@@ -130,7 +131,28 @@ a ring in both views, densified, and converted to the source CRS without
 grids for that view. Data outside it explains itself.
 
 Selecting a row in the table zooms the current view to the feature and draws
-it highlighted; clicking a feature selects its row.
+it highlighted, with its vertices; clicking a feature selects its row. A
+feature counts as hit within 6 pixels of the pointer.
+
+**Vertices** show as small markers in either view once the view is zoomed in
+far enough that they are spread out: a typical segment of the batch (the
+median of a sample) at least 10 pixels long. Hovering a vertex or a point
+shows its coordinates as read (in the Map view also its longitude and
+latitude) and where it is in its feature: the row, the polygon or line of a
+multi-geometry, the ring (exterior or interior N) and the vertex's number in
+it. The coordinates as read are the origin added back to the drawn ones,
+shown to 15 significant digits, which gives back any coordinate written with
+no more.
+
+**The XML tab** shows the selected row's feature as it is written in its
+file, read again on demand. The read adds a location column
+(`ReadOptions::location_column`, kept out of the table) with each row's
+source and byte range in the source's decoded text. A plain UTF-8 file is
+read at that range directly; a compressed file or a zip member is decoded
+from its start up to it, which for a feature near the end of a member of
+gigabytes takes seconds. Up to 2 MiB of a feature is shown, as written or
+indented (the default for a feature written on one line), with tags and
+attributes highlighted.
 
 ## Architecture
 
