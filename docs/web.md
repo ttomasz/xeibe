@@ -134,6 +134,24 @@ Selecting a row in the table zooms the current view to the feature and draws
 it highlighted, with its vertices; clicking a feature selects its row. A
 feature counts as hit within 6 pixels of the pointer.
 
+**Layers.** deck.gl draws, and picks under the pointer on every mouse
+move, layer by layer, and each layer costs a frame whatever its size. The
+batches (8,192 rows) are merged into groups of 65,536 rows or 2 million
+vertices, at most, as they fill up and when the read ends; the newest stay
+batches meanwhile, so the read doesn't stop to rebuild a growing layer.
+Measured 2026-10-19 in Chromium on a Radeon RX 7700 XT with the CPU slowed 4×
+(a laptop's, roughly): a hover over 606,980 PRG address points, or 300,000
+polygons, took 33 ms a frame (95th percentile 50 and 67 ms) with a layer per
+batch, and keeps to 16.7 ms (60 fps) with groups.
+
+**Polygon outlines** are drawn only while a typical segment is at least 3
+pixels on screen. Below that, outlines double the cost of a frame and cover
+the polygons anyway, and a fill alone may cover no pixel: each polygon is
+drawn as one dot at its first position instead, which also keeps it
+clickable. (Measured: drawing the outlines as `LineLayer` segments over the
+same buffer instead of a `PathLayer` saves about 8 ms of JavaScript per
+batch and nothing per frame: not worth it.)
+
 **Vertices** show as small markers in either view once the view is zoomed in
 far enough that they are spread out: a typical segment of the batch (the
 median of a sample) at least 10 pixels long. Hovering a vertex or a point

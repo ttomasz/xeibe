@@ -18,19 +18,24 @@ setWorkerUrl(maplibreWorker);
 
 export type View = 'map' | 'source';
 
+/** Batches from the worker as they come, and once merged, groups of them:
+ * consecutive rows, drawn as one set of layers. */
 interface Batch {
   firstRow: number;
   rows: number;
   map: Space | null;
   source: Space;
-  /** A typical segment's length in each space, for showing vertices. */
+  /** Names its layers: kept when other batches are merged. */
+  id?: number;
+  /** A typical segment's length in each space, for showing vertices and
+   * outlines. */
   segment?: { map: number | null; source: number | null };
 }
 
 /** What a pickable layer draws, to say what is under the pointer. */
 interface Picked {
   batch: Batch;
-  kind: 'polygon' | 'line' | 'point' | 'polygon-vertex' | 'line-vertex' | 'selected-vertex';
+  kind: 'polygon' | 'polygon-dot' | 'line' | 'point' | 'polygon-vertex' | 'line-vertex' | 'selected-vertex';
 }
 
 /** A vertex of the selected feature: its index in the polygons' or the
@@ -55,6 +60,15 @@ const VERTEX_LINE: Rgba = [30, 41, 59, 255];
 const PICKING_RADIUS = 6;
 /** Vertices show once a typical segment is this long on screen. */
 const VERTEX_SPACING = 10;
+/** Polygon outlines show once a typical segment is this long on screen.
+ * Below it a polygon is a few pixels across: one dot shows it, where its
+ * outline would cost twice as much a frame, and its fill alone might cover
+ * no pixel at all. */
+const OUTLINE_SPACING = 3;
+/** Batches are merged into groups of about this many rows or vertices:
+ * each layer costs every frame and every hover, whatever its size. */
+const GROUP_ROWS = 65536;
+const GROUP_VERTICES = 2_000_000;
 
 // OpenStreetMap's own raster tiles, with the attribution their tile policy
 // requires (https://operations.osmfoundation.org/policies/tiles/).
@@ -87,7 +101,11 @@ export class MapPane {
   private readonly map: MapLibre;
   private readonly overlay: MapboxOverlay;
   private readonly deck: Deck<OrthographicView>;
+  /** Merged groups, then the batches not merged yet, in row order. */
   private batches: Batch[] = [];
+  /** How many of `batches`, at the end, are not merged yet. */
+  private unmerged = 0;
+  private nextId = 0;
   /** What each pickable layer draws. */
   private picked = new Map<string, Picked>();
   /** Binary data per layer, made once: the same object on each render
@@ -100,9 +118,9 @@ export class MapPane {
   private moved = { map: false, source: false };
   /** Each view's zoom, for showing vertices. */
   private zoom = { map: 3, source: 0 };
-  /** Which batches show their vertices, by view: rendered again when it
-   * changes. */
-  private vertexKey = '';
+  /** Which batches show their vertices and outlines, by view: rendered
+   * again when it changes. */
+  private detailKey = '';
 
   constructor(
     mapContainer: HTMLElement,
@@ -158,6 +176,7 @@ export class MapPane {
   reset(info: ReadInfo) {
     this.info = info;
     this.batches = [];
+    this.unmerged = 0;
     this.picked.clear();
     this.dataCache.clear();
     this.origin = null;
@@ -175,13 +194,55 @@ export class MapPane {
 
   addBatch(batch: Batch, origin: [number, number] | null) {
     this.origin ??= origin;
+    this.batches.push(this.prepared(batch));
+    this.unmerged++;
+    const pending = this.batches.slice(-this.unmerged);
+    const rows = pending.reduce((n, b) => n + b.rows, 0);
+    const vertices = pending.reduce((n, b) => n + vertexCount(b.source), 0);
+    if (this.unmerged > 1 && (rows >= GROUP_ROWS || vertices >= GROUP_VERTICES)) this.merge();
+    this.render();
+    if (this.batches.length === 1) this.fit();
+  }
+
+  /** The read has ended: merge the batches left over. */
+  finish() {
+    if (this.unmerged > 1) {
+      this.merge();
+      this.render();
+    }
+    this.unmerged = 0;
+  }
+
+  private prepared(batch: Batch): Batch {
+    batch.id = this.nextId++;
     batch.segment = {
       map: batch.map ? typicalSegment(batch.map) : null,
       source: typicalSegment(batch.source),
     };
-    this.batches.push(batch);
-    this.render();
-    if (this.batches.length === 1) this.fit();
+    return batch;
+  }
+
+  /** The unmerged batches as one group; their layers' data goes. */
+  private merge() {
+    const pending = this.batches.splice(this.batches.length - this.unmerged);
+    this.unmerged = 0;
+    for (const batch of pending) {
+      for (const key of [...this.dataCache.keys(), ...this.picked.keys()]) {
+        if (layerBatch(key) === batch.id) {
+          this.dataCache.delete(key);
+          this.picked.delete(key);
+        }
+      }
+    }
+    const maps = pending.map((b) => b.map);
+    this.batches.push(
+      this.prepared({
+        firstRow: pending[0].firstRow,
+        rows: pending.reduce((n, b) => n + b.rows, 0),
+        source: mergeSpaces(pending.map((b) => b.source)),
+        map: maps.every((m) => m !== null) ? mergeSpaces(maps as Space[]) : null,
+      }),
+    );
   }
 
   /** Fit the views to the data, unless the user has moved them. */
@@ -288,17 +349,27 @@ export class MapPane {
     return view === 'map' ? (512 * 2 ** this.zoom.map) / 360 : 2 ** this.zoom.source;
   }
 
-  private showsVertices(batch: Batch, view: View): boolean {
+  /** A typical segment of a batch is at least `pixels` long on screen. */
+  private spreadOut(batch: Batch, view: View, pixels: number): boolean {
     const segment = batch.segment?.[view];
-    return segment != null && segment * this.scale(view) >= VERTEX_SPACING;
+    return segment != null && segment * this.scale(view) >= pixels;
   }
 
-  /** A view zoomed: render again if that shows or hides vertices. */
+  /** What each batch shows at the current zoom: vertices, outlines. */
+  private details(view: View): string {
+    return (
+      view +
+      this.batches
+        .map((b) => (this.spreadOut(b, view, VERTEX_SPACING) ? 2 : 0) + (this.spreadOut(b, view, OUTLINE_SPACING) ? 1 : 0))
+        .join('')
+    );
+  }
+
+  /** A view zoomed: render again if that shows or hides vertices or
+   * outlines. */
   private zoomed(view: View, zoom: number) {
     this.zoom[view] = zoom;
-    if (view !== this.view) return;
-    const key = view + this.batches.map((b) => (this.showsVertices(b, view) ? 1 : 0)).join('');
-    if (key !== this.vertexKey) this.render();
+    if (view === this.view && this.details(view) !== this.detailKey) this.render();
   }
 
   private click(info: PickingInfo) {
@@ -328,6 +399,7 @@ export class MapPane {
     if (!s) return null;
     switch (picked.kind) {
       case 'polygon':
+      case 'polygon-dot':
         return s.polygonRows[info.index];
       case 'line':
         return s.lineRows[info.index];
@@ -411,14 +483,15 @@ export class MapPane {
         }),
       );
     }
-    this.batches.forEach((batch, index) => {
+    for (const batch of this.batches) {
       const space = view === 'map' ? batch.map : batch.source;
       if (space) {
-        const vertices = this.showsVertices(batch, view);
-        layers.push(...this.batchLayers(`${view}-${index}`, batch, space, coordinateSystem, vertices));
+        const vertices = this.spreadOut(batch, view, VERTEX_SPACING);
+        const outlines = this.spreadOut(batch, view, OUTLINE_SPACING);
+        layers.push(...this.batchLayers(`${view}-${batch.id}`, batch, space, coordinateSystem, vertices, outlines));
       }
-    });
-    this.vertexKey = view + this.batches.map((b) => (this.showsVertices(b, view) ? 1 : 0)).join('');
+    }
+    this.detailKey = this.details(view);
     layers.push(...this.selectedLayers(view, coordinateSystem));
     if (view === 'map') {
       this.overlay.setProps({ layers });
@@ -453,6 +526,7 @@ export class MapPane {
     s: Space,
     coordinateSystem: CoordinateSystem,
     vertices: boolean,
+    outlines: boolean,
   ): Layer[] {
     const layers: Layer[] = [];
     const common = {
@@ -498,9 +572,33 @@ export class MapPane {
           getFillColor: FILL,
         }),
       );
+      const dots = `${key}-dots`;
+      this.picked.set(dots, { batch, kind: 'polygon-dot' });
+      layers.push(
+        new ScatterplotLayer({
+          ...common,
+          id: dots,
+          visible: !outlines,
+          data: this.data(dots, () => {
+            // Each polygon's first position.
+            const n = s.polygonRows.length;
+            const positions = new Float64Array(2 * n);
+            for (let i = 0; i < n; i++) {
+              positions[2 * i] = s.polygons[2 * s.polygonStarts[i]];
+              positions[2 * i + 1] = s.polygons[2 * s.polygonStarts[i] + 1];
+            }
+            return { length: n, attributes: { getPosition: { value: positions, size: 2 } } };
+          }),
+          getFillColor: OUTLINE,
+          getRadius: 1,
+          radiusUnits: 'pixels',
+        }),
+      );
       layers.push(
         new PathLayer({
           id: `${key}-rings`,
+          // Hidden, not left out: its buffers stay for when it shows again.
+          visible: outlines,
           coordinateSystem,
           data: this.data(`${key}-rings`, () => ({
             length: s.ringRows.length,
@@ -633,6 +731,71 @@ export class MapPane {
       }),
     ];
   }
+}
+
+/** The batch id in a layer id (`view-id-what`). */
+function layerBatch(layerId: string): number {
+  return Number(layerId.split('-')[1]);
+}
+
+function vertexCount(s: Space): number {
+  return (s.points.length + s.lines.length + s.polygons.length) / 2;
+}
+
+/** Batches' spaces as one: arrays one after another, offsets and
+ * triangle indices moved by the positions before them. */
+function mergeSpaces(spaces: Space[]): Space {
+  const floats = (pick: (s: Space) => Float64Array) => {
+    const out = new Float64Array(spaces.reduce((n, s) => n + pick(s).length, 0));
+    let at = 0;
+    for (const s of spaces) {
+      out.set(pick(s), at);
+      at += pick(s).length;
+    }
+    return out;
+  };
+  const ints = (pick: (s: Space) => Uint32Array) => {
+    const out = new Uint32Array(spaces.reduce((n, s) => n + pick(s).length, 0));
+    let at = 0;
+    for (const s of spaces) {
+      out.set(pick(s), at);
+      at += pick(s).length;
+    }
+    return out;
+  };
+  /** Offsets (one more than the items) or indices into `positions`,
+   * moved by each space's positions before it. */
+  const shifted = (pick: (s: Space) => Uint32Array, positions: (s: Space) => Float64Array, offsets: boolean) => {
+    const total = spaces.reduce((n, s) => n + pick(s).length - (offsets ? 1 : 0), offsets ? 1 : 0);
+    const out = new Uint32Array(total);
+    let at = 0;
+    let base = 0;
+    for (const s of spaces) {
+      const values = pick(s);
+      const n = offsets ? values.length - 1 : values.length;
+      for (let i = 0; i < n; i++) out[at + i] = values[i] + base;
+      at += n;
+      base += positions(s).length / 2;
+    }
+    if (offsets) out[at] = base;
+    return out;
+  };
+  const polygons = (s: Space) => s.polygons;
+  const lines = (s: Space) => s.lines;
+  return {
+    points: floats((s) => s.points),
+    pointRows: ints((s) => s.pointRows),
+    lines: floats(lines),
+    lineStarts: shifted((s) => s.lineStarts, lines, true),
+    lineRows: ints((s) => s.lineRows),
+    polygons: floats(polygons),
+    polygonStarts: shifted((s) => s.polygonStarts, polygons, true),
+    polygonRows: ints((s) => s.polygonRows),
+    triangles: shifted((s) => s.triangles, polygons, false),
+    ringStarts: shifted((s) => s.ringStarts, polygons, true),
+    ringRows: ints((s) => s.ringRows),
+    bounds: floats((s) => s.bounds),
+  };
 }
 
 /** The item of `starts` (Arrow-style offsets) that holds position `k`. */

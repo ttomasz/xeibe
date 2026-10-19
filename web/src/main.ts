@@ -349,6 +349,7 @@ function receive(message: FromWorker) {
       if (message.type === 'done') state.info = message.info;
       if (message.type === 'done') countLayer(message.report);
       stopButton.hidden = true;
+      map.finish();
       map.fit();
       const seconds = ((performance.now() - state.started) / 1000).toFixed(1);
       setStatus(
