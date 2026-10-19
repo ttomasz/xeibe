@@ -94,6 +94,11 @@ const VERTEX_DELAY_MS = 150;
  * draws every feature again, off screen, for each move), only on a click.
  * 2.7 million address points: hovering took 20 ms a frame with it. */
 const HOVER_LIMIT = 500_000;
+/** Features a click lists, at most. deck.gl finds the features under a
+ * click one at a time, each by drawing every feature again off screen: 9 ms
+ * a feature with 3 million polygons, 5.5 ms with 2.7 million points (twice
+ * that with the CPU slowed 4×). Zoomed out, hundreds may be under it. */
+const CLICK_LIMIT = 10;
 /** Polygon outlines show once a typical segment is this long on screen.
  * Below it a polygon is a few pixels across: one dot shows it, where its
  * outline would cost twice as much a frame, and its fill alone might cover
@@ -168,7 +173,9 @@ export class MapPane {
   constructor(
     mapContainer: HTMLElement,
     private readonly sourceContainer: HTMLDivElement,
-    private readonly onSelect: (row: number) => void,
+    /** A click: the rows of the features under it, the top one first, at
+     * most `CLICK_LIMIT`; `more` if there may be others. */
+    private readonly onClick: (rows: number[], more: boolean) => void,
     private readonly onPointer: (text: string) => void,
   ) {
     this.map = new MapLibre({
@@ -555,16 +562,42 @@ export class MapPane {
   }
 
   private click(info: PickingInfo) {
-    let row = this.rowOf(info);
+    // Picking as the pointer moves found nothing here: nothing to list.
+    if (!info.picked && !this.hoverOff) return this.onClick([], false);
+    const target = this.view === 'map' ? this.overlay : this.deck;
     // Without picking as the pointer moves, a click picks on its own.
-    if (row === null && this.hoverOff) {
-      const target = this.view === 'map' ? this.overlay : this.deck;
-      target.setProps({ _pickable: true });
-      const picked = target.pickObject({ x: info.x, y: info.y, radius: PICKING_RADIUS });
-      target.setProps({ _pickable: false });
-      if (picked) row = this.rowOf(picked);
+    if (this.hoverOff) target.setProps({ _pickable: true });
+    // One pass more than the limit tells whether there are more. A feature
+    // can come up more than once (its parts, its vertices), so some passes
+    // may find nothing new.
+    const depth = CLICK_LIMIT + 1;
+    // Not the vertices: they lie on their features, and zoomed out each
+    // of a feature's would take a pass.
+    const layerIds = [...this.picked]
+      .filter(([, p]) => p.kind !== 'view-vertex' && p.kind !== 'selected-vertex')
+      .map(([id]) => id);
+    const picked = target.pickMultipleObjects({ x: info.x, y: info.y, radius: PICKING_RADIUS, depth, layerIds });
+    if (this.hoverOff) target.setProps({ _pickable: false });
+    const rows: number[] = [];
+    const seen = new Set<string>();
+    let more = picked.length === depth;
+    for (const p of picked) {
+      // deck.gl hides only 10 found points per layer (layers without a
+      // picking buffer): the 11th pass finds one of them again.
+      const key = `${p.layer?.id} ${p.index}`;
+      if (seen.has(key)) {
+        more = true;
+        break;
+      }
+      seen.add(key);
+      const row = this.rowOf(p);
+      if (row !== null && !rows.includes(row)) rows.push(row);
     }
-    if (row !== null) this.onSelect(row);
+    if (rows.length > CLICK_LIMIT) {
+      rows.length = CLICK_LIMIT;
+      more = true;
+    }
+    this.onClick(rows, more);
   }
 
   private hover(info: PickingInfo, view: View) {

@@ -29,6 +29,11 @@ export class Table {
   private rowsTop = 0;
   /** The scroll position this table last set or saw. */
   private lastScrollTop = 0;
+  /** Only these rows show (the features under a click), or all of them. */
+  private subset: number[] | null = null;
+  /** Where the view was in all the rows, for when they show again. */
+  private allTop = 0;
+  private readonly bar: HTMLDivElement;
 
   constructor(
     private readonly container: HTMLElement,
@@ -36,6 +41,12 @@ export class Table {
     private readonly onSelect: (row: number) => void,
   ) {
     container.classList.add('vtable');
+    this.bar = document.createElement('div');
+    this.bar.className = 'vt-subset';
+    this.bar.hidden = true;
+    this.bar.addEventListener('click', (event) => {
+      if ((event.target as HTMLElement).closest('button')) this.showRows(null);
+    });
     this.head = document.createElement('div');
     this.head.className = 'vt-head';
     this.sizer = document.createElement('div');
@@ -43,10 +54,12 @@ export class Table {
     this.body = document.createElement('div');
     this.body.className = 'vt-body';
     this.sizer.append(this.body);
-    container.append(this.head, this.sizer);
+    container.append(this.bar, this.head, this.sizer);
     container.addEventListener(
       'scroll',
       () => {
+        // A subset shows whole: nothing to place.
+        if (this.subset) return;
         // A scroll by the user (the scrollbar, keys): where it is in the rows.
         if (Math.abs(container.scrollTop - this.lastScrollTop) > 1) {
           this.rowsTop = Math.min(this.mostTop(), container.scrollTop * this.ratio());
@@ -60,7 +73,7 @@ export class Table {
     container.addEventListener(
       'wheel',
       (event) => {
-        if (this.ratio() === 1 || event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+        if (this.subset || this.ratio() === 1 || event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
         event.preventDefault();
         const unit = event.deltaMode === 1 ? ROW_HEIGHT : event.deltaMode === 2 ? container.clientHeight : 1;
         this.scrollRows(this.rowsTop + event.deltaY * unit);
@@ -86,6 +99,8 @@ export class Table {
     this.blocks.clear();
     this.pending.clear();
     this.selected = null;
+    this.subset = null;
+    this.bar.hidden = true;
     this.layout(0);
     this.head.replaceChildren(
       cell('#', 'vt-num'),
@@ -105,8 +120,43 @@ export class Table {
     this.blocks.delete(Math.floor(this.rowCount / BLOCK));
     this.rowCount = count;
     // The scrollbar may stand for more rows now: keep the view where it is.
-    if (this.ratio() > 1) this.scrollRows(this.rowsTop);
+    if (this.ratio() > 1 && !this.subset) this.scrollRows(this.rowsTop);
     this.render();
+  }
+
+  /** Show only `rows`, in this order (`more`: there may be others), or all
+   * of them again (`null`), back where the view was, with the selected row
+   * in it. */
+  showRows(rows: number[] | null, more = false) {
+    if (rows && !this.subset) this.allTop = this.rowsTop;
+    const back = !rows && this.subset;
+    this.subset = rows;
+    this.bar.hidden = !rows;
+    if (rows) {
+      const n = rows.length.toLocaleString('en');
+      const text = more
+        ? `The first ${n} features under the click; there may be more: zoom in to see them all.`
+        : `${n} features under the click.`;
+      const button = document.createElement('button');
+      button.className = 'button';
+      button.textContent = 'Show all rows';
+      button.title = 'Esc';
+      const span = document.createElement('span');
+      span.textContent = text;
+      this.bar.replaceChildren(span, button);
+      this.container.scrollTop = 0;
+    }
+    this.render();
+    if (back) {
+      this.scrollRows(this.allTop);
+      if (this.selected !== null) this.scrollIntoView(this.selected);
+      this.render();
+    }
+  }
+
+  /** Whether only some rows show. */
+  isSubset(): boolean {
+    return this.subset !== null;
   }
 
   /** Column widths: the row number's for `rows` rows. */
@@ -147,7 +197,7 @@ export class Table {
   select(row: number | null, scroll: boolean) {
     this.selected = row;
     this.scrollTo = null;
-    if (row !== null && scroll) {
+    if (row !== null && scroll && !this.subset) {
       if (this.container.clientHeight > 0) this.scrollIntoView(row);
       else this.scrollTo = row;
     }
@@ -162,6 +212,13 @@ export class Table {
   }
 
   private render() {
+    if (this.subset) {
+      this.sizer.style.height = `${this.subset.length * ROW_HEIGHT}px`;
+      this.sizer.style.width = this.head.scrollWidth ? `${this.head.scrollWidth}px` : '';
+      this.body.style.transform = '';
+      this.body.replaceChildren(...this.subset.map((row) => this.row(row)));
+      return;
+    }
     this.sizer.style.height = `${Math.min(this.rowCount * ROW_HEIGHT, MAX_HEIGHT)}px`;
     this.sizer.style.width = this.head.scrollWidth ? `${this.head.scrollWidth}px` : '';
     if (this.ratio() === 1) this.rowsTop = this.container.scrollTop;
@@ -176,19 +233,22 @@ export class Table {
     this.body.style.transform = `translateY(${at}px)`;
     this.forget(Math.floor(first / BLOCK));
     const rows: HTMLElement[] = [];
-    for (let row = first; row < last; row++) {
-      const block = this.blocks.get(Math.floor(row / BLOCK));
-      if (!block) this.request(Math.floor(row / BLOCK));
-      const cells = block?.[row % BLOCK];
-      const element = document.createElement('div');
-      element.className = row === this.selected ? 'vt-row selected' : 'vt-row';
-      element.dataset.row = String(row);
-      element.style.gridTemplateColumns = this.template;
-      element.append(cell(String(row + 1), 'vt-num'));
-      this.columns.forEach((c, i) => element.append(cell(cells ? cells[i] : '…', c.geometry ? 'vt-geom' : '')));
-      rows.push(element);
-    }
+    for (let row = first; row < last; row++) rows.push(this.row(row));
     this.body.replaceChildren(...rows);
+  }
+
+  /** A row's element: its text once its block has come. */
+  private row(row: number): HTMLElement {
+    const block = this.blocks.get(Math.floor(row / BLOCK));
+    if (!block) this.request(Math.floor(row / BLOCK));
+    const cells = block?.[row % BLOCK];
+    const element = document.createElement('div');
+    element.className = row === this.selected ? 'vt-row selected' : 'vt-row';
+    element.dataset.row = String(row);
+    element.style.gridTemplateColumns = this.template;
+    element.append(cell(String(row + 1), 'vt-num'));
+    this.columns.forEach((c, i) => element.append(cell(cells ? cells[i] : '…', c.geometry ? 'vt-geom' : '')));
+    return element;
   }
 
   /** Keep the text of the blocks near the view only. */

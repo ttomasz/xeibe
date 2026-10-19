@@ -48,7 +48,8 @@ the map stacks above the tabs.
 | Options | Form for the read options (preset, overrides, axis order, CRS, linearization, …) and the equivalent `xeibe` command, Python snippet and settings file, ready to copy | `ReadOptions`, `ScanResult::to_settings` |
 
 Selecting a row zooms the map to its feature; clicking a feature on the map
-selects its row.
+selects its row. Clicking where features overlap lists them in the Data tab
+(see [Map](#map)).
 
 Opening files shows a dialog first, before anything is scanned:
 
@@ -133,6 +134,31 @@ grids for that view. Data outside it explains itself.
 Selecting a row in the table zooms the current view to the feature and draws
 it highlighted, with its vertices; clicking a feature selects its row. A
 feature counts as hit within 6 pixels of the pointer.
+
+**Overlapping features.** A click finds every feature under it, up to 10.
+With more than one, the Data tab shows only theirs, the top one first and
+selected, under a bar that says how many there are: "the first 10 … there may
+be more" at the limit. Selecting one of them doesn't move the map, since they
+are all under the click. "Show all rows", Esc, or a click on one feature or on
+nothing shows all the rows again, at the selected one.
+
+deck.gl finds them one at a time (`pickMultipleObjects`), each by drawing
+every feature again off screen and then hiding the one found, so the limit
+keeps a click short where hundreds are under it zoomed out. Measured
+2026-10-20 as above: a pass takes 9 ms with 3 million polygons and 5.5 ms
+with 2.7 million address points (20 and 10 ms with the CPU slowed 4×); a
+click on one feature takes two passes, and one on 10 or more takes 11. From
+input to the next paint, with 3 million polygons, a click on one feature went
+from 88–96 ms to 104 ms (208 to 240 ms with the CPU slowed 4×), and one
+zoomed out, listing 10, from 40 to 120 ms (104 to 280 ms). Vertices aren't
+picked: they lie on their features, and zoomed out each of the selected
+feature's took a pass. deck.gl hides only 10 found points per layer (layers
+without a picking buffer), and an 11th pass finds one of them again: the
+click stops there.
+Two alternatives didn't pay: picking only in the layers whose box meets the
+click (a group's 65,536 consecutive rows spread over most of the map), and
+testing every row's box in JavaScript (4–15 ms for 3 million rows, 17–65 ms
+slowed 4×, before an exact test of each candidate).
 
 **Layers.** deck.gl draws, and picks under the pointer on every mouse
 move, layer by layer, and each layer costs a frame whatever its size. The

@@ -90,7 +90,7 @@ function plural(n: number, word: string): string {
 const map = new MapPane(
   $('map'),
   $<HTMLDivElement>('source'),
-  (row) => select(row, 'map'),
+  (rows, more) => clicked(rows, more),
   (text) => (pointer.textContent = text),
 );
 
@@ -107,14 +107,31 @@ const table = new Table(
   (row) => select(row, 'table'),
 );
 
+/** A click on the map: several features under it show in the table on
+ * their own, the top one selected; one is selected; none shows all the rows
+ * again. */
+function clicked(rows: number[], more: boolean) {
+  if (rows.length === 0) return table.showRows(null);
+  const several = rows.length > 1 || more;
+  table.showRows(several ? rows : null, more);
+  // The table lists them: it shows, even over the XML tab.
+  if (several) showTab('data');
+  select(rows[0], 'map');
+}
+
 function select(row: number, from: 'map' | 'table') {
   state.selected = row;
   // The table shows first: a hidden one can't scroll to the row.
   if (from === 'map' && state.tab !== 'xml') showTab('data');
   table.select(row, from === 'map');
-  map.select(row, from === 'table');
+  // The features under a click are all in view already.
+  map.select(row, from === 'table' && !table.isSubset());
   if (state.tab === 'xml') loadXml();
 }
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && table.isSubset()) table.showRows(null);
+});
 
 const xmlTab = $('xml');
 
