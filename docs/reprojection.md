@@ -3,9 +3,8 @@
 > **Status: adopted 2026-10-17. Levels 1 and 2 are implemented** in
 > `crates/xeibe-reproject`, **and level 3** (2026-10-18): horizontal,
 > geocentric and vertical grids, with vertical, compound and engineering
-> CRSs. Reads don't
-> reproject yet, so [geometry.md](geometry.md#crs-metadata)'s "no
-> reprojection" still describes what a read does. The numbers below come from
+> CRSs. **Reads convert** with a target CRS (2026-10-20,
+> [geometry.md](geometry.md#reprojection), decision 7). The numbers below come from
 > EPSG 13.103/13.106, PROJ 9.8.1 and pyproj 3.8.0.
 
 A native, pure-Rust reprojection engine that works from the CRS data in
@@ -178,8 +177,8 @@ chooses the transformation per coordinate as PROJ does, among EPSG's operations;
 - Not in level 2: grid-based operations and vertical and compound CRSs (both
   level 3), and operations needing a coordinate epoch beyond their reference
   one.
-- Reads don't reproject yet, so the operation used is not yet written into
-  output metadata.
+- The operation a coordinate took is not written into output metadata; a
+  read's report lists the candidates per srsName.
 
 ### Why selection is the hard part
 
@@ -478,7 +477,9 @@ compound CRSs with their grids (geoid models, vertical offsets).
   way. Only grids of candidates whose area or box meets the bounds are asked
   for. `load_grids` runs the rounds with a fetch function, and
   `load_grids_from_dir` reads a local PROJ-data directory. Grid files are
-  shared by name across the process, so each is loaded once.
+  shared by name across the process and stay loaded after their transforms
+  are gone, so each range is loaded once per process; `clear_grids()` lets
+  them go.
 - **A missing grid is always an error** (`CoordinateError::GridNotLoaded`),
   never a reason to fall back to a less accurate operation. A point outside a
   grid is different: PROJ tries the next operation, and so does xeibe.
@@ -784,18 +785,44 @@ without it the operations and pinned pairs whose grids are committed.
    cost is a small kink in a line or polygon edge that crosses an area-of-use
    boundary, where two operations meet.
 6. **Grids load through a store that does no I/O itself** (implemented
-   2026-10-18, see level 3). The transform lists the grid tiles it needs for
-   the data's bbox before it runs, the caller loads them into the store, and
-   the transform then runs synchronously from memory.
-   - On native, `xeibe-io` loads them with a range `GET` on the existing
-     `HttpClient` plus a disk cache, or from the user's offline directory.
-   - On WebAssembly, `xeibe-wasm` loads them with `fetch`, in memory only at
-     first, with browser storage maybe later. `xeibe-io` stays synchronous and
+   2026-10-18, see level 3; the rest 2026-10-20). The transform lists the
+   grid tiles it needs for a box before it runs, the caller loads them into
+   the store, and the transform then runs synchronously from memory.
+   - **The store keeps them for the process.** Loaded ranges stay after the
+     transforms that used them are gone, so the CLI, Python, DataFusion and
+     the browser fetch each range once per process, and no caller keeps a
+     byte cache of its own. `clear_grids()` lets a long-running process
+     have the memory back.
+   - **No cache on disk.** As [architecture.md](architecture.md#sources-and-remote-input)
+     keeps no files of our own, every run fetches the grids it needs again,
+     unless the user points at a local PROJ-data copy (`--grid-dir`,
+     `grid_dir=`, `GridLoader::from_dir`).
+   - On native, `xeibe-io` fetches them: `HttpClient::get_range`, a `Range`
+     request with the client's retries, cut to the range when a server
+     sends the whole file.
+   - On WebAssembly, the web page's worker (`web/src/worker.ts`) fetches
+     them with `fetch` and a `Range` header, in rounds; browser storage maybe
+     later. `xeibe-io` stays synchronous and
      gets no wasm HTTP client: the browser's `fetch` is async, and `xeibe-io`
      (blocking `reqwest`, `ByteSource::open` returning `Read + Send`) is not.
      `cdn.proj.org` allows these requests: checked 2026-10-17, it answers a
      CORS preflight with `access-control-allow-origin: *`, allows the `range`
      header and exposes `content-range`.
+7. **Reprojection in reads** (adopted and implemented 2026-10-20; details
+   in [geometry.md](geometry.md#reprojection)).
+   - The option is `target_crs` (`--target-crs`), the same name in the CLI,
+     Python, DataFusion and the settings file: `--crs` already relabels the
+     source.
+   - Geometries convert right after they are parsed; a column with mixed
+     source CRSs converts them all instead of failing.
+   - Grids load before the read, over the source CRS's area of use: the
+     data's own extent isn't known before a streamed read, and the
+     extents GML declares are as written, before the axis order is decided.
+     The CLI and Python fetch from `cdn.proj.org` unless given a directory.
+   - A grid that can't be loaded fails the read; a geometry that can't be
+     converted (no CRS, no transformation, arcs, a point outside every
+     operation) is a feature error. `no_grids` (`--no-grids`) is the
+     explicit way to do without grids; there is no silent fallback.
 
 ## Open questions
 

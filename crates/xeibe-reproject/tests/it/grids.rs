@@ -65,6 +65,20 @@ fn loaded_grids_convert_and_ask_for_nothing_more() {
     assert!((y - lat).abs() < 0.01 && (x - lon).abs() < 0.01 && (x - lon).abs() > 1e-4);
 }
 
+/// Grid data stays in the process after the transform that loaded it is
+/// gone: a new transform asks for nothing more.
+#[test]
+fn loaded_grids_outlive_their_transform() {
+    let (lat, lon) = ST_GEORGE;
+    let bounds = [lat - 0.01, lon - 0.01, lat + 0.01, lon + 0.01];
+    st_george()
+        .load_grids_from_dir(grids_dir(), Some(bounds))
+        .unwrap();
+    let t = st_george();
+    assert!(t.grid_requests(Some(bounds)).is_empty());
+    assert!(t.convert(lat, lon, None).is_ok());
+}
+
 #[test]
 fn without_grids_only_parametric_operations_are_candidates() {
     let (a, b) = (Crs::from_epsg(4267).unwrap(), Crs::from_epsg(4269).unwrap());

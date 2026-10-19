@@ -18,11 +18,14 @@
 //! * grid-based ones among them, with PROJ-data's grids, which the caller
 //!   loads: [`Transform::grid_requests`] lists what to fetch from
 //!   [`CDN`] or a local copy, and a coordinate whose grid isn't loaded is an
-//!   error ([`CoordinateError::GridNotLoaded`]).
+//!   error ([`CoordinateError::GridNotLoaded`]);
+//! * vertical and compound CRSs ([`Crs::compound`]): geoid models, vertical
+//!   offsets and offset grids;
+//! * engineering CRSs, on their own datum and through EPSG's operations.
 //!
-//! Vertical and compound CRSs are not supported yet. When no EPSG
-//! transformation applies, setting up the transform fails; a ballpark
-//! approximation is never used.
+//! When no EPSG transformation applies, setting up the transform fails; a
+//! ballpark approximation is never used. Operations that need a coordinate
+//! epoch (point motion, deformation models) are not supported.
 //!
 //! ```
 //! use xeibe_reproject::{AxisOrder, Transform};
@@ -54,5 +57,5 @@ mod transform;
 pub use bounds::DEFAULT_DENSIFY;
 pub use crs::Crs;
 pub use error::{CoordinateError, Error};
-pub use grid::{CDN, GridRequest, Grids};
+pub use grid::{CDN, GridRequest, Grids, clear_grids};
 pub use transform::{AxisOrder, Transform};

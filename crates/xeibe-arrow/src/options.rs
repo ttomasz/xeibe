@@ -4,6 +4,8 @@ use xeibe_core::SplitterOptions;
 use xeibe_geom::{AxisOrderMode, GeometryOptions};
 use xeibe_schema::{InferenceOptions, SampleOptions};
 
+use crate::GridLoader;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum OnFeatureError {
     #[default]
@@ -61,6 +63,13 @@ pub struct ReadOptions {
     /// which wins; these apply to a schema without one.
     #[serde(skip)]
     pub namespaces: IndexMap<String, String>,
+    /// Fetches the grids a conversion to `geometry.target_crs` needs
+    /// ([`GridLoader::from_dir`], or a fetch from `cdn.proj.org`). Without
+    /// one, a read whose conversion needs grids fails before it starts,
+    /// unless they are already loaded in the process. Set from code (or
+    /// `grid_dir`); not part of the settings file.
+    #[serde(skip)]
+    pub grid_loader: Option<GridLoader>,
 }
 
 impl Default for ReadOptions {
@@ -81,6 +90,7 @@ impl Default for ReadOptions {
             location_column: None,
             projection: None,
             namespaces: IndexMap::new(),
+            grid_loader: None,
         }
     }
 }
@@ -89,9 +99,11 @@ impl ReadOptions {
     /// Set one option from a `key=value` pair, the form in which SQL table
     /// functions and data-source options pass them: `preset` (`default`,
     /// `strings`), `axis_order` (`xy`, `yx`, `crs`, `crs_heuristic`,
-    /// `gml_version`, `auto`), `crs`, `sample_features`, `batch_size`,
-    /// `threads` and `preserve_order` (`true`, `false`). `preset` replaces
-    /// all inference options.
+    /// `gml_version`, `auto`), `crs`, `target_crs`, `no_grids` (`true`,
+    /// `false`), `grid_dir` (a directory of PROJ-data's grids, the
+    /// [`GridLoader::from_dir`]), `sample_features`, `batch_size`, `threads`
+    /// and `preserve_order` (`true`, `false`). `preset` replaces all
+    /// inference options.
     pub fn set(&mut self, key: &str, value: &str) -> crate::Result<()> {
         let invalid = || crate::Error::Option {
             key: key.to_string(),
@@ -120,6 +132,9 @@ impl ReadOptions {
                 }
             }
             "crs" => self.geometry.crs_override = Some(value.to_string()),
+            "target_crs" => self.geometry.target_crs = Some(value.to_string()),
+            "no_grids" => self.geometry.no_grids = value.parse().map_err(|_| invalid())?,
+            "grid_dir" => self.grid_loader = Some(GridLoader::from_dir(value)),
             "sample_features" => {
                 self.sample.features_per_layer = value.parse().map_err(|_| invalid())?
             }

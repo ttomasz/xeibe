@@ -270,3 +270,40 @@ fn a_remote_zip_is_rejected_by_its_url_or_its_content() {
     );
     assert!(error.to_string().contains("download it first"), "{error}");
 }
+
+#[test]
+fn a_range_is_asked_for_and_cut_when_the_server_sends_everything() {
+    let file = body(4096);
+    let server = Server::start(vec![
+        Reply::Full {
+            status: 206,
+            headers: vec![("Content-Range", "bytes 100-199/4096".into())],
+            body: file[100..200].to_vec(),
+        },
+        // A server that ignores `Range`.
+        Reply::ok(file.clone()),
+        Reply::ok(file.clone()),
+    ]);
+    let client = client(0);
+    let url = server.url("/grid.tif");
+    assert_eq!(
+        client.get_range(&url, 100, Some(100)).unwrap(),
+        file[100..200]
+    );
+    assert_eq!(
+        client.get_range(&url, 100, Some(100)).unwrap(),
+        file[100..200]
+    );
+    assert_eq!(client.get_range(&url, 4000, None).unwrap(), file[4000..]);
+    let requests = server.requests();
+    assert!(
+        requests[0].contains("range: bytes=100-199"),
+        "{}",
+        requests[0]
+    );
+    assert!(
+        requests[2].contains("range: bytes=4000-"),
+        "{}",
+        requests[2]
+    );
+}

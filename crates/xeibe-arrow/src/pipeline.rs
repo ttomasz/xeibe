@@ -53,6 +53,8 @@ pub struct ReadPlan {
     pub axis: Vec<AxisDecisions>,
     pub has_geometry: bool,
     pub geometry: GeometryOptions,
+    /// With `geometry.target_crs`: the transforms, per srsName.
+    pub(crate) conversions: Option<std::sync::Arc<crate::reproject::Conversions>>,
     pub on_feature_error: OnFeatureError,
     pub strip_local_href_hash: bool,
     pub empty_as_null: bool,

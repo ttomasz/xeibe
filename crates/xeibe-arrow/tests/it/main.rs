@@ -6,6 +6,7 @@ mod geometry;
 mod lists;
 mod mismatch;
 mod properties;
+mod reproject;
 mod samples;
 mod settings;
 mod support;

@@ -22,6 +22,9 @@ Those places are marked **[GDAL]**.
 flowchart LR
     xml(["GML geometry XML"]) --> parser["<b>xeibe-geom</b> parser"]
     parser --> model["Geometry (xeibe_geom::model)<br/>(implements geo-traits)"]
+    model -->|"with target_crs"| convert["<b>xeibe-reproject</b><br/>to the target CRS"]
+    convert --> native
+    convert --> wkb
     model --> native["geoarrow native builders<br/>(point, linestring, …)"]
     model --> wkb["ISO WKB writer<br/>(geoarrow.wkb)"]
     model --> other["geo / other consumers"]
@@ -42,6 +45,8 @@ file under `options.geometry`, not in the schema:
 pub struct GeometryOptions {
     pub axis: AxisOrderOptions,       // mode + { srsName → mode } overrides, see CRS and axis order
     pub crs_override: Option<String>, // replaces the CRS from the data
+    pub target_crs: Option<String>,   // converts the geometries to this CRS, see Reprojection
+    pub no_grids: bool,               // with target_crs: no operation that needs a grid
     pub curves: CurveMode,            // Preserve (default) | Linearize { max_angle_step_deg, max_gap }
     pub primary: Option<String>,      // column name → GeoParquet primary_column
 }
@@ -54,7 +59,7 @@ encoding ends up as the column's type. Everything else is fixed behaviour:
 |---|---|
 | Dimensions | From the column's type (`geometry(Point)` = XY, `geometry(Point, XYZ)`). A Z value in an XY column is a feature error. WKB columns keep what is written |
 | Coordinates of native columns | Always separated (struct), as GeoParquet's native encoding requires |
-| One column's srsNames resolve to more than one CRS | Feature error ([CRS metadata](#crs-metadata)) |
+| One column's srsNames resolve to more than one CRS | Feature error ([CRS metadata](#crs-metadata)); with `target_crs` they all convert ([Reprojection](#reprojection)) |
 | Unsupported geometry (solids, splines, …) | Geometry error, handled by `OnFeatureError` ([Unsupported geometry](#unsupported-geometry)) |
 | Unclosed ring | Closed, with a warning |
 | Too few positions (LineString < 2, LinearRing < 4) | Feature error |
@@ -605,9 +610,8 @@ fallback when no PROJJSON is available (a code EPSG doesn't have).
   `urn:ogc:def:crs:EPSG:9.2:4647`) are not mixed: srsNames are the same CRS when
   the parser resolves them to the same one. Unknown srsNames are compared as
   strings, trimmed and ignoring case (`LOCAL:Grid` and ` local:grid ` are one).
-  A read doesn't reproject. Conversion between CRSs is being built in
-  `xeibe-reproject` ([reprojection.md](reprojection.md)) and is not wired
-  into reads yet.
+  A read converts coordinates only when asked to, with `target_crs`
+  ([Reprojection](#reprojection)); the column then has the target's CRS.
 
 ### Open questions: srsName → CRS
 
@@ -675,6 +679,58 @@ fallback when no PROJJSON is available (a code EPSG doesn't have).
    that names no CRS, which is written as an opaque string. Aliases need no
    exception: only aliases that name exactly one EPSG CRS are kept, and the
    PROJJSON is EPSG's own for that code.
+
+## Reprojection
+
+**Implemented 2026-10-20.** With `target_crs` (`--target-crs`, `target_crs=`
+in SQL and SedonaDB, `options.geometry.target_crs` in a settings file and in
+Python's options), a read converts every geometry to that CRS with
+`xeibe-reproject` ([reprojection.md](reprojection.md), decision 7). The CRS
+takes any srsName form, `EPSG:25832+7837` included.
+
+- **Where.** Right after a geometry is parsed, once its axis order is decided
+  and, with `--linearize`, its arcs are lines; the builders then get target
+  coordinates, easting or longitude first as always. The column's CRS
+  metadata (GeoArrow, GeoParquet, the Parquet `GEOMETRY` type,
+  `gml:srs_name`) is the target's, also for a given schema.
+- **From which CRS.** The geometry's srsName, its own or inherited, or
+  `crs_override` when set. One transform per srsName as written. A column
+  whose features are in several CRSs converts them all, so the "another CRS
+  than the column's" feature error doesn't apply.
+- **Heights.** With a compound or geographic 3D CRS on both sides, heights
+  convert too (geoid models, vertical offsets). A 2D target keeps the third
+  value as it is, and so does a 2D position in a 3D column (a NaN Z).
+- **Boxes.** A `boundedBy` box column converts by its densified edges
+  (`Transform::convert_bounds`); a third ordinate is kept.
+- **Grids.** When an srsName's transform is set up, the grids of the
+  operations it may choose are loaded over the source CRS's EPSG area of use:
+  before the read for the srsNames of the read's sample and of a given schema,
+  on first use for srsNames that turn up later. A read streams once, so the
+  data's own extent isn't known before it; the area of use covers every valid
+  coordinate, at the cost of more of a grid than the data needs. They come
+  from the read's `GridLoader`:
+
+  | Caller | Grids from |
+  |---|---|
+  | CLI, Python | ranges fetched from `cdn.proj.org`, nothing saved to disk; or `--grid-dir` / `grid_dir=` (a directory of PROJ-data's files) |
+  | DataFusion | `grid_dir=` only |
+  | Library | the `ReadOptions::grid_loader` the caller sets (`GridLoader::from_dir`, or a fetch function); none by default |
+
+  A grid that can't be loaded fails the read, before it starts where the
+  sample saw the srsName: never a fallback to a less accurate operation.
+  `no_grids` (`--no-grids`) keeps to the operations without grids, and
+  nothing is fetched. Loaded grids stay in the process for later reads.
+- **Feature errors** (`OnFeatureError`): a geometry without srsName and no
+  `crs_override`; an srsName that names no known CRS, or that no
+  transformation reaches the target from; a geometry with arcs (linearize
+  it first: an arc doesn't stay an arc through a projection); a coordinate
+  that can't be converted (outside the projection's domain, or outside every
+  operation's grid).
+- **Report.** `ReadReport::reprojections` lists, per srsName, the operations
+  the transform chooses among and their grids, or why it can't convert; the
+  CLI prints one line per srsName.
+- Not done: the operation each coordinate took isn't written into the output,
+  and the web page offers no target CRS (its map converts for display only).
 
 ## Envelopes
 

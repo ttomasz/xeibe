@@ -14,9 +14,6 @@ let reader: Reader | null = null;
 let readerId = 0;
 /** The read that should go on; 0 stops the one running. */
 let wanted = 0;
-/** Grid bytes fetched so far, by `file@offset`: a new read of the same
- * layer converts again without fetching again. */
-const gridCache = new Map<string, Uint8Array>();
 
 function post(message: FromWorker, transfer: Transferable[] = []) {
   (self as unknown as Worker).postMessage(message, transfer);
@@ -199,10 +196,9 @@ async function loadGrids(current: Reader, id: number) {
   current.withoutGrids('grid requests kept coming');
 }
 
+/** One range of a grid file. What the wasm module was given stays loaded
+ * for the page's life, so a new read asks only for what it hasn't got. */
 async function fetchRange(request: GridRequest): Promise<Uint8Array> {
-  const key = `${request.file}@${request.offset}`;
-  const cached = gridCache.get(key);
-  if (cached) return cached;
   const end = request.length === null ? '' : String(request.offset + request.length - 1);
   let response: Response;
   try {
@@ -216,6 +212,5 @@ async function fetchRange(request: GridRequest): Promise<Uint8Array> {
   if (response.status === 200 && request.offset > 0) {
     bytes = bytes.slice(request.offset, request.length === null ? undefined : request.offset + request.length);
   }
-  gridCache.set(key, bytes);
   return bytes;
 }

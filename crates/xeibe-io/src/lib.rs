@@ -10,7 +10,9 @@
 //!
 //! </div>
 //!
-//! Nothing here downloads to disk, caches or probes for range support.
+//! Nothing here downloads to disk, caches or probes for range support. The
+//! one range request is [`http::HttpClient::get_range`], for reprojection
+//! grids, which are not inputs.
 
 pub mod error;
 #[cfg(feature = "http")]

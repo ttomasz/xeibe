@@ -7,7 +7,7 @@ use std::path::Path;
 
 use arrow_schema::DataType;
 use clap::ValueEnum;
-use xeibe_arrow::{ReadOptions, ReadReport, Settings};
+use xeibe_arrow::{GridLoader, ReadOptions, ReadReport, Settings};
 use xeibe_core::Source;
 use xeibe_geom::AxisOrderMode;
 use xeibe_geom::options::{CurveMode, LinearizeOptions};
@@ -71,6 +71,12 @@ fn apply(read: &ReadArgs, options: &mut ReadOptions) -> Result {
     if let Some(crs) = &read.crs {
         geometry.crs_override = Some(crs.clone());
     }
+    if let Some(target) = &read.target_crs {
+        geometry.target_crs = Some(target.clone());
+    }
+    if read.no_grids {
+        geometry.no_grids = true;
+    }
     if let Some(step) = read.linearize {
         if step.is_nan() || step <= 0.0 {
             return Err(format!(
@@ -89,7 +95,26 @@ fn apply(read: &ReadArgs, options: &mut ReadOptions) -> Result {
     if let Some(threads) = read.threads {
         options.threads = threads.max(1);
     }
+    if options.geometry.target_crs.is_some() {
+        options.grid_loader = Some(match &read.grid_dir {
+            Some(dir) => GridLoader::from_dir(dir),
+            None => cdn_grids()?,
+        });
+    }
     Ok(())
+}
+
+/// Grids fetched from `cdn.proj.org`, the ranges a conversion asks for
+/// (`docs/reprojection.md`, decision 6).
+fn cdn_grids() -> Result<GridLoader> {
+    let client = xeibe_io::http::HttpClient::new(&xeibe_io::HttpOptions::default())?;
+    Ok(GridLoader::new(move |request| {
+        let url = url::Url::parse(&request.url()).map_err(|e| e.to_string())?;
+        client
+            .get_range(&url, request.offset, request.length)
+            .map(|data| data.to_vec())
+            .map_err(|e| e.to_string())
+    }))
 }
 
 fn axis_mode(mode: AxisMode) -> AxisOrderMode {
@@ -190,5 +215,19 @@ pub(crate) fn print_report(report: &ReadReport) {
     }
     for (location, reason) in &report.skipped {
         eprintln!("skipped: {location}: {reason}");
+    }
+    for reprojection in &report.reprojections {
+        let srs = reprojection.srs_name.as_deref().unwrap_or("(no srsName)");
+        match &reprojection.error {
+            Some(error) => eprintln!("not converted: {srs}: {error}"),
+            None if reprojection.grids.is_empty() => {
+                eprintln!("converted: {srs} to {}", reprojection.target)
+            }
+            None => eprintln!(
+                "converted: {srs} to {} (grids: {})",
+                reprojection.target,
+                reprojection.grids.join(", ")
+            ),
+        }
     }
 }

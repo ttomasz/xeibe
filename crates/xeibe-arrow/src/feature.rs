@@ -475,7 +475,16 @@ impl<'a> FeatureReader<'a> {
                         return Ok(None);
                     }
                 }
-                Ok(parsed.geometry)
+                let mut geometry = parsed.geometry;
+                if let (Some(conversions), Some(geometry)) =
+                    (&self.plan.conversions, geometry.as_mut())
+                    && let Err(message) =
+                        conversions.convert(geometry, parsed.srs_name.as_deref())?
+                {
+                    state.geometry_error.get_or_insert(message);
+                    return Ok(None);
+                }
+                Ok(geometry)
             }
             Err(xeibe_geom::Error::Core(error)) => Err(error.into()),
             Err(error) => {
@@ -518,13 +527,14 @@ impl<'a> FeatureReader<'a> {
     /// is a geometry error (`docs/geometry.md`, "CRS metadata"). Spellings of
     /// one CRS are the same; unknown srsNames are compared trimmed and
     /// ignoring case. With
-    /// `crs_override`, the CRS doesn't come from the data.
+    /// `crs_override`, the CRS doesn't come from the data; with
+    /// `target_crs`, every geometry is converted to the column's CRS.
     fn other_crs(
         &self,
         column: &crate::route::ColumnPlan,
         srs_name: Option<&str>,
     ) -> Option<String> {
-        if self.plan.geometry.crs_override.is_some() {
+        if self.plan.geometry.crs_override.is_some() || self.plan.conversions.is_some() {
             return None;
         }
         let (Some(column_srs), Some(srs_name)) = (column.srs_name.as_deref(), srs_name) else {
@@ -569,6 +579,12 @@ impl<'a> FeatureReader<'a> {
                             corner.swap(0, 1);
                         }
                     }
+                }
+                if let Some(conversions) = &self.plan.conversions
+                    && let Err(message) = conversions.convert_envelope(&mut envelope)?
+                {
+                    state.geometry_error.get_or_insert(message);
+                    return Ok(());
                 }
                 self.put(target.column, Value::Box(envelope), state);
                 Ok(())

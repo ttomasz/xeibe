@@ -22,9 +22,11 @@ A table is one layer. Options (`options=` of `sd.read()`, or `with_options()`):
   (`{"lokalnyId": "text", "geom": {"type": "geometry", "path": "pozycja"}}`).
 - `settings`: a settings file (path, dict or JSON text): its read options,
   and the layer's schema if it has one.
-- `preset`, `axis_order`, `crs`, `sample_features`, `batch_size`, `threads`,
-  `preserve_order`: read options, as `key=value` pairs
-  (`{"preset": "strings"}`).
+- `preset`, `axis_order`, `crs`, `target_crs`, `no_grids`,
+  `sample_features`, `batch_size`, `threads`, `preserve_order`: read
+  options, as `key=value` pairs (`{"preset": "strings"}`).
+- `grid_dir`: with `target_crs`, a directory of PROJ-data's grids to read
+  them from instead of fetching them from `cdn.proj.org`.
 
 Without a schema, each file's schema is sampled when the table is created,
 and SedonaDB merges them; files whose types differ make that merge fail.
@@ -84,6 +86,7 @@ class GmlFormat(ExternalFormatSpec):
         self._schema: Any = None
         self._settings: Any = None
         self._pairs: dict[str, str] = {}
+        self._grid_dir: str | None = None
         self._options: dict = read_options()
 
     @property
@@ -104,6 +107,8 @@ class GmlFormat(ExternalFormatSpec):
                 clone._schema = value
             elif key == "settings":
                 clone._settings = value
+            elif key == "grid_dir":
+                clone._grid_dir = None if value is None else str(value)
             else:
                 clone._pairs[key] = str(value)
         # Checks the options now, not when the first file is read.
@@ -118,7 +123,7 @@ class GmlFormat(ExternalFormatSpec):
             layer = self._layer or self._only_layer([url])
             schema = self._given_schema(layer)
             if schema is None:
-                sample = xeibe.read([url], layer, options=self._options)
+                sample = xeibe.read([url], layer, options=self._options, grid_dir=self._grid_dir)
                 schema = _portable(to_wkb(sample.schema))
         except (xeibe.UnknownLayerError, xeibe.NoFeaturesError):
             # Not GML, or not this layer: the other files decide the schema.
@@ -165,7 +170,7 @@ class GmlFormat(ExternalFormatSpec):
             return RecordBatchReader.from_batches(projected, [])
         # The given schema is the projection: other columns aren't built. A
         # file that isn't GML reads as no rows, with a SkippedSourceWarning.
-        return read_or_empty([url], layer, projected, options)
+        return read_or_empty([url], layer, projected, options, grid_dir=self._grid_dir)
 
     def _given_schema(self, layer: str) -> Schema | None:
         """The layer's schema from `schema` or `settings`, as WKB."""

@@ -148,6 +148,30 @@ pub fn read(
             .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(&a.0)))
             .map(|(name, _)| name)
     });
+    let conversions =
+        crate::reproject::Conversions::new(&options.geometry, options.grid_loader.clone())?
+            .map(Arc::new);
+    if let Some(conversions) = &conversions {
+        // Before the read, so that a grid that can't be loaded fails it
+        // now: the srsNames of the sample, and those of a given schema.
+        let mut seen = BTreeMap::new();
+        if let Some(layer) = sample
+            .as_ref()
+            .and_then(|sample| sample.observation.layers.get(&qname))
+        {
+            collect_srs(&layer.root, true, &mut seen);
+        }
+        if schema.is_some() {
+            for field in base.fields().iter().filter(|f| is_geometry(f)) {
+                if let Some(srs) = field.metadata().get(meta::SRS_NAME) {
+                    seen.entry(srs.clone()).or_default();
+                }
+            }
+        }
+        for srs in seen.keys() {
+            conversions.prepare(Some(srs))?;
+        }
+    }
     for field in base.fields() {
         if wanted(field.name()) {
             columns.push(Some(fields.len()));
@@ -157,6 +181,11 @@ pub fn read(
                     with_crs(field, srs)?
                 }
                 _ => field.as_ref().clone(),
+            };
+            // Converted geometries are in the target CRS, whatever the schema says.
+            let field = match &options.geometry.target_crs {
+                Some(target) if is_geometry(&field) => with_crs(&field, target)?,
+                _ => field,
             };
             fields.push(field);
         } else {
@@ -216,6 +245,7 @@ pub fn read(
         routes,
         axis,
         geometry: options.geometry.clone(),
+        conversions,
         on_feature_error: options.on_feature_error,
         strip_local_href_hash: inference.gml.strip_local_href_hash,
         empty_as_null: inference.types.empty_as_null,

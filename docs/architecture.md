@@ -174,7 +174,7 @@ use `double` or `text` (see [type-mapping.md](type-mapping.md)).
 
 ```rust
 pub struct ReadOptions {
-    pub geometry: GeometryOptions,       // axis order, CRS override, curves, primary column
+    pub geometry: GeometryOptions,       // axis order, CRS override, target CRS, curves, primary column
     pub inference: InferenceOptions,     // reads without a schema only
     pub sample: SampleOptions,           // reads without a schema
     pub on_feature_error: OnFeatureError,
@@ -186,6 +186,7 @@ pub struct ReadOptions {
     pub location_column: Option<String>, // a last column with where each row is written
     pub projection: Option<Vec<String>>, // not serialized
     pub namespaces: IndexMap<String, String>, // prefix → URI for path steps; not serialized
+    pub grid_loader: Option<GridLoader>, // fetches grids for target_crs; not serialized
 }
 ```
 
@@ -300,7 +301,8 @@ Every input is read **once, from start to end**, whether it is a local file, an
 object in S3 or a URL. Nothing depends on range requests, so servers without them
 (such as `opendata.geoportal.gov.pl`) work like any other. Nothing is downloaded to
 disk or cached. When a framework we are embedded in has a cache of its own, it
-applies as usual.
+applies as usual. Grids for reprojection are not inputs: they are fetched by
+byte range ([reprojection.md](reprojection.md#decisions-so-far), decision 6).
 
 ```rust
 /// Raw bytes of one input. Synchronous; `xeibe-io` bridges async stores.
@@ -761,7 +763,7 @@ xeibe wfs convert <url> --type-name <name> -o out.parquet [--settings settings.j
 
 | Group | Flags |
 |---|---|
-| Read options | `--preset`, `--override pattern=action`, `--axis-order`, `--axis-override srsName=mode`, `--crs`, `--linearize [step]`, `--arc-max-gap`, `--threads` |
+| Read options | `--preset`, `--override pattern=action`, `--axis-order`, `--axis-override srsName=mode`, `--crs`, `--target-crs`, `--grid-dir`, `--no-grids`, `--linearize [step]`, `--arc-max-gap`, `--threads` |
 | Output options | `--format parquet\|ipc`, `--bbox-column auto\|always\|never`, `--row-group-size N` |
 
 `xeibe <command> --help` is the reference for every flag: what it accepts,
@@ -805,8 +807,9 @@ in memory, outside the bounds in [Memory](#memory).
   `@` attributes, path metadata and lossless value rules aim for faithful reading.
   They do not aim for re-serialization.
 - **No state of our own.** No download cache, no saved indexes, no saved WFS pages.
-  Reads never need range requests. The only thing that persists is a settings file
-  the user asked for.
+  Inputs never need range requests; only the grids of a reprojection are
+  fetched by range, and kept in memory, not on disk. The only thing that
+  persists is a settings file the user asked for.
 - No reading several layers in one pass.
 - No resolution of `xlink:href`, so no global id index. Links stay strings.
 - No CityGML. No support for solids beyond what is described in the

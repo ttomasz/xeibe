@@ -906,3 +906,100 @@ fn preserve_order_writes_the_rows_in_input_order() {
         .collect();
     assert_eq!(numbers, (0..120).collect::<Vec<_>>());
 }
+
+#[test]
+fn target_crs_converts_with_grids_from_a_directory() {
+    // St. George Island, NAD27 to NAD83 through NADCON's grid, and PROJ
+    // 9.8.1's result (`tests/data/reprojection/selection-grids.jsonl`).
+    let document = places(&[concat!(
+        "<app:pozycja><gml:Point srsName=\"EPSG:4138\">",
+        "<gml:pos>-169.79423565632723 56.518977129636866</gml:pos></gml:Point></app:pozycja>"
+    )]);
+    let dir = out_dir("target_crs");
+    let input = dir.join("places.gml");
+    std::fs::write(&input, &document).unwrap();
+    let out = dir.join("places.parquet");
+    let grids = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/data/reprojection/grids");
+    let run = xeibe_ok(&[
+        "gml",
+        "convert",
+        path_str(&input),
+        "--layer",
+        "Place",
+        "--axis-order",
+        "xy",
+        "--target-crs",
+        "EPSG:4269",
+        "--grid-dir",
+        path_str(&grids),
+        "-o",
+        path_str(&out),
+    ]);
+    assert!(
+        run.stderr
+            .contains("converted: EPSG:4138 to EPSG:4269 (grids: "),
+        "{}",
+        run.stderr
+    );
+
+    assert_eq!(
+        geo_metadata(&out)["columns"]["pozycja"]["crs"]["id"]["code"],
+        4269
+    );
+    let batches: Vec<_> = ParquetRecordBatchReaderBuilder::try_new(File::open(&out).unwrap())
+        .unwrap()
+        .build()
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    let wkb = batches[0]
+        .column_by_name("pozycja")
+        .unwrap()
+        .as_binary::<i32>()
+        .value(0)
+        .to_vec();
+    let x = f64::from_le_bytes(wkb[5..13].try_into().unwrap());
+    let y = f64::from_le_bytes(wkb[13..21].try_into().unwrap());
+    assert!((x - -169.79666831384327).abs() < 1e-11, "x {x}");
+    assert!((y - 56.51999536461077).abs() < 1e-11, "y {y}");
+}
+
+#[test]
+fn a_grid_missing_from_the_grid_dir_stops_the_conversion() {
+    // OSGB 1936 to ETRS89 needs OSTN15, which isn't in the directory.
+    let document = places(&[concat!(
+        "<app:pozycja><gml:Point srsName=\"EPSG:4277\">",
+        "<gml:pos>-1.5 52.5</gml:pos></gml:Point></app:pozycja>"
+    )]);
+    let dir = out_dir("target_crs_missing_grid");
+    let input = dir.join("places.gml");
+    std::fs::write(&input, &document).unwrap();
+    let out = dir.join("places.parquet");
+    let mut args = vec![
+        "gml",
+        "convert",
+        path_str(&input),
+        "--layer",
+        "Place",
+        "--axis-order",
+        "xy",
+        "--target-crs",
+        "EPSG:4258",
+        "--grid-dir",
+        path_str(&dir),
+        "-o",
+        path_str(&out),
+    ];
+    let run = xeibe(&args);
+    assert!(!run.success);
+    assert!(
+        run.stderr.contains("uk_os_OSTN15_NTv2_OSGBtoETRS.tif"),
+        "{}",
+        run.stderr
+    );
+
+    // Without grids, a Helmert transformation applies.
+    args.push("--no-grids");
+    xeibe_ok(&args);
+}

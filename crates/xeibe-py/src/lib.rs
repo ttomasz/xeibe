@@ -16,7 +16,7 @@ use pyo3::exceptions::{PyException, PyUserWarning, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use pyo3_arrow::{PyRecordBatchReader, PySchema};
-use xeibe_arrow::{ReadOptions, Settings};
+use xeibe_arrow::{GridLoader, ReadOptions, Settings};
 use xeibe_core::Source;
 use xeibe_io::IoOptions;
 use xeibe_schema::ScanExtent;
@@ -110,20 +110,25 @@ fn scan(
 /// Whole settings given as `schema` also supply the options when `options`
 /// is `None`.
 ///
+/// With `geometry.target_crs` in the options, the grids the conversion needs
+/// are read from `grid_dir` (a directory of PROJ-data's files) or, without
+/// it, fetched from `cdn.proj.org` before the read.
+///
 /// Sources without features (not GML) are skipped, and each one skipped is a
 /// [`SkippedSourceWarning`] when the stream ends. If every source is, the
 /// read fails with a [`NoFeaturesError`]. Without a schema, the layer's first
 /// features are sampled before this returns.
 #[pyfunction]
-#[pyo3(signature = (paths, layer, schema = None, options = None))]
+#[pyo3(signature = (paths, layer, schema = None, options = None, *, grid_dir = None))]
 fn read<'py>(
     py: Python<'py>,
     paths: Vec<String>,
     layer: &str,
     schema: Option<Bound<'py, PyAny>>,
     options: Option<Bound<'py, PyAny>>,
+    grid_dir: Option<PathBuf>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    read_layer(py, paths, layer, schema, options, false)
+    read_layer(py, paths, layer, schema, options, grid_dir, false)
 }
 
 /// `read_or_empty(paths, layer, schema, options=None)`: [`read`], but an input
@@ -131,15 +136,16 @@ fn read<'py>(
 /// of a [`NoFeaturesError`]. For data sources (`xeibe.sedona`) that must
 /// answer for every file they are given, GML or not. Not public API.
 #[pyfunction]
-#[pyo3(signature = (paths, layer, schema, options = None))]
+#[pyo3(signature = (paths, layer, schema, options = None, *, grid_dir = None))]
 fn read_or_empty<'py>(
     py: Python<'py>,
     paths: Vec<String>,
     layer: &str,
     schema: Bound<'py, PyAny>,
     options: Option<Bound<'py, PyAny>>,
+    grid_dir: Option<PathBuf>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    read_layer(py, paths, layer, Some(schema), options, true)
+    read_layer(py, paths, layer, Some(schema), options, grid_dir, true)
 }
 
 fn read_layer<'py>(
@@ -148,6 +154,7 @@ fn read_layer<'py>(
     layer: &str,
     schema: Option<Bound<'py, PyAny>>,
     options: Option<Bound<'py, PyAny>>,
+    grid_dir: Option<PathBuf>,
     allow_empty: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
     let mut settings_options = None;
@@ -163,11 +170,17 @@ fn read_layer<'py>(
             Loaded::Columns(columns) => Some(columns_schema(columns, layer)?),
         },
     };
-    let options = match (&options, settings_options) {
+    let mut options = match (&options, settings_options) {
         (Some(options), _) => parse_options(options)?,
         (None, Some(options)) => options,
         (None, None) => ReadOptions::default(),
     };
+    if options.geometry.target_crs.is_some() {
+        options.grid_loader = Some(match grid_dir {
+            Some(dir) => GridLoader::from_dir(dir),
+            None => cdn_grids()?,
+        });
+    }
     let given = schema.clone();
     let reader = py.detach(|| {
         let sources = resolve(&paths)?;
@@ -273,8 +286,9 @@ fn resolve(paths: &[String]) -> PyResult<Vec<Source>> {
 /// `read_options(settings=None, pairs=None) -> dict`: the read options of
 /// `settings` (as [`parse_options`] takes them; default options if `None`)
 /// with `key=value` pairs applied over them (`preset`, `axis_order`, `crs`,
-/// `sample_features`, `batch_size`, `threads`, `preserve_order`), as the
-/// `options` dict `scan()` and `read()` take.
+/// `target_crs`, `no_grids`, `sample_features`, `batch_size`, `threads`,
+/// `preserve_order`), as the `options` dict `scan()` and `read()` take.
+/// `grid_dir` isn't an option of the dict: it goes to `read()`.
 #[pyfunction]
 #[pyo3(signature = (settings = None, pairs = None))]
 fn read_options<'py>(
@@ -289,6 +303,11 @@ fn read_options<'py>(
     for (key, value) in pairs.iter().flat_map(|pairs| pairs.iter()) {
         let key: String = key.extract()?;
         let value = value.str()?.to_string();
+        if key == "grid_dir" {
+            return Err(PyValueError::new_err(
+                "grid_dir is not part of the options: pass it to read()",
+            ));
+        }
         options
             .set(&key, &value)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -490,4 +509,18 @@ fn _xeibe(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.py().get_type::<SkippedSourceWarning>(),
     )?;
     Ok(())
+}
+
+/// Grids fetched from `cdn.proj.org`, the ranges a conversion asks for
+/// (`docs/reprojection.md`, decision 6).
+fn cdn_grids() -> PyResult<GridLoader> {
+    let client =
+        xeibe_io::http::HttpClient::new(&xeibe_io::HttpOptions::default()).map_err(error)?;
+    Ok(GridLoader::new(move |request| {
+        let url = url::Url::parse(&request.url()).map_err(|e| e.to_string())?;
+        client
+            .get_range(&url, request.offset, request.length)
+            .map(|data| data.to_vec())
+            .map_err(|e| e.to_string())
+    }))
 }

@@ -49,6 +49,17 @@ pub struct GeometryOptions {
     pub axis: AxisOrderOptions,
     /// Replaces the CRS from the data.
     pub crs_override: Option<String>,
+    /// Convert the geometries to this CRS, given in any srsName form
+    /// (`EPSG:4326`, `urn:ogc:def:crs:EPSG::2180`, `EPSG:25832+7837`);
+    /// `None` keeps the data's coordinates (`docs/geometry.md`,
+    /// "Reprojection").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_crs: Option<String>,
+    /// With `target_crs`: keep to EPSG's operations without grids, as if
+    /// no grid could be loaded. Off, the grids an operation needs are
+    /// loaded before the read.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub no_grids: bool,
     pub curves: CurveMode,
     /// Column name of the primary geometry column (GeoParquet `primary_column`);
     /// `None` = the first geometry column in schema order.

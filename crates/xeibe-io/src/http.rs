@@ -1,6 +1,7 @@
 //! Plain HTTP(S) sources (blocking `reqwest`), with retries and backoff
 //! (5xx, 429 + `Retry-After`, network errors) before the body starts. Also used by
-//! `xeibe-wfs`.
+//! `xeibe-wfs`, and for the byte ranges of reprojection grids
+//! ([`HttpClient::get_range`]).
 
 use std::io::Read;
 use std::sync::Arc;
@@ -60,8 +61,42 @@ impl HttpClient {
     /// Nothing is handed on before the body is complete, so a body that breaks
     /// off is retried like a failed request.
     pub fn get(&self, url: &Url) -> crate::Result<bytes::Bytes> {
-        self.fetch(url, |response| {
+        self.fetch(url, None, |response| {
             response.bytes().map_err(|e| error_chain(&e))
+        })
+    }
+
+    /// `length` bytes from `offset` (to the end with `None`), with a `Range`
+    /// request: the parts of grid files reprojection asks for
+    /// (`docs/reprojection.md`, decision 6). Retried like [`Self::get`]. A
+    /// server that ignores `Range` sends the whole file, which is cut to the
+    /// range asked for.
+    pub fn get_range(
+        &self,
+        url: &Url,
+        offset: u64,
+        length: Option<u64>,
+    ) -> crate::Result<bytes::Bytes> {
+        let range = match length {
+            Some(0) => return Ok(bytes::Bytes::new()),
+            Some(length) => format!("bytes={offset}-{}", offset + length - 1),
+            None => format!("bytes={offset}-"),
+        };
+        self.fetch(url, Some(&range), |response| {
+            let partial = response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+            let body = response.bytes().map_err(|e| error_chain(&e))?;
+            if partial {
+                return Ok(body);
+            }
+            let start = usize::try_from(offset)
+                .unwrap_or(usize::MAX)
+                .min(body.len());
+            let end = length.map_or(body.len(), |length| {
+                start
+                    .saturating_add(usize::try_from(length).unwrap_or(usize::MAX))
+                    .min(body.len())
+            });
+            Ok(body.slice(start..end))
         })
     }
 
@@ -75,7 +110,7 @@ impl HttpClient {
     /// The response and its first bytes: everything up to and including the first
     /// read is retried.
     fn start_stream(&self, url: &Url) -> crate::Result<(Vec<u8>, reqwest::blocking::Response)> {
-        self.fetch(url, |mut response| {
+        self.fetch(url, None, |mut response| {
             let mut first = vec![0; FIRST_READ];
             loop {
                 match response.read(&mut first) {
@@ -90,17 +125,23 @@ impl HttpClient {
         })
     }
 
-    /// One `GET` with retries. `body` takes a successful response as far as it
-    /// may still be retried; its error is a message and always retried.
+    /// One `GET` with retries, of `range` (a `Range` header value) if given.
+    /// `body` takes a successful response as far as it may still be retried;
+    /// its error is a message and always retried.
     fn fetch<T>(
         &self,
         url: &Url,
+        range: Option<&str>,
         mut body: impl FnMut(reqwest::blocking::Response) -> Result<T, String>,
     ) -> crate::Result<T> {
         let mut attempt = 0;
         loop {
             let retries_left = attempt < self.options.max_retries;
-            let wait = match self.request(url).send() {
+            let mut request = self.request(url);
+            if let Some(range) = range {
+                request = request.header(reqwest::header::RANGE, range);
+            }
+            let wait = match request.send() {
                 Ok(response) if response.status().is_success() => match body(response) {
                     Ok(value) => return Ok(value),
                     Err(_) if retries_left => backoff(attempt),

@@ -55,6 +55,9 @@ impl LayerReader {
         let mut report = lock(&self.report).clone();
         let (decisions, axis_warnings) = self.plan.axis_report();
         report.axis_decisions = decisions;
+        if let Some(conversions) = &self.plan.conversions {
+            report.reprojections = conversions.report();
+        }
         // In source order: several sources may be split at once.
         let mut by_source = lock(&self.source_warnings).clone();
         by_source.sort_by_key(|(source, _)| *source);

@@ -13,6 +13,7 @@ Build the wheel, then run this script with it:
 
 import json
 import os
+import struct
 import sys
 import tempfile
 import warnings
@@ -162,6 +163,29 @@ def main() -> None:
     assert wkb.field("geom").metadata[b"ARROW:extension:name"] == b"geoarrow.wkb"
     assert wkb.field("geom").metadata[b"gml:path"] == b"georeferencja"
     assert wkb.field("code") == native.field("code")
+
+    # target_crs: NAD27 to NAD83 on St. George Island through NADCON's grid,
+    # read from the committed grids; PROJ 9.8.1's result.
+    place = os.path.join(tempfile.mkdtemp(), "place.gml")
+    Path(place).write_text(
+        '<gml:FeatureCollection xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:app="http://example.com/app">'
+        '<gml:featureMember><app:Place gml:id="p1"><app:pos><gml:Point srsName="EPSG:4138">'
+        "<gml:pos>-169.79423565632723 56.518977129636866</gml:pos></gml:Point></app:pos></app:Place>"
+        "</gml:featureMember></gml:FeatureCollection>"
+    )
+    options = {"geometry": {"axis": "XY", "target_crs": "EPSG:4269"}}
+    grids = str(ROOT / "tests/data/reprojection/grids")
+    table = pa.table(xeibe.read([place], "Place", options=options, grid_dir=grids))
+    point = table.column("pos")[0].as_py()
+    x, y = struct.unpack("<dd", point[5:21])
+    assert abs(x + 169.79666831384327) < 1e-11 and abs(y - 56.51999536461077) < 1e-11, (x, y)
+    assert b"4269" in table.schema.field("pos").metadata[b"ARROW:extension:metadata"]
+    try:
+        _xeibe.read_options(None, {"grid_dir": grids})
+    except ValueError as error:
+        assert "pass it to read()" in str(error), error
+    else:
+        raise AssertionError("grid_dir is not an option of the dict")
     print("ok")
 
 

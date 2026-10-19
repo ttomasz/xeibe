@@ -406,7 +406,7 @@ pub fn force_dim(geometry: &mut Geometry, dim: Dim) {
 }
 
 /// Call `on_coords` for every coordinate sequence and `on_point` for every point.
-fn visit_coords(
+pub(crate) fn visit_coords(
     geometry: &mut Geometry,
     on_coords: &mut dyn FnMut(&mut Coords),
     on_point: &mut dyn FnMut(&mut Point),

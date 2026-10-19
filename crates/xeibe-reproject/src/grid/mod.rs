@@ -23,6 +23,7 @@ pub(crate) mod tiff;
 pub(crate) mod tin;
 
 pub(crate) use catalog_types::{Entry, lookup};
+pub use store::clear_grids;
 
 /// Where PROJ-data's grids are served.
 pub const CDN: &str = "https://cdn.proj.org/";

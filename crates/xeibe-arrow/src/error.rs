@@ -42,9 +42,22 @@ pub enum Error {
         column: String,
     },
 
+    /// With `target_crs`: a grid the conversion needs can't be loaded
+    /// (`docs/geometry.md`, "Reprojection").
+    #[error("reprojection: {message}")]
+    Reproject { message: String },
+
     #[error("value does not match the schema at {location}: {message}")]
     SchemaMismatch {
         location: xeibe_core::Location,
         message: String,
     },
+}
+
+impl From<xeibe_reproject::Error> for Error {
+    fn from(error: xeibe_reproject::Error) -> Self {
+        Error::Reproject {
+            message: error.to_string(),
+        }
+    }
 }

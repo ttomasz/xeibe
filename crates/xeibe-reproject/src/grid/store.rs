@@ -6,10 +6,12 @@
 //! the blocks covering an area. The caller fetches them (from
 //! `cdn.proj.org` with range requests, or from a local copy) and hands them
 //! to [`GridFile::insert`], which parses and decodes what it can. Files are
-//! shared by name across all transforms in the process.
+//! shared by name across all transforms in the process, and stay loaded
+//! after the transforms that used them are gone, so a range is fetched once
+//! per process (decision 6); [`clear_grids`] lets them go.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock, Weak};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use super::set::ExtentAndRes;
 use super::tiff::{self, Image, Ranges, TiffError};
@@ -48,26 +50,33 @@ pub(crate) struct Region {
     pub(crate) north: f64,
 }
 
-fn registry() -> &'static Mutex<HashMap<String, Weak<GridFile>>> {
-    static FILES: OnceLock<Mutex<HashMap<String, Weak<GridFile>>>> = OnceLock::new();
+fn registry() -> &'static Mutex<HashMap<String, Arc<GridFile>>> {
+    static FILES: OnceLock<Mutex<HashMap<String, Arc<GridFile>>>> = OnceLock::new();
     FILES.get_or_init(Default::default)
 }
 
 /// The process's one copy of a grid file.
 pub(crate) fn file(name: &str) -> Arc<GridFile> {
     let mut files = registry().lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(f) = files.get(name).and_then(Weak::upgrade) {
-        return f;
-    }
-    files.retain(|_, f| f.strong_count() > 0);
-    let f = Arc::new(GridFile {
-        name: name.to_string(),
-        loaded: Mutex::default(),
-        images: OnceLock::new(),
-        tin: OnceLock::new(),
-    });
-    files.insert(name.to_string(), Arc::downgrade(&f));
-    f
+    files
+        .entry(name.to_string())
+        .or_insert_with(|| {
+            Arc::new(GridFile {
+                name: name.to_string(),
+                loaded: Mutex::default(),
+                images: OnceLock::new(),
+                tin: OnceLock::new(),
+            })
+        })
+        .clone()
+}
+
+/// Forget the grid data loaded so far, for a long-running process that
+/// wants the memory back. Transforms set up before keep what they hold; a
+/// transform set up after starts with empty grids, to be loaded again
+/// ([`crate::Transform::grid_requests`]).
+pub fn clear_grids() {
+    registry().lock().unwrap_or_else(|e| e.into_inner()).clear();
 }
 
 impl GridFile {
@@ -150,15 +159,22 @@ impl GridFile {
             Some(Err(_)) => return Vec::new(),
             None => {
                 let loaded = self.loaded.lock().unwrap_or_else(|e| e.into_inner());
-                if loaded.is_empty() {
-                    return vec![(0, Some(HEADER_CHUNK))];
-                }
-                return match tiff::parse(&loaded) {
-                    Err(TiffError::Need { offset, length }) => {
-                        vec![(offset, Some(length.max(HEADER_CHUNK)))]
+                // Another thread's `insert` may have read the directories
+                // while this one waited for the lock: it sets them before
+                // letting go of it.
+                match self.images.get() {
+                    Some(Ok(images)) => images,
+                    Some(Err(_)) => return Vec::new(),
+                    None if loaded.is_empty() => return vec![(0, Some(HEADER_CHUNK))],
+                    None => {
+                        return match tiff::parse(&loaded) {
+                            Err(TiffError::Need { offset, length }) => {
+                                vec![(offset, Some(length.max(HEADER_CHUNK)))]
+                            }
+                            _ => Vec::new(),
+                        };
                     }
-                    _ => Vec::new(),
-                };
+                }
             }
         };
         let mut wanted: Vec<(u64, u64)> = Vec::new();

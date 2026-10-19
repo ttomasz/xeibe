@@ -12,6 +12,8 @@ pub struct ReadReport {
     pub axis_decisions: Vec<(xeibe_geom::AxisKey, xeibe_geom::AxisDecision)>,
     /// The schema a read without a schema inferred, ready to save.
     pub inferred: Option<crate::Settings>,
+    /// With `target_crs`: how each srsName converts, or why it can't.
+    pub reprojections: Vec<crate::Reprojection>,
 }
 
 #[derive(Debug, Clone)]

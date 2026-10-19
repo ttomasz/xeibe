@@ -17,10 +17,12 @@ definitions and coordinate operations in
 - Transformations between datums, chosen from EPSG's operations the way PROJ
   chooses them, or forced.
 - Grid-based transformations, with PROJ-data's grids, which the caller loads.
+- Vertical and compound CRSs: geoid models, vertical offsets and offset grids.
+- Engineering CRSs, on their own datum and through EPSG's operations.
 
-Vertical and compound CRSs are not supported yet. When no EPSG transformation
-applies, setting up the transform fails; a ballpark approximation is never
-used.
+When no EPSG transformation applies, setting up the transform fails; a
+ballpark approximation is never used. Operations that need a coordinate
+epoch (point motion, deformation models) are not supported.
 
 ```rust
 use xeibe_reproject::{AxisOrder, Transform};

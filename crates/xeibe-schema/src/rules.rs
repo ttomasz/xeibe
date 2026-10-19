@@ -1039,11 +1039,11 @@ impl Engine<'_> {
     /// GeoArrow CRS metadata: PROJJSON for EPSG codes and compounds of them,
     /// else `authority:code`, else the srsName as an opaque string.
     fn crs_metadata(&self, stats: &GeometryStats) -> Metadata {
-        let srs = self
-            .options
-            .geometry
-            .crs_override
+        let geometry = &self.options.geometry;
+        let srs = geometry
+            .target_crs
             .as_deref()
+            .or(geometry.crs_override.as_deref())
             .or_else(|| stats.main_srs());
         let Some(srs) = srs else {
             return Metadata::default();
@@ -1148,15 +1148,19 @@ impl Engine<'_> {
         let mut col = Col::new(steps, anchor, DataType::Null);
         col.kind = ColKind::Field(field);
         if let Some(srs) = geometry
-            .crs_override
+            .target_crs
             .as_deref()
+            .or(geometry.crs_override.as_deref())
             .or_else(|| stats.main_srs())
         {
             col.metadata
                 .insert(meta::SRS_NAME.to_string(), srs.to_string());
             let spellings = stats.srs.len();
             if spellings > 1 {
-                reasons.push(format!("{spellings} srsNames; column CRS from {srs:?}"));
+                reasons.push(match &geometry.target_crs {
+                    Some(_) => format!("{spellings} srsNames, all converted to {srs:?}"),
+                    None => format!("{spellings} srsNames; column CRS from {srs:?}"),
+                });
             }
         }
         let column = steps.last().map_or("", |step| &*step.name.local);

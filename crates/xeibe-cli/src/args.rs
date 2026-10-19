@@ -538,6 +538,67 @@ pub struct ReadArgs {
         verbatim_doc_comment
     )]
     pub crs: Option<String>,
+    /// Convert the coordinates to another CRS
+    ///
+    /// Every geometry is converted from its own CRS (its srsName, or
+    /// `--crs`) to CRS, and the output is labelled with CRS. Coordinates
+    /// are written easting or longitude first. CRS takes the forms of
+    /// `--crs`:
+    ///
+    ///   EPSG:4326           WGS 84, longitude/latitude
+    ///   EPSG:2180           ETRS89 / PL-1992
+    ///   EPSG:25832+7837     horizontal + vertical CRS: heights convert too
+    ///
+    /// Between datums, the transformation is chosen per coordinate among
+    /// EPSG's, as PROJ chooses it. Some of them need grids (NTv2, NADCON,
+    /// geoid models): before the read, the parts of the grids that cover the
+    /// input CRS's area of use are downloaded from https://cdn.proj.org,
+    /// and nothing is saved to disk (see `--grid-dir`, `--no-grids`). A grid
+    /// that can't be downloaded stops the conversion before it starts.
+    ///
+    /// Arcs and circles can't be converted exactly: add `--linearize`. A
+    /// geometry that can't be converted (no srsName, a CRS no transformation
+    /// reaches CRS from, a point outside every transformation's area) is a
+    /// feature error.
+    ///
+    /// Example:
+    ///   xeibe gml convert parcels.gml --layer Parcel -o parcels.parquet \
+    ///     --target-crs EPSG:4326
+    ///
+    /// Default: no conversion; the coordinates are written as read.
+    #[arg(
+        long,
+        value_name = "CRS",
+        help_heading = GEOMETRY,
+        verbatim_doc_comment
+    )]
+    pub target_crs: Option<String>,
+    /// With `--target-crs`: read grids from a directory, not the network
+    ///
+    /// DIR holds PROJ-data's grid files under their own names, e.g.
+    /// `uk_os_OSTN15_NTv2_OSGBtoETRS.tif`: a PROJ-data release, PROJ's
+    /// `projsync --all` download, or files saved from https://cdn.proj.org.
+    /// A grid the conversion needs that isn't there is an error.
+    ///
+    /// Example:
+    ///   --target-crs EPSG:4258 --grid-dir /usr/share/proj
+    ///
+    /// Default: download from https://cdn.proj.org.
+    #[arg(
+        long,
+        value_name = "DIR",
+        help_heading = GEOMETRY,
+        verbatim_doc_comment
+    )]
+    pub grid_dir: Option<std::path::PathBuf>,
+    /// With `--target-crs`: use no transformation that needs a grid
+    ///
+    /// Only EPSG's transformations by formula (Helmert and the like) are
+    /// used, and nothing is downloaded. They are often less accurate, by
+    /// up to a few metres where a grid would be good to centimetres. A CRS
+    /// that only grids reach is then a feature error.
+    #[arg(long, help_heading = GEOMETRY, verbatim_doc_comment)]
+    pub no_grids: bool,
     /// Replace curves by straight segments. Needed for Parquet; lossy conversion.
     ///
     /// GML arcs and circles (Arc, ArcString, Circle, ArcByCenterPoint,
