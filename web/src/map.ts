@@ -30,6 +30,9 @@ interface Batch {
   /** A typical segment's length in each space, for showing vertices and
    * outlines. */
   segment?: { map: number | null; source: number | null };
+  /** The points' typical spacing in each space: their box's area shared
+   * among them. */
+  spacing?: { map: number | null; source: number | null };
 }
 
 /** What a pickable layer draws, to say what is under the pointer. */
@@ -89,6 +92,10 @@ const VERTEX_DELAY_MS = 150;
  * outline would cost twice as much a frame, and its fill alone might cover
  * no pixel at all. */
 const OUTLINE_SPACING = 3;
+/** Points closer than this on screen are drawn as small dots: circles
+ * piled on the same pixels cost a frame for nothing. 2.7 million address
+ * points: hovering took 29 ms a frame, 20 ms as dots. */
+const POINT_SPACING = 8;
 /** Batches are merged into groups of about this many rows or vertices:
  * each layer costs every frame and every hover, whatever its size. */
 const GROUP_ROWS = 65536;
@@ -250,6 +257,10 @@ export class MapPane {
       map: batch.map ? typicalSegment(batch.map) : null,
       source: typicalSegment(batch.source),
     };
+    batch.spacing = {
+      map: batch.map ? pointSpacing(batch.map) : null,
+      source: pointSpacing(batch.source),
+    };
     return batch;
   }
 
@@ -387,12 +398,23 @@ export class MapPane {
     return segment != null && segment * this.scale(view) >= pixels;
   }
 
+  /** A batch's points are far enough apart on screen to draw as circles. */
+  private pointsApart(batch: Batch, view: View): boolean {
+    const spacing = batch.spacing?.[view];
+    return spacing != null && spacing * this.scale(view) >= POINT_SPACING;
+  }
+
   /** What each batch shows at the current zoom: vertices, outlines. */
   private details(view: View): string {
     return (
       view +
       this.batches
-        .map((b) => (this.spreadOut(b, view, VERTEX_SPACING) ? 2 : 0) + (this.spreadOut(b, view, OUTLINE_SPACING) ? 1 : 0))
+        .map(
+          (b) =>
+            (this.pointsApart(b, view) ? 4 : 0) +
+            (this.spreadOut(b, view, VERTEX_SPACING) ? 2 : 0) +
+            (this.spreadOut(b, view, OUTLINE_SPACING) ? 1 : 0),
+        )
         .join('')
     );
   }
@@ -762,9 +784,10 @@ export class MapPane {
             attributes: { getPosition: { value: s.points, size: 2 } },
           })),
           getFillColor: POINT,
-          getRadius: 3,
+          // Constants and a uniform: changing them keeps the buffers.
+          getRadius: this.pointsApart(batch, this.view) ? 3 : 1.5,
           radiusUnits: 'pixels',
-          stroked: true,
+          stroked: this.pointsApart(batch, this.view),
           getLineColor: [255, 255, 255, 200] as Rgba,
           lineWidthUnits: 'pixels',
           getLineWidth: 0.5,
@@ -984,6 +1007,21 @@ function countRow(rows: Uint32Array, i: number): number {
  * survives. */
 function coordinate(value: number): string {
   return String(Number(value.toPrecision(15)));
+}
+
+/** The points' typical spacing: the area of their box shared among them;
+ * `null` without points. */
+function pointSpacing(s: Space): number | null {
+  const n = s.points.length / 2;
+  if (n === 0) return null;
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < s.points.length; i += 2) {
+    x0 = Math.min(x0, s.points[i]);
+    x1 = Math.max(x1, s.points[i]);
+    y0 = Math.min(y0, s.points[i + 1]);
+    y1 = Math.max(y1, s.points[i + 1]);
+  }
+  return Math.sqrt(((x1 - x0) * (y1 - y0)) / n);
 }
 
 /** The median length of a sample of a space's segments; `null` without

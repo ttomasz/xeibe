@@ -144,6 +144,13 @@ Measured 2026-10-19 in Chromium on a Radeon RX 7700 XT with the CPU slowed 4×
 polygons, took 33 ms a frame (95th percentile 50 and 67 ms) with a layer per
 batch, and keeps to 16.7 ms (60 fps) with groups.
 
+**Points** closer than 8 pixels apart on screen (their box's area shared
+among them) are drawn as 1.5-pixel dots without an outline; farther apart, as
+3-pixel circles. Circles piled on the same pixels cost a frame for nothing:
+with 2,722,651 PRG address points zoomed out, hovering took 29 ms a frame
+(full CPU) and 34 ms (CPU slowed 4×) with circles, and takes 20 and 28 ms
+with dots; panning went from 31 ms to 16.7 ms.
+
 **deck.gl's own arrays** (picking colours, tesselated paths and polygons)
 are allocated at their size and not pooled (`_typedArrayManagerProps:
 {overAlloc: 1, poolSize: 0}`): by default deck.gl makes them twice the size
