@@ -100,6 +100,8 @@ impl<'a> Attributes<'a> {
 pub struct GmlReader<'a> {
     inner: quick_xml::NsReader<&'a [u8]>,
     base_offset: u64,
+    /// A chunk's features, for stream offsets ([`Self::with_chunk`]).
+    feature_offsets: &'a [crate::FeatureOffset],
     buf: &'a [u8],
     source: SourceId,
     /// An event read ahead while merging text, with its start position.
@@ -141,6 +143,7 @@ impl<'a> GmlReader<'a> {
         Self {
             inner,
             base_offset,
+            feature_offsets: &[],
             buf,
             source: SourceId(0),
             pending: None,
@@ -156,6 +159,22 @@ impl<'a> GmlReader<'a> {
     pub fn with_source(mut self, source: SourceId) -> Self {
         self.source = source;
         self
+    }
+
+    /// A reader of a chunk's features: its locations are in the source's
+    /// decoded stream, though the chunk leaves out what was between its
+    /// features.
+    pub fn for_chunk(chunk: &'a crate::FeatureChunk) -> Self {
+        let mut reader =
+            Self::new(&chunk.bytes, &chunk.namespaces, chunk.byte_offset).with_source(chunk.source);
+        reader.feature_offsets = &chunk.feature_offsets;
+        reader
+    }
+
+    /// The decoded stream's offset of a buffer position (see
+    /// [`Self::last_start_position`] and [`Self::position`]).
+    pub fn stream_offset(&self, position: usize) -> u64 {
+        crate::chunk::stream_offset(self.feature_offsets, self.base_offset, position)
     }
 
     pub fn next_event(&mut self) -> crate::Result<XmlEvent<'_>> {
@@ -290,7 +309,7 @@ impl<'a> GmlReader<'a> {
     fn location_at(&self, position: u64) -> Location {
         Location {
             source: self.source,
-            byte_offset: self.base_offset + position,
+            byte_offset: self.stream_offset(position as usize),
             feature_seq: None,
             gml_id: None,
         }

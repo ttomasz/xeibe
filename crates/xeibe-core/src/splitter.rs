@@ -158,6 +158,8 @@ pub struct FeatureSplitter<R: Read> {
     chunk_context: Arc<NamespaceContext>,
     chunk_offset: u64,
     chunk_first_feature: u64,
+    /// Where the chunk's features start.
+    chunk_features: Vec<crate::FeatureOffset>,
     chunk_bounded_by: Option<Arc<RawElement>>,
     features_emitted: u64,
     ready: VecDeque<FeatureChunk>,
@@ -254,6 +256,7 @@ impl<R: Read> FeatureSplitter<R> {
             chunk: Vec::new(),
             chunk_offset: 0,
             chunk_first_feature: 0,
+            chunk_features: Vec::new(),
             chunk_bounded_by: None,
             features_emitted: 0,
             ready: VecDeque::new(),
@@ -705,6 +708,10 @@ impl<R: Read> FeatureSplitter<R> {
             return;
         }
         let from = (start - self.base) as usize;
+        self.chunk_features.push(crate::FeatureOffset {
+            in_chunk: self.chunk.len(),
+            in_stream: start,
+        });
         self.chunk.extend_from_slice(&self.buf[from..end]);
         self.features_emitted += 1;
         if self.chunk.len() >= self.options.target_chunk_bytes {
@@ -725,6 +732,7 @@ impl<R: Read> FeatureSplitter<R> {
             namespaces: self.chunk_context.clone(),
             first_feature_seq: self.chunk_first_feature,
             features: self.features_emitted - self.chunk_first_feature,
+            feature_offsets: std::mem::take(&mut self.chunk_features).into(),
             collection_bounded_by: self.chunk_bounded_by.clone(),
         });
         self.next_seq += 1;

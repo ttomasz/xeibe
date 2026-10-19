@@ -773,8 +773,7 @@ impl<'o> TreeBuilder<'o> {
     /// Walk the features of a chunk. Returns `true` if the budget ran out
     /// before the chunk did.
     fn scan(&mut self, chunk: &FeatureChunk, budget: &mut Option<u64>) -> crate::Result<bool> {
-        let mut reader = GmlReader::new(&chunk.bytes, &chunk.namespaces, chunk.byte_offset)
-            .with_source(chunk.source);
+        let mut reader = GmlReader::for_chunk(chunk);
         let inherited = match chunk.collection_bounded_by.as_deref() {
             Some(raw) => {
                 let (envelope, inherited) = xeibe_geom::parse::collection_bounded_by(raw)?;

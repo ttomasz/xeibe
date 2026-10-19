@@ -254,6 +254,59 @@ fn a_layer_filter_skips_other_feature_types() {
 }
 
 #[test]
+fn a_chunk_maps_its_features_back_to_the_stream() {
+    // A chunk is its features without what was between them: the road and
+    // the member wrappers are left out, and each feature's offset says where
+    // it was. Readers of the chunk give locations in the stream.
+    let members = [
+        gml::feature("Parcel", "p1", "<app:area>1</app:area>"),
+        gml::feature("Road", "r1", "<app:name>A</app:name>"),
+        gml::feature("Parcel", "p2", "<app:area>2</app:area>"),
+    ];
+    let document = gml::gml32_collection(&refs(&members));
+    let options = SplitterOptions {
+        layers: Some(vec![QName::new(Some(gml::APP), "Parcel")]),
+        ..SplitterOptions::default()
+    };
+    let chunks = split(&document, options);
+    assert_eq!(chunks.len(), 1);
+    let chunk = &chunks[0];
+    let p2 = document.find(r#"<app:Parcel gml:id="p2""#).unwrap();
+    let offsets: Vec<(usize, u64)> = chunk
+        .feature_offsets
+        .iter()
+        .map(|offset| (offset.in_chunk, offset.in_stream))
+        .collect();
+    assert_eq!(
+        offsets,
+        [
+            (0, document.find("<app:Parcel").unwrap() as u64),
+            (members[0].len(), p2 as u64),
+        ]
+    );
+    // The `area` of p2, in the chunk and in the stream.
+    let in_chunk = members[0].len() + members[2].find("<app:area>").unwrap();
+    assert_eq!(
+        chunk.stream_offset(in_chunk),
+        (p2 + members[2].find("<app:area>").unwrap()) as u64
+    );
+
+    let mut reader = xeibe_core::reader::GmlReader::for_chunk(chunk);
+    let mut starts = Vec::new();
+    loop {
+        match reader.next_event().unwrap() {
+            xeibe_core::reader::XmlEvent::Start { .. } => {
+                starts.push(reader.stream_offset(reader.last_start_position()));
+                reader.skip_element().unwrap();
+            }
+            xeibe_core::reader::XmlEvent::Eof => break,
+            _ => {}
+        }
+    }
+    assert_eq!(starts[1], p2 as u64);
+}
+
+#[test]
 fn nested_features_are_not_members_of_the_collection() {
     // A feature inside a property is part of its parent feature, not a layer of
     // its own: only members of the collection are features here.
