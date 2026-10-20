@@ -70,6 +70,16 @@ Close. Closing it (or Esc) leaves the scan running, with the status at the
 top; the dialog closes when the scan ends, and shows again if it fails or
 finds no layers.
 
+Reads show the same dialog: the one after the scan if its dialog is still
+open, and any other (another layer, a new "Max features") once it has taken
+400 ms, so that a quick one doesn't flash it. It says how many features the
+scan counted ("at least" after a sample) and the limit, and the rows and bytes
+read so far: a layer that starts late in its file draws nothing for a while
+("No AD_PunktAdresowy features yet: 34 MB of 121 MB read"), and this is where
+that shows. The bar is the larger of the bytes read and the rows of those
+expected, when an exact count or the limit says how many. The worker reports
+a read's bytes as it does a scan's, every 8 MiB.
+
 Stopping a scan brings the dialog back with the sample chosen, and "Change
 files…" reopens it with the last choices, without opening the files again.
 After a sampled scan the Overview says so and offers a full scan of the same

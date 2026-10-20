@@ -45,6 +45,8 @@ export type ToWorker =
 export type FromWorker =
   | { type: 'files'; files: InputFile[] }
   | { type: 'progress'; bytes: number; total: number }
+  /** A read's bytes so far: features of a layer can start late in a file. */
+  | { type: 'read-progress'; id: number; bytes: number; total: number }
   | { type: 'scanned'; scan: Scan; ms: number }
   | { type: 'schema'; layer: string; schema: Schema }
   | { type: 'info'; id: number; info: ReadInfo }

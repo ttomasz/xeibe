@@ -2,7 +2,7 @@
 
 import './style.css';
 import { MapPane, type View } from './map';
-import { bytes, DEFAULT_SAMPLE, OpenDialog, type OpenRequest, ScanProgress } from './open';
+import { bytes, DEFAULT_SAMPLE, OpenDialog, type OpenRequest, ProgressDialog } from './open';
 import type { Choice, FeatureXml, FromWorker, InputFile, ReadInfo, Report, Scan, Schema, ToWorker } from './protocol';
 import { Table } from './table';
 import { escape, overview, schema as schemaView } from './views';
@@ -49,6 +49,9 @@ const state = {
   reading: false,
   scanning: false,
   rows: 0,
+  /** The read's bytes so far, of all the files chosen. */
+  readBytes: 0,
+  readTotal: 0,
   limit: 100000 as number | null,
   grids: new Set<string>(),
   schemas: new Map<string, Schema>(),
@@ -179,7 +182,7 @@ function setStatus(text: string, error = false) {
 // Files
 
 const dialog = new OpenDialog(scan);
-const progress = new ScanProgress(stopScan);
+const progress = new ProgressDialog(stop);
 
 /** List the files: the dialog then asks what to read. */
 function open(files: File[]) {
@@ -211,7 +214,7 @@ function scan(request: OpenRequest) {
   stopButton.hidden = false;
   setStatus('Scanning…');
   const extent = request.sample === null ? 'the whole files' : `the first ${plural(request.sample, 'feature')} of each file`;
-  progress.show(`${request.summary}: ${extent}`);
+  progress.show('scan', 'Scanning', `${request.summary}: ${extent}`);
   state.started = performance.now();
   send({ type: 'scan', choices: request.choices, sample: request.sample });
 }
@@ -261,9 +264,17 @@ window.addEventListener('drop', (event) => {
 
 // Reading
 
-function startRead(layer: string) {
+/** A read the user started shows its progress if it is still going after
+ * this: a quick one doesn't flash a dialog. */
+const READ_DIALOG_DELAY_MS = 400;
+
+/** Read `layer`. Its progress shows in the dialog, unless the read follows
+ * a scan whose dialog was closed (`afterScan` and closed). */
+function startRead(layer: string, afterScan = false) {
   state.layer = layer;
   state.readId++;
+  state.readBytes = 0;
+  state.readTotal = 0;
   state.info = null;
   state.report = null;
   state.reading = true;
@@ -276,6 +287,15 @@ function startRead(layer: string) {
   stopButton.hidden = false;
   setStatus(`Reading ${layer}…`);
   send({ type: 'read', id: state.readId, layer, limit: state.limit });
+  const id = state.readId;
+  const show = () => progress.show('read', `Reading ${layer}`, readWhat(layer));
+  if (afterScan) {
+    if (progress.isOpen()) show();
+  } else {
+    setTimeout(() => {
+      if (state.readId === id && state.reading) show();
+    }, READ_DIALOG_DELAY_MS);
+  }
   renderOverview();
   if (state.tab === 'schema') loadSchema();
   if (state.tab === 'xml') loadXml();
@@ -287,13 +307,46 @@ limitInput.addEventListener('change', () => {
   state.limit = limitInput.value.trim() === '' || !(value > 0) ? null : Math.floor(value);
   if (state.layer) startRead(state.layer);
 });
-stopButton.addEventListener('click', () => {
-  if (!state.scanning) {
-    send({ type: 'stop', id: state.readId });
-    return;
+/** The layer's features, as the scan counted them, and the limit. */
+function readWhat(layer: string): string {
+  const scanned = state.scan?.layers.find((l) => l.name === layer);
+  const exact = !!scanned && (state.scan!.complete || !!scanned.counted);
+  const parts: string[] = [];
+  if (scanned) parts.push(`${exact ? '' : 'At least '}${plural(scanned.feature_count, 'feature')}`);
+  if (state.limit !== null && (!exact || state.limit < scanned!.feature_count)) {
+    parts.push(`stopping at ${state.limit.toLocaleString('en')} (Max features)`);
   }
-  stopScan();
-});
+  const text = parts.join(', ');
+  return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : '';
+}
+
+/** How far the read is, in the status and the dialog. Its share is the
+ * larger of the bytes read and the rows of those expected (the layer's
+ * exact count, or the limit). */
+function readProgress() {
+  const seconds = ((performance.now() - state.started) / 1000).toFixed(0);
+  const read = state.readTotal ? `${bytes(state.readBytes)} of ${bytes(state.readTotal)} read in ${seconds} s` : '';
+  const text = state.rows
+    ? [plural(state.rows, 'row'), read].filter(Boolean).join(', ')
+    : `No ${state.layer} features yet${read ? `: ${read}` : ''}`;
+  setStatus(`Reading ${state.layer}… ${text}`);
+  const scanned = state.scan?.layers.find((l) => l.name === state.layer);
+  const exact = scanned && (state.scan!.complete || scanned.counted) ? scanned.feature_count : Infinity;
+  const expected = Math.min(exact, state.limit ?? Infinity);
+  const share = Math.max(
+    state.readTotal ? state.readBytes / state.readTotal : 0,
+    Number.isFinite(expected) && expected > 0 ? state.rows / expected : 0,
+  );
+  progress.update(text, Math.min(1, share));
+}
+
+/** Stop the scan, or the read. */
+function stop() {
+  if (state.scanning) stopScan();
+  else send({ type: 'stop', id: state.readId });
+}
+
+stopButton.addEventListener('click', stop);
 
 /** Back to the dialog, to choose less or a sample. */
 function stopScan() {
@@ -336,7 +389,6 @@ function receive(message: FromWorker) {
     case 'scanned': {
       state.scanning = false;
       stopButton.hidden = true;
-      progress.close();
       state.scan = message.scan;
       state.scanMs = message.ms;
       const layers = message.scan.layers;
@@ -354,7 +406,8 @@ function receive(message: FromWorker) {
       }
       const first = layers.find((l) => l.geometry_columns.length > 0) ?? layers[0];
       layerSelect.value = first.name;
-      startRead(first.name);
+      // The scan's dialog, if still open, follows it into the read.
+      startRead(first.name, true);
       break;
     }
     case 'info':
@@ -368,6 +421,12 @@ function receive(message: FromWorker) {
     case 'grids':
       message.files.forEach((f) => state.grids.add(f));
       setStatus(`Fetching grid ${message.files.join(', ')}…`);
+      progress.update(`Fetching grid ${message.files.join(', ')} from cdn.proj.org…`);
+      break;
+    case 'read-progress':
+      state.readBytes = message.bytes;
+      state.readTotal = message.total;
+      readProgress();
       break;
     case 'batch':
       state.rows = message.firstRow + message.rows;
@@ -376,11 +435,12 @@ function receive(message: FromWorker) {
         message.origin,
       );
       table.setRowCount(state.rows);
-      setStatus(`Reading ${state.layer}… ${plural(state.rows, 'row')}`);
+      readProgress();
       break;
     case 'done':
     case 'stopped': {
       state.reading = false;
+      progress.close();
       state.report = message.report;
       if (message.type === 'done') state.info = message.info;
       if (message.type === 'done') countLayer(message.report);
@@ -414,6 +474,7 @@ function receive(message: FromWorker) {
       break;
     case 'error':
       if (state.scanning) progress.fail('The scan failed', message.message);
+      else if (state.reading) progress.fail('The read failed', message.message);
       state.scanning = false;
       state.reading = false;
       stopButton.hidden = true;

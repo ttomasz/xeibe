@@ -222,15 +222,17 @@ export class OpenDialog {
   }
 }
 
-/** A scan's progress, over the page until it ends: the status bar alone is
- * easy to miss. Closing it leaves the scan running; a failure shows it
- * again. */
-export class ScanProgress {
+/** A scan's or a read's progress, over the page until it ends: the status
+ * bar alone is easy to miss, and a layer that starts late in its file shows
+ * nothing on the map for a while. Closing it leaves the work running; a
+ * failure shows it again. */
+export class ProgressDialog {
   private dialog: HTMLDialogElement;
   private title: HTMLElement;
   private what: HTMLElement;
   private bar: HTMLProgressElement;
   private state: HTMLElement;
+  private note: HTMLElement;
 
   constructor(onStop: () => void) {
     this.dialog = document.getElementById('progress') as HTMLDialogElement;
@@ -238,27 +240,33 @@ export class ScanProgress {
     this.what = this.dialog.querySelector('.what')!;
     this.bar = this.dialog.querySelector('progress')!;
     this.state = this.dialog.querySelector('.state')!;
+    this.note = this.dialog.querySelector('.note')!;
     this.dialog.querySelector('[data-action=stop]')!.addEventListener('click', () => {
       this.close();
       onStop();
     });
   }
 
-  /** A scan of `what` starts. */
-  show(what: string) {
+  /** A scan or a read starts: `title`, and `what` it reads. */
+  show(kind: 'scan' | 'read', title: string, what: string) {
     this.dialog.classList.remove('failed');
-    this.title.textContent = 'Scanning';
+    this.title.textContent = title;
     this.what.textContent = what;
+    this.note.textContent = `Closing this leaves the ${kind} running: the bar at the top shows how far it is.`;
     this.update('Starting…', null);
     if (!this.dialog.open) this.dialog.showModal();
   }
 
-  /** How far it is: `share` of the bytes, or `null` if unknown (a sample
-   * ends when it has its features, wherever that is). */
-  update(text: string, share: number | null) {
+  isOpen(): boolean {
+    return this.dialog.open;
+  }
+
+  /** How far it is: `share` done, `null` if unknown (a sample ends when it
+   * has its features, wherever that is), the bar as it was if left out. */
+  update(text: string, share?: number | null) {
     this.state.textContent = text;
     if (share === null) this.bar.removeAttribute('value');
-    else this.bar.value = share;
+    else if (share !== undefined) this.bar.value = share;
   }
 
   fail(title: string, message: string) {

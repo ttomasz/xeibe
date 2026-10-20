@@ -100,8 +100,19 @@ async function read(id: number, layer: string, limit: number | null) {
   wanted = id;
   reader?.free();
   reader = null;
+  const total = dataset.size();
+  onProgress((bytes: number) => post({ type: 'read-progress', id, bytes, total }));
+  try {
+    await readBatches(id, layer, limit);
+  } finally {
+    // Unless a newer read has set its own.
+    if (wanted === id || wanted === 0) onProgress(undefined);
+  }
+}
+
+async function readBatches(id: number, layer: string, limit: number | null) {
   const started = performance.now();
-  const current = dataset.read(layer, undefined, limit ?? undefined);
+  const current = dataset!.read(layer, undefined, limit ?? undefined);
   reader = current;
   readerId = id;
   // Stopped: by the user (the rows so far stay), or by a newer read or
