@@ -674,11 +674,11 @@ words, and the evidence (from the PRG sample in `tests/data`):
 ```
 adres2            List(Utf8View)        a list, one item per adres2: it occurs up to 34 times in one feature; the first repeat: source #0, byte 3717, feature 2 (gml:id PL.ZIPIN…)
                                         always a link to another object (xlink:href), never a value itself: the column holds the link, without the leading '#' of links within the file
-                                        40 values, not all numbers, dates or true/false: text
+                                        40 values of text
 georeferencja     geoarrow.point        2 geometries (Point), 2D
                                         every geometry fits GeoArrow's native point type
                                         axis order of EPSG:2180: nothing in the file settles the order, so GDAL's rule applies: …
-identyfikatorULIC Utf8View              2 values, not all numbers, dates or true/false: text
+identyfikatorULIC Utf8View              2 values of text
                                         they look like whole numbers, but some would change if stored as such: "08173" would lose its leading zero
 lokalnyId         Utf8View              the value sits inside the element AD_IdentyfikatorIIP, which the column skips
 wersjaId          Timestamp(µs, "UTC")  2 values, all dates with a time

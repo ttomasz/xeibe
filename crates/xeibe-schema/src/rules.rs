@@ -673,10 +673,20 @@ impl Engine<'_> {
             n => format!("{} element", steps[n - 2].name.local),
         };
         if node.parents_with < parent_instances {
-            reasons.push(format!(
-                "in {} of {} {parent}s, absent from the others",
-                node.parents_with, parent_instances
-            ));
+            let missing = parent_instances - node.parents_with;
+            let (missing, total, share) = (
+                thousands(missing),
+                thousands(parent_instances),
+                share(missing, parent_instances),
+            );
+            // A feature is a row; an element below it is not.
+            reasons.push(if steps.len() <= 1 {
+                format!(
+                    "{missing} of {total} rows ({share}) have no value (null): those features don't have the element"
+                )
+            } else {
+                format!("{missing} of {total} {parent}s ({share}) don't have it: null there")
+            });
         }
         let repeated = node.max_occurs > 1;
         let list = plan
@@ -1359,20 +1369,41 @@ const NEVER_A_VALUE: &str = "always empty: no value to pick a type from";
 /// of them could be.
 fn values(count: u64, set: TypeSet) -> String {
     if set == TypeSet::STRING {
-        return format!(
-            "{}, not all numbers, dates or true/false: text",
-            plural(count, "value")
-        );
+        return format!("{} of text", plural(count, "value"));
     }
     format!("{}, all {}", plural(count, "value"), kind_of(set))
 }
 
 /// `1 value`, `2 values`; `1 geometry`, `2 geometries`.
 fn plural(count: u64, noun: &str) -> String {
+    let number = thousands(count);
     match (count, noun.strip_suffix('y')) {
         (1, _) => format!("1 {noun}"),
-        (_, Some(stem)) => format!("{count} {stem}ies"),
-        _ => format!("{count} {noun}s"),
+        (_, Some(stem)) => format!("{number} {stem}ies"),
+        _ => format!("{number} {noun}s"),
+    }
+}
+
+/// `2,684`.
+fn thousands(count: u64) -> String {
+    let digits = count.to_string();
+    let mut out = String::new();
+    for (i, digit) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
+}
+
+/// `part` of `whole` as a percentage, never rounded to 0% or 100%.
+fn share(part: u64, whole: u64) -> String {
+    let percent = (part as f64 / whole as f64 * 100.0).round() as u64;
+    match percent {
+        0 => "under 1%".to_string(),
+        100.. => "over 99%".to_string(),
+        _ => format!("{percent}%"),
     }
 }
 
