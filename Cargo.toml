@@ -12,10 +12,11 @@ members = [
     "crates/xeibe-datafusion",
     "crates/xeibe-cli",
     "crates/xeibe-py",
+    "crates/xeibe-proj-py",
     "crates/xeibe-wasm",
     "crates/xeibe-testkit",
 ]
-# xeibe-datafusion and xeibe-py pull in heavy dependencies (DataFusion, pyo3),
+# xeibe-datafusion, xeibe-py and xeibe-proj-py pull in heavy dependencies (DataFusion, pyo3),
 # and xeibe-wasm is for wasm32-unknown-unknown; build them explicitly with
 # `-p` or `--workspace`.
 default-members = [

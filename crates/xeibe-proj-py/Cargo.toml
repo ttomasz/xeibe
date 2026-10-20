@@ -1,0 +1,25 @@
+[package]
+name = "xeibe-proj-py"
+description = "Python package xeibe-proj: a pyproj-compatible API over xeibe-crs and xeibe-reproject (docs/pyproj-compat.md)"
+# The package's own version, not the workspace's: it is released when EPSG
+# publishes and when its pyproj-compatible API changes (docs/pyproj-compat.md,
+# Versioning). maturin reads it for the wheel. No `+epsg-…` build metadata:
+# PyPI rejects local version labels.
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+# The embedded EPSG data is IOGP's (xeibe-crs/EPSG-NOTICE.md), and some
+# projection code is ported from PROJ (xeibe-reproject/PROJ-NOTICE.md).
+license = "CC0-1.0 AND MIT AND LicenseRef-EPSG"
+# Published to PyPI as a wheel (maturin, pyproject.toml), not to crates.io.
+publish = false
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+xeibe-crs.workspace = true
+xeibe-reproject.workspace = true
+pyo3.workspace = true

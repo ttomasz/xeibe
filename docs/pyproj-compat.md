@@ -1,7 +1,9 @@
 # A pyproj-compatible Python package
 
-> **Status: proposed 2026-10-20. Nothing is implemented yet.** API facts
-> below were checked against pyproj 3.8.0 (PROJ 9.8.1) and GeoPandas 1.2.0.
+> **Status: phase 0 and the parts of phase 1 that need no change to the Rust
+> crates are implemented (2026-10-20), in `crates/xeibe-proj-py`; see
+> [Implementation status](#implementation-status).** API facts below were
+> checked against pyproj 3.8.0 (PROJ 9.8.1) and GeoPandas 1.2.0.
 
 A Python package over `xeibe-crs` and `xeibe-reproject` that follows pyproj's
 API closely enough that most code which converts coordinates with pyproj
@@ -22,6 +24,41 @@ What it offers over pyproj:
   bundles).
 - **Thread-safe objects.** Transformers are immutable, and conversion releases the GIL.
 - **Complete type hints**, checked in strict mode (see [Type hints](#type-hints)).
+
+## Implementation status
+
+Built on the Rust crates' current public API only, while their changes
+(see [below](#changes-needed-in-the-rust-crates)) are made separately:
+
+- **Done.** The crate, abi3 wheel (2.0 MB with `--profile dist`), and
+  the strict type checks. `CRS` from every input form in the table below
+  except WKT and PROJ strings, with its properties, parts, `repr`,
+  equality, hashing and pickling. `Transformer.from_crs`, `transform`,
+  `itransform` and `transform_bounds` with the container rules, radians
+  and directions. Grids fetched by range, cached, read from data
+  directories and logged. `pyproj.database`'s queries but
+  `get_units_map`, `aoi`, `enums`, `exceptions`, `network` and `datadir`.
+  Tests: `crates/xeibe-proj-py/tests` (see [testing.md](testing.md)).
+- **Interim, until the Rust change lands.** `CRS.equals` compares PROJJSON
+  in Python, without identifiers, descriptions and CRS names, instead of
+  `Crs::equivalent`. `to_epsg` on a CRS without an id finds the EPSG CRS
+  of the same name (or components) and definition, instead of
+  identification. The first-use log message names the grids a transformer
+  may read, not the operation that read them. A local grid is only used
+  with the network on, because without `Grids::Local` the selection can't
+  know which grids are local.
+- **Waiting on the Rust changes.** `TransformerGroup` and `Transformer`'s
+  `accuracy`, `area_of_use`, `remarks`, `scope`, `operations` and
+  `get_last_used_operation` (operation metadata). They raise
+  `NotImplementedError` naming the missing metadata.
+- **Differences found while building it.** `get_data_dir()` returns `""`
+  when no directory is set, where pyproj raises `DataDirError`: no data
+  directory is needed. `AreaOfUse.name` is `None`, because EPSG's
+  descriptions of areas aren't in `xeibe-crs`. `Transformer.name` is
+  `"noop"`, `"conversion"` or `"transformation"`, and `description` is the
+  best candidate's name, not a PROJ pipeline's. The parts of a CRS
+  (`Datum`, `Ellipsoid`, …) print their names, not WKT. `CRS.to_string`
+  is implemented already: the authority code, else the input.
 
 ## Naming and layout
 
@@ -48,6 +85,8 @@ crates/xeibe-proj-py/
     geod.py  proj.py  database.py  aoi.py  enums.py  exceptions.py
     network.py  datadir.py
     _containers.py        pyproj's input/output container rules
+    _epsg.py  _json.py    the EPSG tables, cached; typed access to PROJJSON
+    _unsupported.py       the errors for what isn't implemented, naming the phase
     _grids.py             grid fetching, cache and the xeibe_proj.grids logger (stdlib urllib)
     arrow.py              GeoArrow arrays (optional, phase 3)
     compat.py             install_as_pyproj() (phase 3)
@@ -258,7 +297,7 @@ becomes the package's status tracker.
 | `pyproj.database`: `query_crs_info`, `query_utm_crs_info`, `get_authorities`, `get_codes`, `get_units_map`, `get_database_metadata("EPSG.VERSION")` | 1 / 2 | From the `xeibe-crs` tables. `query_utm_crs_info` (GeoPandas' `estimate_utm_crs`) needs each projected CRS's datum, which the PROJJSON has. |
 | `pyproj.aoi` (`AreaOfInterest`, `AreaOfUse`, `BBox`), `pyproj.enums`, `pyproj.exceptions` (`CRSError`, `ProjError`, `GeodError`, `DataDirError`) | 1 | Same names and hierarchy. Error messages differ. |
 | `pyproj.network.set_network_enabled` / `is_network_enabled`, `PROJ_NETWORK` | 1 | On by default, unlike pyproj. `set_network_enabled(False)` or `PROJ_NETWORK=OFF` turns it off (see [Grids](#grids)). |
-| `pyproj.datadir.get_data_dir` / `set_data_dir` / `append_data_dir`, `PROJ_DATA` | 1 | Directories searched for local PROJ-data grids. `get_data_dir` returns the first (GeoPandas calls it in `show_versions`). |
+| `pyproj.datadir.get_data_dir` / `set_data_dir` / `append_data_dir`, `PROJ_DATA` | 1 | Directories searched for local PROJ-data grids. `get_data_dir` returns them joined with `os.pathsep`, as pyproj does, or `""` when there are none (GeoPandas calls it in `show_versions`). |
 | `__version__`, `EPSG_VERSION`, `show_versions` | 1 | The package's own version and the EPSG version (see [Versioning](#versioning)). |
 | `proj_version_str`, `PROJ_VERSION`, `PROJ_VERSION_STR` | Out | There is no PROJ to report. A module `__getattr__` raises `AttributeError` with that reason. GeoPandas' `show_versions` reads `proj_version_str`, so under the shim that one call fails. |
 | `set_use_global_context` | 1 | No-op. |

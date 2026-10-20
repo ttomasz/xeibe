@@ -17,7 +17,7 @@ use those names.
 
 | Path | Contents | In git |
 |---|---|---|
-| `crates/xeibe-*` | Workspace crates: core, crs (generated EPSG tables), reproject (CRS conversion), geom, schema, arrow, io, wfs, datafusion, cli (binary `xeibe`), py (Python module `xeibe`), wasm (the web page's bindings), testkit (test support only) | yes |
+| `crates/xeibe-*` | Workspace crates: core, crs (generated EPSG tables), reproject (CRS conversion), geom, schema, arrow, io, wfs, datafusion, cli (binary `xeibe`), py (Python module `xeibe`), proj-py (Python package `xeibe_proj`, pyproj-compatible; `docs/pyproj-compat.md`), wasm (the web page's bindings), testkit (test support only) | yes |
 | `web/` | The web page (`docs/web.md`): Vite + TypeScript over `xeibe-wasm`; `web/scripts/build-wasm.sh` generates `web/src/wasm/` (not in git) | yes |
 | `docs/` | Design docs | yes |
 | `tests/data/` | Small curated samples, `samples.toml`, generated `samples.json`/`BOM.md`; see `tests/data/README.md` | yes |
@@ -49,7 +49,7 @@ System tools:
 Steps, from the repo root:
 
 ```sh
-cargo check --workspace --all-targets     # default members skip xeibe-datafusion/xeibe-py/xeibe-wasm; --workspace includes them
+cargo check --workspace --all-targets     # default members skip xeibe-datafusion/xeibe-py/xeibe-proj-py/xeibe-wasm; --workspace includes them
 scripts/fetch_ogc_schemas.py              # ogc_schemas/ (SCHEMAS_OPENGIS_NET.zip + spec PDFs, ~70 MB) and schemas-extra/
 docker pull ghcr.io/osgeo/gdal:ubuntu-full-3.13.3   # optional; scripts/gdal pulls on first use
 ```

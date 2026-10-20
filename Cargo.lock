@@ -4414,6 +4414,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "xeibe-proj-py"
+version = "0.1.0"
+dependencies = [
+ "pyo3",
+ "xeibe-crs",
+ "xeibe-reproject",
+]
+
+[[package]]
 name = "xeibe-py"
 version = "0.1.0"
 dependencies = [

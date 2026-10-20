@@ -1,0 +1,80 @@
+# xeibe-proj (Python)
+
+Coordinate conversion between **EPSG** coordinate reference systems with a
+**pyproj-compatible API**, in pure Rust: no PROJ, no `proj.db`, no C
+dependencies, and no required Python dependencies. Part of
+[xeibe](https://github.com/ttomasz/xeibe).
+
+> **Warning: experimental, not for production use.** This package is
+> AI-generated and has not been thoroughly tested yet. Its interfaces are not
+> stable and will change, in breaking ways. Only part of pyproj's API is
+> implemented; the plan, and what will never be supported, is in
+> [`docs/pyproj-compat.md`](https://github.com/ttomasz/xeibe/blob/main/docs/pyproj-compat.md).
+
+## Usage
+
+```python
+from xeibe_proj import CRS, Transformer
+
+t = Transformer.from_crs("EPSG:4326", "EPSG:2180", always_xy=True)
+x, y = t.transform(21.0, 52.0)
+xs, ys = t.transform([21.0, 19.9], [52.0, 50.1])   # lists in, lists out
+left, bottom, right, top = t.transform_bounds(14.1, 49.0, 24.2, 55.9)
+
+crs = CRS("urn:ogc:def:crs:EPSG::2180")
+crs.name, crs.axis_info, crs.area_of_use, crs.to_epsg()
+crs == CRS(2180)                                    # True
+```
+
+Coordinates come back in the type they went in: a number, a list, a tuple,
+an `array.array` or a numpy array (pandas and xarray objects give numpy
+arrays). numpy is not a dependency and is never imported: its arrays are
+read through the buffer protocol. `pip install xeibe-proj[numpy]` only
+declares it.
+
+CRSs can be given as EPSG codes in any common spelling (`4326`,
+`"EPSG:4326"`, `"EPSG:4326+5773"`, OGC URNs and URLs), as `"OGC:CRS84"`, as
+EPSG names (`"WGS 84"`), or as PROJJSON. WKT and PROJ strings are not read
+yet.
+
+## Differences from pyproj
+
+- **Failed coordinates raise** `ProjError`, which names the coordinate.
+  There is no `inf` result: `errcheck` and `inplace` don't exist, and passing
+  either raises `NotImplementedError`. `direction` is keyword-only.
+- **No ballpark transformations.** Without a usable EPSG operation,
+  `Transformer.from_crs` raises `ProjError`.
+- **Grids are fetched by default**, from `cdn.proj.org`, by byte range, and
+  cached under the user cache directory. `xeibe_proj.network.set_network_enabled(False)`
+  or `PROJ_NETWORK=OFF` turns this off, and then only operations without
+  grids are used, as in pyproj's default install. Grid files in `PROJ_DATA`
+  (or `xeibe_proj.datadir.set_data_dir`) are read instead of fetched.
+- **A newer EPSG release** than pyproj's bundled `proj.db`:
+  `xeibe_proj.EPSG_VERSION`. Names and operations can differ.
+- **No PROJ version**: `proj_version_str` and `PROJ_VERSION` don't exist.
+
+## Logging
+
+Every use of a grid is logged to the `xeibe_proj.grids` logger: `INFO` when
+a transformer first converts with grids and for each download, `DEBUG` for
+the cache and data directories, `ERROR` for a failed download. The package
+adds no handlers, so the `INFO` records are dropped unless the application
+configures logging:
+
+```python
+import logging
+logging.basicConfig(level=logging.INFO)
+```
+
+## Types
+
+The package is fully typed (`py.typed`) and checked with mypy and pyright in
+strict mode. `Transformer.transform` has overloads that follow the
+container rules: `float` in gives `float` out, `list[float]` gives
+`list[float]`, a numpy array gives a numpy array.
+
+## Licence
+
+The code is CC0-1.0. The embedded EPSG data is IOGP's, used under the EPSG
+Dataset Terms of Use, and some projection code is ported from PROJ (MIT):
+see `NOTICE.md`.

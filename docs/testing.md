@@ -22,6 +22,7 @@ files in `tests/data`.
 | `crates/<crate>/tests/it/` | One integration-test binary per crate, with a module per topic and a `support` module. Everything goes through the public API |
 | `crates/<crate>/tests/it/samples.rs` | The same crate tested against the real samples in `tests/data` |
 | `crates/xeibe-py/tests/*.py` | The Python package, run against a built wheel: `smoke.py` (`scan`, `read`, settings, options) and `sedona.py` (`xeibe.sedona` in SedonaDB). Not part of `cargo test`; see below |
+| `crates/xeibe-proj-py/tests/` | The pyproj-compatible package, with pytest against a built wheel: CRSs and transformations compared with pyproj, the container rules, grids from a local HTTP server, a bare import without numpy. `tests/typing/` holds `assert_type` checks for mypy and pyright. Not part of `cargo test`; see below |
 | `crates/xeibe-wasm/tests/it/` | The web page's session run natively: scan, read, the map's buffers, grids loaded from `tests/data/reprojection/grids`, the table's rows. The JavaScript in `web/` has no automated tests yet: `npm run check` type-checks it |
 
 The Python tests are PEP 723 scripts. Build the wheel first, then run each
@@ -31,6 +32,20 @@ with it:
 uvx maturin build --release -m crates/xeibe-py/Cargo.toml -o target/py-wheels
 uv run --with target/py-wheels/xeibe_py-*.whl crates/xeibe-py/tests/smoke.py
 uv run --with target/py-wheels/xeibe_py-*.whl crates/xeibe-py/tests/sedona.py
+```
+
+`xeibe-proj-py`'s tests run with pytest. pyproj 3.8.0, which they compare
+with, needs Python 3.12 or newer. The type checks run from the crate's
+directory, where `pyproject.toml` configures them:
+
+```sh
+uvx maturin build --release -m crates/xeibe-proj-py/Cargo.toml -o target/proj-py-wheels
+uv run --no-project --isolated --python 3.12 --with target/proj-py-wheels/xeibe_proj-*.whl \
+  --with pytest --with numpy --with pyproj==3.8.0 pytest crates/xeibe-proj-py/tests
+cd crates/xeibe-proj-py
+uv run --no-project --isolated --python 3.12 --with ../../target/proj-py-wheels/xeibe_proj-*.whl --with mypy --with numpy mypy
+uv run --no-project --isolated --python 3.12 --with ../../target/proj-py-wheels/xeibe_proj-*.whl --with pyright --with numpy pyright
+uv run --no-project --isolated --python 3.12 --with ../../target/proj-py-wheels/xeibe_proj-*.whl --with mypy python -m mypy.stubtest xeibe_proj._native
 ```
 
 Each test module names the section of the design docs it comes from. A test

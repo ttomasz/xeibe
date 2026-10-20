@@ -1,0 +1,52 @@
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "xeibe-proj"
+description = "A pyproj-compatible API for EPSG coordinate conversion in pure Rust, without PROJ (experimental, AI-generated, unstable API)"
+readme = "README.md"
+license = "CC0-1.0 AND MIT AND LicenseRef-EPSG"
+license-files = ["NOTICE.md"]
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Typing :: Typed",
+]
+dynamic = ["version"]
+# None: the core install imports only the standard library and the native
+# module (docs/pyproj-compat.md, Dependencies and extras).
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/ttomasz/xeibe"
+Documentation = "https://github.com/ttomasz/xeibe/blob/main/docs/pyproj-compat.md"
+
+[project.optional-dependencies]
+# Declares the dependency only: numpy arrays work without it being imported.
+numpy = ["numpy>=1.26"]
+# The differential tests compare with pyproj.
+test = ["pytest>=8", "pyproj>=3.7", "numpy>=1.26"]
+all = ["xeibe-proj[numpy]"]
+
+[tool.maturin]
+# Mixed layout: the Python package `xeibe_proj` (python/xeibe_proj) around
+# the native module `xeibe_proj._native` (src/lib.rs).
+python-source = "python"
+module-name = "xeibe_proj._native"
+exclude = ["**/__pycache__/**"]
+
+[tool.mypy]
+strict = true
+files = ["python/xeibe_proj", "tests/typing"]
+
+[tool.pyright]
+include = ["python/xeibe_proj", "tests/typing"]
+typeCheckingMode = "strict"
+pythonVersion = "3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

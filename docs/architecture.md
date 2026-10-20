@@ -243,6 +243,7 @@ to turn paths and URLs into sources.
 | `xeibe-datafusion` | `TableProvider` for one layer; `read_gml()` table function; adapter from DataFusion's `ObjectStore` registry to `ByteSource` | `datafusion` |
 | `xeibe-cli` | `xeibe gml scan`, `xeibe gml convert` (one layer to Parquet or Arrow IPC), `xeibe wfs` | `clap`, `parquet` (feature `geospatial`) |
 | `xeibe-py` | Python package `xeibe`: `scan()`, `read()` returning arro3 schemas and streams (Arrow PyCapsule interface); `xeibe.sedona`, GML as a SedonaDB data source (see [below](#sedonadb)) | `pyo3`, `pyo3-arrow`; Python: `arro3-core`, `sedonadb` (optional) |
+| `xeibe-proj-py` | Python package `xeibe_proj`: a pyproj-compatible `CRS` and `Transformer` over `xeibe-crs` and `xeibe-reproject` ([pyproj-compat.md](pyproj-compat.md)) | `pyo3`; Python: none (numpy optional, never imported) |
 
 `xeibe-testkit` is test support only (sample loading, independent WKT/WKB readers); see
 [testing.md](testing.md).
@@ -271,9 +272,10 @@ Where each design topic lives in the code (`crates/<crate>/src/…`):
 | DataFusion | `xeibe-datafusion`: `table`, `partition`, `function`, `sources` |
 | CLI | `xeibe-cli`: `args`, `commands/*` (binary `xeibe`) |
 | Python, SedonaDB | `xeibe-py`: the native module `xeibe._xeibe` (`src/lib.rs`), `python/xeibe/__init__.py`, `python/xeibe/sedona.py` |
+| pyproj-compatible API (pyproj-compat.md) | `xeibe-proj-py`: the native module `xeibe_proj._native` (`src/lib.rs`), `python/xeibe_proj/` (`crs/`, `transformer`, `_grids`, `database`, …) |
 
 Arrow is pinned to **59** because `geoarrow-array` 0.9 and DataFusion 55 depend on it.
-`xeibe-datafusion` and `xeibe-py` are not default workspace members (slow builds): use
+`xeibe-datafusion`, `xeibe-py` and `xeibe-proj-py` are not default workspace members (slow builds): use
 `cargo check --workspace` or `-p`.
 
 ## Data flow

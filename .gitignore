@@ -41,3 +41,6 @@ __pycache__/
 /web/node_modules
 /web/dist
 /web/src/wasm
+# Native modules `maturin develop` builds into the Python sources
+/crates/*/python/**/*.so
+/crates/*/python/**/*.pyd
