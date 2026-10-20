@@ -570,7 +570,8 @@ Every applied decision is recorded in field metadata: `gml:axis_swapped` (true/f
 or "mixed" when decision keys differ) and `gml:axis_decision`: per srsName, the rule
 or evidence that decided, in words, and any evidence against it (`EPSG:2180: nothing
 in the file settles the order, so GDAL's rule applies: a short srsName like
-"EPSG:2180" is read as written, whatever axis order its CRS has`). `--explain`, the
+"EPSG:2180" means the file is x/y (easting first), whatever axis order its CRS
+has`). Each reason ends with the order it takes the file to have. `--explain`, the
 `AxisConflict` warnings and the web page show the same text.
 
 ### CRS metadata

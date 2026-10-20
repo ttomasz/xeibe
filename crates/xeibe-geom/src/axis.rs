@@ -234,11 +234,13 @@ fn swapped_bbox(b: [f64; 4]) -> [f64; 4] {
     [b[1], b[0], b[3], b[2]]
 }
 
-const SWAPPED: &str = "so the coordinates are swapped";
-const AS_WRITTEN: &str = "so the coordinates are read as written";
+const IS_YX: &str = "so the file is y/x and the coordinates are swapped";
+const IS_XY: &str = "so the file is x/y";
+/// When nothing says which order the file has.
+const ASSUMED_XY: &str = "so the file is taken to be x/y";
 
-fn outcome(swap: bool) -> &'static str {
-    if swap { SWAPPED } else { AS_WRITTEN }
+fn file_is(swap: bool) -> &'static str {
+    if swap { IS_YX } else { IS_XY }
 }
 
 /// One piece of evidence's answer.
@@ -264,8 +266,15 @@ impl Decider<'_> {
             conflicts: Vec::new(),
         };
         match mode {
-            AxisOrderMode::XY => decided(false, "axis mode XY: always read as written".into()),
-            AxisOrderMode::YX => decided(true, "axis mode YX: always swapped".into()),
+            AxisOrderMode::XY => decided(
+                false,
+                "axis mode XY: the file is always taken to be x/y".into(),
+            ),
+            AxisOrderMode::YX => decided(
+                true,
+                "axis mode YX: the file is always taken to be y/x, and the coordinates are swapped"
+                    .into(),
+            ),
             AxisOrderMode::Crs => match self.authority_order() {
                 Ok(vote) => decided(
                     vote.swap,
@@ -273,7 +282,7 @@ impl Decider<'_> {
                 ),
                 Err(why) => decided(
                     false,
-                    format!("axis mode Crs follows the CRS, but {why}, {AS_WRITTEN}"),
+                    format!("axis mode Crs follows the CRS, but {why}, {ASSUMED_XY}"),
                 ),
             },
             AxisOrderMode::CrsHeuristic => match self.heuristic() {
@@ -283,7 +292,7 @@ impl Decider<'_> {
                 ),
                 Err(why) => decided(
                     false,
-                    format!("axis mode CrsHeuristic (GDAL's rule), but {why}, {AS_WRITTEN}"),
+                    format!("axis mode CrsHeuristic (GDAL's rule), but {why}, {ASSUMED_XY}"),
                 ),
             },
             AxisOrderMode::GmlVersion { gml2, gml3 } => {
@@ -302,6 +311,29 @@ impl Decider<'_> {
         }
     }
 
+    /// `x/y` or `y/x`, with the first axis named when the CRS is known:
+    /// `y/x (northing first)`.
+    fn order(&self, swap: bool) -> String {
+        let order = if swap { "y/x" } else { "x/y" };
+        let geographic = self.srs.and_then(|srs| srs.crs.as_ref()).and_then(|crs| {
+            if crs.is_lon_lat_by_definition() {
+                return Some(true);
+            }
+            let CrsRef::Code { authority, code } = crs.horizontal() else {
+                return None;
+            };
+            Some(self.table.get(authority, code)?.geographic)
+        });
+        let first = match (geographic, swap) {
+            (None, _) => return order.into(),
+            (Some(true), false) => "longitude",
+            (Some(true), true) => "latitude",
+            (Some(false), false) => "easting",
+            (Some(false), true) => "northing",
+        };
+        format!("{order} ({first} first)")
+    }
+
     /// The CRS's own (authority) axis order, or why it is unknown (a clause
     /// to follow "but" or "and").
     fn authority_order(&self) -> Result<Vote, String> {
@@ -314,7 +346,7 @@ impl Decider<'_> {
             return Ok(Vote {
                 swap: false,
                 reason: format!(
-                    "{} puts longitude first by definition, {AS_WRITTEN}",
+                    "{} puts longitude first by definition, {IS_XY}",
                     crs.authority_code()
                 ),
             });
@@ -337,16 +369,16 @@ impl Decider<'_> {
         Ok(match info.first_axis {
             FirstAxis::NorthOrLat => Vote {
                 swap: true,
-                reason: format!("{authority}:{code} puts {north} first, {SWAPPED}"),
+                reason: format!("{authority}:{code} puts {north} first, {IS_YX}"),
             },
             FirstAxis::EastOrLon => Vote {
                 swap: false,
-                reason: format!("{authority}:{code} puts {east} first, {AS_WRITTEN}"),
+                reason: format!("{authority}:{code} puts {east} first, {IS_XY}"),
             },
             FirstAxis::Other => Vote {
                 swap: false,
                 reason: format!(
-                    "{authority}:{code}'s first axis points neither east nor north, which a swap can't fix, {AS_WRITTEN}"
+                    "{authority}:{code}'s first axis points neither east nor north, which a swap can't fix, so the coordinates are left in the file's order"
                 ),
             },
         })
@@ -370,8 +402,9 @@ impl Decider<'_> {
         Ok(Vote {
             swap: false,
             reason: format!(
-                "a {form} srsName like {:?} is read as written, whatever axis order its CRS has",
-                srs.raw
+                "a {form} srsName like {:?} means the file is {}, whatever axis order its CRS has",
+                srs.raw,
+                self.order(false)
             ),
         })
     }
@@ -394,9 +427,7 @@ impl Decider<'_> {
         if self.key.dialect == Dialect::Gml2 {
             votes.push(Vote {
                 swap: false,
-                reason: format!(
-                    "GML 2 geometry is always x/y (it predates CRS axis order), {AS_WRITTEN}"
-                ),
+                reason: format!("GML 2 geometry is always x/y (it predates CRS axis order)"),
             });
         }
         votes.extend(self.wfs_vote());
@@ -416,11 +447,11 @@ impl Decider<'_> {
             },
             (Err(why), true) => Vote {
                 swap: false,
-                reason: format!("nothing in the file settles the order, and {why}, {AS_WRITTEN}"),
+                reason: format!("nothing in the file settles the order, and {why}, {ASSUMED_XY}"),
             },
             (Err(why), false) => Vote {
                 swap: false,
-                reason: format!("{why}, {AS_WRITTEN}"),
+                reason: format!("{why}, {ASSUMED_XY}"),
             },
         });
 
@@ -470,7 +501,7 @@ impl Decider<'_> {
             swap,
             reason: format!(
                 "the geometry's axisLabels {labels:?} put {which} first, {}",
-                outcome(swap)
+                file_is(swap)
             ),
         })
     }
@@ -502,11 +533,12 @@ impl Decider<'_> {
             (false, true) => !north_first,
             _ => return None,
         };
-        let read = if swap { "swapped" } else { "read as written" };
         Some(Vote {
             swap,
             reason: format!(
-                "the coordinates fall inside the area where {authority}:{code} is used only when {read}"
+                "the coordinates fall inside the area where {authority}:{code} is used only if the file is {}{}",
+                self.order(swap),
+                if swap { ", so they are swapped" } else { "" }
             ),
         })
     }
@@ -546,7 +578,7 @@ impl Decider<'_> {
         if version.starts_with("1.0") {
             return Some(Vote {
                 swap: false,
-                reason: format!("WFS 1.0 responses are always x/y, {AS_WRITTEN}"),
+                reason: "WFS 1.0 responses are always x/y".into(),
             });
         }
         let authority = |what: &str| {
@@ -561,7 +593,7 @@ impl Decider<'_> {
             return match form {
                 SrsNameForm::Short | SrsNameForm::LegacyUrl => Some(Vote {
                     swap: false,
-                    reason: format!("WFS 1.1 responses with a short srsName are x/y, {AS_WRITTEN}"),
+                    reason: "WFS 1.1 responses with a short srsName are x/y".into(),
                 }),
                 SrsNameForm::Unknown => None,
                 _ => authority("WFS 1.1 responses with a URN srsName"),
