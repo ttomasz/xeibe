@@ -42,7 +42,7 @@ the map stacks above the tabs.
 | Tab | Shows | From |
 |---|---|---|
 | Overview | Feature count, extent, CRS, axis-order decisions with their reasons and a choice to override them, read report (skipped features, warnings, skipped sources, whether the scan was complete) | `ScanResult::layers`, `extent`, `axis_decisions`, `is_complete`, `skipped_sources`; the read report |
-| Schema | Columns with Arrow type and source path, and the inference reasoning | `ScanResult::schema`, `explain` |
+| Schema | Columns with Arrow type and source path, each with the reasons for it in plain words | `ScanResult::schema` (its decisions, as `explain` prints them) |
 | Data | Virtualized table of the read rows | the record batches |
 | XML | The selected row's feature as written in its file (see [Map](#map)) | the read's location column |
 | Options | Form for the read options (preset, overrides, axis order, CRS, linearization, …) and the equivalent `xeibe` command, Python snippet and settings file, ready to copy | `ReadOptions`, `ScanResult::to_settings` |

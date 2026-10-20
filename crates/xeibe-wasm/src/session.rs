@@ -207,16 +207,24 @@ impl Dataset {
         Ok(json)
     }
 
-    /// One layer's columns as the last scan inferred them, with the
-    /// reasoning (`xeibe gml scan --explain`).
+    /// One layer's columns as the last scan inferred them, each with the
+    /// reasons for it (`xeibe gml scan --explain`).
     pub fn schema(&self, layer: &str) -> Result<Value> {
         let scan = self.scan.as_ref().ok_or("no scan yet")?;
         let schema = scan.arrow_schema(layer).map_err(|e| e.to_string())?;
-        let explain = scan.explain(layer).map_err(|e| e.to_string())?;
-        Ok(json!({
-            "columns": schema.fields().iter().map(|f| column_json(f)).collect::<Vec<_>>(),
-            "explain": explain,
-        }))
+        let inferred = scan.schema(layer).map_err(|e| e.to_string())?;
+        let columns = schema.fields().iter().map(|field| {
+            let reasons = inferred
+                .decisions
+                .iter()
+                .find(|decision| &decision.field == field.name())
+                .map(|decision| decision.reasons.clone())
+                .unwrap_or_default();
+            let mut json = column_json(field);
+            json["reasons"] = json!(reasons);
+            json
+        });
+        Ok(json!({ "columns": columns.collect::<Vec<_>>() }))
     }
 
     /// Start reading `layer`, at most `limit` rows, with the schema the

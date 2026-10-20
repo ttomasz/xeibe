@@ -153,8 +153,8 @@ export interface Column {
 }
 
 export interface Schema {
-  columns: Column[];
-  explain: string;
+  /** `reasons`: why the column is what it is (`xeibe gml scan --explain`). */
+  columns: (Column & { reasons: string[] })[];
 }
 
 export interface ReadInfo {

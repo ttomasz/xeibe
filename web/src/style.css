@@ -382,12 +382,14 @@ code.path {
   overflow-wrap: anywhere;
 }
 
-pre.explain {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 10px;
-  overflow: auto;
+table.grid td.type,
+table.grid td.type code {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+table.grid td.reasons div + div {
+  margin-top: 2px;
 }
 
 /* Data tab: virtual table */

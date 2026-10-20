@@ -213,15 +213,15 @@ export function schema(layer: string, s: Schema): string {
   const rows = s.columns
     .map(
       (c) => `<tr>
-        <td><code>${escape(c.name)}</code></td>
-        <td><code>${escape(c.type)}</code>${c.nullable ? '' : ' <span class="tag">not null</span>'}</td>
-        <td><code class="path">${escape(c.path)}</code></td>
+        <td><code>${escape(c.name)}</code>${c.path && c.path !== c.name ? `<div><code class="path" title="Where in the feature the value is">${escape(c.path)}</code></div>` : ''}</td>
+        <td class="type"><code>${escape(c.type)}</code>${c.nullable ? '' : ' <span class="tag">not null</span>'}</td>
+        <td class="reasons">${c.reasons.map((r) => `<div>${sentence(r)}</div>`).join('')}</td>
       </tr>`,
     )
     .join('');
   return `<section><h2>Columns of <code>${escape(layer)}</code></h2>
-    <p class="muted">As a scan infers them: what <code>xeibe gml scan</code> writes to a settings file.</p>
-    <table class="grid"><thead><tr><th>Column</th><th>Arrow type</th><th>Path</th></tr></thead><tbody>${rows}</tbody></table>
-  </section>
-  <section><h2>Why</h2><pre class="explain">${escape(s.explain)}</pre></section>`;
+    <p class="muted">As a scan infers them: what <code>xeibe gml scan</code> writes to a settings file. The path under
+      a name says where in the feature its value is.</p>
+    <table class="grid"><thead><tr><th>Column</th><th>Arrow type</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table>
+  </section>`;
 }
