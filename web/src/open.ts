@@ -9,6 +9,8 @@ import { escape } from './views';
 export interface OpenRequest {
   choices: Choice[];
   sample: number | null;
+  /** What was chosen, in words: "3 files, 3.2 GB (263 MB to read)". */
+  summary: string;
 }
 
 /** Roughly what the page scans per second, of uncompressed GML. */
@@ -207,7 +209,8 @@ export class OpenDialog {
       .map((i) => (i.member === null ? { file: i.file } : { file: i.file, member: i.member }));
     if (choices.length === 0) return null;
     const full = this.dialog.querySelector<HTMLInputElement>('input[name=extent][value=full]')!.checked;
-    if (full) return { choices, sample: null };
+    const summary = this.summary.textContent ?? '';
+    if (full) return { choices, sample: null, summary };
     const sample = Math.floor(Number(this.sampleInput.value));
     if (!(sample >= 1)) {
       this.sampleInput.setCustomValidity('At least 1 feature');
@@ -215,6 +218,57 @@ export class OpenDialog {
       return null;
     }
     this.sampleInput.setCustomValidity('');
-    return { choices, sample };
+    return { choices, sample, summary };
+  }
+}
+
+/** A scan's progress, over the page until it ends: the status bar alone is
+ * easy to miss. Closing it leaves the scan running; a failure shows it
+ * again. */
+export class ScanProgress {
+  private dialog: HTMLDialogElement;
+  private title: HTMLElement;
+  private what: HTMLElement;
+  private bar: HTMLProgressElement;
+  private state: HTMLElement;
+
+  constructor(onStop: () => void) {
+    this.dialog = document.getElementById('progress') as HTMLDialogElement;
+    this.title = this.dialog.querySelector('h2')!;
+    this.what = this.dialog.querySelector('.what')!;
+    this.bar = this.dialog.querySelector('progress')!;
+    this.state = this.dialog.querySelector('.state')!;
+    this.dialog.querySelector('[data-action=stop]')!.addEventListener('click', () => {
+      this.close();
+      onStop();
+    });
+  }
+
+  /** A scan of `what` starts. */
+  show(what: string) {
+    this.dialog.classList.remove('failed');
+    this.title.textContent = 'Scanning';
+    this.what.textContent = what;
+    this.update('Starting…', null);
+    if (!this.dialog.open) this.dialog.showModal();
+  }
+
+  /** How far it is: `share` of the bytes, or `null` if unknown (a sample
+   * ends when it has its features, wherever that is). */
+  update(text: string, share: number | null) {
+    this.state.textContent = text;
+    if (share === null) this.bar.removeAttribute('value');
+    else this.bar.value = share;
+  }
+
+  fail(title: string, message: string) {
+    this.dialog.classList.add('failed');
+    this.title.textContent = title;
+    this.state.textContent = message;
+    if (!this.dialog.open) this.dialog.showModal();
+  }
+
+  close() {
+    if (this.dialog.open) this.dialog.close();
   }
 }

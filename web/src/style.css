@@ -114,6 +114,10 @@ a {
   width: 8em;
 }
 
+.field .hint {
+  font-size: 12px;
+}
+
 #status {
   flex: 1;
   min-width: 12em;
@@ -520,9 +524,10 @@ ul.members {
   padding-left: 20px;
 }
 
-/* The open dialog */
+/* The open dialog, and the scan's progress */
 
-#open {
+#open,
+.modal {
   width: min(640px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   padding: 0;
@@ -533,11 +538,13 @@ ul.members {
   box-shadow: 0 12px 40px rgb(15 23 42 / 0.25);
 }
 
-#open::backdrop {
+#open::backdrop,
+.modal::backdrop {
   background: rgb(15 23 42 / 0.35);
 }
 
-#open form {
+#open form,
+.modal form {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -545,7 +552,8 @@ ul.members {
   padding: 16px;
 }
 
-#open h2 {
+#open h2,
+.modal h2 {
   margin: 0;
   font-size: 16px;
 }
@@ -637,10 +645,39 @@ ul.members {
   padding: 1px 6px;
 }
 
-#open .actions {
+#open .actions,
+.modal .actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+#progress {
+  width: min(480px, calc(100vw - 32px));
+}
+
+#progress p {
+  margin: 0;
+}
+
+#progress progress {
+  width: 100%;
+  height: 10px;
+  accent-color: var(--accent);
+}
+
+#progress .state {
+  font-variant-numeric: tabular-nums;
+}
+
+#progress.failed .state {
+  color: var(--error);
+}
+
+#progress.failed progress,
+#progress.failed .note,
+#progress.failed [data-action='stop'] {
+  display: none;
 }
 
 .sampled .button {

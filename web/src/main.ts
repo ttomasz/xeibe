@@ -2,7 +2,7 @@
 
 import './style.css';
 import { MapPane, type View } from './map';
-import { bytes, DEFAULT_SAMPLE, OpenDialog, type OpenRequest } from './open';
+import { bytes, DEFAULT_SAMPLE, OpenDialog, type OpenRequest, ScanProgress } from './open';
 import type { Choice, FeatureXml, FromWorker, InputFile, ReadInfo, Report, Scan, Schema, ToWorker } from './protocol';
 import { Table } from './table';
 import { escape, overview, schema as schemaView } from './views';
@@ -38,6 +38,8 @@ const state = {
   /** What the dialog asked for last. */
   choices: null as Choice[] | null,
   sample: null as number | null,
+  /** What was chosen, in words, for the scan's progress. */
+  summary: '',
   scan: null as Scan | null,
   scanMs: 0,
   layer: null as string | null,
@@ -177,6 +179,7 @@ function setStatus(text: string, error = false) {
 // Files
 
 const dialog = new OpenDialog(scan);
+const progress = new ScanProgress(stopScan);
 
 /** List the files: the dialog then asks what to read. */
 function open(files: File[]) {
@@ -185,6 +188,7 @@ function open(files: File[]) {
   state.listing = null;
   state.choices = null;
   state.choose = true;
+  progress.close();
   // The worker can't take a message while it scans: start over.
   if (state.scanning) restartWorker();
   else send({ type: 'open', files });
@@ -194,6 +198,7 @@ function open(files: File[]) {
 function scan(request: OpenRequest) {
   state.choices = request.choices;
   state.sample = request.sample;
+  state.summary = request.summary;
   state.scan = null;
   state.layer = null;
   state.info = null;
@@ -205,6 +210,8 @@ function scan(request: OpenRequest) {
   state.scanning = true;
   stopButton.hidden = false;
   setStatus('Scanning…');
+  const extent = request.sample === null ? 'the whole files' : `the first ${plural(request.sample, 'feature')} of each file`;
+  progress.show(`${request.summary}: ${extent}`);
   state.started = performance.now();
   send({ type: 'scan', choices: request.choices, sample: request.sample });
 }
@@ -216,12 +223,13 @@ changeButton.addEventListener('click', () => {
     stopButton.hidden = true;
     setStatus('Scan stopped');
   }
+  progress.close();
   dialog.show(state.listing, state.choices, state.sample);
 });
 
 $('overview').addEventListener('click', (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action=full-scan]');
-  if (button && state.choices) scan({ choices: state.choices, sample: null });
+  if (button && state.choices) scan({ choices: state.choices, sample: null, summary: state.summary });
 });
 
 $<HTMLInputElement>('file').addEventListener('change', (event) => {
@@ -284,7 +292,12 @@ stopButton.addEventListener('click', () => {
     send({ type: 'stop', id: state.readId });
     return;
   }
-  // Back to the dialog, to choose less or a sample.
+  stopScan();
+});
+
+/** Back to the dialog, to choose less or a sample. */
+function stopScan() {
+  progress.close();
   state.choose = true;
   const sample = state.sample ?? DEFAULT_SAMPLE;
   restartWorker();
@@ -292,7 +305,7 @@ stopButton.addEventListener('click', () => {
   layerSelect.replaceChildren();
   setStatus('Scan stopped');
   state.sample = sample;
-});
+}
 
 function receive(message: FromWorker) {
   if ('id' in message && message.type !== 'rows' && message.id !== state.readId) return;
@@ -309,16 +322,21 @@ function receive(message: FromWorker) {
     case 'progress': {
       const seconds = (performance.now() - state.started) / 1000;
       if (state.sample !== null) {
-        setStatus(`Scanning the first ${plural(state.sample, 'feature')} of each file… ${bytes(message.bytes)} read in ${seconds.toFixed(0)} s`);
+        const read = `${bytes(message.bytes)} read in ${seconds.toFixed(0)} s`;
+        setStatus(`Scanning the first ${plural(state.sample, 'feature')} of each file… ${read}`);
+        progress.update(read, null);
       } else {
-        const share = message.total > 0 ? Math.min(100, (100 * message.bytes) / message.total) : 0;
-        setStatus(`Scanning… ${share.toFixed(0)}% of ${bytes(message.total)} in ${seconds.toFixed(0)} s`);
+        const share = message.total > 0 ? Math.min(1, message.bytes / message.total) : 0;
+        const read = `${(share * 100).toFixed(0)}% of ${bytes(message.total)} in ${seconds.toFixed(0)} s`;
+        setStatus(`Scanning… ${read}`);
+        progress.update(read, share);
       }
       break;
     }
     case 'scanned': {
       state.scanning = false;
       stopButton.hidden = true;
+      progress.close();
       state.scan = message.scan;
       state.scanMs = message.ms;
       const layers = message.scan.layers;
@@ -330,6 +348,7 @@ function receive(message: FromWorker) {
       layerSelect.disabled = layers.length === 0;
       if (layers.length === 0) {
         setStatus('No layers found', true);
+        progress.fail('No layers found', 'The scan found no GML features in the files chosen.');
         renderOverview();
         return;
       }
@@ -394,6 +413,7 @@ function receive(message: FromWorker) {
       if (message.layer === state.layer) renderSchema();
       break;
     case 'error':
+      if (state.scanning) progress.fail('The scan failed', message.message);
       state.scanning = false;
       state.reading = false;
       stopButton.hidden = true;

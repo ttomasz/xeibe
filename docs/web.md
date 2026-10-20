@@ -63,6 +63,13 @@ Opening files shows a dialog first, before anything is scanned:
   should take, or the first N features of each file (10,000 by default). The
   dialog suggests the sample above 150 MB of XML.
 
+The scan then shows its progress in a dialog of its own, since the status at
+the top is easy to miss: what it reads, a bar (over the bytes for a full scan;
+a sample ends when it has its features, so there it only moves), and Stop and
+Close. Closing it (or Esc) leaves the scan running, with the status at the
+top; the dialog closes when the scan ends, and shows again if it fails or
+finds no layers.
+
 Stopping a scan brings the dialog back with the sample chosen, and "Change
 files…" reopens it with the last choices, without opening the files again.
 After a sampled scan the Overview says so and offers a full scan of the same
@@ -368,8 +375,8 @@ brings the same C dependency as above.
 - **Memory.** wasm32 addresses at most 4 GB; in practice browsers manage 1–2 GB.
   The input isn't held (see [Inputs](#inputs)); what is held is the Arrow data
   of the rows read, for the table, and the map's buffers. "Max features"
-  (100,000 by default) stops a read after N rows, which with an inline read
-  also stops the parsing.
+  (100,000 by default; empty reads them all, as the field says) stops a read
+  after N rows, which with an inline read also stops the parsing.
 - **Time.** One thread, so several times slower than the CLI on a multi-core
   machine. A full scan reads everything, at about 80 MB/s of XML: seconds for
   hundreds of MB, minutes for tens of GB. The national PRG zip (1.8 GB, 33

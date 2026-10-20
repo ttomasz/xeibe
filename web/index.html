@@ -15,7 +15,8 @@
       <button id="change" class="button" hidden title="Choose other files or members, or scan differently">Change files…</button>
       <label class="field">Layer <select id="layer" disabled></select></label>
       <label class="field" title="Stop after this many features; empty reads them all">Max features
-        <input id="limit" type="number" min="1" step="1" value="100000" />
+        <input id="limit" type="number" min="1" step="1" value="100000" placeholder="all" aria-describedby="limitHint" />
+        <span id="limitHint" class="hint">empty reads all</span>
       </label>
       <button id="stop" class="button" hidden>Stop</button>
       <span id="status" role="status"></span>
@@ -74,6 +75,19 @@
         <div class="actions">
           <button class="button" value="cancel" formnovalidate>Cancel</button>
           <button class="button primary" value="open">Scan and read</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="progress" class="modal" aria-labelledby="progressTitle">
+      <form method="dialog">
+        <h2 id="progressTitle">Scanning</h2>
+        <p class="what muted"></p>
+        <progress max="1"></progress>
+        <p class="state" role="status"></p>
+        <p class="note muted">Closing this leaves the scan running: the bar at the top shows how far it is.</p>
+        <div class="actions">
+          <button class="button" type="button" data-action="stop">Stop</button>
+          <button class="button primary" value="close">Close</button>
         </div>
       </form>
     </dialog>
