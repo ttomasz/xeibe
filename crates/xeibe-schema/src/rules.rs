@@ -674,19 +674,13 @@ impl Engine<'_> {
         };
         if node.parents_with < parent_instances {
             let missing = parent_instances - node.parents_with;
-            let (missing, total, share) = (
+            reasons.push(format!(
+                "{} of {} {parent}s ({}) {} missing a value (null)",
                 thousands(missing),
                 thousands(parent_instances),
                 share(missing, parent_instances),
-            );
-            // A feature is a row; an element below it is not.
-            reasons.push(if steps.len() <= 1 {
-                format!(
-                    "{missing} of {total} rows ({share}) have no value (null): those features don't have the element"
-                )
-            } else {
-                format!("{missing} of {total} {parent}s ({share}) don't have it: null there")
-            });
+                if missing == 1 { "is" } else { "are" },
+            ));
         }
         let repeated = node.max_occurs > 1;
         let list = plan
