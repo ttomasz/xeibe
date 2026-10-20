@@ -148,8 +148,10 @@ function reportSection(r: Report, reading: boolean, limit: number | null): strin
       .map((s) => `<li>${location(s.location)}: ${escape(s.message)}</li>`)
       .join('')}</ul>`);
   }
-  if (r.warnings.length) {
-    parts.push(`<h3>Warnings (${number.format(r.warnings.length)})</h3><ul>${r.warnings
+  // The Axis order section shows the conflicts, more readably.
+  const warnings = r.warnings.filter((w) => w.kind !== 'AxisConflict');
+  if (warnings.length) {
+    parts.push(`<h3>Warnings (${number.format(warnings.length)})</h3><ul>${warnings
       .slice(0, 50)
       .map((w) => `<li><span class="tag">${escape(w.kind)}</span> ${w.location ? `${location(w.location)}: ` : ''}${escape(w.message)}</li>`)
       .join('')}</ul>`);
