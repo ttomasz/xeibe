@@ -148,7 +148,7 @@ Every Arrow field carries metadata that records where it came from:
 | `gml:tz_offset` | `+02:00` | Time-zone offset shared by every value of a timestamp, date or time-of-day column |
 | `gml:srs_name` | `EPSG:2180` | srsName as written, trimmed (geometry columns) |
 | `gml:axis_swapped` | `true` | The reader swapped axes (geometry columns) |
-| `gml:axis_decision` | mode and reason | How the axis order was decided (geometry columns; see [geometry.md](geometry.md#crs-metadata)) |
+| `gml:axis_decision` | srsName and reason, in words | How the axis order was decided (geometry columns; see [geometry.md](geometry.md#crs-metadata)) |
 | `gml:content` | `text` | A `text` column that takes the element's text with the markup removed (`MixedContent::TextOnly`) instead of its raw XML |
 
 Schema-level metadata stores the GML version(s) (`gml:versions`, e.g. `3.2`, or

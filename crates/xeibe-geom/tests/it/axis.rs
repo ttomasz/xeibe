@@ -28,8 +28,6 @@ fn options(mode: AxisOrderMode) -> AxisOrderOptions {
 fn swaps(mode: AxisOrderMode, srs: &str) -> bool {
     decide(
         &key(srs, Dialect::Gml3),
-        None,
-        None,
         &AxisEvidence::default(),
         &AxisContext::default(),
         &options(mode),
@@ -97,8 +95,6 @@ fn a_compound_crs_takes_the_axis_order_of_its_horizontal_part() {
 fn an_unknown_crs_is_read_as_written_and_reported() {
     let decision = decide(
         &key("EPSG:98765", Dialect::Gml3),
-        None,
-        None,
         &AxisEvidence::default(),
         &AxisContext::default(),
         &options(AxisOrderMode::Crs),
@@ -159,8 +155,6 @@ fn gml_version_mode_uses_the_dialect_of_the_geometry() {
     let decide_with = |dialect| {
         decide(
             &key("EPSG:4326", dialect),
-            None,
-            None,
             &AxisEvidence::default(),
             &AxisContext::default(),
             &options(mode.clone()),
@@ -182,8 +176,6 @@ fn overrides_are_keyed_by_the_srs_name_as_written() {
     let swap_for = |srs: &str| {
         decide(
             &key(srs, Dialect::Gml3),
-            None,
-            None,
             &AxisEvidence::default(),
             &AxisContext::default(),
             &options,
@@ -210,8 +202,6 @@ fn overrides_ignore_surrounding_whitespace() {
     let swap_for = |srs: &str| {
         decide(
             &key(srs, Dialect::Gml3),
-            None,
-            None,
             &AxisEvidence::default(),
             &AxisContext::default(),
             &options,
@@ -231,8 +221,6 @@ fn auto_takes_axis_labels_as_decisive() {
     };
     let decision = decide(
         &key("EPSG:4326", Dialect::Gml3),
-        None,
-        None,
         &evidence,
         &AxisContext::default(),
         &options(AxisOrderMode::Auto),
@@ -247,8 +235,6 @@ fn auto_takes_axis_labels_as_decisive() {
     assert!(
         !decide(
             &key("urn:ogc:def:crs:EPSG::4326", Dialect::Gml3),
-            None,
-            None,
             &evidence,
             &AxisContext::default(),
             &options(AxisOrderMode::Auto),
@@ -269,8 +255,6 @@ fn auto_uses_the_range_check_when_it_is_decisive() {
     };
     let decision = decide(
         &key("EPSG:4258", Dialect::Gml3),
-        None,
-        None,
         &evidence,
         &AxisContext::default(),
         &options(AxisOrderMode::Auto),
@@ -293,8 +277,6 @@ fn auto_falls_back_when_the_range_check_cannot_decide() {
     };
     let decision = decide(
         &key("EPSG:2180", Dialect::Gml3),
-        None,
-        None,
         &evidence,
         &AxisContext::default(),
         &options(AxisOrderMode::Auto),
@@ -312,8 +294,6 @@ fn auto_knows_the_fme_quirk() {
     assert!(
         decide(
             &key("EPSG:4326", Dialect::Gml3),
-            None,
-            None,
             &AxisEvidence::default(),
             &context,
             &options(AxisOrderMode::Auto),
@@ -325,8 +305,6 @@ fn auto_knows_the_fme_quirk() {
     assert!(
         !decide(
             &key("EPSG:2056", Dialect::Gml3),
-            None,
-            None,
             &AxisEvidence::default(),
             &context,
             &options(AxisOrderMode::Auto),
@@ -343,8 +321,6 @@ fn auto_reads_a_gml_2_geometry_as_xy_whatever_the_srs_name_says() {
     assert!(
         !decide(
             &key("urn:ogc:def:crs:EPSG::4326", Dialect::Gml2),
-            None,
-            None,
             &AxisEvidence::default(),
             &AxisContext::default(),
             &options(AxisOrderMode::Auto),
@@ -357,8 +333,6 @@ fn auto_reads_a_gml_2_geometry_as_xy_whatever_the_srs_name_says() {
     assert!(
         decide(
             &key("urn:ogc:def:crs:EPSG::4326", Dialect::Gml3),
-            None,
-            None,
             &AxisEvidence::default(),
             &AxisContext::default(),
             &options(AxisOrderMode::Auto),
@@ -377,8 +351,6 @@ fn auto_reads_a_gml_2_geometry_as_xy_whatever_the_srs_name_says() {
     assert!(
         decide(
             &key("urn:ogc:def:crs:EPSG::4326", Dialect::Gml2),
-            None,
-            None,
             &out_of_range,
             &AxisContext::default(),
             &options(AxisOrderMode::Auto),
@@ -398,8 +370,6 @@ fn auto_uses_the_wfs_version_we_requested() {
     assert!(
         !decide(
             &key("urn:ogc:def:crs:EPSG::4326", Dialect::Gml3),
-            None,
-            None,
             &AxisEvidence::default(),
             &wfs10,
             &options(AxisOrderMode::Auto),
@@ -416,8 +386,6 @@ fn auto_uses_the_wfs_version_we_requested() {
     assert!(
         decide(
             &key("EPSG:2180", Dialect::Gml3),
-            None,
-            None,
             &AxisEvidence::default(),
             &wfs20,
             &options(AxisOrderMode::Auto),
@@ -527,8 +495,6 @@ fn auto_reports_envelopes_and_request_boxes_in_the_other_order() {
     };
     let decision = decide(
         &key("EPSG:2180", Dialect::Gml3),
-        None,
-        None,
         &evidence,
         &context,
         &options(AxisOrderMode::XY),
@@ -542,8 +508,6 @@ fn auto_reports_envelopes_and_request_boxes_in_the_other_order() {
 
     let decision = decide(
         &key("EPSG:2180", Dialect::Gml3),
-        None,
-        None,
         &evidence,
         &context,
         &options(AxisOrderMode::Auto),

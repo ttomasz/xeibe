@@ -145,19 +145,17 @@ pub struct AxisContext {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AxisDecision {
     pub swap: bool,
-    /// Which rule/evidence decided, for `--explain` and field metadata.
+    /// Which rule or evidence decided, in words, for `--explain`, field
+    /// metadata and the web page.
     pub reason: String,
-    /// Evidence that contradicted the decision (always reported).
+    /// Evidence that contradicted the decision (always reported), in words.
     pub conflicts: Vec<String>,
 }
 
 /// Decide the axis order for one key. An override for the key's srsName (as
-/// written) wins over the mode. `layer` and `column` only name the decision's
-/// place in its reason.
+/// written) wins over the mode.
 pub fn decide(
     key: &AxisKey,
-    layer: Option<&str>,
-    column: Option<&str>,
     evidence: &AxisEvidence,
     context: &AxisContext,
     options: &AxisOrderOptions,
@@ -183,19 +181,14 @@ pub fn decide(
         .srs_name
         .as_deref()
         .and_then(|srs| Some((srs, override_for(&options.overrides, srs)?)));
-    let mut decision = match overridden {
+    match overridden {
         Some((srs, mode)) => {
             let mut decision = decider.apply(mode);
-            decision.reason = format!("override for {srs:?}: {}", decision.reason);
+            decision.reason = format!("override for {srs:?}, {}", decision.reason);
             decision
         }
         None => decider.apply(&options.mode),
-    };
-    let place: Vec<&str> = [layer, column].into_iter().flatten().collect();
-    if !place.is_empty() {
-        decision.reason = format!("{}: {}", place.join("."), decision.reason);
     }
-    decision
 }
 
 /// Map `axisLabels` (e.g. `"Lat Long"`, `"x y"`) to a first-axis direction.
@@ -241,6 +234,13 @@ fn swapped_bbox(b: [f64; 4]) -> [f64; 4] {
     [b[1], b[0], b[3], b[2]]
 }
 
+const SWAPPED: &str = "so the coordinates are swapped";
+const AS_WRITTEN: &str = "so the coordinates are read as written";
+
+fn outcome(swap: bool) -> &'static str {
+    if swap { SWAPPED } else { AS_WRITTEN }
+}
+
 /// One piece of evidence's answer.
 struct Vote {
     swap: bool,
@@ -264,20 +264,26 @@ impl Decider<'_> {
             conflicts: Vec::new(),
         };
         match mode {
-            AxisOrderMode::XY => decided(false, "mode XY: read as written (x/y)".into()),
-            AxisOrderMode::YX => decided(true, "mode YX: written y/x, swapped".into()),
+            AxisOrderMode::XY => decided(false, "axis mode XY: always read as written".into()),
+            AxisOrderMode::YX => decided(true, "axis mode YX: always swapped".into()),
             AxisOrderMode::Crs => match self.authority_order() {
-                Ok(vote) => decided(vote.swap, format!("mode Crs: {}", vote.reason)),
+                Ok(vote) => decided(
+                    vote.swap,
+                    format!("axis mode Crs follows the CRS: {}", vote.reason),
+                ),
                 Err(why) => decided(
                     false,
-                    format!("mode Crs: {why}; read as written (x/y assumed)"),
+                    format!("axis mode Crs follows the CRS, but {why}, {AS_WRITTEN}"),
                 ),
             },
             AxisOrderMode::CrsHeuristic => match self.heuristic() {
-                Ok(vote) => decided(vote.swap, format!("mode CrsHeuristic: {}", vote.reason)),
+                Ok(vote) => decided(
+                    vote.swap,
+                    format!("axis mode CrsHeuristic (GDAL's rule): {}", vote.reason),
+                ),
                 Err(why) => decided(
                     false,
-                    format!("mode CrsHeuristic: {why}; read as written (x/y assumed)"),
+                    format!("axis mode CrsHeuristic (GDAL's rule), but {why}, {AS_WRITTEN}"),
                 ),
             },
             AxisOrderMode::GmlVersion { gml2, gml3 } => {
@@ -286,63 +292,96 @@ impl Decider<'_> {
                     Dialect::Gml3 => ("GML 3", gml3),
                 };
                 let mut decision = self.apply(inner);
-                decision.reason = format!("mode GmlVersion, {name} geometry: {}", decision.reason);
+                decision.reason = format!(
+                    "axis mode GmlVersion, for {name} geometry: {}",
+                    decision.reason
+                );
                 decision
             }
             AxisOrderMode::Auto => self.auto(),
         }
     }
 
-    /// The CRS's own (authority) axis order, or why it is unknown.
+    /// The CRS's own (authority) axis order, or why it is unknown (a clause
+    /// to follow "but" or "and").
     fn authority_order(&self) -> Result<Vote, String> {
-        let srs = self.srs.ok_or("no srsName")?;
+        let srs = self.srs.ok_or("there is no srsName")?;
         let crs = srs
             .crs
             .as_ref()
-            .ok_or_else(|| format!("unknown srsName {:?}", srs.raw))?;
+            .ok_or_else(|| format!("the srsName {:?} isn't one xeibe knows", srs.raw))?;
         if crs.is_lon_lat_by_definition() {
             return Ok(Vote {
                 swap: false,
-                reason: format!("{} is lon/lat by definition", crs.authority_code()),
+                reason: format!(
+                    "{} puts longitude first by definition, {AS_WRITTEN}",
+                    crs.authority_code()
+                ),
             });
         }
         let CrsRef::Code { authority, code } = crs.horizontal() else {
-            return Err(format!("no known horizontal CRS in {:?}", srs.raw));
+            return Err(format!(
+                "the srsName {:?} names no known horizontal CRS",
+                srs.raw
+            ));
         };
         let info = self
             .table
             .get(authority, code)
-            .ok_or_else(|| format!("unknown CRS {authority}:{code} (not in the CRS table)"))?;
+            .ok_or_else(|| format!("{authority}:{code} isn't in xeibe's CRS table"))?;
+        let (north, east) = if info.geographic {
+            ("latitude", "longitude")
+        } else {
+            ("northing", "easting")
+        };
         Ok(match info.first_axis {
             FirstAxis::NorthOrLat => Vote {
                 swap: true,
-                reason: format!("{authority}:{code} is northing/latitude first, swapped"),
+                reason: format!("{authority}:{code} puts {north} first, {SWAPPED}"),
             },
             FirstAxis::EastOrLon => Vote {
                 swap: false,
-                reason: format!("{authority}:{code} is easting/longitude first"),
+                reason: format!("{authority}:{code} puts {east} first, {AS_WRITTEN}"),
             },
             FirstAxis::Other => Vote {
                 swap: false,
                 reason: format!(
-                    "{authority}:{code} axes are neither east nor north first; passed through as written"
+                    "{authority}:{code}'s first axis points neither east nor north, which a swap can't fix, {AS_WRITTEN}"
                 ),
             },
         })
     }
 
     /// GDAL's rule: short and legacy forms as written, URN/URI forms in
-    /// authority order.
+    /// authority order. The reason doesn't name the rule; the caller does.
     fn heuristic(&self) -> Result<Vote, String> {
-        let srs = self.srs.ok_or("no srsName")?;
-        match srs.form {
-            SrsNameForm::Short | SrsNameForm::LegacyUrl => Ok(Vote {
-                swap: false,
-                reason: format!("{:?} is a short/legacy form, read as written", srs.raw),
-            }),
-            SrsNameForm::Unknown => Err(format!("unknown srsName {:?}", srs.raw)),
-            _ => self.authority_order(),
-        }
+        let srs = self.srs.ok_or("there is no srsName")?;
+        let form = match srs.form {
+            SrsNameForm::Short => "short",
+            SrsNameForm::LegacyUrl => "legacy URL",
+            SrsNameForm::Unknown => {
+                return Err(format!("the srsName {:?} isn't one xeibe knows", srs.raw));
+            }
+            SrsNameForm::HttpUri | SrsNameForm::HttpUriKvp | SrsNameForm::CompoundUri => {
+                return self.follows_crs("URI");
+            }
+            _ => return self.follows_crs("URN"),
+        };
+        Ok(Vote {
+            swap: false,
+            reason: format!(
+                "a {form} srsName like {:?} is read as written, whatever axis order its CRS has",
+                srs.raw
+            ),
+        })
+    }
+
+    fn follows_crs(&self, form: &str) -> Result<Vote, String> {
+        let vote = self.authority_order()?;
+        Ok(Vote {
+            swap: vote.swap,
+            reason: format!("a {form} srsName follows its CRS, and {}", vote.reason),
+        })
     }
 
     fn auto(&self) -> AxisDecision {
@@ -355,28 +394,47 @@ impl Decider<'_> {
         if self.key.dialect == Dialect::Gml2 {
             votes.push(Vote {
                 swap: false,
-                reason: "GML 2 geometry, which predates authority axis order: read as written"
-                    .into(),
+                reason: format!(
+                    "GML 2 geometry is always x/y (it predates CRS axis order), {AS_WRITTEN}"
+                ),
             });
         }
         votes.extend(self.wfs_vote());
         // The fallback always answers, so there is always a decision.
-        let fallback = self.apply(&AxisOrderMode::CrsHeuristic);
-        votes.push(Vote {
-            swap: fallback.swap,
-            reason: format!("fallback, {}", fallback.reason),
+        let alone = votes.is_empty();
+        votes.push(match (self.heuristic(), alone) {
+            (Ok(vote), true) => Vote {
+                swap: vote.swap,
+                reason: format!(
+                    "nothing in the file settles the order, so GDAL's rule applies: {}",
+                    vote.reason
+                ),
+            },
+            (Ok(vote), false) => Vote {
+                swap: vote.swap,
+                reason: format!("GDAL's rule: {}", vote.reason),
+            },
+            (Err(why), true) => Vote {
+                swap: false,
+                reason: format!("nothing in the file settles the order, and {why}, {AS_WRITTEN}"),
+            },
+            (Err(why), false) => Vote {
+                swap: false,
+                reason: format!("{why}, {AS_WRITTEN}"),
+            },
         });
 
         let mut votes = votes.into_iter();
         let chosen = votes.next().expect("the fallback always votes");
-        for vote in votes.filter(|vote| vote.swap != chosen.swap) {
-            let verb = if vote.swap { "swap" } else { "no swap" };
-            conflicts.push(format!("{} (would mean {verb})", vote.reason));
-        }
+        conflicts.extend(
+            votes
+                .filter(|vote| vote.swap != chosen.swap)
+                .map(|vote| vote.reason),
+        );
         self.envelope_warnings(chosen.swap, &mut conflicts);
         AxisDecision {
             swap: chosen.swap,
-            reason: format!("Auto: {}", chosen.reason),
+            reason: chosen.reason,
             conflicts,
         }
     }
@@ -392,15 +450,28 @@ impl Decider<'_> {
         let (labels, first) = *axes.first()?;
         if axes.iter().any(|(_, axis)| *axis != first) {
             conflicts.push(format!(
-                "axisLabels disagree: {:?}",
-                self.evidence.axis_labels
+                "the geometries' axisLabels disagree: {}",
+                self.evidence
+                    .axis_labels
+                    .iter()
+                    .map(|labels| format!("{labels:?}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ));
             return None;
         }
         let swap = first == FirstAxis::NorthOrLat;
+        let which = if swap {
+            "latitude or northing"
+        } else {
+            "longitude or easting"
+        };
         Some(Vote {
             swap,
-            reason: format!("axisLabels {labels:?} declare the order"),
+            reason: format!(
+                "the geometry's axisLabels {labels:?} put {which} first, {}",
+                outcome(swap)
+            ),
         })
     }
 
@@ -426,15 +497,16 @@ impl Decider<'_> {
         let as_written = fits((bbox[0], bbox[2]), (bbox[1], bbox[3]));
         let swapped = fits((bbox[1], bbox[3]), (bbox[0], bbox[2]));
         let north_first = info.first_axis == FirstAxis::NorthOrLat;
-        let (swap, order) = match (as_written, swapped) {
-            (true, false) => (north_first, "authority order"),
-            (false, true) => (!north_first, "the reverse of authority order"),
+        let swap = match (as_written, swapped) {
+            (true, false) => north_first,
+            (false, true) => !north_first,
             _ => return None,
         };
+        let read = if swap { "swapped" } else { "read as written" };
         Some(Vote {
             swap,
             reason: format!(
-                "only {order} puts the sampled coordinates inside the area of use of {authority}:{code}"
+                "the coordinates fall inside the area where {authority}:{code} is used only when {read}"
             ),
         })
     }
@@ -450,19 +522,22 @@ impl Decider<'_> {
             .wfs_version
             .as_deref()
             .is_some_and(|v| v.starts_with("1.1"));
-        let quirk = if self.context.fme_produced {
-            "FME writes the short form in authority order [GDAL]"
+        let producer = if self.context.fme_produced {
+            "FME"
         } else if wfs11 && producer.contains("mapserver.gis.umn.edu") {
-            "MapServer WFS 1.1 writes the short form in authority order"
+            "MapServer's WFS 1.1"
         } else if wfs11 && producer.to_ascii_lowercase().contains("/wfsserver") {
-            "ArcGIS Server WFS 1.1 writes the short form in authority order"
+            "ArcGIS Server's WFS 1.1"
         } else {
             return None;
         };
         let vote = self.authority_order().ok()?;
         Some(Vote {
             swap: vote.swap,
-            reason: format!("{quirk}: {}", vote.reason),
+            reason: format!(
+                "the file comes from {producer}, which writes a short srsName like {:?} in its CRS's axis order, and {}",
+                srs.raw, vote.reason
+            ),
         })
     }
 
@@ -471,14 +546,14 @@ impl Decider<'_> {
         if version.starts_with("1.0") {
             return Some(Vote {
                 swap: false,
-                reason: "WFS 1.0 response: x/y".into(),
+                reason: format!("WFS 1.0 responses are always x/y, {AS_WRITTEN}"),
             });
         }
         let authority = |what: &str| {
             let vote = self.authority_order().ok()?;
             Some(Vote {
                 swap: vote.swap,
-                reason: format!("{what}: {}", vote.reason),
+                reason: format!("{what} follow the CRS's axis order, and {}", vote.reason),
             })
         };
         if version.starts_with("1.1") {
@@ -486,14 +561,14 @@ impl Decider<'_> {
             return match form {
                 SrsNameForm::Short | SrsNameForm::LegacyUrl => Some(Vote {
                     swap: false,
-                    reason: "WFS 1.1 with a short srsName: x/y".into(),
+                    reason: format!("WFS 1.1 responses with a short srsName are x/y, {AS_WRITTEN}"),
                 }),
                 SrsNameForm::Unknown => None,
-                _ => authority("WFS 1.1 with a URN srsName, authority order"),
+                _ => authority("WFS 1.1 responses with a URN srsName"),
             };
         }
         if version.starts_with('2') {
-            return authority("WFS 2.0 response, authority order");
+            return authority("WFS 2.0 responses");
         }
         None
     }
@@ -508,7 +583,7 @@ impl Decider<'_> {
             && intersects(swapped_bbox(sampled), envelope)
         {
             conflicts.push(
-                "the boundedBy envelope is written in the other axis order than the geometry"
+                "the boundedBy envelope is written in the other axis order than the geometries"
                     .into(),
             );
         }
@@ -517,7 +592,7 @@ impl Decider<'_> {
             let other = if swap { sampled } else { swapped_bbox(sampled) };
             if !intersects(output, requested) && intersects(other, requested) {
                 conflicts.push(
-                    "the geometry falls outside the requested BBOX under this decision, but inside it the other way"
+                    "read this way, the geometries fall outside the requested BBOX, but inside it the other way"
                         .into(),
                 );
             }

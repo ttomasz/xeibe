@@ -149,11 +149,13 @@ impl AxisDecisions {
                     kind: WarningKind::AxisConflict,
                     location: None,
                     message: format!(
-                        "{} {:?}: {} (conflicts: {})",
+                        "{} {}.{} {:?}: {}; against it: {}",
                         key.source,
+                        self.layer,
+                        self.column,
                         key.srs_name.as_deref().unwrap_or("no srsName"),
                         decision.reason,
-                        decision.conflicts.join(", ")
+                        decision.conflicts.join("; ")
                     ),
                 });
             }
@@ -208,14 +210,7 @@ impl AxisResolver for AxisDecisions {
                     let empty = AxisEvidence::default();
                     let evidence = self.evidence.get(&key).unwrap_or(&empty);
                     let context = self.context(self.source);
-                    let decision = decide(
-                        &key,
-                        Some(&self.layer),
-                        Some(&self.column),
-                        evidence,
-                        &context,
-                        &self.options,
-                    );
+                    let decision = decide(&key, evidence, &context, &self.options);
                     decisions.insert(key, decision.clone());
                     decision
                 }

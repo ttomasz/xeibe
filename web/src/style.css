@@ -363,6 +363,11 @@ table.grid td:first-child {
   min-width: 12ch;
 }
 
+table.grid td ul {
+  margin: 2px 0 0;
+  padding-left: 18px;
+}
+
 table.grid th {
   color: var(--muted);
   font-weight: 500;

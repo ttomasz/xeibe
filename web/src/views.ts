@@ -26,6 +26,11 @@ function crs(c: CrsInfo): string {
   return `${name}${code}${deprecated}${written}`;
 }
 
+/** A reason clause from xeibe as a sentence. */
+function sentence(text: string): string {
+  return escape(text.charAt(0).toUpperCase() + text.slice(1)) + '.';
+}
+
 function axisTable(decisions: AxisDecision[], withFile: boolean): string {
   if (decisions.length === 0) return '<p class="muted">No geometry, no axis decisions.</p>';
   const rows = decisions
@@ -33,11 +38,17 @@ function axisTable(decisions: AxisDecision[], withFile: boolean): string {
       (d) => `<tr>
         <td><code>${escape(d.srs_name ?? '(none)')}</code>${withFile ? `<div class="muted">${escape(d.source)}</div>` : ''}</td>
         <td>${d.swap ? '<span class="tag warn">swapped</span>' : 'as written'}</td>
-        <td>${escape(d.reason)}${d.conflicts.length ? `<div class="warn">conflicts: ${d.conflicts.map(escape).join('; ')}</div>` : ''}</td>
+        <td>${sentence(d.reason)}${
+          d.conflicts.length
+            ? `<div class="warn">Against it:<ul>${d.conflicts.map((c) => `<li>${sentence(c)}</li>`).join('')}</ul></div>`
+            : ''
+        }</td>
       </tr>`,
     )
     .join('');
-  return `<table class="grid"><thead><tr><th>srsName</th><th>Axes</th><th>Reason</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<p class="muted">The output is x/y: easting or longitude first. Coordinates written the other way round
+    (y/x, as some CRSs define their axes) are swapped.</p>
+    <table class="grid"><thead><tr><th>srsName</th><th>Coordinates</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 export interface OverviewState {

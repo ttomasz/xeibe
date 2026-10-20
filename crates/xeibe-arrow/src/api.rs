@@ -478,7 +478,7 @@ fn display_name(observation: &DatasetObservation, name: &QName) -> String {
 fn plain_axis(observation: &DatasetObservation, options: &AxisOrderOptions) -> AxisOrderOptions {
     // srsName → swaps decided for it (per source and dialect).
     let mut decided: BTreeMap<Option<String>, Vec<bool>> = BTreeMap::new();
-    for (name, layer) in &observation.layers {
+    for layer in observation.layers.values() {
         let mut evidence = Vec::new();
         collect_geometry(&layer.root, true, &mut evidence);
         for (key, evidence) in evidence {
@@ -488,14 +488,7 @@ fn plain_axis(observation: &DatasetObservation, options: &AxisOrderOptions) -> A
                 dialect: key.dialect,
             };
             let context = axis_context(observation, key.source);
-            let decision = decide(
-                &axis_key,
-                Some(&name.local),
-                None,
-                evidence,
-                &context,
-                options,
-            );
+            let decision = decide(&axis_key, evidence, &context, options);
             decided
                 .entry(key.srs_name.clone())
                 .or_default()
@@ -687,14 +680,7 @@ impl ScanResult {
                     dialect: key.dialect,
                 };
                 let context = axis_context(&self.observation, key.source);
-                let decision = decide(
-                    &axis_key,
-                    Some(&name.local),
-                    None,
-                    evidence,
-                    &context,
-                    options,
-                );
+                let decision = decide(&axis_key, evidence, &context, options);
                 out.push((name.clone(), axis_key, decision));
             }
         }

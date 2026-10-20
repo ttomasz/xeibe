@@ -121,7 +121,6 @@ pub fn infer_schema(
         observation,
         options: &options,
         sampled: sampled.filter(|sample| sample.conservative),
-        layer,
         layer_clark: layer.to_clark(),
         prefixes: Prefixes::for_layer(observation, &layer_observation.root),
     };
@@ -353,7 +352,6 @@ struct Engine<'a> {
     options: &'a InferenceOptions,
     /// Conservative sample rules, if they apply.
     sampled: Option<&'a SampleOptions>,
-    layer: &'a QName,
     layer_clark: String,
     prefixes: Prefixes,
 }
@@ -1163,8 +1161,7 @@ impl Engine<'_> {
                 });
             }
         }
-        let column = steps.last().map_or("", |step| &*step.name.local);
-        let (swapped, decision) = self.axis(column, stats);
+        let (swapped, decision) = self.axis(stats);
         col.metadata.insert(meta::AXIS_SWAPPED.to_string(), swapped);
         col.metadata
             .insert(meta::AXIS_DECISION.to_string(), decision.clone());
@@ -1174,7 +1171,7 @@ impl Engine<'_> {
     }
 
     /// Apply the axis-order options to each decision key of the column.
-    fn axis(&self, column: &str, stats: &GeometryStats) -> (String, String) {
+    fn axis(&self, stats: &GeometryStats) -> (String, String) {
         let mut swaps = BTreeSet::new();
         let mut reasons = Vec::new();
         for (key, evidence) in &stats.axis_evidence {
@@ -1186,8 +1183,6 @@ impl Engine<'_> {
             let context = self.axis_context(key.source);
             let decision = xeibe_geom::axis::decide(
                 &axis_key,
-                Some(&self.layer.local),
-                Some(column),
                 evidence,
                 &context,
                 &self.options.geometry.axis,
@@ -1196,7 +1191,7 @@ impl Engine<'_> {
             let srs = key.srs_name.as_deref().unwrap_or("no srsName");
             let mut reason = format!("{srs}: {}", decision.reason);
             if !decision.conflicts.is_empty() {
-                reason.push_str(&format!(" (conflicts: {})", decision.conflicts.join(", ")));
+                reason.push_str(&format!("; against it: {}", decision.conflicts.join("; ")));
             }
             reasons.push(reason);
         }
