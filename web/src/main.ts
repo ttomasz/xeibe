@@ -3,7 +3,7 @@
 import './style.css';
 import { MapPane, type View } from './map';
 import { bytes, DEFAULT_SAMPLE, OpenDialog, type OpenRequest, ProgressDialog } from './open';
-import type { Choice, FeatureXml, FromWorker, InputFile, ReadInfo, Report, Scan, Schema, ToWorker } from './protocol';
+import type { Choice, FeatureXml, FromWorker, ReadInfo, Report, Scan, Schema, ToWorker } from './protocol';
 import { Table } from './table';
 import { escape, overview, schema as schemaView } from './views';
 import { wantsIndent, xmlView } from './xml';
@@ -32,7 +32,6 @@ function startWorker(): Worker {
 const state = {
   /** The files opened, and what is in them. */
   files: [] as File[],
-  listing: null as InputFile[] | null,
   /** Show the dialog when the worker has listed the files. */
   choose: false,
   /** What the dialog asked for last. */
@@ -69,7 +68,6 @@ const status = $('status');
 const layerSelect = $<HTMLSelectElement>('layer');
 const limitInput = $<HTMLInputElement>('limit');
 const stopButton = $<HTMLButtonElement>('stop');
-const changeButton = $<HTMLButtonElement>('change');
 const pointer = $('pointer');
 const mapNote = $('mapNote');
 
@@ -188,7 +186,6 @@ const progress = new ProgressDialog(stop);
 function open(files: File[]) {
   if (files.length === 0) return;
   state.files = files;
-  state.listing = null;
   state.choices = null;
   state.choose = true;
   progress.close();
@@ -218,17 +215,6 @@ function scan(request: OpenRequest) {
   state.started = performance.now();
   send({ type: 'scan', choices: request.choices, sample: request.sample });
 }
-
-changeButton.addEventListener('click', () => {
-  if (!state.listing) return;
-  if (state.scanning) {
-    restartWorker();
-    stopButton.hidden = true;
-    setStatus('Scan stopped');
-  }
-  progress.close();
-  dialog.show(state.listing, state.choices, state.sample);
-});
 
 $('overview').addEventListener('click', (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action=full-scan]');
@@ -364,8 +350,6 @@ function receive(message: FromWorker) {
   if ('id' in message && message.type !== 'rows' && message.id !== state.readId) return;
   switch (message.type) {
     case 'files':
-      state.listing = message.files;
-      changeButton.hidden = false;
       if (state.choose) {
         state.choose = false;
         dialog.show(message.files, state.choices, state.choices ? state.sample : undefined);

@@ -363,6 +363,10 @@ table.grid td:first-child {
   min-width: 12ch;
 }
 
+table.grid td.order {
+  white-space: nowrap;
+}
+
 table.grid td ul {
   margin: 2px 0 0;
   padding-left: 18px;

@@ -37,7 +37,7 @@ function axisTable(decisions: AxisDecision[], withFile: boolean): string {
     .map(
       (d) => `<tr>
         <td><code>${escape(d.srs_name ?? '(none)')}</code>${withFile ? `<div class="muted">${escape(d.source)}</div>` : ''}</td>
-        <td>${d.swap ? 'y/x <span class="tag warn">swapped</span>' : 'x/y'}</td>
+        <td class="order">${d.swap ? 'y/x <span class="tag warn">swapped</span>' : 'x/y'}</td>
         <td>${sentence(d.reason)}${
           d.conflicts.length
             ? `<div class="warn">Against it:<ul>${d.conflicts.map((c) => `<li>${sentence(c)}</li>`).join('')}</ul></div>`
@@ -124,7 +124,7 @@ function mapSection(info: ReadInfo, report: Report | null, grids: string[]): str
   const lines: string[] = [];
   if (info.geometry_column) lines.push(`Drawn: <code>${escape(info.geometry_column)}</code>`);
   if (m.crs) lines.push(`CRS: ${crs(m.crs)}`);
-  if (m.target) lines.push(`Map view in ${escape(m.target)}, converted by xeibe-reproject`);
+  if (m.target) lines.push(`Converted to longitude/latitude in ${escape(m.target)} by xeibe-reproject, then drawn in Web Mercator`);
   else lines.push('Source CRS view only');
   if (grids.length) lines.push(`Grids from cdn.proj.org: ${grids.map((g) => `<code>${escape(g)}</code>`).join(', ')}`);
   for (const note of m.notes) lines.push(`<span class="warn">${escape(note)}</span>`);
@@ -159,7 +159,6 @@ function reportSection(r: Report, reading: boolean, limit: number | null): strin
       .map((e) => `<li>row ${e.row + 1}: ${escape(e.message)}</li>`)
       .join('')}</ul>`);
   }
-  if (!r.skipped.length && !r.warnings.length && !reading) parts.push('<p class="muted">No warnings, nothing skipped.</p>');
   return `<section><h2>Read report</h2>${parts.join('')}</section>`;
 }
 

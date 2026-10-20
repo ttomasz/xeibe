@@ -35,7 +35,7 @@ the map stacks above the tabs.
 
 | Area | Contents |
 |---|---|
-| Top bar | File picker and drop zone, "Change files…" (the open dialog again), layer selector (BDOT10k-style files have dozens of layers), "Try a sample", progress |
+| Top bar | File picker and drop zone, layer selector (BDOT10k-style files have dozens of layers), "Try a sample", progress |
 | Left half | Map, in one of two views (see [Map](#map)) |
 | Right half | Tabs, below |
 
