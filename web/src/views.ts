@@ -1,6 +1,6 @@
 // The Overview and Schema tabs, as HTML from the worker's JSON.
 
-import type { AxisDecision, CrsInfo, ReadInfo, Report, Scan, Schema } from './protocol';
+import type { AxisDecision, AxisOverride, CrsInfo, ReadInfo, Report, Scan, Schema } from './protocol';
 
 export function escape(text: unknown): string {
   return String(text ?? '')
@@ -31,24 +31,63 @@ function sentence(text: string): string {
   return escape(text.charAt(0).toUpperCase() + text.slice(1)) + '.';
 }
 
-function axisTable(decisions: AxisDecision[], withFile: boolean): string {
+const ORDER = { XY: 'x/y', YX: 'y/x' } as const;
+
+/** Why xeibe decided as it did, and the evidence against it. */
+function why(d: AxisDecision): string {
+  const against = d.conflicts.length
+    ? `<div class="warn">Against it:<ul>${d.conflicts.map((c) => `<li>${sentence(c)}</li>`).join('')}</ul></div>`
+    : '';
+  return sentence(d.reason) + against;
+}
+
+/** `decisions`: the read's, or the scan's before the read reports; `auto`:
+ * the scan's, which no choice of the user's changes. */
+function axisTable(
+  decisions: AxisDecision[],
+  auto: AxisDecision[],
+  axis: Record<string, AxisOverride>,
+  withFile: boolean,
+): string {
   if (decisions.length === 0) return '<p class="muted">No geometry, no axis decisions.</p>';
   const rows = decisions
-    .map(
-      (d) => `<tr>
-        <td><code>${escape(d.srs_name ?? '(none)')}</code>${withFile ? `<div class="muted">${escape(d.source)}</div>` : ''}</td>
-        <td class="order">${d.swap ? 'y/x <span class="tag warn">swapped</span>' : 'x/y'}</td>
-        <td>${sentence(d.reason)}${
-          d.conflicts.length
-            ? `<div class="warn">Against it:<ul>${d.conflicts.map((c) => `<li>${sentence(c)}</li>`).join('')}</ul></div>`
-            : ''
-        }</td>
-      </tr>`,
-    )
+    .map((d) => {
+      const srs = d.srs_name;
+      const chosen = srs === null ? undefined : axis[srs];
+      const automatic = chosen
+        ? (auto.find((a) => a.srs_name === srs && a.source === d.source) ?? auto.find((a) => a.srs_name === srs))
+        : d;
+      const swap = chosen ? chosen === 'YX' : d.swap;
+      const tag = swap ? ' <span class="tag warn">swapped</span>' : '';
+      // Without an srsName there is no CRS, and no map to get wrong.
+      const order =
+        srs === null
+          ? (swap ? 'y/x' : 'x/y')
+          : `<select data-srs="${escape(srs)}" aria-label="Axis order of ${escape(srs)} in the file">
+              <option value="">Automatic${automatic ? ` (${automatic.swap ? 'y/x' : 'x/y'})` : ''}</option>
+              ${(['XY', 'YX'] as const).map((o) => `<option value="${o}"${chosen === o ? ' selected' : ''}>${ORDER[o]}</option>`).join('')}
+            </select>`;
+      const reason = chosen
+        ? `You chose ${ORDER[chosen]}.${automatic ? `<div class="muted">Automatically: ${sentence(automatic.reason)}</div>` : ''}`
+        : why(d);
+      return `<tr>
+        <td><code>${escape(srs ?? '(none)')}</code>${withFile ? `<div class="muted">${escape(d.source)}</div>` : ''}</td>
+        <td class="order">${order}${tag}</td>
+        <td>${reason}</td>
+      </tr>`;
+    })
     .join('');
+  const chosen = Object.entries(axis);
+  const cli = chosen.length
+    ? `<p class="muted">The same choice in the CLI: <code>${chosen
+        .map(([srs, o]) => escape(`--axis-override '${srs.replaceAll("'", "'\\''")}=${o.toLowerCase()}'`))
+        .join(' ')}</code></p>`
+    : '';
   return `<p class="muted">The output is x/y: easting or longitude first. A file can have its coordinates the
-    other way round, y/x, as some CRSs define their axes; xeibe then swaps them.</p>
-    <table class="grid"><thead><tr><th>srsName</th><th>In the file</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table>`;
+    other way round, y/x, as some CRSs define their axes; xeibe then swaps them. If xeibe got it wrong (the data
+    lands in the wrong place on the map), choose the order here.</p>
+    <table class="grid"><thead><tr><th>srsName</th><th>In the file</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table>
+    ${cli}`;
 }
 
 export interface OverviewState {
@@ -60,6 +99,7 @@ export interface OverviewState {
   reading: boolean;
   limit: number | null;
   grids: string[];
+  axis: Record<string, AxisOverride>;
 }
 
 export function overview(s: OverviewState): string {
@@ -95,9 +135,8 @@ export function overview(s: OverviewState): string {
   if (s.report) parts.push(reportSection(s.report, s.reading, s.limit));
   else if (s.reading) parts.push('<section><h2>Read</h2><p class="muted">Reading…</p></section>');
   const severalFiles = scan.files.length > 1;
-  const decisions = s.report?.axis_decisions.length
-    ? axisTable(s.report.axis_decisions, severalFiles)
-    : axisTable(scan.axis_decisions.filter((d) => !layer || d.layer === layer.name), severalFiles);
+  const auto = scan.axis_decisions.filter((d) => !layer || d.layer === layer.name);
+  const decisions = axisTable(s.report?.axis_decisions.length ? s.report.axis_decisions : auto, auto, s.axis, severalFiles);
   parts.push(`<section><h2>Axis order</h2>${decisions}</section>`);
   return parts.join('');
 }

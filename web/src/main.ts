@@ -3,7 +3,7 @@
 import './style.css';
 import { MapPane, type View } from './map';
 import { bytes, DEFAULT_SAMPLE, OpenDialog, type OpenRequest, ProgressDialog } from './open';
-import type { Choice, FeatureXml, FromWorker, ReadInfo, Report, Scan, Schema, ToWorker } from './protocol';
+import type { AxisOverride, Choice, FeatureXml, FromWorker, ReadInfo, Report, Scan, Schema, ToWorker } from './protocol';
 import { Table } from './table';
 import { escape, overview, schema as schemaView } from './views';
 import { wantsIndent, xmlView } from './xml';
@@ -36,6 +36,8 @@ const state = {
   choose: false,
   /** What the dialog asked for last. */
   choices: null as Choice[] | null,
+  /** The axis order the user chose per srsName, for every layer of these files. */
+  axis: {} as Record<string, AxisOverride>,
   sample: null as number | null,
   /** What was chosen, in words, for the scan's progress. */
   summary: '',
@@ -187,6 +189,7 @@ function open(files: File[]) {
   if (files.length === 0) return;
   state.files = files;
   state.choices = null;
+  state.axis = {};
   state.choose = true;
   progress.close();
   // The worker can't take a message while it scans: start over.
@@ -215,6 +218,16 @@ function scan(request: OpenRequest) {
   state.started = performance.now();
   send({ type: 'scan', choices: request.choices, sample: request.sample });
 }
+
+// The axis order chosen for an srsName: read the layer again with it.
+$('overview').addEventListener('change', (event) => {
+  const select = (event.target as HTMLElement).closest<HTMLSelectElement>('select[data-srs]');
+  if (!select || !state.layer) return;
+  const srs = select.dataset.srs!;
+  if (select.value) state.axis[srs] = select.value as AxisOverride;
+  else delete state.axis[srs];
+  startRead(state.layer);
+});
 
 $('overview').addEventListener('click', (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action=full-scan]');
@@ -272,7 +285,7 @@ function startRead(layer: string, afterScan = false) {
   mapNote.hidden = true;
   stopButton.hidden = false;
   setStatus(`Reading ${layer}…`);
-  send({ type: 'read', id: state.readId, layer, limit: state.limit });
+  send({ type: 'read', id: state.readId, layer, limit: state.limit, axis: state.axis });
   const id = state.readId;
   const show = () => progress.show('read', `Reading ${layer}`, readWhat(layer));
   if (afterScan) {
@@ -514,6 +527,7 @@ function renderOverview(error?: string) {
       reading: state.reading,
       limit: state.limit,
       grids: [...state.grids],
+      axis: state.axis,
     });
 }
 

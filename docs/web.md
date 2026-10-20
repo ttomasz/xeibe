@@ -41,7 +41,7 @@ the map stacks above the tabs.
 
 | Tab | Shows | From |
 |---|---|---|
-| Overview | Feature count, extent, CRS, axis-order decisions with their reasons, read report (skipped features, warnings, skipped sources, whether the scan was complete) | `ScanResult::layers`, `extent`, `axis_decisions`, `is_complete`, `skipped_sources`; the read report |
+| Overview | Feature count, extent, CRS, axis-order decisions with their reasons and a choice to override them, read report (skipped features, warnings, skipped sources, whether the scan was complete) | `ScanResult::layers`, `extent`, `axis_decisions`, `is_complete`, `skipped_sources`; the read report |
 | Schema | Columns with Arrow type and source path, and the inference reasoning | `ScanResult::schema`, `explain` |
 | Data | Virtualized table of the read rows | the record batches |
 | XML | The selected row's feature as written in its file (see [Map](#map)) | the read's location column |
@@ -106,7 +106,12 @@ views; a switch on the map picks one.
 Why these two:
 
 - **Map** puts the data on the Earth. Wrong axis order is visible at a glance:
-  swapped coordinates land in the wrong country or the sea.
+  swapped coordinates land in the wrong country or the sea. The Overview's
+  Axis order table then lets the user choose x/y or y/x per srsName, over
+  xeibe's decision: the layer is read again with that override (the read
+  options' `geometry.axis.overrides`), and the table shows the matching
+  `--axis-override` for the CLI. The choice holds for every layer until other
+  files are opened.
 - **Source CRS** shows the file's own numbers with nothing in between. It works
   for any CRS, engineering and unknown ones included, and is the fallback when
   the Map view can't be drawn.

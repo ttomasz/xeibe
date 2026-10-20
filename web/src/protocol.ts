@@ -33,11 +33,15 @@ export interface Choice {
   member?: string;
 }
 
+/** The axis order the user chose for an srsName, over xeibe's own decision. */
+export type AxisOverride = 'XY' | 'YX';
+
 export type ToWorker =
   | { type: 'open'; files: File[] }
   | { type: 'scan'; choices: Choice[]; sample: number | null }
   | { type: 'schema'; layer: string }
-  | { type: 'read'; id: number; layer: string; limit: number | null }
+  /** `axis`: srsName as written → the order chosen for it. */
+  | { type: 'read'; id: number; layer: string; limit: number | null; axis: Record<string, AxisOverride> }
   | { type: 'stop'; id: number }
   | { type: 'rows'; id: number; request: number; start: number; count: number }
   | { type: 'xml'; id: number; row: number };

@@ -4,7 +4,7 @@
 
 import init, { Dataset, Reader, onProgress } from './wasm/xeibe_wasm.js';
 import wasmUrl from './wasm/xeibe_wasm_bg.wasm?url';
-import type { FromWorker, GridRequest, Space, ToWorker } from './protocol';
+import type { AxisOverride, FromWorker, GridRequest, Space, ToWorker } from './protocol';
 
 const ready = init({ module_or_path: wasmUrl });
 
@@ -63,7 +63,7 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
         break;
       }
       case 'read':
-        await read(message.id, message.layer, message.limit);
+        await read(message.id, message.layer, message.limit, message.axis);
         break;
       case 'stop':
         if (message.id === wanted) wanted = 0;
@@ -95,7 +95,7 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
   }
 };
 
-async function read(id: number, layer: string, limit: number | null) {
+async function read(id: number, layer: string, limit: number | null, axis: Record<string, AxisOverride>) {
   if (!dataset) return;
   wanted = id;
   reader?.free();
@@ -103,16 +103,22 @@ async function read(id: number, layer: string, limit: number | null) {
   const total = dataset.size();
   onProgress((bytes: number) => post({ type: 'read-progress', id, bytes, total }));
   try {
-    await readBatches(id, layer, limit);
+    await readBatches(id, layer, limit, readOptions(axis));
   } finally {
     // Unless a newer read has set its own.
     if (wanted === id || wanted === 0) onProgress(undefined);
   }
 }
 
-async function readBatches(id: number, layer: string, limit: number | null) {
+/** `ReadOptions` as JSON, or undefined for the defaults. */
+function readOptions(axis: Record<string, AxisOverride>): string | undefined {
+  if (Object.keys(axis).length === 0) return undefined;
+  return JSON.stringify({ geometry: { axis: { mode: 'Auto', overrides: axis } } });
+}
+
+async function readBatches(id: number, layer: string, limit: number | null, options: string | undefined) {
   const started = performance.now();
-  const current = dataset!.read(layer, undefined, limit ?? undefined);
+  const current = dataset!.read(layer, options, limit ?? undefined);
   reader = current;
   readerId = id;
   // Stopped: by the user (the rows so far stay), or by a newer read or
