@@ -443,11 +443,13 @@ impl Engine<'_> {
         let structure = &self.options.structure;
         if structure.force_list.iter().any(matches) {
             plan.list = Some(true);
-            plan.reasons.push("list: force_list".to_string());
+            plan.reasons
+                .push("a list, as the force_list setting says".to_string());
         }
         if structure.force_scalar.iter().any(matches) {
             plan.list = Some(false);
-            plan.reasons.push("scalar: force_scalar".to_string());
+            plan.reasons
+                .push("a single value, as the force_scalar setting says".to_string());
         }
         let mut overrides: Vec<_> = self
             .options
@@ -457,8 +459,16 @@ impl Engine<'_> {
             .collect();
         overrides.sort_by_key(|(pattern, _)| pattern.specificity());
         for (pattern, action) in overrides {
+            let what = match action {
+                FieldOverride::Type(data_type) => format!("makes it {data_type}"),
+                FieldOverride::Drop => "drops it".to_string(),
+                FieldOverride::AsRawXml => "keeps it as raw XML".to_string(),
+                FieldOverride::AsMap => "makes it a map".to_string(),
+                FieldOverride::List => "makes it a list".to_string(),
+                FieldOverride::Scalar => "makes it a single value".to_string(),
+            };
             plan.reasons
-                .push(format!("override {}: {action:?}", pattern.raw));
+                .push(format!("the override for {:?} {what}", pattern.raw));
             match action {
                 FieldOverride::Type(data_type) => plan.data_type = Some(data_type.clone()),
                 FieldOverride::Drop => plan.drop = true,
@@ -552,17 +562,23 @@ impl Engine<'_> {
             col.reasons = plan.reasons;
             col.reasons.extend(scalar.reasons);
             if col.feature_id {
-                col.reasons
-                    .insert(0, "the feature's GML 2 id (fid)".to_string());
+                col.reasons.insert(
+                    0,
+                    "the feature's id, written as fid (GML 2's name for it)".to_string(),
+                );
             }
             if col.by_reference {
                 let strip = if self.options.gml.strip_local_href_hash {
-                    ", '#' stripped"
+                    ", without the leading '#' of links within the file"
                 } else {
                     ""
                 };
-                col.reasons
-                    .insert(0, format!("by-reference only (xlink:href){strip}"));
+                col.reasons.insert(
+                    0,
+                    format!(
+                        "always a link to another object (xlink:href), never a value itself: the column holds the link{strip}"
+                    ),
+                );
             }
             let constant = self.options.structure.constant_attrs == ConstantAttrs::ToFieldMetadata
                 && !is_gml_id(name)
@@ -605,8 +621,10 @@ impl Engine<'_> {
         }
         let mut col = Col::new(steps, anchor, self.string());
         col.attribute = Some((attribute, false));
-        col.reasons
-            .push(format!("nilReason of {} nil values", node.nil.count));
+        col.reasons.push(format!(
+            "the reason given (nilReason) for its {}",
+            plural(node.nil.count, "missing value")
+        ));
         out.push(col);
     }
 
@@ -650,9 +668,13 @@ impl Engine<'_> {
             return;
         }
         let mut reasons = plan.reasons.clone();
+        let parent = match steps.len() {
+            0 | 1 => "feature".to_string(),
+            n => format!("{} element", steps[n - 2].name.local),
+        };
         if node.parents_with < parent_instances {
             reasons.push(format!(
-                "present in {} of {} parents",
+                "in {} of {} {parent}s, absent from the others",
                 node.parents_with, parent_instances
             ));
         }
@@ -664,18 +686,21 @@ impl Engine<'_> {
             let at = node
                 .first_multi
                 .as_ref()
-                .map(|location| format!(" (first at {location})"))
+                .map(|location| format!("; the first repeat: {location}"))
                 .unwrap_or_default();
             let name = &steps.last().expect("an element step").name.local;
-            reasons.push(format!(
-                "list anchored on {name}: max_occurs={}{at}",
-                node.max_occurs
-            ));
+            // A list the settings ask for already says so.
+            if repeated {
+                reasons.push(format!(
+                    "a list, one item per {name}: it occurs up to {} times in one {parent}{at}",
+                    node.max_occurs
+                ));
+            }
             Some(steps.len() - 1)
         } else {
             if repeated {
                 reasons.push(format!(
-                    "repeated (max_occurs={}), but not a list: a repetition is a feature error",
+                    "occurs up to {} times in one {parent}, but lists are off: a feature where it repeats is an error",
                     node.max_occurs
                 ));
             }
@@ -704,18 +729,22 @@ impl Engine<'_> {
             col
         };
         if plan.raw_xml {
-            out.push(leaf(string, "raw XML (override)"));
+            out.push(leaf(string, "kept as raw XML"));
             return;
         }
         if plan.map {
-            out.push(leaf(map_type(&string), "map (override)"));
+            out.push(leaf(
+                map_type(&string),
+                "a map from each path below it to its text",
+            ));
             return;
         }
         if let Some(stats) = &node.geometry {
             match &plan.data_type {
-                Some(data_type) => {
-                    out.push(leaf(data_type.clone(), "geometry, type given by override"))
-                }
+                Some(data_type) => out.push(leaf(
+                    data_type.clone(),
+                    "a geometry, with the override's type",
+                )),
                 None => out.push(self.geometry_col(stats, steps, anchor)),
             }
             return;
@@ -723,13 +752,13 @@ impl Engine<'_> {
         if node.truncated {
             out.push(leaf(
                 map_type(&string),
-                "too deep or too many distinct child names: map of path → text",
+                "nested too deeply, or too many different child elements, for columns: a map from each path below it to its text",
             ));
             return;
         }
         let name = &steps.last().expect("an element step").name;
         if name.is_gml_named("metaDataProperty") {
-            out.push(leaf(string, "gml:metaDataProperty: raw XML"));
+            out.push(leaf(string, "gml:metaDataProperty, kept as raw XML"));
             return;
         }
         if self.options.structure.collapse_type_wrappers && node.is_type_wrapper() {
@@ -772,8 +801,11 @@ impl Engine<'_> {
         self.own_content(&merged, &wrapper_steps, anchor, &Plan::default(), out);
         if let Some(col) = out.get_mut(first) {
             let reason = match names.as_slice() {
-                [one] => format!("type wrapper {one} collapsed"),
-                many => format!("type wrappers {} merged and collapsed", many.join(", ")),
+                [one] => format!("the value sits inside the element {one}, which the column skips"),
+                many => format!(
+                    "the value sits inside one of the elements {}, which the column skips",
+                    many.join(", ")
+                ),
             };
             col.reasons.insert(0, reason);
         }
@@ -805,14 +837,16 @@ impl Engine<'_> {
             Shape::Mixed => match self.options.structure.mixed_content {
                 MixedContent::RawXml => {
                     let mut col = Col::new(steps, anchor, self.string());
-                    col.reasons.push("mixed content: raw XML".to_string());
+                    col.reasons
+                        .push("text mixed with child elements: kept as raw XML".to_string());
                     Some(col)
                 }
                 MixedContent::TextOnly => {
                     let mut col = Col::new(steps, anchor, self.string());
                     col.metadata
                         .insert(meta::CONTENT.to_string(), "text".to_string());
-                    col.reasons.push("mixed content: text only".to_string());
+                    col.reasons
+                        .push("text mixed with child elements: only the text is kept".to_string());
                     Some(col)
                 }
                 MixedContent::Drop => None,
@@ -825,7 +859,7 @@ impl Engine<'_> {
                     anchor,
                     plan.data_type.clone().unwrap_or_else(|| self.all_null()),
                 );
-                col.reasons.push("never had a value".to_string());
+                col.reasons.push(NEVER_A_VALUE.to_string());
                 Some(col)
             }
             Shape::Empty | Shape::ElementsOnly | Shape::ByReferenceOnly | Shape::Geometry => None,
@@ -834,7 +868,8 @@ impl Engine<'_> {
             Some(mut col) => {
                 for (key, value, _) in attributes.constants {
                     col.reasons.push(format!(
-                        "constant attribute moved to field metadata: {key} = {value:?}"
+                        "its {} attribute is always {value:?}: kept once, in the column's metadata ({key}), not as a column",
+                        key.strip_prefix(meta::ATTR_PREFIX).unwrap_or(&key)
                     ));
                     col.metadata.insert(key, value);
                 }
@@ -863,8 +898,9 @@ impl Engine<'_> {
                     .to_field("boundedBy", true);
                 let mut col = Col::new(steps, None, DataType::Null);
                 col.kind = ColKind::Field(field);
-                col.reasons
-                    .push("gml:boundedBy as a box (BoxStruct)".to_string());
+                col.reasons.push(
+                    "the feature's gml:boundedBy, as a box (its corners' coordinates)".to_string(),
+                );
                 out.push(col);
             }
         }
@@ -881,7 +917,7 @@ impl Engine<'_> {
         };
         let Some(stats) = stats.filter(|stats| stats.count > 0) else {
             scalar.data_type = self.all_null();
-            scalar.reasons.push("never had a value".to_string());
+            scalar.reasons.push(NEVER_A_VALUE.to_string());
             return scalar;
         };
         let lossy = types.lossless == Lossless::Lossy;
@@ -891,7 +927,7 @@ impl Engine<'_> {
             && set != TypeSet::STRING
         {
             scalar.reasons.push(format!(
-                "only {} values in the sample (fewer than {}): kept as text",
+                "only {} values in the sample, fewer than the {} it takes to pick a type: text",
                 stats.count, sample.min_typed_values
             ));
             set = TypeSet::STRING;
@@ -931,29 +967,33 @@ impl Engine<'_> {
                         DataType::Time64(unit)
                     };
                     if candidate == TypeSet::TIME && !fraction_fits && !lossy {
-                        scalar
-                            .reasons
-                            .push("more fractional digits than the time unit holds".to_string());
+                        scalar.reasons.push(format!(
+                            "some times have more decimals of a second than the column's unit ({}) holds: text",
+                            unit_name(unit)
+                        ));
                         None
                     } else {
                         match temporal.tz {
                             TzShape::Absent => Some(data_type),
                             TzShape::Fixed(offset) => {
-                                scalar
-                                    .metadata
-                                    .push((meta::TZ_OFFSET.to_string(), format_offset(offset)));
+                                let offset = format_offset(offset);
+                                scalar.reasons.push(format!(
+                                    "all in the time zone {offset}, which the column's metadata keeps ({})",
+                                    meta::TZ_OFFSET
+                                ));
+                                scalar.metadata.push((meta::TZ_OFFSET.to_string(), offset));
                                 Some(data_type)
                             }
                             _ if lossy => Some(data_type),
                             TzShape::Mixed => {
                                 scalar.reasons.push(
-                                    "different time zones can't share a column: text".to_string(),
+                                    "the values are in different time zones, which one column of this type can't hold: text".to_string(),
                                 );
                                 None
                             }
                             TzShape::Inconsistent => {
                                 scalar.reasons.push(
-                                    "some values have a time zone, some don't: text".to_string(),
+                                    "some values have a time zone and some don't: text".to_string(),
                                 );
                                 None
                             }
@@ -962,28 +1002,32 @@ impl Engine<'_> {
                 }
                 TypeSet::DATETIME => {
                     if !fraction_fits && !lossy {
-                        scalar.reasons.push(
-                            "more fractional digits than the timestamp unit holds".to_string(),
-                        );
+                        scalar.reasons.push(format!(
+                            "some values have more decimals of a second than the column's unit ({}) holds: text",
+                            unit_name(unit)
+                        ));
                         None
                     } else {
                         match temporal.tz {
                             TzShape::Absent => Some(DataType::Timestamp(unit, None)),
                             TzShape::Fixed(offset) => {
-                                scalar
-                                    .metadata
-                                    .push((meta::TZ_OFFSET.to_string(), format_offset(offset)));
+                                let offset = format_offset(offset);
+                                scalar.reasons.push(format!(
+                                    "all in the time zone {offset}: stored as UTC, and the column's metadata keeps the offset ({})",
+                                    meta::TZ_OFFSET
+                                ));
+                                scalar.metadata.push((meta::TZ_OFFSET.to_string(), offset));
                                 Some(DataType::Timestamp(unit, Some("UTC".into())))
                             }
                             TzShape::Mixed => {
                                 scalar.reasons.push(
-                                    "time-zone offsets differ: normalized to UTC, the offsets are not kept".to_string(),
+                                    "the values are in different time zones: stored as UTC, without their offsets".to_string(),
                                 );
                                 Some(DataType::Timestamp(unit, Some("UTC".into())))
                             }
                             TzShape::Inconsistent => {
                                 scalar.reasons.push(
-                                    "some values have a time zone, some don't: text".to_string(),
+                                    "some values have a time zone and some don't: text".to_string(),
                                 );
                                 None
                             }
@@ -993,25 +1037,42 @@ impl Engine<'_> {
                 _ => None,
             };
             if let Some(data_type) = chosen {
-                scalar.reasons.insert(
-                    0,
-                    format!("{} values, candidates {}", stats.count, type_names(set)),
-                );
+                scalar.reasons.insert(0, values(stats.count, set));
                 scalar.data_type = data_type;
                 return scalar;
             }
         }
-        scalar.reasons.insert(
-            0,
-            format!("{} values, candidates {}", stats.count, type_names(set)),
-        );
-        if let Some(example) = stats.distinct.values.first()
-            && set == TypeSet::STRING
-            && stats.types(Lossless::Lossy) != TypeSet::STRING
-        {
-            scalar
-                .reasons
-                .push(format!("typed values rejected (e.g. {example:?})"));
+        scalar.reasons.insert(0, values(stats.count, set));
+        let typed = stats.types(Lossless::Lossy);
+        if set == TypeSet::STRING && typed != TypeSet::STRING {
+            // A value that fits the types every value fits only with a loss.
+            let exact = |value: &str| {
+                let candidates = crate::value::classify(value);
+                match types.lossless {
+                    Lossless::Text => candidates.exact_text,
+                    Lossless::Value => candidates.exact_value,
+                    Lossless::Lossy => candidates.lossy,
+                }
+            };
+            let wanted = typed - TypeSet::STRING;
+            let example = stats
+                .distinct
+                .values
+                .iter()
+                .find(|value| (exact(value) & wanted).is_empty());
+            let leading_zero =
+                |value: &str| value.len() > 1 && value.starts_with('0') && !value.starts_with("0.");
+            let how = match example {
+                Some(value) if leading_zero(value) => {
+                    format!(": {:?} would lose its leading zero", &**value)
+                }
+                Some(value) => format!(", like {:?}", &**value),
+                None => String::new(),
+            };
+            scalar.reasons.push(format!(
+                "they look like {}, but some would change if stored as such{how}",
+                kind_of(wanted)
+            ));
         }
         scalar
     }
@@ -1060,54 +1121,66 @@ impl Engine<'_> {
     /// of WKB below a repeated element (`docs/geometry.md`, "Column encoding").
     fn geometry_col(&self, stats: &GeometryStats, steps: &[Step], anchor: Option<usize>) -> Col {
         let geometry = &self.options.geometry;
+        let dims: Vec<String> = stats.dims.iter().map(|d| format!("{d}D")).collect();
         let mut reasons = vec![format!(
-            "geometry: {} values, kinds={{{}}}, dims={:?}",
-            stats.count,
+            "{} ({}), {}",
+            plural(stats.count, "geometry"),
             stats
                 .kinds
                 .iter()
                 .map(|k| format!("{k:?}"))
                 .collect::<Vec<_>>()
                 .join(", "),
-            stats.dims,
+            dims.join(" and "),
         )];
         let linearize = matches!(geometry.curves, CurveMode::Linearize(_));
         let native = if anchor.is_some() {
-            reasons.push("below a repeated element: a list of WKB (geometry[])".to_string());
+            reasons.push("inside a repeated element: a list of geometries, as WKB".to_string());
             None
         } else {
             match self.options.geometry_encoding {
                 GeomEncoding::Wkb => {
-                    reasons.push("encoding Wkb".to_string());
+                    reasons
+                        .push("stored as WKB, as the geometry_encoding setting says".to_string());
                     None
                 }
                 GeomEncoding::Auto if self.sampled.is_some() => {
                     reasons.push(
-                        "encoding Auto, sampled: WKB (later features may have other kinds)"
+                        "stored as WKB: the schema comes from a sample, and later features may have other kinds of geometry"
                             .to_string(),
                     );
                     None
                 }
                 GeomEncoding::Auto if stats.has_curves && !linearize => {
-                    reasons.push("encoding Auto: curves → WKB".to_string());
+                    reasons.push(
+                        "stored as WKB: it has curves, which GeoArrow's native types can't hold"
+                            .to_string(),
+                    );
                     None
                 }
                 GeomEncoding::Auto if stats.has_unsupported => {
-                    reasons.push("unsupported geometry kinds → WKB".to_string());
+                    reasons.push(
+                        "stored as WKB: some of its kinds of geometry have no native GeoArrow type"
+                            .to_string(),
+                    );
                     None
                 }
                 GeomEncoding::Auto if stats.kinds.is_empty() => {
-                    reasons.push("no geometry kind seen → WKB".to_string());
+                    reasons.push("stored as WKB: no geometry seen to pick a type from".to_string());
                     None
                 }
                 GeomEncoding::Auto => match native_kind(&stats.kinds) {
                     Some(kind) => {
-                        reasons.push(format!("encoding Auto → native {}", kind.name()));
+                        reasons.push(format!(
+                            "every geometry fits GeoArrow's native {} type",
+                            kind.name()
+                        ));
                         Some(kind)
                     }
                     None => {
                         reasons.push(
-                            "encoding Auto: no native type holds every kind → WKB".to_string(),
+                            "stored as WKB: no one native GeoArrow type holds all its kinds of geometry"
+                                .to_string(),
                         );
                         None
                     }
@@ -1156,8 +1229,10 @@ impl Engine<'_> {
             let spellings = stats.srs.len();
             if spellings > 1 {
                 reasons.push(match &geometry.target_crs {
-                    Some(_) => format!("{spellings} srsNames, all converted to {srs:?}"),
-                    None => format!("{spellings} srsNames; column CRS from {srs:?}"),
+                    Some(_) => format!("{spellings} different srsNames, all converted to {srs:?}"),
+                    None => {
+                        format!("{spellings} different srsNames: the column's CRS is {srs:?}'s")
+                    }
                 });
             }
         }
@@ -1165,7 +1240,7 @@ impl Engine<'_> {
         col.metadata.insert(meta::AXIS_SWAPPED.to_string(), swapped);
         col.metadata
             .insert(meta::AXIS_DECISION.to_string(), decision.clone());
-        reasons.push(format!("axis: {decision}"));
+        reasons.push(format!("axis order of {decision}"));
         col.reasons = reasons;
         col
     }
@@ -1278,9 +1353,51 @@ fn format_offset(minutes: i16) -> String {
     format!("{sign}{:02}:{:02}", minutes / 60, minutes % 60)
 }
 
-fn type_names(set: TypeSet) -> String {
-    let names: Vec<&str> = set.iter_names().map(|(name, _)| name).collect();
-    format!("{{{}}}", names.join(", "))
+const NEVER_A_VALUE: &str = "always empty: no value to pick a type from";
+
+/// The first reason of a scalar column: how many values, and what every one
+/// of them could be.
+fn values(count: u64, set: TypeSet) -> String {
+    if set == TypeSet::STRING {
+        return format!(
+            "{}, not all numbers, dates or true/false: text",
+            plural(count, "value")
+        );
+    }
+    format!("{}, all {}", plural(count, "value"), kind_of(set))
+}
+
+/// `1 value`, `2 values`; `1 geometry`, `2 geometries`.
+fn plural(count: u64, noun: &str) -> String {
+    match (count, noun.strip_suffix('y')) {
+        (1, _) => format!("1 {noun}"),
+        (_, Some(stem)) => format!("{count} {stem}ies"),
+        _ => format!("{count} {noun}s"),
+    }
+}
+
+/// What the values of `set`'s first type (in the order types are tried) are.
+fn kind_of(set: TypeSet) -> &'static str {
+    [
+        (TypeSet::BOOL, "true or false"),
+        (TypeSet::INT, "whole numbers"),
+        (TypeSet::FLOAT, "numbers"),
+        (TypeSet::DATE, "dates"),
+        (TypeSet::DATETIME, "dates with a time"),
+        (TypeSet::TIME, "times of day"),
+    ]
+    .into_iter()
+    .find(|(candidate, _)| set.contains(*candidate))
+    .map_or("text", |(_, kind)| kind)
+}
+
+fn unit_name(unit: TimeUnit) -> &'static str {
+    match unit {
+        TimeUnit::Second => "seconds",
+        TimeUnit::Millisecond => "milliseconds",
+        TimeUnit::Microsecond => "microseconds",
+        TimeUnit::Nanosecond => "nanoseconds",
+    }
 }
 
 /// Native GeoArrow geometry types.

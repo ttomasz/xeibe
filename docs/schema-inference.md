@@ -668,14 +668,21 @@ collects unread content.
 
 ## 7. `--explain`
 
-`xeibe gml scan <src> --explain` prints every field with its reason and evidence:
+`xeibe gml scan <src> --explain` prints every field with its reasons, in plain
+words, and the evidence (from the PRG sample in `tests/data`):
 
 ```
-adres2        List(Utf8View)      list: max_occurs=3 (first at feature #1204, gml:id=PL.ZIPIN…, byte 91 233 812)
-                                  item: by-reference only (xlink:href), '#' stripped
-georeferencja geoarrow.point      geometry: kinds={Point}, dims={2}; encoding Auto → native point
-                                  crs: "EPSG:2180" short form → x/y axis order (no swap)
-kodPocztowy   Utf8View            numeric rejected: values like "22-120" are not numeric
-dataNadania   Date32              present in 211 995 / 410 402 parents
-lokalnyId     Utf8View            path idIIP/*/lokalnyId: type wrapper AD_IdentyfikatorIIP collapsed
+adres2            List(Utf8View)        a list, one item per adres2: it occurs up to 34 times in one feature; the first repeat: source #0, byte 3717, feature 2 (gml:id PL.ZIPIN…)
+                                        always a link to another object (xlink:href), never a value itself: the column holds the link, without the leading '#' of links within the file
+                                        40 values, not all numbers, dates or true/false: text
+georeferencja     geoarrow.point        2 geometries (Point), 2D
+                                        every geometry fits GeoArrow's native point type
+                                        axis order of EPSG:2180: nothing in the file settles the order, so GDAL's rule applies: …
+identyfikatorULIC Utf8View              2 values, not all numbers, dates or true/false: text
+                                        they look like whole numbers, but some would change if stored as such: "08173" would lose its leading zero
+lokalnyId         Utf8View              the value sits inside the element AD_IdentyfikatorIIP, which the column skips
+wersjaId          Timestamp(µs, "UTC")  2 values, all dates with a time
+                                        all in the time zone +02:00: stored as UTC, and the column's metadata keeps the offset (gml:tz_offset)
 ```
+
+The web page's Schema tab shows the same text.

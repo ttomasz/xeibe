@@ -107,14 +107,14 @@ fn scan_explain_prints_every_field_with_its_reasons() {
         .find(|line| line.trim_start().starts_with("georeferencja"))
         .unwrap_or_else(|| panic!("no georeferencja row in\n{}", run.stdout));
     assert!(line.contains("geoarrow.point"), "{line}");
-    assert!(line.contains("kinds={Point}"), "{line}");
+    assert!(line.contains("(Point)"), "{line}");
     assert!(
-        run.stdout.contains("encoding Auto → native point"),
+        run.stdout.contains("GeoArrow's native point type"),
         "{}",
         run.stdout
     );
     assert!(
-        run.stdout.contains("typed values rejected"),
+        run.stdout.contains("\"04\" would lose its leading zero"),
         "{}",
         run.stdout
     );
