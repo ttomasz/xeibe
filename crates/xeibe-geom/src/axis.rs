@@ -427,7 +427,7 @@ impl Decider<'_> {
         if self.key.dialect == Dialect::Gml2 {
             votes.push(Vote {
                 swap: false,
-                reason: format!("GML 2 geometry is always x/y (it predates CRS axis order)"),
+                reason: "GML 2 geometry is always x/y (it predates CRS axis order)".to_string(),
             });
         }
         votes.extend(self.wfs_vote());
