@@ -3,15 +3,11 @@ use std::path::Path;
 
 use arrow_array::RecordBatchReader;
 use arrow_schema::SchemaRef;
-use parquet::arrow::ArrowWriter;
-use parquet::basic::{Compression, ZstdLevel};
-use parquet::file::metadata::KeyValue;
-use parquet::file::properties::WriterProperties;
 use xeibe_arrow::{LayerReader, Settings};
+use xeibe_export::{IpcWriter, ParquetOptions, ParquetWriter};
 use xeibe_schema::rules::meta;
 
-use super::geoparquet::GeoColumns;
-use crate::args::{InputArgs, OutputArgs, OutputFormat, ReadArgs, SchemaArgs};
+use crate::args::{BboxColumn, InputArgs, OutputArgs, OutputFormat, ReadArgs, SchemaArgs};
 
 pub fn run(
     input: InputArgs,
@@ -85,57 +81,56 @@ fn write_parquet(
     primary: Option<&str>,
 ) -> super::Result<u64> {
     let path = &output.output;
-    // The first batch tells `--bbox-column auto` which WKB columns hold points.
-    let first = reader.next().transpose()?;
-    let mut geo = GeoColumns::new(
-        layer,
-        &reader.schema(),
-        primary,
-        output.bbox_column,
-        first.as_ref(),
-    )?;
-    let properties = WriterProperties::builder()
-        .set_compression(Compression::ZSTD(ZstdLevel::default()))
-        .set_max_row_group_row_count(Some(output.row_group_size.get()))
-        .build();
     let file = File::create(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut writer = ArrowWriter::try_new(file, geo.schema(), Some(properties))?;
-    let mut rows = 0;
-    for batch in first.map(Ok).into_iter().chain(reader.by_ref()) {
-        let batch = geo.convert(&batch?)?;
-        rows += batch.num_rows() as u64;
-        writer.write(&batch)?;
+    let options = ParquetOptions {
+        bbox_column: match output.bbox_column {
+            BboxColumn::Auto => xeibe_export::BboxColumn::Auto,
+            BboxColumn::Always => xeibe_export::BboxColumn::Always,
+            BboxColumn::Never => xeibe_export::BboxColumn::Never,
+        },
+        row_group_size: output.row_group_size,
+        primary: primary.map(str::to_string),
+    };
+    let mut writer = ParquetWriter::new(file, reader.schema(), options, metadata(reader)?);
+    let geometry = |error: xeibe_export::Error| -> Box<dyn std::error::Error> {
+        match error {
+            xeibe_export::Error::Curve { .. } => format!(
+                "layer {layer}, {error}. Add --linearize to convert arcs to line segments (lossy), \
+                 or use --format ipc to keep the curves"
+            )
+            .into(),
+            xeibe_export::Error::Unsupported { .. } => {
+                format!("layer {layer}, {error}; use --format ipc").into()
+            }
+            xeibe_export::Error::MalformedWkb { .. } => format!("layer {layer}, {error}").into(),
+            error => error.into(),
+        }
+    };
+    for batch in reader.by_ref() {
+        writer.write(&batch?).map_err(geometry)?;
     }
-    if let Some(metadata) = geo.metadata() {
-        writer.append_key_value_metadata(KeyValue::new("geo".to_string(), metadata));
+    let summary = writer.finish().map_err(geometry)?;
+    for warning in &summary.warnings {
+        eprintln!("warning: {warning}");
     }
-    writer.append_key_value_metadata(KeyValue::new(
-        meta::SETTINGS.to_string(),
-        embedded_settings(reader)?,
-    ));
-    writer.close()?;
-    Ok(rows)
+    Ok(summary.rows)
 }
 
 /// Arrow IPC file: batches as read, GeoArrow types (curves included) as they are.
 fn write_ipc(reader: &mut LayerReader, path: &Path) -> super::Result<u64> {
     let file = File::create(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut writer = arrow_ipc::writer::FileWriter::try_new(file, &reader.schema())?;
-    writer.write_metadata(meta::SETTINGS, embedded_settings(reader)?);
-    let mut rows = 0;
+    let mut writer = IpcWriter::new(file, &reader.schema(), metadata(reader)?)?;
     for batch in reader.by_ref() {
-        let batch = batch?;
-        rows += batch.num_rows() as u64;
-        writer.write(&batch)?;
+        writer.write(&batch?)?;
     }
-    writer.finish()?;
-    Ok(rows)
+    Ok(writer.finish()?.rows)
 }
 
 /// The settings the read used, as a settings file's JSON: stored in the
 /// output's metadata as `gml:settings` (`docs/architecture.md`, "Settings
 /// file"), so the file records how it was made and can be read again the same
 /// way.
-fn embedded_settings(reader: &LayerReader) -> super::Result<String> {
-    Ok(serde_json::to_string(reader.settings())?)
+fn metadata(reader: &LayerReader) -> super::Result<Vec<(String, String)>> {
+    let settings = serde_json::to_string(reader.settings())?;
+    Ok(vec![(meta::SETTINGS.to_string(), settings)])
 }

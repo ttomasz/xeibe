@@ -1,0 +1,40 @@
+[package]
+name = "xeibe-export"
+description = "Write Arrow record batches with GeoArrow geometry to files: Parquet with GeoParquet metadata, Arrow IPC. Experimental: AI-generated, not thoroughly tested, unstable API"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+keywords = ["geoparquet", "parquet", "arrow", "geoarrow", "gis"]
+categories = ["science::geo", "encoding"]
+license.workspace = true
+publish.workspace = true
+
+[features]
+# A feature per file format; none by default.
+parquet = ["dep:parquet", "dep:arrow-buffer", "dep:geoarrow-array", "dep:geoarrow-schema", "dep:serde_json", "dep:xeibe-geom"]
+ipc = ["dep:arrow-ipc"]
+
+[dependencies]
+arrow-array.workspace = true
+arrow-schema.workspace = true
+thiserror.workspace = true
+arrow-buffer = { workspace = true, optional = true }
+arrow-ipc = { workspace = true, optional = true }
+geoarrow-array = { workspace = true, optional = true }
+geoarrow-schema = { workspace = true, optional = true }
+parquet = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+xeibe-geom = { workspace = true, optional = true }
+
+[dev-dependencies]
+xeibe-core.workspace = true
+xeibe-geom.workspace = true
+xeibe-arrow.workspace = true
+xeibe-testkit.workspace = true
+bytes.workspace = true
+parquet.workspace = true
+serde_json.workspace = true
+arrow-ipc.workspace = true
+# The tests cover every format.
+xeibe-export = { path = ".", features = ["parquet", "ipc"] }

@@ -1,5 +1,4 @@
 mod convert;
-mod geoparquet;
 mod scan;
 mod wfs;
 

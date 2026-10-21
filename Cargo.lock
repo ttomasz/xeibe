@@ -4320,18 +4320,16 @@ name = "xeibe-cli"
 version = "0.1.0"
 dependencies = [
  "arrow-array",
- "arrow-buffer",
  "arrow-ipc",
  "arrow-schema",
  "clap",
- "geoarrow-array",
- "geoarrow-schema",
  "parquet",
  "serde_json",
  "url",
  "xeibe-arrow",
  "xeibe-core",
  "xeibe-crs",
+ "xeibe-export",
  "xeibe-geom",
  "xeibe-io",
  "xeibe-schema",
@@ -4378,6 +4376,27 @@ dependencies = [
  "xeibe-geom",
  "xeibe-io",
  "xeibe-schema",
+ "xeibe-testkit",
+]
+
+[[package]]
+name = "xeibe-export"
+version = "0.1.0"
+dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-ipc",
+ "arrow-schema",
+ "bytes",
+ "geoarrow-array",
+ "geoarrow-schema",
+ "parquet",
+ "serde_json",
+ "thiserror 2.0.20",
+ "xeibe-arrow",
+ "xeibe-core",
+ "xeibe-export",
+ "xeibe-geom",
  "xeibe-testkit",
 ]
 

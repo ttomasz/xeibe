@@ -27,6 +27,7 @@ tracks what is supported.
 | `xeibe-geom` | GML geometry, WKB, CRS and axis order |
 | `xeibe-schema` | Scanning and schema inference |
 | `xeibe-arrow` | `scan()` and `read()`: features to Arrow, settings file, parallel pipeline |
+| `xeibe-export` | Writers: Parquet with GeoParquet metadata, Arrow IPC |
 | `xeibe-io` | HTTP and object-store inputs |
 | `xeibe-wfs` | WFS capabilities and paged reads |
 | `xeibe-datafusion` | DataFusion table provider and `read_gml()` |

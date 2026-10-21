@@ -214,6 +214,7 @@ flowchart TD
     schema["<b>xeibe-schema</b>"]
     io["<b>xeibe-io</b><br/>HTTP and object-store streams"]
     arrow["<b>xeibe-arrow</b>"]
+    export["<b>xeibe-export</b><br/>Parquet / GeoParquet, Arrow IPC"]
     wfs["<b>xeibe-wfs</b>"]
     datafusion["<b>xeibe-datafusion</b>"]
     cli["<b>xeibe-cli</b>"]
@@ -226,6 +227,8 @@ flowchart TD
     io --> wfs
     arrow --> datafusion & cli & py
     wfs --> cli
+    geom --> export
+    export --> cli
 ```
 
 The integration crates (`xeibe-datafusion`, `xeibe-cli`, `xeibe-py`) also use `xeibe-io`
@@ -238,10 +241,11 @@ to turn paths and URLs into sources.
 | `xeibe-geom` | Parses GML geometry elements into an internal model that implements `geo-traits`; writes ISO WKB, curves included; srsName parsing and axis-order handling on top of `xeibe-crs` | `xeibe-crs`, `geo-traits`, `wkb` |
 | `xeibe-schema` | Scan → **path tree** (`DatasetObservation`); merging; `InferenceOptions`; rule engine → Arrow `Schema`; binding a given schema's paths to XML; `--explain` | `arrow-schema`, `serde` |
 | `xeibe-arrow` | `scan()` and `read()`; settings file; feature → Arrow builders; parallel read pipeline | `arrow-array`, `geoarrow-array` |
+| `xeibe-export` | Writes a read's batches to a file, a batch at a time, to any `Write`: Parquet with the `GEOMETRY` logical type and GeoParquet 1.1 `geo` metadata (feature `parquet`), Arrow IPC (feature `ipc`). Used by the CLI and the web page | `parquet` (feature `geospatial`), `arrow-ipc` |
 | `xeibe-io` | `ByteSource`s that stream from HTTP(S) and object stores; resolving inputs (paths, globs, URLs, `archive.zip!/member`) | `reqwest` (feature `http`), `object_store` + `tokio` (feature `object-store`) |
 | `xeibe-wfs` | WFS capabilities, hit counts, paging; pages streamed into a read | `xeibe-io` (HTTP client), `quick-xml` (capabilities, exception reports) |
 | `xeibe-datafusion` | `TableProvider` for one layer; `read_gml()` table function; adapter from DataFusion's `ObjectStore` registry to `ByteSource` | `datafusion` |
-| `xeibe-cli` | `xeibe gml scan`, `xeibe gml convert` (one layer to Parquet or Arrow IPC), `xeibe wfs` | `clap`, `parquet` (feature `geospatial`) |
+| `xeibe-cli` | `xeibe gml scan`, `xeibe gml convert` (one layer to Parquet or Arrow IPC), `xeibe wfs` | `clap`, `xeibe-export` |
 | `xeibe-py` | Python package `xeibe`: `scan()`, `read()` returning arro3 schemas and streams (Arrow PyCapsule interface); `xeibe.sedona`, GML as a SedonaDB data source (see [below](#sedonadb)) | `pyo3`, `pyo3-arrow`; Python: `arro3-core`, `sedonadb` (optional) |
 | `xeibe-proj-py` | Python package `xeibe_proj`: a pyproj-compatible `CRS` and `Transformer` over `xeibe-crs` and `xeibe-reproject` ([pyproj-compat.md](pyproj-compat.md)) | `pyo3`; Python: none (numpy optional, never imported) |
 
@@ -268,6 +272,7 @@ Where each design topic lives in the code (`crates/<crate>/src/…`):
 | Path tree, value stats, merge, scan (schema-inference.md) | `xeibe-schema`: `observation`, `node`, `value`, `geometry_stats`, `merge`, `scan` |
 | `InferenceOptions`, presets, rule engine, binding, `--explain` (schema-inference.md, type-mapping.md) | `xeibe-schema`: `options`, `presets`, `pattern`, `rules`, `bind`, `explain` |
 | `scan()`, `read()`, settings file, path routes and list alignment, builders, pipeline, read report | `xeibe-arrow`: `api`, `settings`, `reader`, `route`, `feature`, `builders`, `geometry_column`, `value`, `pipeline`, `report`, `options` |
+| Parquet and Arrow IPC output (geometry.md) | `xeibe-export`: `parquet_writer`, `geo_columns`, `ipc_writer` |
 | WFS (wfs.md) | `xeibe-wfs`: `capabilities`, `request`, `response`, `paging`, `pages`, `http`, `exception`, `xml`, `options` |
 | DataFusion | `xeibe-datafusion`: `table`, `partition`, `function`, `sources` |
 | CLI | `xeibe-cli`: `args`, `commands/*` (binary `xeibe`) |

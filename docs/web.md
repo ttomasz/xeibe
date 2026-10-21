@@ -380,10 +380,10 @@ same way by `.github/workflows/pages.yml`, which needs GitHub Pages set to
 zstd's C code builds with clang. If linking or CI makes it a problem, the
 pure-Rust `ruzstd` decoder can replace it on wasm only.
 
-With export, later: the GeoParquet writer (`GeoColumns`, the `geo` and
-`gml:settings` metadata) moves out of `xeibe-cli` into a library crate, so the
-page writes the same files as `xeibe gml convert`. `parquet`'s `zstd` feature
-brings the same C dependency as above.
+For export: the GeoParquet writer is in `xeibe-export` (done, 2026-10-21),
+moved out of `xeibe-cli`, so the page writes the same files as
+`xeibe gml convert`. `parquet`'s `zstd` feature brings the same C dependency as
+above.
 
 ## Limits
 

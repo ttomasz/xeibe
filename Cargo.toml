@@ -7,6 +7,7 @@ members = [
     "crates/xeibe-geom",
     "crates/xeibe-schema",
     "crates/xeibe-arrow",
+    "crates/xeibe-export",
     "crates/xeibe-io",
     "crates/xeibe-wfs",
     "crates/xeibe-datafusion",
@@ -26,6 +27,7 @@ default-members = [
     "crates/xeibe-geom",
     "crates/xeibe-schema",
     "crates/xeibe-arrow",
+    "crates/xeibe-export",
     "crates/xeibe-io",
     "crates/xeibe-wfs",
     "crates/xeibe-cli",
@@ -48,6 +50,7 @@ xeibe-reproject = { path = "crates/xeibe-reproject" }
 xeibe-geom = { path = "crates/xeibe-geom" }
 xeibe-schema = { path = "crates/xeibe-schema" }
 xeibe-arrow = { path = "crates/xeibe-arrow" }
+xeibe-export = { path = "crates/xeibe-export" }
 xeibe-io = { path = "crates/xeibe-io", default-features = false }
 xeibe-wfs = { path = "crates/xeibe-wfs" }
 xeibe-datafusion = { path = "crates/xeibe-datafusion" }

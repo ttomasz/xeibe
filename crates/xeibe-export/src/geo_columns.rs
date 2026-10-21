@@ -4,7 +4,7 @@
 //! unknown), plus GeoParquet 1.1 `geo` metadata with the CRS as PROJJSON or
 //! `null`. Curves and other non-simple types are an error: neither standard
 //! has them. A geometry column can get a GeoParquet 1.1 `bbox` covering column
-//! (`--bbox-column`).
+//! ([`BboxColumn`]).
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
@@ -19,15 +19,16 @@ use geoarrow_schema::{CrsType, GeoArrowType};
 use serde_json::{Value, json};
 use xeibe_geom::{CrsRef, SrsName};
 
-use crate::args::BboxColumn;
+use crate::{BboxColumn, Error, Result};
 
 /// Top-level geometry columns of a layer and what has been written of them.
 pub(crate) struct GeoColumns {
-    layer: String,
     columns: Vec<GeoColumn>,
     primary: Option<String>,
     /// The schema handed to the Parquet writer: geometry columns as WKB.
     output: SchemaRef,
+    /// Said once, when the columns are set up.
+    pub(crate) warnings: Vec<String>,
 }
 
 struct GeoColumn {
@@ -56,13 +57,13 @@ impl GeoColumns {
     /// geometry column is the primary one. `first`: the first batch, which
     /// tells `BboxColumn::Auto` whether a WKB column holds points.
     pub(crate) fn new(
-        layer: &str,
         schema: &Schema,
         primary: Option<&str>,
         bbox: BboxColumn,
         first: Option<&RecordBatch>,
-    ) -> super::Result<Self> {
+    ) -> Result<Self> {
         let mut columns = Vec::new();
+        let mut warnings = Vec::new();
         let mut fields = Vec::new();
         let mut names: HashSet<String> = schema
             .fields()
@@ -77,11 +78,11 @@ impl GeoColumns {
             let crs = typ.metadata().crs();
             let (projjson, parquet_crs) = crs_forms(crs.crs_type(), crs.crs_value());
             if projjson.is_null() && crs.crs_value().is_some() {
-                eprintln!(
-                    "warning: column {}: CRS {} has no PROJJSON form; GeoParquet crs is written as null",
+                warnings.push(format!(
+                    "column {}: CRS {} has no PROJJSON form; GeoParquet crs is written as null",
                     field.name(),
                     crs.crs_value().map(Value::to_string).unwrap_or_default()
-                );
+                ));
             }
             // Other metadata (`gml:srs_name`, `gml:axis_swapped`, …) is kept.
             let mut metadata: HashMap<String, String> = field
@@ -131,10 +132,10 @@ impl GeoColumns {
             .or_else(|| columns.first().map(|column| column.name.clone()));
         let output = Arc::new(Schema::new_with_metadata(fields, schema.metadata().clone()));
         Ok(GeoColumns {
-            layer: layer.to_string(),
             columns,
             primary,
             output,
+            warnings,
         })
     }
 
@@ -145,7 +146,7 @@ impl GeoColumns {
     /// The batch with its geometry columns as checked WKB, each followed by
     /// its covering column if it has one; bbox and geometry types are
     /// collected on the way.
-    pub(crate) fn convert(&mut self, batch: &RecordBatch) -> super::Result<RecordBatch> {
+    pub(crate) fn convert(&mut self, batch: &RecordBatch) -> Result<RecordBatch> {
         let mut arrays: Vec<ArrayRef> = batch.columns().to_vec();
         let mut coverings = Vec::new();
         let schema = batch.schema();
@@ -179,28 +180,23 @@ impl GeoColumns {
                         column.types.insert(name);
                     }
                     Err(WkbIssue::Curve(kind)) => {
-                        return Err(format!(
-                            "layer {}, column {}: a {kind} (curve) in batch row {row}; Parquet and GeoParquet have \
-                             only the seven simple geometry types. Add --linearize to convert arcs to line \
-                             segments (lossy), or use --format ipc to keep the curves",
-                            self.layer, column.name
-                        )
-                        .into());
+                        return Err(Error::Curve {
+                            column: column.name.clone(),
+                            kind,
+                            row,
+                        });
                     }
                     Err(WkbIssue::Unsupported(kind)) => {
-                        return Err(format!(
-                            "layer {}, column {}: geometry type {kind} can't be written to Parquet, which has \
-                             only the seven simple geometry types; use --format ipc",
-                            self.layer, column.name
-                        )
-                        .into());
+                        return Err(Error::Unsupported {
+                            column: column.name.clone(),
+                            kind,
+                        });
                     }
                     Err(WkbIssue::Malformed) => {
-                        return Err(format!(
-                            "layer {}, column {}: malformed WKB in batch row {row}",
-                            self.layer, column.name
-                        )
-                        .into());
+                        return Err(Error::MalformedWkb {
+                            column: column.name.clone(),
+                            row,
+                        });
                     }
                 }
             }
@@ -249,7 +245,7 @@ impl GeoColumns {
 }
 
 /// A geometry column as WKB.
-fn to_wkb(array: &ArrayRef, field: &Field) -> super::Result<ArrayRef> {
+fn to_wkb(array: &ArrayRef, field: &Field) -> Result<ArrayRef> {
     let array = geoarrow_array::array::from_arrow_array(array.as_ref(), field)?;
     Ok(geoarrow_array::cast::to_wkb::<i32>(array.as_ref())?.to_array_ref())
 }
@@ -258,11 +254,7 @@ fn to_wkb(array: &ArrayRef, field: &Field) -> super::Result<ArrayRef> {
 /// `geoarrow.point`, or a WKB (or WKT, or mixed) column whose values in the
 /// first batch are all points. A column that holds no value there counts as
 /// not points.
-fn holds_points(
-    typ: &GeoArrowType,
-    field: &Field,
-    first: Option<&ArrayRef>,
-) -> super::Result<bool> {
+fn holds_points(typ: &GeoArrowType, field: &Field, first: Option<&ArrayRef>) -> Result<bool> {
     use GeoArrowType::*;
     match typ {
         Point(_) => Ok(true),
@@ -334,7 +326,7 @@ impl Boxes {
         self.valid.push(bbox.is_some());
     }
 
-    fn finish(self) -> super::Result<ArrayRef> {
+    fn finish(self) -> Result<ArrayRef> {
         let nulls = self
             .valid
             .contains(&false)

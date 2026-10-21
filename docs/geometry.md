@@ -831,7 +831,8 @@ Two standards describe geometry in Parquet. Both can be written at once:
 `geoarrow.wkb` is itself a GeoArrow type, so the pipeline stays GeoArrow
 end to end. Only the storage encoding changes. The `parquet` crate (feature
 `geospatial`, enabled in the workspace) maps a `geoarrow.wkb` field to the
-`GEOMETRY` logical type and computes the statistics on its own.
+`GEOMETRY` logical type and computes the statistics on its own. `xeibe-export`
+writes these files, for the CLI and the web page.
 
 Defaults for `xeibe gml convert` and `xeibe wfs convert` with `--format parquet` (the default):
 
