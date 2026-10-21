@@ -43,6 +43,17 @@ export type ToWorker =
   /** `axis`: srsName as written → the order chosen for it. */
   | { type: 'read'; id: number; layer: string; limit: number | null; axis: Record<string, AxisOverride> }
   | { type: 'stop'; id: number }
+  /** Export the whole layer to GeoParquet: into `target`, the file the user
+   * picked, or (null) the browser's private storage, then a download. */
+  | {
+      type: 'export';
+      exportId: number;
+      layer: string;
+      axis: Record<string, AxisOverride>;
+      target: FileSystemFileHandle | null;
+      name: string;
+    }
+  | { type: 'stop-export'; exportId: number }
   | { type: 'rows'; id: number; request: number; start: number; count: number }
   | { type: 'xml'; id: number; row: number };
 
@@ -68,6 +79,12 @@ export type FromWorker =
   | { type: 'stopped'; id: number; report: Report }
   | { type: 'rows'; id: number; request: number; rows: string[][] }
   | { type: 'xml'; id: number; row: number; xml: FeatureXml | null; error: string | null }
+  | { type: 'export-progress'; exportId: number; rows: number; bytes: number }
+  /** `file`: the file in the browser's storage, to download; null when it
+   * went to the file the user picked. */
+  | { type: 'exported'; exportId: number; report: ExportReport; bytes: number; file: File | null }
+  | { type: 'export-stopped'; exportId: number }
+  | { type: 'export-failed'; exportId: number; message: string }
   | { type: 'error'; message: string };
 
 // JSON from crates/xeibe-wasm/src/session.rs.
@@ -185,4 +202,9 @@ export interface Report {
   not_on_map: number;
   map_error: string | null;
   geometry_errors: { row: number; message: string }[];
+}
+
+export interface ExportReport extends Omit<Report, 'not_on_map' | 'map_error' | 'geometry_errors'> {
+  /** What the writer wrote differently than asked (a CRS without PROJJSON). */
+  export_warnings: string[];
 }

@@ -691,6 +691,35 @@ ul.members {
   display: none;
 }
 
+#export {
+  width: min(520px, calc(100vw - 32px));
+}
+
+#export p,
+#export ul {
+  margin: 0;
+}
+
+#export ul {
+  padding-left: 20px;
+}
+
+#export progress {
+  width: 100%;
+  height: 10px;
+  accent-color: var(--accent);
+}
+
+#export .state {
+  font-variant-numeric: tabular-nums;
+}
+
+#export .body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .sampled .button {
   margin-left: 4px;
 }

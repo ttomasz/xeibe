@@ -22,8 +22,6 @@ options.
 - A general GIS viewer or editor. One file (or zip), one layer at a time.
 - Reprojecting the data. The map converts coordinates for display only (see
   [Map](#map)); what the page reads stays in the source CRS, as reads do.
-- Exporting the data, in the first version. Downloads (GeoParquet, Arrow IPC)
-  come once the first version works as intended (see [Phases](#phases)).
 - Multi-GB inputs. Browser memory limits apply (see [Limits](#limits)). The CLI is
   the tool for those.
 - A hosted service. The page is static files; there is no server side.
@@ -35,7 +33,7 @@ the map stacks above the tabs.
 
 | Area | Contents |
 |---|---|
-| Top bar | File picker and drop zone, layer selector (BDOT10k-style files have dozens of layers), "Try a sample", progress |
+| Top bar | File picker and drop zone, layer selector (BDOT10k-style files have dozens of layers), "Try a sample", Export (see [Export](#export)), progress |
 | Left half | Map, in one of two views (see [Map](#map)) |
 | Right half | Tabs, below |
 
@@ -80,13 +78,39 @@ that shows. The bar is the larger of the bytes read and the rows of those
 expected, when an exact count or the limit says how many. The worker reports
 a read's bytes as it does a scan's, every 8 MiB.
 
-Stopping a scan brings the dialog back with the sample chosen, and "Change
-files…" reopens it with the last choices, without opening the files again.
-After a sampled scan the Overview says so and offers a full scan of the same
+Stopping a scan brings the dialog back with the sample chosen. After a sampled scan the Overview says so and offers a full scan of the same
 files.
 
 The Options tab is what makes the page more than a viewer: options are tried
 interactively, then carried over to the CLI or Python unchanged.
+
+## Export
+
+Export, in the top bar, writes the whole layer to GeoParquet: the file
+`xeibe gml convert` writes, from the same writer (`xeibe-export`), whatever
+"Max features" says. The page offers no Arrow IPC. The worker reads the layer
+again with the page's options, the axis order chosen included, and the
+module hands over the file's bytes as the writer produces them, a row group
+(128,000 rows) at a time, so the file is never held whole. Parquet has no
+curves, so the export replaces them by straight segments, as `--linearize`
+does.
+
+The bytes go to:
+
+- **the file the user picks**, where the browser has `showSaveFilePicker`
+  (Chromium). The worker writes to it as the export goes; the browser puts
+  the file in place when it is complete.
+- **a file in the browser's private storage** (OPFS, written with
+  `createSyncAccessHandle`, which every current browser has in a worker)
+  elsewhere, downloaded when it is complete. It is on disk, not in memory.
+  Only the last export is kept there: its download may still be reading it.
+
+The dialog shows the rows and bytes written. Close leaves the export running,
+with its share on the Export button; Stop removes what was written. Checked
+in headless Chromium on 2026-10-21: the 606,980 address points of PRG
+lubelskie (657 MB of XML) export in 8.8 s to a 32.8 MB file, which GDAL reads
+with the CLI's count and extent. The CLI's file lacks one rare column: it
+samples the layer for its schema, and the page used its full scan's.
 
 ## Map
 
@@ -259,6 +283,7 @@ flowchart LR
         bytes["bytes in memory"] --> wasm["xeibe-wasm<br/>scan, read (threads = 1),<br/>map transform"]
     end
     worker -->|"scan, schema, report (JSON)<br/>map buffers (typed arrays)<br/>table rows (text, on demand)"| ui["UI thread"]
+    worker -->|"GeoParquet, a row group at a time"| saved["file picked,<br/>or OPFS, then a download"]
     ui --> map["map (deck.gl + MapLibre)"]
     ui --> tabs["tabs"]
 ```
@@ -270,8 +295,9 @@ flowchart LR
   files and members chosen, and starts a read with the scan's schema; `Reader` reads a batch at a
   time (with an optional row limit), lists the grid ranges the map needs for
   it, takes the grid data, lays the batch out for the map and keeps it for
-  the table. The work is in plain Rust (`session.rs`, `display.rs`), tested
-  natively.
+  the table; `Export` writes a whole layer to GeoParquet (see
+  [Export](#export)). The work is in plain Rust (`session.rs`, `display.rs`),
+  tested natively.
 - **Web Worker.** Everything runs in a worker so a long read doesn't freeze the
   UI. Between batches the worker fetches grids and lets new messages in (a
   stop, another layer). The map's buffers cross to the UI thread transferred,
@@ -398,8 +424,9 @@ above.
   members holding about 25 GB of XML) scans in 6.7 minutes; that is a job for
   the CLI, or for a sample. A read of one layer still goes through every
   chosen file, but skips the other layers' features without parsing them.
-- **Bundle size.** The module is 6.8 MB after `wasm-opt`, 2.6 MB gzipped
-  (EPSG tables and operations, arrow, geoarrow, the reprojection engine). The
+- **Bundle size.** The module is 8.6 MB after `wasm-opt`, 3.1 MB gzipped
+  (EPSG tables and operations, arrow, geoarrow, the reprojection engine, and
+  for export `parquet` with its zstd encoder: 1.7 MB of it, 0.5 MB gzipped). The
   JavaScript is 1.8 MB, 0.5 MB gzipped, most of it deck.gl and MapLibre.
   Loaded once, then cached.
 - **Measured** in headless Chromium on 2026-10-18: a 35 MB BDOT10k file (24,026
@@ -423,7 +450,7 @@ above.
    selection both ways; the GitHub Pages workflow.
 2. **Options.** Options tab with the CLI, Python and settings output. Zip
    inputs: done (2026-10-18). Samples ("Try a sample") maybe, not decided.
-3. **Later.** Export (GeoParquet, Arrow IPC); streaming reads of large files;
+3. **Later.** Export to GeoParquet: done (2026-10-21). Streaming reads of large files;
    grids cached in browser storage; WFS against servers that allow it; a target
    CRS in the Options tab once reads reproject.
 

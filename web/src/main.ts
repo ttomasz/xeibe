@@ -2,6 +2,7 @@
 
 import './style.css';
 import { MapPane, type View } from './map';
+import { ExportDialog } from './export';
 import { bytes, DEFAULT_SAMPLE, OpenDialog, type OpenRequest, ProgressDialog } from './open';
 import type { AxisOverride, Choice, FeatureXml, FromWorker, ReadInfo, Report, Scan, Schema, ToWorker } from './protocol';
 import { Table } from './table';
@@ -19,6 +20,8 @@ function restartWorker() {
   worker.terminate();
   worker = startWorker();
   state.scanning = false;
+  exporter.reset();
+  syncExportButton();
   if (state.files.length) send({ type: 'open', files: state.files });
 }
 
@@ -64,12 +67,14 @@ const state = {
   xml: null as FeatureXml | null,
   /** Indent the XML: `null` until the user chooses, then what they chose. */
   indent: null as boolean | null,
+  exportId: 0,
 };
 
 const status = $('status');
 const layerSelect = $<HTMLSelectElement>('layer');
 const limitInput = $<HTMLInputElement>('limit');
 const stopButton = $<HTMLButtonElement>('stop');
+const exportButton = $<HTMLButtonElement>('exportButton');
 const pointer = $('pointer');
 const mapNote = $('mapNote');
 
@@ -174,6 +179,41 @@ xmlTab.addEventListener('click', (event) => {
   );
 });
 
+// Export
+
+const exporter = new ExportDialog(
+  (request) => {
+    state.exportId++;
+    send({
+      type: 'export',
+      exportId: state.exportId,
+      layer: request.layer,
+      axis: state.axis,
+      target: request.target,
+      name: request.name,
+    });
+  },
+  () => send({ type: 'stop-export', exportId: state.exportId }),
+  () => syncExportButton(),
+);
+
+/** Export needs a scanned layer; while it runs, the button shows how far it is. */
+function syncExportButton() {
+  exportButton.textContent = exporter.label;
+  exportButton.disabled = !exporter.running && (!state.scan || !state.layer || state.scanning);
+}
+
+exportButton.addEventListener('click', () => {
+  if (!state.layer || !state.scan) return exporter.show({ name: '', features: null, axis: [] });
+  const layer = state.scan.layers.find((l) => l.name === state.layer);
+  const exact = !!layer && (state.scan.complete || !!layer.counted);
+  exporter.show({
+    name: state.layer,
+    features: exact ? layer!.feature_count : null,
+    axis: Object.keys(state.axis),
+  });
+});
+
 function setStatus(text: string, error = false) {
   status.textContent = text;
   status.classList.toggle('error', error);
@@ -211,6 +251,7 @@ function scan(request: OpenRequest) {
   state.schemas.clear();
   layerSelect.disabled = true;
   state.scanning = true;
+  syncExportButton();
   stopButton.hidden = false;
   setStatus('Scanning…');
   const extent = request.sample === null ? 'the whole files' : `the first ${plural(request.sample, 'feature')} of each file`;
@@ -361,6 +402,7 @@ function stopScan() {
 
 function receive(message: FromWorker) {
   if ('id' in message && message.type !== 'rows' && message.id !== state.readId) return;
+  if ('exportId' in message && message.exportId !== state.exportId) return;
   switch (message.type) {
     case 'files':
       if (state.choose) {
@@ -461,6 +503,18 @@ function receive(message: FromWorker) {
         xmlTab.innerHTML = `<p class="error">Couldn't read the XML: ${escape(message.error)}</p>`;
       }
       break;
+    case 'export-progress':
+      exporter.progress(message.rows, message.bytes);
+      break;
+    case 'exported':
+      exporter.done(message.report, message.bytes, message.file);
+      break;
+    case 'export-stopped':
+      exporter.stopped();
+      break;
+    case 'export-failed':
+      exporter.failed(message.message);
+      break;
     case 'rows':
       rowAnswers.get(message.request)?.(message.rows);
       rowAnswers.delete(message.request);
@@ -511,6 +565,7 @@ document.querySelectorAll<HTMLElement>('#tabs [data-tab]').forEach((b) =>
 );
 
 function renderOverview(error?: string) {
+  syncExportButton();
   const element = $('overview');
   if (!state.scan) {
     if (error) element.innerHTML = `<section><h2>Couldn't read the input</h2><p class="error">${escape(error)}</p></section>`;

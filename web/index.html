@@ -18,6 +18,7 @@
         <span id="limitHint" class="hint">empty reads all</span>
       </label>
       <button id="stop" class="button" hidden>Stop</button>
+      <button id="exportButton" class="button" disabled title="Save the whole layer as a GeoParquet file">Export…</button>
       <span id="status" role="status"></span>
       <a class="repo" href="https://github.com/ttomasz/xeibe" target="_blank" rel="noopener">GitHub</a>
     </header>
@@ -87,6 +88,19 @@
         <div class="actions">
           <button class="button" type="button" data-action="stop">Stop</button>
           <button class="button primary" value="close">Close</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="export" class="modal" aria-labelledby="exportTitle">
+      <form method="dialog">
+        <h2 id="exportTitle">Export to GeoParquet</h2>
+        <div class="body"></div>
+        <progress max="1" hidden></progress>
+        <p class="state" role="status"></p>
+        <div class="actions">
+          <button class="button" value="close">Cancel</button>
+          <button class="button" type="button" data-action="stop" hidden>Stop</button>
+          <button class="button primary" type="button" data-action="save">Save as GeoParquet…</button>
         </div>
       </form>
     </dialog>

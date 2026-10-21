@@ -2,7 +2,7 @@
 // It holds the dropped files and the current read; the UI thread gets JSON,
 // table rows on demand, and the map's buffers (transferred, not copied).
 
-import init, { Dataset, Reader, onProgress } from './wasm/xeibe_wasm.js';
+import init, { Dataset, Export, Reader, onProgress } from './wasm/xeibe_wasm.js';
 import wasmUrl from './wasm/xeibe_wasm_bg.wasm?url';
 import type { AxisOverride, FromWorker, GridRequest, Space, ToWorker } from './protocol';
 
@@ -14,6 +14,8 @@ let reader: Reader | null = null;
 let readerId = 0;
 /** The read that should go on; 0 stops the one running. */
 let wanted = 0;
+/** The export that should go on, likewise. */
+let exportWanted = 0;
 
 function post(message: FromWorker, transfer: Transferable[] = []) {
   (self as unknown as Worker).postMessage(message, transfer);
@@ -30,6 +32,7 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
     switch (message.type) {
       case 'open': {
         wanted = 0;
+        exportWanted = 0;
         reader?.free();
         reader = null;
         dataset?.free();
@@ -43,6 +46,7 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
       case 'scan': {
         if (!dataset) return;
         wanted = 0;
+        exportWanted = 0;
         reader?.free();
         reader = null;
         dataset.choose(JSON.stringify(message.choices));
@@ -67,6 +71,12 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
         break;
       case 'stop':
         if (message.id === wanted) wanted = 0;
+        break;
+      case 'export':
+        await exportLayer(message.exportId, message.layer, message.axis, message.target, message.name);
+        break;
+      case 'stop-export':
+        if (message.exportId === exportWanted) exportWanted = 0;
         break;
       case 'xml': {
         // Within the module's limits for a string, and the page's for a <pre>.
@@ -230,4 +240,106 @@ async function fetchRange(request: GridRequest): Promise<Uint8Array> {
     bytes = bytes.slice(request.offset, request.length === null ? undefined : request.offset + request.length);
   }
   return bytes;
+}
+
+/** Where an export's bytes go. */
+interface Sink {
+  write(bytes: Uint8Array): Promise<void>;
+  /** The file written, if the page still has to download it. */
+  close(): Promise<File | null>;
+  /** Stopped or failed: nothing is left behind. */
+  abort(): Promise<void>;
+}
+
+/** The file the user picked. The browser writes to a temporary file and
+ * puts it in place on `close()`. */
+async function pickedSink(handle: FileSystemFileHandle): Promise<Sink> {
+  const writable = await handle.createWritable();
+  return {
+    write: async (bytes) => {
+      if (bytes.length) await writable.write(bytes as Uint8Array<ArrayBuffer>);
+    },
+    close: async () => {
+      await writable.close();
+      return null;
+    },
+    abort: () => writable.abort(),
+  };
+}
+
+/** The page's directory in the browser's private storage (OPFS). */
+const EXPORTS = 'exports';
+
+/** A file in the browser's private storage, on disk rather than in memory;
+ * the page downloads it when it is complete. Only the last export is kept:
+ * its download may still be reading it. */
+async function privateSink(name: string): Promise<Sink> {
+  const root = await navigator.storage.getDirectory();
+  await root.removeEntry(EXPORTS, { recursive: true }).catch(() => {});
+  const directory = await root.getDirectoryHandle(EXPORTS, { create: true });
+  const handle = await directory.getFileHandle(name, { create: true });
+  const access = await handle.createSyncAccessHandle();
+  let at = 0;
+  return {
+    write: async (bytes) => {
+      if (access.write(bytes as Uint8Array<ArrayBuffer>, { at }) !== bytes.length) {
+        throw new Error('the browser stored only part of the file (out of space?)');
+      }
+      at += bytes.length;
+    },
+    close: async () => {
+      access.flush();
+      access.close();
+      return handle.getFile();
+    },
+    abort: async () => {
+      access.close();
+      await directory.removeEntry(name).catch(() => {});
+    },
+  };
+}
+
+async function exportLayer(
+  id: number,
+  layer: string,
+  axis: Record<string, AxisOverride>,
+  target: FileSystemFileHandle | null,
+  name: string,
+) {
+  if (!dataset) return;
+  exportWanted = id;
+  let current: Export | null = null;
+  let sink: Sink | null = null;
+  let bytes = 0;
+  try {
+    current = dataset.export(layer, readOptions(axis));
+    sink = target ? await pickedSink(target) : await privateSink(name);
+    for (;;) {
+      // Let a stop in between batches.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (exportWanted !== id) {
+        await sink.abort();
+        post({ type: 'export-stopped', exportId: id });
+        return;
+      }
+      const more = current.next();
+      const chunk = current.takeBytes();
+      await sink.write(chunk);
+      bytes += chunk.length;
+      post({ type: 'export-progress', exportId: id, rows: current.rows(), bytes });
+      if (!more) break;
+    }
+    const report = JSON.parse(current.finish());
+    const footer = current.takeBytes();
+    await sink.write(footer);
+    bytes += footer.length;
+    const file = await sink.close();
+    post({ type: 'exported', exportId: id, report, bytes, file });
+  } catch (error) {
+    await sink?.abort().catch(() => {});
+    post({ type: 'export-failed', exportId: id, message: errorMessage(error) });
+  } finally {
+    current?.free();
+    if (exportWanted === id) exportWanted = 0;
+  }
 }
