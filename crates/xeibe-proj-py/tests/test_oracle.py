@@ -180,6 +180,10 @@ def test_random_pairs_match(seed: int) -> None:
             ours_t = Transformer.from_crs(a, b, always_xy=True)
         except ProjError as e:
             if not ballpark:
+                try:
+                    theirs_t.transform(list(xs), list(ys), errcheck=True)
+                except pyproj.exceptions.ProjError:
+                    continue  # PROJ's operation can't run either
                 problems.append(f"{pair}: we raise ({e}), PROJ uses {theirs_t.description}")
             continue
         if ballpark:

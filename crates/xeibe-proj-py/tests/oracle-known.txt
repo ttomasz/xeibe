@@ -3,15 +3,14 @@
 # `<source>-><target>  <reason>`. Remove a pair once it matches PROJ.
 # Units: metres for projected targets, degrees for geographic ones.
 
-# No route: PROJ goes through a datum ensemble and one of its realizations
-# (WGS 84 (G730), ETRF2014, …) or NATRF2022; xeibe-reproject finds none.
-10178->23065  no route; PROJ: several candidates
+# No route: PROJ goes through its own null operation between a datum
+# ensemble and one of its members (WGS 84 to WGS 84 (G730), ETRS89 to
+# ETRF2014, …), which build_db.py adds; xeibe-reproject finds none.
 10606->28600  no route; PROJ: several candidates
 10606->3153  no route; PROJ: several candidates
 10690->9069  no route; PROJ: Inverse of ETRS89 to ETRS89-FIN [EUREF-FIN] + ETRS89 to ETRF2014
 20031->9057  no route; PROJ: Inverse of 6-degree Gauss-Kruger zone 31 + Pulkovo 1995 to WGS 84 (2) + WGS 84 to WGS 84 (G1762)
 20904->9755  no route; PROJ: Inverse of 6-degree Gauss-Kruger zone 4 + GSK-2011 to WGS 84 (1) + WGS 84 to WGS 84 (G2139)
-22154->10178  no route; PROJ: several candidates
 2222->9053  no route; PROJ: Inverse of SPCS83 Arizona East zone (international foot) + NAD83 to WGS 84 (1) + WGS 84 to WGS 84 (G730)
 2227->10606  no route; PROJ: Inverse of SPCS83 California zone 3 (US survey foot) + NAD83 to WGS 84 (1) + WGS 84 to WGS 84 (G2296)
 22990->8888  no route; PROJ: Inverse of SPCS2022 New Mexico East zone (foot) + NATRF2022e2020 to WGS 84 (1) + WGS 84 to WGS 84 (Transit)
@@ -67,9 +66,9 @@
 4802->6250  tie, off by 0.00423; ours: Bogota 1975 (Bogota) to Bogota 1975 (1) + Bogota 1975 to MAGNA-SIRGAS (10) + Cartagena urban grid
 
 # Through a datum ensemble mid-route: PROJ goes from ETRS89 to a national
-# realization with its own PROJ-authority operation and finds a more
-# accurate route; xeibe-reproject uses the ensemble-member identity only at
-# either end of a route (as the no-route pairs above).
+# realization with the same null operations and finds a more accurate
+# route; xeibe-reproject uses the ensemble-member identity only at either
+# end of a route.
 5252->9391  ensemble mid-route, off by 0.357; PROJ: TUREF to ETRS89 (1) + ETRS89 to ETRS89-BGR [BGS2005] + UTM zone 35N
 9794->4314  ensemble mid-route, off by 1.29e-05; PROJ: Inverse of Lambert-93 + Inverse of ETRS89 to ETRS89-FRA [RGF93 v2b] + Inverse of DHDN to ETRS89 (3)
 

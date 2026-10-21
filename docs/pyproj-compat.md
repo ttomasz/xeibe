@@ -69,15 +69,16 @@ As of 2026-10-21, phase 0 and phase 1 are implemented, apart from
     - the datum of vertical CRSs on an ensemble;
     - `to_epsg` of engineering CRSs, which PROJ's identification skips.
   - Random EPSG pairs, compared with PROJ without ballparks (divergence 1),
-    found 67 pairs that differ in `xeibe-reproject`'s choice of operation,
+    found 65 pairs that differ in `xeibe-reproject`'s choice of operation,
     listed in `tests/oracle-known.txt`:
-    - 55 with no route where PROJ goes through a realization of a datum
-      ensemble or NATRF2022;
-    - 2 where PROJ finds a more accurate route through ETRS89 and a national
-      realization of it in mid-route (0.36 m, 1.3e-5°). PROJ uses its own
-      operation from the ensemble to the realization. `xeibe-reproject` has
-      the ensemble-member identity only at either end of a route. This is
-      the cause of most of the 55 as well;
+    - 55 that go through PROJ's null operations between a datum ensemble
+      and its members ("WGS 84 to WGS 84 (G730)", "ETRS89 to ETRF2014"),
+      which PROJ's `build_db.py` adds with the ensemble's accuracy and its
+      search uses anywhere in a route. `xeibe-reproject` has the same
+      identity only at either end of a route. In 53 pairs we have no route;
+      in 2 PROJ's is more accurate (0.36 m, 1.3e-5°). PROJ restricted to EPSG's
+      operations, as `xeibe-reproject`'s own differential runs it, has no
+      route for any of the 53;
     - 2 ties broken by EPSG's data, documented in
       [reprojection.md](reprojection.md#deviations-from-proj-documented-deliberate);
     - 8 time-dependent Helmerts without an epoch.
