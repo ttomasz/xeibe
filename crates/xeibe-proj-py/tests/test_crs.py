@@ -116,6 +116,7 @@ def test_properties_match_pyproj(code: int) -> None:
         assert a.unit_conversion_factor == pytest.approx(b.unit_conversion_factor)
     assert ours.area_of_use is not None and theirs.area_of_use is not None
     # EPSG revises areas between releases by a few hundredths of a degree.
+    assert ours.area_of_use.name == theirs.area_of_use.name
     assert ours.area_of_use.bounds == pytest.approx(theirs.area_of_use.bounds, abs=0.05)
     assert (ours.datum and ours.datum.name) == (theirs.datum and theirs.datum.name)
     assert (ours.datum and ours.datum.type_name) == (theirs.datum and theirs.datum.type_name)
@@ -150,15 +151,9 @@ def test_ellipsoid_and_operation_match_pyproj() -> None:
         assert p.unit_conversion_factor == pytest.approx(q.unit_conversion_factor)
 
 
-@pytest.mark.parametrize("code", [32633, 4326, 9707])
+@pytest.mark.parametrize("code", [32633, 4326, 9707, 3035])
 def test_repr_matches_pyproj(code: int) -> None:
-    # EPSG's description of the area isn't in the tables: "- name: None".
-    def lines(text: str) -> list[str]:
-        out = text.splitlines()
-        area = out.index("Area of Use:")
-        return out[:area + 1] + out[area + 2 :]
-
-    assert lines(repr(CRS(code))) == lines(repr(pyproj.CRS(code)))
+    assert repr(CRS(code)) == repr(pyproj.CRS(code))
 
 
 def test_equality_and_hash() -> None:

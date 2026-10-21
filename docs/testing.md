@@ -53,6 +53,11 @@ it) compares with pyproj on `target/proj-oracle/proj.db` and is skipped
 without it. pyproj's own test suite runs against a built wheel with
 `crates/xeibe-proj-py/tests/pyproj_suite/run.py` (`--update` to record new
 passes in its `pass-list.txt`); see [pyproj-compat.md](pyproj-compat.md#testing).
+`.github/workflows/proj-py.yml` runs all of this on changes to the package,
+`xeibe-crs` or `xeibe-reproject`. It builds and tests the wheel on Linux,
+macOS and Windows, and checks a bare install on Python 3.11 with no numpy.
+The type checks and pyproj's suite run on Linux only. The oracle tests skip
+there.
 
 Each test module names the section of the design docs it comes from. A test
 that deviates from a document deliberately says why in a comment (see the GDAL

@@ -1,7 +1,7 @@
 # A pyproj-compatible Python package
 
-> **Status: phase 0 and the parts of phase 1 that need no change to the Rust
-> crates are implemented (2026-10-20), in `crates/xeibe-proj-py`; see
+> **Status: phases 0 and 1 are implemented (2026-10-21), in
+> `crates/xeibe-proj-py`; see
 > [Implementation status](#implementation-status).** API facts below were
 > checked against pyproj 3.8.0 (PROJ 9.8.1) and GeoPandas 1.2.0.
 
@@ -32,7 +32,9 @@ As of 2026-10-21, phase 0 and phase 1 are implemented, apart from
 
 - **Done.**
   - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
-    type checks.
+    type checks. CI (`.github/workflows/proj-py.yml`) builds and tests the
+    wheel on Linux, macOS and Windows. Its wheels aren't release builds:
+    a manylinux build and publishing come with the first release.
   - `CRS` from every input form in the table below except WKT and PROJ
     strings, with its properties, parts, `repr`, equality, hashing and
     pickling.
@@ -66,14 +68,24 @@ As of 2026-10-21, phase 0 and phase 1 are implemented, apart from
       where PROJ has one, they agree;
     - the datum of vertical CRSs on an ensemble;
     - `to_epsg` of engineering CRSs, which PROJ's identification skips.
-  - Random EPSG pairs found 77 pairs that differ in `xeibe-reproject`'s
-    choice of operation, listed in `tests/oracle-known.txt`:
+  - Random EPSG pairs, compared with PROJ without ballparks (divergence 1),
+    found 67 pairs that differ in `xeibe-reproject`'s choice of operation,
+    listed in `tests/oracle-known.txt`:
     - 55 with no route where PROJ goes through a realization of a datum
       ensemble or NATRF2022;
-    - 14 that choose differently per point;
+    - 2 where PROJ finds a more accurate route through ETRS89 and a national
+      realization of it in mid-route (0.36 m, 1.3e-5°). PROJ uses its own
+      operation from the ensemble to the realization. `xeibe-reproject` has
+      the ensemble-member identity only at either end of a route. This is
+      the cause of most of the 55 as well;
+    - 2 ties broken by EPSG's data, documented in
+      [reprojection.md](reprojection.md#deviations-from-proj-documented-deliberate);
     - 8 time-dependent Helmerts without an epoch.
 
-    They are `xeibe-reproject` work, not this package's.
+    They are `xeibe-reproject` work, not this package's. Before 2026-10-21
+    there were 14 pairs that chose differently per point. 9 of them were
+    PROJ's per-point ballpark (now compared without), and one was a bug:
+    EPSG's accuracy 999 counted as 999 m, where PROJ reads it as unknown.
 - **Fixed on the way.** `always_xy` follows PROJ's rule
   (`mustAxisOrderBeSwitchedForVisualization`). Northing-easting axes are
   swapped. Of the polar CRSs with both axes along meridians, only UPS North
@@ -424,7 +436,11 @@ These are documented in the package README and in its `NotImplementedError` and
 `ProjError` messages:
 
 1. **No ballpark transformations.** The divergence is in `from_crs`'s
-   default, described above.
+   default, described above. It also shows per point: for a point outside
+   the area of use of every EPSG operation, pyproj's default switches to a
+   ballpark, which leaves out the datum shift (tens to hundreds of metres).
+   xeibe_proj uses the best operation anyway, as PROJ does with
+   `allow_ballpark=False`.
 2. **Failed coordinates raise.** `transform`, `itransform` and `Proj.__call__`
    raise `ProjError` at the first coordinate that fails, instead of writing
    `inf`. Code that filters `inf` out afterwards has to catch the error,

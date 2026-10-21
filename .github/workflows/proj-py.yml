@@ -1,0 +1,107 @@
+# xeibe-proj, the pyproj-compatible package (docs/pyproj-compat.md): an abi3
+# wheel built on Linux, macOS and Windows, installed bare and tested on each,
+# plus the strict type checks and pyproj's own suite on Linux. The wheels
+# are for testing, not release: the Linux one is tagged for the runner's
+# glibc, not built in a manylinux container. test_oracle.py skips, because
+# target/proj-oracle is built from an EPSG archive that isn't in git
+# (docs/testing.md).
+name: xeibe-proj
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/xeibe-proj-py/**"
+      - "crates/xeibe-crs/**"
+      - "crates/xeibe-reproject/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/proj-py.yml"
+  pull_request:
+    paths:
+      - "crates/xeibe-proj-py/**"
+      - "crates/xeibe-crs/**"
+      - "crates/xeibe-reproject/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/proj-py.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: proj-py-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # Git Bash on Windows, so the wheel globs expand everywhere.
+    shell: bash
+
+jobs:
+  wheel:
+    name: wheel (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.3"
+
+      - name: Build the wheel
+        run: uvx maturin build --release -m crates/xeibe-proj-py/Cargo.toml -o target/proj-py-wheels
+
+      # Python 3.11 is the abi3 floor. No extras: numpy isn't installed,
+      # and lists and array.array still convert.
+      - name: Bare install
+        env:
+          PROJ_NETWORK: "OFF"
+        run: |
+          uv run --no-project --isolated --python 3.11 --with target/proj-py-wheels/xeibe_proj-*.whl python - <<'EOF'
+          import importlib.util
+          from array import array
+
+          from xeibe_proj import CRS, Transformer
+
+          assert importlib.util.find_spec("numpy") is None, "numpy is installed"
+          assert CRS("EPSG:2180").name == "ETRS89 / PL-1992"
+          t = Transformer.from_crs(4326, 2180)
+          x, y = t.transform([52.0], [21.0])
+          assert abs(x[0] - 461_197.24) < 1 and abs(y[0] - 637_253.16) < 1, (x, y)
+          t.transform(array("d", [52.0]), array("d", [21.0]))
+          EOF
+
+      # pyproj 3.8.0, which the tests compare with, needs Python 3.12.
+      - name: Tests
+        run: |
+          uv run --no-project --isolated --python 3.12 --with target/proj-py-wheels/xeibe_proj-*.whl \
+            --with pytest --with numpy --with pyproj==3.8.0 pytest crates/xeibe-proj-py/tests
+
+      - name: Type checks
+        if: runner.os == 'Linux'
+        working-directory: crates/xeibe-proj-py
+        run: |
+          wheel=$(ls ../../target/proj-py-wheels/xeibe_proj-*.whl)
+          uv run --no-project --isolated --python 3.12 --with "$wheel" --with mypy --with numpy mypy
+          uv run --no-project --isolated --python 3.12 --with "$wheel" --with pyright --with numpy pyright
+          uv run --no-project --isolated --python 3.12 --with "$wheel" --with mypy python -m mypy.stubtest xeibe_proj._native
+
+      # Fails when a test on pass-list.txt no longer passes.
+      - name: pyproj's own suite
+        if: runner.os == 'Linux'
+        run: crates/xeibe-proj-py/tests/pyproj_suite/run.py --wheel target/proj-py-wheels/xeibe_proj-*.whl

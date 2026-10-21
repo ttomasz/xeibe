@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 
@@ -20,7 +21,9 @@ def test_no_numpy_on_bare_use() -> None:
         "t.transform([52.0], [21.0]); t.transform(array('d', [52.0]), array('d', [21.0]))\n"
         "assert 'numpy' not in sys.modules, 'numpy was imported'\n"
     )
-    subprocess.run([sys.executable, "-c", code], check=True, env={"PROJ_NETWORK": "OFF"})
+    # The whole environment: Python on Windows doesn't start without SYSTEMROOT.
+    env = {**os.environ, "PROJ_NETWORK": "OFF"}
+    subprocess.run([sys.executable, "-c", code], check=True, env=env)
 
 
 def test_versions() -> None:

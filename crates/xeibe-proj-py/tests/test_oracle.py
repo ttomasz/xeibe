@@ -185,6 +185,10 @@ def test_random_pairs_match(seed: int) -> None:
         if ballpark:
             problems.append(f"{pair}: PROJ uses a ballpark, we don't raise")
             continue
+        # Without ballparks, as we convert: by default PROJ switches to one
+        # for a point outside every operation's area, where we use the best
+        # operation anyway (docs/pyproj-compat.md, divergence 1).
+        theirs_t = pyproj.Transformer.from_crs(a, b, always_xy=True, allow_ballpark=False)
         try:
             tx, ty = theirs_t.transform(list(xs), list(ys), errcheck=True)
         except pyproj.exceptions.ProjError:
