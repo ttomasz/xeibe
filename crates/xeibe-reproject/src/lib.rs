@@ -58,4 +58,5 @@ pub use bounds::DEFAULT_DENSIFY;
 pub use crs::Crs;
 pub use error::{CoordinateError, Error};
 pub use grid::{CDN, GridRequest, Grids, clear_grids};
+pub use select::OperationInfo;
 pub use transform::{AxisOrder, Transform};

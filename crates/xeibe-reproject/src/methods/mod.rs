@@ -62,6 +62,19 @@ impl Params {
         self.values.push((code, value));
     }
 
+    /// The same parameters, in any order, with values within PROJ's
+    /// relative tolerance (1e-10).
+    pub(crate) fn same(&self, other: &Params) -> bool {
+        let close = |a: f64, b: f64| a == b || (a - b).abs() <= 1e-10 * a.abs().max(b.abs());
+        self.values.len() == other.values.len()
+            && self.values.iter().all(|(code, value)| {
+                other
+                    .values
+                    .iter()
+                    .any(|(c, v)| c == code && close(*value, *v))
+            })
+    }
+
     pub(crate) fn get(&self, code: u32) -> Result<f64, BuildError> {
         self.values
             .iter()

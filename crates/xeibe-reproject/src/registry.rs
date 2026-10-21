@@ -38,6 +38,9 @@ pub(crate) struct Operation {
     pub(crate) src: Option<u32>,
     pub(crate) dst: Option<u32>,
     pub(crate) accuracy: Option<f64>,
+    /// EPSG's scope of its first usage, e.g. "Transformation of GNSS
+    /// coordinates…".
+    pub(crate) scope: Option<String>,
     /// EPSG's variant number: the operations between two CRSs are numbered
     /// in the order EPSG added them. 0 when it has none.
     pub(crate) variant: u32,
@@ -242,6 +245,7 @@ impl Registry {
                 src: code(&o["src"]),
                 dst: code(&o["dst"]),
                 accuracy: o["accuracy"].as_f64(),
+                scope: o["scope"].as_str().map(str::to_owned),
                 variant: code(&o["variant"]).unwrap_or(0),
                 deprecated: o["deprecated"].as_bool().unwrap_or(false),
                 replaced: o["replaced"].as_bool().unwrap_or(false),

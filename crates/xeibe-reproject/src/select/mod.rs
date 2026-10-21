@@ -25,6 +25,7 @@ pub(crate) mod filter;
 pub(crate) mod search;
 
 use candidate::{Candidate, SingleKind};
+use crs::CrsCache;
 use crs::CrsRef;
 
 /// One step of a runnable pipeline.
@@ -75,10 +76,89 @@ impl Height {
     }
 }
 
+/// One of the operations a transform chooses among: a candidate of the
+/// selection, as [`crate::Transform::operation_info`] lists them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OperationInfo {
+    /// PROJ's name for it, e.g. `Inverse of ETRS89 to WGS 84 (1) + Poland
+    /// CS92`.
+    pub name: String,
+    /// The EPSG operation it is, and whether it runs inverted, when it is
+    /// one (a single or concatenated operation); `None` for a route the
+    /// search put together.
+    pub code: Option<(u32, bool)>,
+    /// The EPSG transformations it runs, in order, each with whether it
+    /// runs inverted. Map projections and the changes on one datum are left
+    /// out.
+    pub steps: Vec<(u32, bool)>,
+    /// In metres; `None` when unknown.
+    pub accuracy: Option<f64>,
+    /// The area of use in degrees: west, south, east, north (east < west
+    /// across the antimeridian). `None` when it has none.
+    pub area: Option<[f64; 4]>,
+    /// EPSG's description of that area.
+    pub area_name: Option<String>,
+    /// PROJ-data's names of the grid files it reads.
+    pub grids: Vec<String>,
+    /// A step is time-dependent: it needs the coordinates' epoch.
+    pub time_dependent: bool,
+    /// EPSG's scope of the operation, when it is one EPSG operation (see
+    /// `code`). Its remarks: `xeibe_crs::operation_remarks`.
+    pub scope: Option<String>,
+}
+
+impl OperationInfo {
+    fn of(c: &Candidate, steps: &[Exec]) -> OperationInfo {
+        fn transformations(steps: &[candidate::Single], out: &mut Vec<(u32, bool)>) {
+            for s in steps {
+                match &s.kind {
+                    SingleKind::Registry { code, inverse } => out.push((*code, *inverse)),
+                    SingleKind::Composite { parts, .. } => transformations(parts, out),
+                    _ => {}
+                }
+            }
+        }
+        let mut codes = Vec::new();
+        transformations(&c.steps, &mut codes);
+        let mut grids: Vec<String> = Vec::new();
+        for step in steps {
+            if let Exec::Apply { method, .. } = step {
+                for f in method.grid_files() {
+                    if !grids.contains(&f.name) {
+                        grids.push(f.name.clone());
+                    }
+                }
+            }
+        }
+        OperationInfo {
+            name: c.name.clone(),
+            code: c.registry,
+            steps: codes,
+            accuracy: (c.accuracy >= 0.0).then_some(c.accuracy),
+            area: c
+                .extent
+                .as_ref()
+                .map(|e| [e.west, e.south, e.east, e.north]),
+            area_name: c.extent.as_ref().and_then(|e| e.name.clone()),
+            grids,
+            time_dependent: c.requires_time,
+            scope: c
+                .registry
+                .and_then(|(code, _)| registry().ops.get(&code))
+                .and_then(|op| op.scope.clone()),
+        }
+    }
+}
+
 /// A candidate ready to run, with what the per-point choice needs.
 #[derive(Debug, Clone)]
 pub(crate) struct Prepared {
     pub(crate) name: String,
+    /// Which candidate this is, counted from the best; a candidate across
+    /// the antimeridian is prepared twice, with one index.
+    index: usize,
+    candidate: Arc<Candidate>,
+    info: Arc<OperationInfo>,
     steps: Vec<Exec>,
     /// The candidate's area of use in the source CRS's internal coordinates
     /// (or in degrees of longitude and latitude for a geocentric source):
@@ -152,15 +232,15 @@ impl Candidates {
         dst: &Crs,
         src_ref: CrsRef,
         dst_ref: CrsRef,
-        grids: Grids,
+        grids: &Grids,
     ) -> Result<Candidates, Error> {
-        let (sorted, _) = search::create_operations(src_ref, dst_ref, grids);
+        let (sorted, _) = search::create_operations(src_ref, dst_ref, grids.clone());
         let mut builder = CrsBuilder::default();
         let src_geographic = matches!(src.kind, Kind::Geographic { .. });
         let src_geocentric = matches!(src.kind, Kind::Geocentric { .. });
         let mut list = Vec::new();
         let mut operations = 0;
-        let mut first: Option<(Candidate, Vec<Exec>)> = None;
+        let mut first: Option<(Arc<Candidate>, Vec<Exec>, Arc<OperationInfo>)> = None;
         for c in sorted {
             if !filter::is_exportable(&c) {
                 continue;
@@ -168,9 +248,12 @@ impl Candidates {
             let Ok(steps) = executable(&c, &mut builder) else {
                 continue;
             };
+            let index = operations;
             operations += 1;
+            let info = Arc::new(OperationInfo::of(&c, &steps));
+            let c = Arc::new(c);
             if first.is_none() {
-                first = Some((c.clone(), steps.clone()));
+                first = Some((c.clone(), steps.clone(), info.clone()));
             }
             let extent = c.extent.clone().unwrap_or_else(crate::extent::world);
             let area_name = extent.name.clone().unwrap_or_default();
@@ -197,6 +280,9 @@ impl Candidates {
                 }
                 list.push(Prepared {
                     name: c.name.clone(),
+                    index,
+                    candidate: c.clone(),
+                    info: info.clone(),
                     steps: steps.clone(),
                     bbox,
                     area: [west, s, east, n],
@@ -213,20 +299,9 @@ impl Candidates {
         // still serves, as PROJ returns it directly.
         if list.is_empty()
             && operations == 1
-            && let Some((c, steps)) = first
+            && let Some((c, steps, info)) = first
         {
-            list.push(Prepared {
-                name: c.name.clone(),
-                steps,
-                bbox: [-f64::MAX, -f64::MAX, f64::MAX, f64::MAX],
-                area: [-180.0, -90.0, 180.0, 90.0],
-                accuracy: c.accuracy,
-                pseudo_area: 0.0,
-                offshore: false,
-                unknown_area_name: false,
-                priority: false,
-                has_grids: c.has_grids(),
-            });
+            list.push(Prepared::everywhere(c, steps, info));
         }
         if list.is_empty() {
             return Err(Error::NoTransformation {
@@ -340,19 +415,14 @@ impl Candidates {
                 what: "its method".into(),
             });
         }
+        Candidates::one(c, src)
+    }
+
+    /// One candidate, run for every coordinate whatever its area.
+    fn one(c: Candidate, src: &Crs) -> Result<Candidates, Error> {
         let steps = executable(&c, &mut CrsBuilder::default())?;
-        let list = vec![Prepared {
-            name: c.name.clone(),
-            steps,
-            bbox: [-f64::MAX, -f64::MAX, f64::MAX, f64::MAX],
-            area: [-180.0, -90.0, 180.0, 90.0],
-            accuracy: c.accuracy,
-            pseudo_area: 0.0,
-            offshore: false,
-            unknown_area_name: false,
-            priority: false,
-            has_grids: false,
-        }];
+        let info = Arc::new(OperationInfo::of(&c, &steps));
+        let list = vec![Prepared::everywhere(Arc::new(c), steps, info)];
         Ok(Candidates {
             grid_files: grid_files(&list),
             list,
@@ -362,9 +432,36 @@ impl Candidates {
         })
     }
 
+    /// Candidate `index` only (see [`Candidates::info`]), for every
+    /// coordinate: one member of PROJ's `TransformerGroup`.
+    pub(crate) fn only(&self, index: usize, src: &Crs) -> Option<Result<Candidates, Error>> {
+        let p = self.list.iter().find(|p| p.index == index)?;
+        Some(Candidates::one((*p.candidate).clone(), src))
+    }
+
+    /// The first candidate the other way, for every coordinate: the
+    /// inverse of [`Candidates::only`]. `src` is the inverse's source.
+    pub(crate) fn inverse_of_first(&self, src: &Crs) -> Result<Candidates, Error> {
+        let inverse = self.list[0].candidate.inverse(&mut CrsCache::default());
+        Candidates::one(inverse, src)
+    }
+
     /// Names of the candidates, best first.
     pub(crate) fn names(&self) -> Vec<&str> {
         self.list.iter().map(|p| p.name.as_str()).collect()
+    }
+
+    /// The candidates' descriptions, best first, each once.
+    pub(crate) fn info(&self) -> Vec<OperationInfo> {
+        let mut out: Vec<OperationInfo> = Vec::new();
+        let mut last = None;
+        for p in &self.list {
+            if last != Some(p.index) {
+                out.push((*p.info).clone());
+                last = Some(p.index);
+            }
+        }
+        out
     }
 
     /// `pj_get_suggested_operation` for a coordinate in the source CRS's
@@ -470,6 +567,39 @@ impl Candidates {
         self.run_with(src, dst, internal)
             .ok()
             .map(|(_, i)| self.list[i].name.as_str())
+    }
+
+    /// Index (see [`Candidates::info`]) of the candidate a coordinate goes
+    /// through.
+    pub(crate) fn used_index(&self, src: &Crs, dst: &Crs, internal: [f64; 3]) -> Option<usize> {
+        self.run_with(src, dst, internal)
+            .ok()
+            .map(|(_, i)| self.list[i].index)
+    }
+}
+
+impl Prepared {
+    /// A candidate for every coordinate, whatever its area.
+    fn everywhere(
+        candidate: Arc<Candidate>,
+        steps: Vec<Exec>,
+        info: Arc<OperationInfo>,
+    ) -> Prepared {
+        Prepared {
+            name: candidate.name.clone(),
+            index: 0,
+            accuracy: candidate.accuracy,
+            has_grids: candidate.has_grids(),
+            candidate,
+            info,
+            steps,
+            bbox: [-f64::MAX, -f64::MAX, f64::MAX, f64::MAX],
+            area: [-180.0, -90.0, 180.0, 90.0],
+            pseudo_area: 0.0,
+            offshore: false,
+            unknown_area_name: false,
+            priority: false,
+        }
     }
 }
 

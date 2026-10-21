@@ -428,7 +428,7 @@ impl Search {
             }
             let inverse = r.ops[&row.code].src != Some(s);
             if let Some(c) = registry_candidate(row.code, inverse, &mut self.crs)
-                && c.grids_available(self.grids)
+                && c.grids_available(&self.grids)
             {
                 out.push(c);
             }
@@ -650,7 +650,7 @@ impl Search {
                     continue;
                 };
                 if let Some(c) = concatenate(vec![c1, c2], false, &mut self.crs)
-                    && c.grids_available(self.grids)
+                    && c.grids_available(&self.grids)
                 {
                     out.push(c);
                 }
@@ -845,7 +845,7 @@ impl Search {
                 }
             }
             if let Some(c) = concatenate(steps, false, &mut self.crs)
-                && c.grids_available(self.grids)
+                && c.grids_available(&self.grids)
             {
                 out.push(c);
             }

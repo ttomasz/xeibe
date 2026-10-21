@@ -280,7 +280,7 @@ impl Conversions {
                         &source,
                         &self.target,
                         AxisOrder::EastFirst,
-                        self.grids,
+                        self.grids.clone(),
                     ) {
                         Err(error) => Setup::Failed(format!("srsName {srs:?}: {error}")),
                         Ok(transform) => {

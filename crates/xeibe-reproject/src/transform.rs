@@ -7,8 +7,8 @@ use crate::error::{CoordinateError, Error};
 use crate::geocentric::{cartesian, geodetic};
 use crate::grid::Grids;
 use crate::methods::{LAT_LIMIT, adjlon};
-use crate::select::Candidates;
 use crate::select::crs::CrsRef;
+use crate::select::{Candidates, OperationInfo};
 
 /// The order coordinates are given and returned in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -42,6 +42,9 @@ enum Plan {
     Operations(Arc<Candidates>),
     /// One operation forced with [`Transform::via`].
     Via(u32, Arc<Candidates>),
+    /// One candidate of the selection, forced with
+    /// [`Transform::with_operation_index`].
+    Only(Arc<Candidates>),
 }
 
 impl Transform {
@@ -76,7 +79,7 @@ impl Transform {
                     dst: dst.label(),
                 });
             };
-            Plan::Operations(Arc::new(Candidates::new(src, dst, sc, dc, grids)?))
+            Plan::Operations(Arc::new(Candidates::new(src, dst, sc, dc, &grids)?))
         };
         Ok(Transform {
             src: src.clone(),
@@ -113,7 +116,7 @@ impl Transform {
     pub(crate) fn candidates(&self) -> Option<&Candidates> {
         match &self.plan {
             Plan::Conversion => None,
-            Plan::Operations(c) | Plan::Via(_, c) => Some(c),
+            Plan::Operations(c) | Plan::Via(_, c) | Plan::Only(c) => Some(c),
         }
     }
 
@@ -122,18 +125,52 @@ impl Transform {
     pub fn operations(&self) -> Vec<&str> {
         match &self.plan {
             Plan::Conversion => Vec::new(),
-            Plan::Operations(c) | Plan::Via(_, c) => c.names(),
+            Plan::Operations(c) | Plan::Via(_, c) | Plan::Only(c) => c.names(),
         }
     }
 
     /// The name of the operation one coordinate goes through, or `None` for
     /// a conversion on one datum or a coordinate that can't be converted.
     pub fn operation_for(&self, x: f64, y: f64, z: Option<f64>) -> Option<&str> {
-        let (Plan::Operations(c) | Plan::Via(_, c)) = &self.plan else {
+        let (Plan::Operations(c) | Plan::Via(_, c) | Plan::Only(c)) = &self.plan else {
             return None;
         };
         let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)]).ok()?;
         c.used(&self.src, &self.dst, internal)
+    }
+
+    /// The operations this transform chooses among, best first, with their
+    /// EPSG codes, accuracy, area of use and grids; empty for a conversion
+    /// on one datum. Indexes into this list are those of
+    /// [`Transform::operation_index_for`] and
+    /// [`Transform::with_operation_index`].
+    pub fn operation_info(&self) -> Vec<OperationInfo> {
+        self.candidates().map(Candidates::info).unwrap_or_default()
+    }
+
+    /// The index in [`Transform::operation_info`] of the operation one
+    /// coordinate goes through, or `None` for a conversion on one datum or
+    /// a coordinate that can't be converted.
+    pub fn operation_index_for(&self, x: f64, y: f64, z: Option<f64>) -> Option<usize> {
+        let c = self.candidates()?;
+        let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)]).ok()?;
+        c.used_index(&self.src, &self.dst, internal)
+    }
+
+    /// The transformation through operation `index` of
+    /// [`Transform::operation_info`] only, for every coordinate whatever its
+    /// area, as each member of PROJ's `TransformerGroup` is. `None` when
+    /// there is no such operation. Its inverse runs the same operation the
+    /// other way.
+    pub fn with_operation_index(&self, index: usize) -> Option<Result<Transform, Error>> {
+        let only = self.candidates()?.only(index, &self.src)?;
+        Some(only.map(|c| Transform {
+            src: self.src.clone(),
+            dst: self.dst.clone(),
+            order: self.order,
+            grids: self.grids.clone(),
+            plan: Plan::Only(Arc::new(c)),
+        }))
     }
 
     /// Set up the conversion between two EPSG codes.
@@ -162,13 +199,20 @@ impl Transform {
                 src: self.dst.clone(),
                 dst: self.src.clone(),
                 order: self.order,
-                grids: self.grids,
+                grids: self.grids.clone(),
                 plan: Plan::Conversion,
             }),
             Plan::Operations(_) => {
-                Transform::with_grids(&self.dst, &self.src, self.order, self.grids)
+                Transform::with_grids(&self.dst, &self.src, self.order, self.grids.clone())
             }
             Plan::Via(code, _) => Transform::via(&self.dst, &self.src, code, self.order),
+            Plan::Only(ref c) => Ok(Transform {
+                src: self.dst.clone(),
+                dst: self.src.clone(),
+                order: self.order,
+                grids: self.grids.clone(),
+                plan: Plan::Only(Arc::new(c.inverse_of_first(&self.dst)?)),
+            }),
         }
     }
 
@@ -189,7 +233,7 @@ impl Transform {
         let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)])?;
         let out = match &self.plan {
             Plan::Conversion => on_one_datum(&self.src, &self.dst, internal)?,
-            Plan::Operations(candidates) | Plan::Via(_, candidates) => {
+            Plan::Operations(candidates) | Plan::Via(_, candidates) | Plan::Only(candidates) => {
                 candidates.run(&self.src, &self.dst, internal)?
             }
         };

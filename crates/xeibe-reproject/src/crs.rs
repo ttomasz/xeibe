@@ -36,6 +36,10 @@ pub(crate) enum Kind {
         datum: Datum,
         projection: Arc<dyn Projection>,
         method: String,
+        /// The method's EPSG code, and the parameters the projection was
+        /// built from: what equivalence compares.
+        method_code: Option<u32>,
+        params: Params,
     },
     /// A gravity-related height or depth. Internally a height in metres,
     /// up, as the third value; the first two carry the horizontal position
@@ -105,6 +109,37 @@ pub(crate) struct Axes {
     first_is_north: bool,
 }
 
+/// Equal to PROJ's relative tolerance for measures (1e-10).
+fn close(a: f64, b: f64) -> bool {
+    a == b || (a - b).abs() <= 1e-10 * a.abs().max(b.abs())
+}
+
+/// Two datums named by key (`EPSG:6258`, or the name without one), or by
+/// name: one CRS may come with identifiers and the other without.
+fn same_key(key_a: &str, name_a: &str, key_b: &str, name_b: &str) -> bool {
+    key_a == key_b || name_a.trim().eq_ignore_ascii_case(name_b.trim())
+}
+
+impl Datum {
+    fn same(&self, other: &Datum) -> bool {
+        same_key(&self.key, &self.name, &other.key, &other.name)
+            && close(self.ellipsoid.a, other.ellipsoid.a)
+            && close(self.ellipsoid.b, other.ellipsoid.b)
+            && close(self.prime_meridian, other.prime_meridian)
+    }
+}
+
+impl Axis {
+    fn same(&self, other: &Axis) -> bool {
+        // Directions are unit vectors (or ±1): compare them absolutely.
+        let near = |a: f64, b: f64| (a - b).abs() <= 1e-12;
+        near(self.along[0], other.along[0])
+            && near(self.along[1], other.along[1])
+            && near(self.vertical, other.vertical)
+            && close(self.factor, other.factor)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Axis {
     /// For a horizontal axis, the unit vector it points along in the
@@ -119,6 +154,23 @@ pub(crate) struct Axis {
 impl Axes {
     pub(crate) fn dimension(&self) -> usize {
         self.axes.len()
+    }
+
+    /// The same axes, in the same order (or with `ignore_order`, the two
+    /// horizontal ones in either order).
+    fn same(&self, other: &Axes, ignore_order: bool) -> bool {
+        if self.axes.len() != other.axes.len() {
+            return false;
+        }
+        let pairwise = |a: &[Axis], b: &[Axis]| a.iter().zip(b).all(|(x, y)| x.same(y));
+        if pairwise(&self.axes, &other.axes) {
+            return true;
+        }
+        if !ignore_order || self.axes.len() < 2 {
+            return false;
+        }
+        let (a, b) = (&self.axes, &other.axes);
+        a[0].same(&b[1]) && a[1].same(&b[0]) && pairwise(&a[2..], &b[2..])
     }
 
     /// Whether the first axis points north, so data in xeibe's east-first
@@ -272,6 +324,8 @@ impl Crs {
                         datum,
                         projection,
                         method,
+                        method_code,
+                        params,
                     },
                     axes,
                 )
@@ -391,6 +445,63 @@ impl Crs {
         match &self.horizontal().kind {
             Kind::Projected { method, .. } => Some(method),
             _ => None,
+        }
+    }
+
+    /// Whether both CRSs define the same coordinates: the same kind of CRS,
+    /// on the same datum (by EPSG code, else by name) with the same
+    /// ellipsoid and prime meridian, the same projection method and
+    /// parameters, and the same axes in the same units. Names and codes
+    /// aren't compared, as PROJ's `proj_is_equivalent_to` doesn't, and
+    /// numbers agree to PROJ's relative 1e-10. With `ignore_axis_order`,
+    /// CRSs whose two horizontal axes differ only in order are equivalent
+    /// too (EPSG:4326 and OGC:CRS84).
+    pub fn equivalent(&self, other: &Crs, ignore_axis_order: bool) -> bool {
+        let same_axes = self.axes.same(&other.axes, ignore_axis_order);
+        match (&self.kind, &other.kind) {
+            (Kind::Geographic { datum: a }, Kind::Geographic { datum: b })
+            | (Kind::Geocentric { datum: a }, Kind::Geocentric { datum: b }) => {
+                a.same(b) && same_axes
+            }
+            (
+                Kind::Projected {
+                    datum: a,
+                    method: ma,
+                    method_code: ca,
+                    params: pa,
+                    ..
+                },
+                Kind::Projected {
+                    datum: b,
+                    method: mb,
+                    method_code: cb,
+                    params: pb,
+                    ..
+                },
+            ) => {
+                let same_method = match (ca, cb) {
+                    (Some(x), Some(y)) => x == y,
+                    _ => ma.eq_ignore_ascii_case(mb),
+                };
+                a.same(b) && same_method && pa.same(pb) && same_axes
+            }
+            (Kind::Vertical { datum: a }, Kind::Vertical { datum: b }) => {
+                same_key(&a.key, &a.name, &b.key, &b.name) && same_axes
+            }
+            (Kind::Engineering { datum: a }, Kind::Engineering { datum: b }) => {
+                same_key(&a.key, &a.name, &b.key, &b.name) && same_axes
+            }
+            (
+                Kind::Compound {
+                    horizontal: ha,
+                    vertical: va,
+                },
+                Kind::Compound {
+                    horizontal: hb,
+                    vertical: vb,
+                },
+            ) => ha.equivalent(hb, ignore_axis_order) && va.equivalent(vb, false),
+            _ => false,
         }
     }
 

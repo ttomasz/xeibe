@@ -22,6 +22,9 @@ pub(crate) mod store;
 pub(crate) mod tiff;
 pub(crate) mod tin;
 
+use std::collections::BTreeSet;
+use std::sync::Arc;
+
 pub(crate) use catalog_types::{Entry, lookup};
 pub use store::clear_grids;
 
@@ -29,7 +32,7 @@ pub use store::clear_grids;
 pub const CDN: &str = "https://cdn.proj.org/";
 
 /// Which grids the selection may use.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub enum Grids {
     /// The grids PROJ-data publishes on `cdn.proj.org` (PROJ with network
     /// access). They have to be loaded before converting coordinates that
@@ -39,6 +42,29 @@ pub enum Grids {
     /// No grid-based operation: only EPSG's parametric transformations
     /// (PROJ without grids).
     None,
+    /// These grids only, by PROJ-data's file names (`fr_ign_ntf_r93.tif`):
+    /// the files of a local copy of PROJ-data, as PROJ without network
+    /// access sees those in its data directories. They have to be loaded,
+    /// e.g. with [`crate::Transform::load_grids_from_dir`].
+    Local(Arc<BTreeSet<String>>),
+}
+
+impl Grids {
+    /// [`Grids::Local`] with these PROJ-data file names.
+    pub fn local<I: IntoIterator<Item = S>, S: Into<String>>(files: I) -> Grids {
+        Grids::Local(Arc::new(files.into_iter().map(Into::into).collect()))
+    }
+
+    /// Whether a grid EPSG names in operation `op_name` can be used.
+    pub(crate) fn has(&self, epsg_name: &str, op_name: &str) -> bool {
+        match self {
+            Grids::ProjData => on_cdn(epsg_name, op_name).is_some(),
+            Grids::None => false,
+            Grids::Local(files) => {
+                lookup(epsg_name, op_name).is_some_and(|e| files.contains(e.file))
+            }
+        }
+    }
 }
 
 /// A byte range of a grid file to load, from [`CDN`] or a local copy of

@@ -71,7 +71,17 @@ see level 3). `AxisOrder::EastFirst` is the order xeibe writes (first two values
 swapped for a northing-first CRS); `Authority` is the CRS's own. Two CRSs on
 different datums go through level 2; when no transformation applies, the error
 is `NoTransformation`. `operations()` lists the candidates and
-`operation_for(x, y, z)` names the one a coordinate goes through. A coordinate
+`operation_for(x, y, z)` names the one a coordinate goes through.
+`operation_info()` describes each candidate, best first: its name, the EPSG
+operation it is (if one) and the transformations it runs, accuracy, area of
+use and grid files. `operation_index_for(x, y, z)` gives a coordinate's
+candidate by its index there, and `with_operation_index(i)` makes the
+transform through that candidate alone, for every coordinate (PROJ's
+`TransformerGroup` members; its inverse runs the same operation back).
+`Crs::equivalent(&other, ignore_axis_order)` compares two CRSs' definitions
+(datum, ellipsoid, prime meridian, projection method and parameters, axes
+and units) whatever their names and ids, to PROJ's relative 1e-10, as
+`proj_is_equivalent_to` does. A coordinate
 that can't be converted is an error naming its index; NaN (GeoArrow's empty
 point) passes through.
 `convert_bounds` converts a bounding box as PROJ's `proj_trans_bounds` does,
@@ -467,7 +477,10 @@ compound CRSs with their grids (geoid models, vertical offsets).
   the per-point choice retries the next operation when a point is outside
   the chosen one's grid, and the fallback to the first candidate without
   grids stays. A transformation can be set up without grids
-  (`Transform::with_grids(.., Grids::None)`), which is level 2's world.
+  (`Transform::with_grids(.., Grids::None)`), which is level 2's world, or
+  with the grids of a local copy of PROJ-data only (`Grids::local(files)`,
+  PROJ-data's file names), as PROJ without network access chooses among
+  the grids in its data directories.
 - **Loading** (decision 6): a transform does no I/O. `grid_requests(bounds)`
   lists byte ranges of PROJ-data files; the caller fetches them (from
   `GridRequest::url()` with range requests, or a local copy) and hands them to

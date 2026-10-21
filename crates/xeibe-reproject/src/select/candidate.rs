@@ -148,16 +148,11 @@ impl Candidate {
     /// Every grid it uses is available: PROJ's `gridsNeeded` with known
     /// grids counted as available, which with `Grids::ProjData` means that
     /// PROJ's catalog puts the grid on `cdn.proj.org`.
-    pub(crate) fn grids_available(&self, grids: Grids) -> bool {
+    pub(crate) fn grids_available(&self, grids: &Grids) -> bool {
         self.leaves().iter().all(|s| match s.kind {
             SingleKind::Registry { code, .. } => {
                 let op = &registry().ops[&code];
-                let names = op.grid_names();
-                names.is_empty()
-                    || (grids == Grids::ProjData
-                        && names
-                            .iter()
-                            .all(|n| crate::grid::on_cdn(n, &op.name).is_some()))
+                op.grid_names().iter().all(|n| grids.has(n, &op.name))
             }
             _ => true,
         })

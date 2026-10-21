@@ -286,7 +286,7 @@ impl Search {
             }
             let inverse = r.ops[&code].dst != Some(tc);
             if let Some(c) = registry_candidate(code, inverse, &mut self.crs)
-                && c.grids_available(self.grids)
+                && c.grids_available(&self.grids)
             {
                 out.push(c);
             }
