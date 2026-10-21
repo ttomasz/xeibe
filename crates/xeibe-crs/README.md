@@ -8,6 +8,7 @@ give a name (`PL-1992`) instead of a code. Part of
 EPSG's coordinate operations, datums and areas of use, from which
 `xeibe-reproject` chooses datum transformations (see the
 [reprojection document](https://github.com/ttomasz/xeibe/blob/main/docs/reprojection.md)).
+Since 0.3.0 also each CRS's areas of use and scopes, and EPSG's remarks.
 
 > **Warning: experimental, not for production use.** This crate is
 > AI-generated and has not been thoroughly tested yet. Its interfaces are not
@@ -39,6 +40,8 @@ flowchart TD
     D --> I["src/table.rs"]
     B --> J["aliases naming<br/>one CRS"] --> K["src/aliases.rs"]
     B --> L["coordinate operations,<br/>datums, areas of use"] --> M["data/operations.bin"]
+    B --> N["each CRS's areas of use<br/>and scopes, by reference"] --> O["data/usages.bin"]
+    B --> P["remarks on CRSs<br/>and operations"] --> Q["data/remarks.bin"]
 ```
 
 No PROJ, GDAL, pyproj or network access is involved, at generation time or at
@@ -221,6 +224,19 @@ they match the Cargo version so the two cannot drift.
 
 The crate's own versions; [`CHANGELOG.md`](CHANGELOG.md) lists the EPSG Dataset
 releases embedded in each.
+
+### 0.3.0
+
+- `projjson()` includes each CRS's areas of use (EPSG's description and
+  box) and scopes, as PROJ writes them: `scope`, `area` and `bbox`, or
+  `usages` when there are several. They are stored by reference in
+  `data/usages.bin` (113 KiB), not repeated in every document, and
+  `usages(code)` returns them.
+- `crs_remarks(code)` and `operation_remarks(code)`: EPSG's remarks, from
+  `data/remarks.bin` (145 KiB), decompressed on first use. Code that never
+  asks for a remark doesn't carry the data.
+- `operations_json()` gives each operation's scope (its first usage's).
+- Texts have Unix line ends, as in PROJ's database.
 
 ### 0.2.0
 

@@ -114,7 +114,9 @@ sources, but their contents haven't been checked against the local copies:
   with uv's managed Python (newer SQLite) changes EPSG:25311's longitude
   of origin by 2e-14° in `data/projjson.bin`. The unpinned `zstandard`
   can also change the compressed bytes. Both are harmless: restore the file
-  with `git checkout` unless EPSG's data changed.
+  with `git checkout` unless EPSG's data changed. Running it with the system
+  Python (`uv run --python /usr/bin/python3 scripts/gen_crs_tables.py`,
+  SQLite 3.45 on Ubuntu 24.04) reproduces the committed bytes.
 - `scripts/fetch_epsg_dataset.py` signs in to epsg.org and downloads the
   current EPSG archives into `example_data/`. Needs `EPSG_LOGIN_USER` and
   `EPSG_LOGIN_PASSWORD` in the environment or in a git-ignored `.env`

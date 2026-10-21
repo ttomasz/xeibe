@@ -650,7 +650,11 @@ fallback when no PROJJSON is available (a code EPSG doesn't have).
    All 8,299 CRSs cost **424 KiB**, which made the "ship only a subset" and
    "optional PROJ feature flag" options pointless. The CRS facts table is
    separate and uncompressed (a sorted `static`), because it is on the
-   axis-decision hot path.
+   axis-decision hot path. Each CRS's areas of use and scopes are stored by
+   reference in `data/usages.bin`, and `projjson` adds them to the document
+   as PROJ writes them (repeating EPSG's long area descriptions in every
+   document would cost three times as much). EPSG's remarks are in
+   `data/remarks.bin`, decompressed only when one is asked for.
 
    Two traps, both of which silently produce *plausible* numbers rather than
    errors, so both are asserted on in the generator:

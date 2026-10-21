@@ -419,6 +419,14 @@ def root_vertical_datum(e: Epsg, code: int) -> int:
     raise ValueError(f"EPSG:{code} is a vertical chain with no datum at its root")
 
 
+def identify(e: Epsg, out: dict, code: int, root: bool) -> dict:
+    """Close a CRS's document with its id. Its areas of use and scopes are
+    not written here but in `usages.bin` (`pack_usages`), and `xeibe-crs`
+    adds them to the root CRS as PROJ writes them."""
+    out["id"] = {"authority": "EPSG", "code": code}
+    return out
+
+
 def render_crs(e: Epsg, code: int, *, root: bool = True) -> dict:
     c = e.one("select * from epsg_coordinatereferencesystem where coord_ref_sys_code=?", code)
     kind = c["coord_ref_sys_kind"]
@@ -434,8 +442,7 @@ def render_crs(e: Epsg, code: int, *, root: bool = True) -> dict:
             render_crs(e, c["cmpd_horizcrs_code"], root=False),
             render_crs(e, c["cmpd_vertcrs_code"], root=False),
         ]
-        out["id"] = {"authority": "EPSG", "code": code}
-        return out
+        return identify(e, out, code, root)
 
     derived = kind in DERIVED_KINDS
     if kind == "vertical" and c["base_crs_code"] and c["projection_conv_code"]:
@@ -459,8 +466,7 @@ def render_crs(e: Epsg, code: int, *, root: bool = True) -> dict:
                 out[key] = value
             if c["coord_sys_code"]:
                 out["coordinate_system"] = e.coordinate_system(c["coord_sys_code"])
-            out["id"] = {"authority": "EPSG", "code": code}
-            return out
+            return identify(e, out, code, root)
         out["type"] = "DerivedVerticalCRS"
         derived = True
 
@@ -476,8 +482,7 @@ def render_crs(e: Epsg, code: int, *, root: bool = True) -> dict:
             out[key] = value
     if c["coord_sys_code"]:
         out["coordinate_system"] = e.coordinate_system(c["coord_sys_code"])
-    out["id"] = {"authority": "EPSG", "code": code}
-    return out
+    return identify(e, out, code, root)
 
 
 # --------------------------------------------------------------------------
@@ -924,9 +929,17 @@ def export_operations(e: Epsg, version: str) -> dict:
     # covering them all; PROJ takes only the first in its database's order.
     usages: dict[int, list[int]] = defaultdict(list)
     crs_usages: dict[int, list[int]] = defaultdict(list)
-    for row in e.all("select object_table_name, object_code, extent_code from epsg_usage order by usage_code"):
+    # Each operation's scope: its first usage's, as PROJ reports it.
+    scopes: dict[int, str] = {}
+    for row in e.all(
+        """select u.object_table_name, u.object_code, u.extent_code, s.scope
+             from epsg_usage u left join epsg_scope s on s.scope_code = u.scope_code
+            order by u.usage_code"""
+    ):
         if row["object_table_name"] == "epsg_coordoperation":
             usages[row["object_code"]].append(row["extent_code"])
+            if row["scope"]:
+                scopes.setdefault(row["object_code"], row["scope"])
         elif row["object_table_name"] == "epsg_coordinatereferencesystem":
             crs_usages[row["object_code"]].append(row["extent_code"])
     # PROJ hard-codes WGS 84's domain as the world (factory.cpp).
@@ -960,7 +973,7 @@ def export_operations(e: Epsg, version: str) -> dict:
         p = params(code, row["coord_op_method_code"])
         if table == "helmert_transformation" and row["deprecated"] and (not p or p[0][1] is None):
             continue  # build_db.py: "non sense deprecated transforms (like EPSG:1076)"
-        ops[code] = operation_record(row, table, p, usages[code])
+        ops[code] = operation_record(row, table, p, usages[code], scopes.get(code))
 
     # Concatenated operations exist for PROJ only when every step does;
     # conversions (e.g. 3D to 2D) count as steps too.
@@ -986,13 +999,17 @@ def export_operations(e: Epsg, version: str) -> dict:
             if step_row is not None and step_row["coord_op_type"] == "conversion":
                 if step not in conversions:
                     conversions[step] = operation_record(
-                        step_row, "conversion", params(step, step_row["coord_op_method_code"]), usages[step]
+                        step_row,
+                        "conversion",
+                        params(step, step_row["coord_op_method_code"]),
+                        usages[step],
+                        scopes.get(step),
                     )
                 continue
             ok = False
             break
         if ok:
-            record = operation_record(row, "concatenated_operation", [], usages[code])
+            record = operation_record(row, "concatenated_operation", [], usages[code], scopes.get(code))
             record["steps"] = steps
             ops[code] = record
     ops.update(conversions)
@@ -1122,7 +1139,9 @@ def export_operations(e: Epsg, version: str) -> dict:
 EMULATION = re.compile(r"\bEmulation\b[^.]*?\bcodes? (\d{4,5})", re.I)
 
 
-def operation_record(row: sqlite3.Row, table: str, params: list, extents: list[int]) -> dict:
+def operation_record(
+    row: sqlite3.Row, table: str, params: list, extents: list[int], scope: str | None = None
+) -> dict:
     record = {
         "code": row["coord_op_code"],
         "name": row["coord_op_name"],
@@ -1134,6 +1153,8 @@ def operation_record(row: sqlite3.Row, table: str, params: list, extents: list[i
         "deprecated": bool(row["deprecated"]),
         "extents": extents,
     }
+    if scope:
+        record["scope"] = scope
     if row["coord_op_variant"]:
         # EPSG numbers the operations between two CRSs in order of addition.
         record["variant"] = row["coord_op_variant"]
@@ -1147,6 +1168,95 @@ def operation_record(row: sqlite3.Row, table: str, params: list, extents: list[i
     if emulates:
         record["emulates"] = emulates
     return record
+
+
+USAGES_MAGIC = b"XUS1"
+
+
+def plain_text(value: str | None) -> str:
+    """EPSG's text with Unix line ends, as PROJ's database has it."""
+    return (value or "").replace("\r\n", "\n")
+
+
+def pack_usages(e: Epsg, crs_codes: set[int]) -> bytes:
+    """Each CRS's areas of use and scopes, by reference: PROJJSON spells
+    them out ("scope", "area", "bbox", or "usages"), and EPSG's long area
+    descriptions repeated per CRS would cost three times as much.
+
+    A magic, the raw length, and one zstd frame of: the extents (u32 count;
+    each u32 code, four f64 LE south, west, north, east, NaN when missing,
+    u16 length and UTF-8 description), the scopes (u32 count; each u32 code,
+    u16 length, UTF-8 text), and the usages in EPSG's order (u32 count; each
+    u32 CRS code, u16 extent index, u16 scope index, 0xFFFF for none).
+    """
+    rows = [
+        dict(r)
+        for r in e.all(
+            """select object_code, extent_code, scope_code from epsg_usage
+                where object_table_name = 'epsg_coordinatereferencesystem'
+                order by object_code, usage_code"""
+        )
+        if r["object_code"] in crs_codes
+    ]
+    # PROJ hard-codes WGS 84's domain as the world (factory.cpp), as in
+    # export_operations.
+    for r in rows:
+        if r["object_code"] == 4326:
+            r["extent_code"] = 1262
+    extent_codes = sorted({r["extent_code"] for r in rows if r["extent_code"] is not None})
+    scope_codes = sorted({r["scope_code"] for r in rows if r["scope_code"] is not None})
+    extent_index = {c: i for i, c in enumerate(extent_codes)}
+    scope_index = {c: i for i, c in enumerate(scope_codes)}
+
+    def text(value: str | None) -> bytes:
+        data = plain_text(value).encode()
+        return struct.pack("<H", len(data)) + data
+
+    def number(value) -> float:
+        return float("nan") if value is None else float(value)
+
+    raw = bytearray(struct.pack("<I", len(extent_codes)))
+    for code in extent_codes:
+        x = e.one("select * from epsg_extent where extent_code = ?", code)
+        # The description ("Poland - onshore and offshore."), which PROJ
+        # writes, not the short name ("Poland").
+        bbox = [x["bbox_south_bound_lat"], x["bbox_west_bound_lon"], x["bbox_north_bound_lat"], x["bbox_east_bound_lon"]]
+        raw += struct.pack("<I4d", code, *(number(v) for v in bbox)) + text(x["extent_description"])
+    raw += struct.pack("<I", len(scope_codes))
+    for code in scope_codes:
+        raw += struct.pack("<I", code) + text(e.one("select scope from epsg_scope where scope_code = ?", code)["scope"])
+    raw += struct.pack("<I", len(rows))
+    for r in rows:
+        raw += struct.pack(
+            "<IHH",
+            r["object_code"],
+            extent_index.get(r["extent_code"], 0xFFFF),
+            scope_index.get(r["scope_code"], 0xFFFF),
+        )
+    frame = zstd.ZstdCompressor(level=19).compress(bytes(raw))
+    return USAGES_MAGIC + struct.pack("<I", len(raw)) + frame
+
+
+REMARKS_MAGIC = b"XRM1"
+REMARK_KINDS = {"crs": b"c", "operation": b"o"}
+
+
+def pack_remarks(e: Epsg, crs_codes: set[int], op_codes: set[int]) -> bytes:
+    """EPSG's remarks on the CRSs and operations written, in their own file
+    so that only code asking for one reads it: a magic, the raw length, and
+    one zstd frame of records (kind byte, code and length as u32 LE, UTF-8)."""
+    raw = bytearray()
+    sources = [
+        ("crs", "select coord_ref_sys_code, remarks from epsg_coordinatereferencesystem", crs_codes),
+        ("operation", "select coord_op_code, remarks from epsg_coordoperation", op_codes),
+    ]
+    for kind, sql, wanted in sources:
+        for code, text in sorted(tuple(r) for r in e.all(sql)):
+            if code in wanted and text:
+                data = plain_text(text).encode()
+                raw += REMARK_KINDS[kind] + struct.pack("<II", code, len(data)) + data
+    frame = zstd.ZstdCompressor(level=19).compress(bytes(raw))
+    return REMARKS_MAGIC + struct.pack("<I", len(raw)) + frame
 
 
 def pack_operations(doc: dict) -> bytes:
@@ -1246,6 +1356,13 @@ release and emits:
 - `src/table.rs` -- for each CRS: code, name, kind, first axis direction,
   dimension, axis units and EPSG's published area of use.
 - `data/projjson.bin` -- a PROJJSON encoding of each CRS definition.
+- `data/usages.bin` -- each CRS's areas of use (description and bounding
+  box) and scopes, which `projjson` adds to the PROJJSON as usages.
+- `data/operations.bin` -- EPSG's coordinate operations: method, CRSs,
+  parameters, accuracy, areas of use and the first usage's scope, plus the
+  datums and extents they refer to.
+- `data/remarks.bin` -- EPSG's remarks on those CRSs and operations,
+  verbatim.
 - `src/aliases.rs` -- EPSG's aliases for CRSs (table `epsg_alias`), lowercased,
   keeping only those that name a single CRS.
 
@@ -1486,6 +1603,11 @@ def main() -> None:
         operations = export_operations(e, version)
         ops_blob = pack_operations(operations)
         (out / "data" / "operations.bin").write_bytes(ops_blob)
+        op_codes = {op["code"] for op in operations["operations"]}
+        remarks_blob = pack_remarks(e, set(docs), op_codes)
+        (out / "data" / "remarks.bin").write_bytes(remarks_blob)
+        usages_blob = pack_usages(e, set(docs))
+        (out / "data" / "usages.bin").write_bytes(usages_blob)
         table = emit_table(records, version, date, {"projjson": len(docs)})
         (out / "src" / "table.rs").write_text(table)
         aliases, dropped = crs_aliases(e, records)
@@ -1498,6 +1620,8 @@ def main() -> None:
             f"wrote {out / 'data' / 'operations.bin'}  ({len(ops_blob) / 1024:.0f} KiB, "
             f"{len(operations['operations'])} operations)"
         )
+        print(f"wrote {out / 'data' / 'remarks.bin'}  ({len(remarks_blob) / 1024:.0f} KiB)")
+        print(f"wrote {out / 'data' / 'usages.bin'}  ({len(usages_blob) / 1024:.0f} KiB)")
         print(f"wrote {out / 'src' / 'aliases.rs'}  ({len(aliases)} aliases)")
         for reason, n in sorted(dropped.items()):
             print(f"  left out {n}: {reason}")

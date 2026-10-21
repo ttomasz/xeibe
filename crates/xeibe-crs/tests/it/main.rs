@@ -5,7 +5,7 @@
 //! `docs/geometry.md` records, and that the normalisations the EPSG terms
 //! permit were actually applied.
 
-use xeibe_crs::{CrsKind, FirstAxis, alias, get, projjson};
+use xeibe_crs::{CrsKind, FirstAxis, alias, crs_remarks, get, operation_remarks, projjson, usages};
 
 #[test]
 fn knows_which_crss_are_northing_or_latitude_first() {
@@ -232,4 +232,59 @@ fn operations_hold_the_registry() {
         (op["src"].as_u64(), op["dst"].as_u64()),
         (Some(4258), Some(4326))
     );
+}
+
+#[test]
+fn projjson_carries_areas_of_use_and_scopes_as_proj_writes_them() {
+    // One usage: top-level scope, area and bbox.
+    let doc: serde_json::Value = serde_json::from_str(projjson(2180).unwrap()).unwrap();
+    assert_eq!(
+        doc["scope"],
+        "Topographic mapping (medium and small scale)."
+    );
+    assert!(doc["area"].as_str().unwrap().starts_with("Poland"));
+    assert_eq!(doc["bbox"]["west_longitude"], 14.14);
+    assert_eq!(doc["bbox"]["north_latitude"], 55.93);
+    // Components and base CRSs have none, as in PROJ's output.
+    let compound: serde_json::Value = serde_json::from_str(projjson(9707).unwrap()).unwrap();
+    assert!(compound["scope"].is_string());
+    assert!(compound["components"][0]["scope"].is_null());
+    assert!(doc["base_crs"]["scope"].is_null());
+    // Several usages: an array.
+    let several = (2000..40000u32)
+        .filter_map(projjson)
+        .map(|t| serde_json::from_str::<serde_json::Value>(t).unwrap())
+        .find(|d| d["usages"].is_array())
+        .expect("a CRS with several usages");
+    assert!(several["usages"].as_array().unwrap().len() > 1);
+    assert!(several["scope"].is_null());
+}
+
+#[test]
+fn remarks_are_epsg_text_by_code() {
+    let crs = crs_remarks(2180).expect("EPSG:2180 has remarks");
+    assert!(!crs.is_empty());
+    // ETRS89 to WGS 84 (1).
+    let op = operation_remarks(1149).expect("EPSG:1149 has remarks");
+    assert!(op.contains("ETRS89"), "{op}");
+    assert_eq!(crs_remarks(98765), None);
+    assert_eq!(operation_remarks(98765), None);
+}
+
+#[test]
+fn usages_give_area_scope_and_box() {
+    let [poland] = usages(2180) else {
+        panic!("EPSG:2180 has one usage")
+    };
+    assert_eq!(poland.area, Some("Poland - onshore and offshore."));
+    assert_eq!(
+        poland.scope,
+        Some("Topographic mapping (medium and small scale).")
+    );
+    assert_eq!(poland.bbox, Some([49.0, 14.14, 55.93, 24.15]));
+    assert!(usages(98765).is_empty());
+    // What projjson writes is what usages gives.
+    let doc: serde_json::Value = serde_json::from_str(projjson(2180).unwrap()).unwrap();
+    assert_eq!(doc["area"], "Poland - onshore and offshore.");
+    assert_eq!(doc["bbox"]["south_latitude"], 49.0);
 }

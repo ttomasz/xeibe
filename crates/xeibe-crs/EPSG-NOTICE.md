@@ -27,6 +27,13 @@ release and emits:
 - `src/table.rs` -- for each CRS: code, name, kind, first axis direction,
   dimension, axis units and EPSG's published area of use.
 - `data/projjson.bin` -- a PROJJSON encoding of each CRS definition.
+- `data/usages.bin` -- each CRS's areas of use (description and bounding
+  box) and scopes, which `projjson` adds to the PROJJSON as usages.
+- `data/operations.bin` -- EPSG's coordinate operations: method, CRSs,
+  parameters, accuracy, areas of use and the first usage's scope, plus the
+  datums and extents they refer to.
+- `data/remarks.bin` -- EPSG's remarks on those CRSs and operations,
+  verbatim.
 - `src/aliases.rs` -- EPSG's aliases for CRSs (table `epsg_alias`), lowercased,
   keeping only those that name a single CRS.
 

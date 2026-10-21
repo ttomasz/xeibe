@@ -251,6 +251,9 @@ jobs:
                   crates/xeibe-crs/src/table.rs \
                   crates/xeibe-crs/src/aliases.rs \
                   crates/xeibe-crs/data/projjson.bin \
+                  crates/xeibe-crs/data/operations.bin \
+                  crates/xeibe-crs/data/usages.bin \
+                  crates/xeibe-crs/data/remarks.bin \
                   crates/xeibe-crs/EPSG-NOTICE.md \
                   crates/xeibe-crs/CHANGELOG.md \
                   crates/xeibe-crs/Cargo.toml
