@@ -69,13 +69,15 @@ fn a_layer_goes_onto_the_map_and_into_the_table() {
     );
     assert_eq!(scan["layers"][2]["crs"][0]["name"], "ETRS89 / PL-1992");
 
+    // Each column with the reasons for its type.
     let schema = dataset.schema("AD_PunktAdresowy").unwrap();
-    assert!(
-        schema["explain"]
-            .as_str()
-            .unwrap()
-            .contains("georeferencja")
-    );
+    let georeferencja = schema["columns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "georeferencja")
+        .unwrap();
+    assert!(!georeferencja["reasons"].as_array().unwrap().is_empty());
 
     let mut reader = dataset.read("AD_PunktAdresowy", None, None).unwrap();
     let info = reader.info();
@@ -315,7 +317,10 @@ fn a_sample_of_each_file_is_enough_for_the_schema() {
     assert_eq!(layers, ["AD_Miejscowosc", "EcologicalFocusArea"]);
     // The read takes the scan's schema, and reads every feature.
     let mut reader = dataset.read("EcologicalFocusArea", None, None).unwrap();
-    let schema = dataset.schema("EcologicalFocusArea").unwrap();
+    let mut schema = dataset.schema("EcologicalFocusArea").unwrap();
+    for column in schema["columns"].as_array_mut().unwrap() {
+        column.as_object_mut().unwrap().remove("reasons");
+    }
     assert_eq!(reader.info()["columns"], schema["columns"]);
     read_all(&mut reader);
     assert!(reader.rows_read() > 1);
