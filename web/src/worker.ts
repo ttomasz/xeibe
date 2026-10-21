@@ -2,7 +2,7 @@
 // It holds the dropped files and the current read; the UI thread gets JSON,
 // table rows on demand, and the map's buffers (transferred, not copied).
 
-import init, { Dataset, Export, Reader, onProgress } from './wasm/xeibe_wasm.js';
+import init, { crsInfo, Dataset, Export, Reader, onProgress } from './wasm/xeibe_wasm.js';
 import wasmUrl from './wasm/xeibe_wasm_bg.wasm?url';
 import type { AxisOverride, FromWorker, GridRequest, Space, ToWorker } from './protocol';
 
@@ -73,7 +73,10 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
         if (message.id === wanted) wanted = 0;
         break;
       case 'export':
-        await exportLayer(message.exportId, message.layer, message.axis, message.target, message.name);
+        await exportLayer(message.exportId, message.layer, message.axis, message.targetCrs, message.target, message.name);
+        break;
+      case 'crs':
+        post({ type: 'crs', request: message.request, info: JSON.parse(crsInfo(message.srsName)) });
         break;
       case 'stop-export':
         if (message.exportId === exportWanted) exportWanted = 0;
@@ -121,9 +124,11 @@ async function read(id: number, layer: string, limit: number | null, axis: Recor
 }
 
 /** `ReadOptions` as JSON, or undefined for the defaults. */
-function readOptions(axis: Record<string, AxisOverride>): string | undefined {
-  if (Object.keys(axis).length === 0) return undefined;
-  return JSON.stringify({ geometry: { axis: { mode: 'Auto', overrides: axis } } });
+function readOptions(axis: Record<string, AxisOverride>, targetCrs: string | null = null): string | undefined {
+  const geometry: Record<string, unknown> = {};
+  if (Object.keys(axis).length) geometry.axis = { mode: 'Auto', overrides: axis };
+  if (targetCrs) geometry.target_crs = targetCrs;
+  return Object.keys(geometry).length ? JSON.stringify({ geometry }) : undefined;
 }
 
 async function readBatches(id: number, layer: string, limit: number | null, options: string | undefined) {
@@ -319,6 +324,7 @@ async function exportLayer(
   id: number,
   layer: string,
   axis: Record<string, AxisOverride>,
+  targetCrs: string | null,
   target: FileSystemFileHandle | null,
   name: string,
 ) {
@@ -328,7 +334,7 @@ async function exportLayer(
   let sink: Sink | null = null;
   let bytes = 0;
   try {
-    current = dataset.export(layer, readOptions(axis));
+    current = dataset.export(layer, readOptions(axis, targetCrs));
     sink = target ? await pickedSink(target) : await privateSink(name).catch(() => memorySink(name));
     for (;;) {
       // Let a stop in between batches.

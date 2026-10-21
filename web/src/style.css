@@ -720,6 +720,23 @@ ul.members {
   gap: 8px;
 }
 
+#export .crs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+#export .crs input {
+  font: inherit;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 6px;
+  background: var(--bg);
+  width: 14em;
+}
+
 .sampled .button {
   margin-left: 4px;
 }

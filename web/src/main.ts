@@ -4,7 +4,18 @@ import './style.css';
 import { MapPane, type View } from './map';
 import { ExportDialog } from './export';
 import { bytes, DEFAULT_SAMPLE, OpenDialog, type OpenRequest, ProgressDialog } from './open';
-import type { AxisOverride, Choice, FeatureXml, FromWorker, ReadInfo, Report, Scan, Schema, ToWorker } from './protocol';
+import type {
+  AxisOverride,
+  Choice,
+  CrsInfo,
+  FeatureXml,
+  FromWorker,
+  ReadInfo,
+  Report,
+  Scan,
+  Schema,
+  ToWorker,
+} from './protocol';
 import { Table } from './table';
 import { escape, overview, schema as schemaView } from './views';
 import { wantsIndent, xmlView } from './xml';
@@ -181,6 +192,9 @@ xmlTab.addEventListener('click', (event) => {
 
 // Export
 
+/** The dialog's CRS lookups, answered by the worker. */
+const crsRequests = { last: 0, waiting: new Map<number, (info: CrsInfo) => void>() };
+
 const exporter = new ExportDialog(
   (request) => {
     state.exportId++;
@@ -189,12 +203,18 @@ const exporter = new ExportDialog(
       exportId: state.exportId,
       layer: request.layer,
       axis: state.axis,
+      targetCrs: request.targetCrs,
       target: request.target,
       name: request.name,
     });
   },
   () => send({ type: 'stop-export', exportId: state.exportId }),
   () => syncExportButton(),
+  (srsName) => {
+    const request = ++crsRequests.last;
+    send({ type: 'crs', request, srsName });
+    return new Promise((resolve) => crsRequests.waiting.set(request, resolve));
+  },
 );
 
 /** Export needs a scanned layer; while it runs, the button shows how far it is. */
@@ -204,13 +224,14 @@ function syncExportButton() {
 }
 
 exportButton.addEventListener('click', () => {
-  if (!state.layer || !state.scan) return exporter.show({ name: '', features: null, axis: [] });
+  if (!state.layer || !state.scan) return exporter.show({ name: '', features: null, axis: [], crs: [] });
   const layer = state.scan.layers.find((l) => l.name === state.layer);
   const exact = !!layer && (state.scan.complete || !!layer.counted);
   exporter.show({
     name: state.layer,
     features: exact ? layer!.feature_count : null,
     axis: Object.keys(state.axis),
+    crs: layer?.crs.map((c) => c.crs ?? c.srs_name) ?? [],
   });
 });
 
@@ -514,6 +535,10 @@ function receive(message: FromWorker) {
       break;
     case 'export-failed':
       exporter.failed(message.message);
+      break;
+    case 'crs':
+      crsRequests.waiting.get(message.request)?.(message.info);
+      crsRequests.waiting.delete(message.request);
       break;
     case 'rows':
       rowAnswers.get(message.request)?.(message.rows);

@@ -44,16 +44,20 @@ export type ToWorker =
   | { type: 'read'; id: number; layer: string; limit: number | null; axis: Record<string, AxisOverride> }
   | { type: 'stop'; id: number }
   /** Export the whole layer to GeoParquet: into `target`, the file the user
-   * picked, or (null) the browser's private storage, then a download. */
+   * picked, or (null) the browser's private storage, then a download.
+   * `targetCrs`: the CRS to convert to; null keeps the coordinates. */
   | {
       type: 'export';
       exportId: number;
       layer: string;
       axis: Record<string, AxisOverride>;
+      targetCrs: string | null;
       target: FileSystemFileHandle | null;
       name: string;
     }
   | { type: 'stop-export'; exportId: number }
+  /** What the EPSG tables say about a CRS the user typed. */
+  | { type: 'crs'; request: number; srsName: string }
   | { type: 'rows'; id: number; request: number; start: number; count: number }
   | { type: 'xml'; id: number; row: number };
 
@@ -85,6 +89,7 @@ export type FromWorker =
   | { type: 'exported'; exportId: number; report: ExportReport; bytes: number; file: File | null }
   | { type: 'export-stopped'; exportId: number }
   | { type: 'export-failed'; exportId: number; message: string }
+  | { type: 'crs'; request: number; info: CrsInfo }
   | { type: 'error'; message: string };
 
 // JSON from crates/xeibe-wasm/src/session.rs.
@@ -115,6 +120,8 @@ export interface CrsInfo {
   kind: string | null;
   deprecated: boolean | null;
   area_wgs84: [number, number, number, number] | null;
+  /** From `crsInfo`: why an export can't convert to it. */
+  error?: string | null;
 }
 
 export interface AxisDecision {
@@ -207,4 +214,16 @@ export interface Report {
 export interface ExportReport extends Omit<Report, 'not_on_map' | 'map_error' | 'geometry_errors'> {
   /** What the writer wrote differently than asked (a CRS without PROJJSON). */
   export_warnings: string[];
+  /** With a CRS to convert to: how each srsName's geometries converted. */
+  reprojections: Reprojection[];
+}
+
+export interface Reprojection {
+  srs_name: string | null;
+  target: string;
+  operations: string[];
+  /** PROJ-data's names of the grids the operations read. */
+  grids: string[];
+  /** Why these geometries can't be converted. */
+  error: string | null;
 }

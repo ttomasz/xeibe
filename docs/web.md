@@ -95,6 +95,18 @@ module hands over the file's bytes as the writer produces them, a row group
 curves, so the export replaces them by straight segments, as `--linearize`
 does.
 
+The export can also convert the coordinates, as `--target-crs` does: to
+EPSG:4326, EPSG:3857, or a CRS the user types (an EPSG code, a URN or a
+URL). The worker looks up what is typed (`crsInfo`, with the reader's own
+check), and Save waits until it names a CRS the read can convert to. The
+grids a conversion needs are fetched from `cdn.proj.org` as the read asks
+for them, with synchronous `XMLHttpRequest`s: the read's grid loader is
+synchronous, and a worker may make them. The dialog then lists each
+srsName's conversion and its grids. Checked on 2026-10-21: Geneva's
+`AGR_SPB` sample from EPSG:2056 to EPSG:21781 fetches
+`ch_swisstopo_CHENyx06a.tif` in 2.1 s, and its coordinates match the CLI's
+to 1e-8 m.
+
 The bytes go to:
 
 - **the file the user picks**, where the browser has `showSaveFilePicker`

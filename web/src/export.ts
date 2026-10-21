@@ -2,7 +2,7 @@
 // browser can (Chromium), else into the browser's storage and then a download.
 
 import { bytes } from './open';
-import type { ExportReport } from './protocol';
+import type { CrsInfo, ExportReport } from './protocol';
 import { escape } from './views';
 
 type SaveFilePicker = (options: {
@@ -12,6 +12,8 @@ type SaveFilePicker = (options: {
 
 export interface ExportRequest {
   layer: string;
+  /** The CRS to convert to; null keeps the coordinates as read. */
+  targetCrs: string | null;
   /** The file picked; null: the browser's storage, then a download. */
   target: FileSystemFileHandle | null;
   name: string;
@@ -24,6 +26,20 @@ export interface ExportLayer {
   features: number | null;
   /** The srsNames whose axis order the user chose. */
   axis: string[];
+  /** The layer's CRSs (`EPSG:2180`), as the scan found them. */
+  crs: string[];
+}
+
+/** The CRSs offered besides the layer's own. */
+const OFFERED: [string, string][] = [
+  ['EPSG:4326', 'WGS 84'],
+  ['EPSG:3857', 'Web Mercator'],
+];
+
+/** `2180` → `EPSG:2180`; anything else as typed. */
+function srsName(text: string): string {
+  const trimmed = text.trim();
+  return /^\d+$/.test(trimmed) ? `EPSG:${trimmed}` : trimmed;
 }
 
 const number = new Intl.NumberFormat('en');
@@ -64,6 +80,12 @@ export class ExportDialog {
   /** The last download's object URL. */
   private url: string | null = null;
   private storage: Promise<boolean> | null = null;
+  /** The CRS chosen (`''` as read, `other` typed), kept between exports. */
+  private choice = '';
+  private typed = '';
+  /** The CRS to convert to, once known; `undefined` while it is looked up
+   * or isn't one. */
+  private targetCrs: string | null | undefined = null;
   /** For the bar at the top: what the export is doing. */
   label = 'Export…';
   running = false;
@@ -72,6 +94,7 @@ export class ExportDialog {
     private onStart: (request: ExportRequest) => void,
     private onStop: () => void,
     private onChange: () => void,
+    private lookup: (srsName: string) => Promise<CrsInfo>,
   ) {
     this.dialog = document.getElementById('export') as HTMLDialogElement;
     this.body = this.dialog.querySelector('.body')!;
@@ -94,14 +117,66 @@ export class ExportDialog {
         ? `<p class="muted">Uses the axis order you chose for ${layer.axis.map((s) => `<code>${escape(s)}</code>`).join(', ')}.</p>`
         : '';
       const storage = this.picker() ? '' : '<p class="muted storage">The file downloads when it is ready.</p>';
+      const read = layer.crs.length ? ` (${layer.crs.map(escape).join(', ')})` : '';
+      const offered = OFFERED.map(([code, name]) => `<option value="${code}">${code}, ${name}</option>`).join('');
       this.body.innerHTML = `<p>Saves ${count} of <code>${escape(layer.name)}</code> as a GeoParquet file.</p>
+        <div class="crs">
+          <label class="field">Coordinates
+            <select name="crs"><option value="">as read${read}</option>${offered}<option value="other">another CRS…</option></select>
+          </label>
+          <input name="srs" placeholder="EPSG code, e.g. 2180" aria-label="CRS to convert to" spellcheck="false" hidden />
+        </div>
+        <p class="crs-note muted" role="status"></p>
         ${axis}
         <p class="muted">Curves are linearized: each arc becomes many short straight segments.</p>
         ${storage}`;
       this.state.textContent = '';
+      const select = this.body.querySelector<HTMLSelectElement>('select[name=crs]')!;
+      const input = this.body.querySelector<HTMLInputElement>('input[name=srs]')!;
+      select.value = this.choice;
+      input.value = this.typed;
+      select.addEventListener('change', () => {
+        this.choice = select.value;
+        void this.chooseCrs(select, input);
+        if (select.value === 'other') input.focus();
+      });
+      input.addEventListener('input', () => {
+        this.typed = input.value;
+        void this.chooseCrs(select, input);
+      });
+      void this.chooseCrs(select, input);
     }
     if (!this.running && !this.picker()) void this.memoryNote();
     if (!this.dialog.open) this.dialog.showModal();
+  }
+
+  /** Look up the CRS chosen, say what it is, and allow saving once it is
+   * one xeibe knows. */
+  private async chooseCrs(select: HTMLSelectElement, input: HTMLInputElement) {
+    const note = this.body.querySelector<HTMLElement>('.crs-note')!;
+    input.hidden = select.value !== 'other';
+    const wanted = select.value === 'other' ? srsName(input.value) : select.value;
+    if (!wanted) {
+      this.targetCrs = null;
+      note.textContent = select.value === 'other' ? '' : 'Keeps the coordinates as read.';
+      this.save.disabled = select.value === 'other';
+      return;
+    }
+    this.targetCrs = undefined;
+    this.save.disabled = true;
+    const info = await this.lookup(wanted);
+    // Typed on since, or the dialog moved on.
+    const current = select.value === 'other' ? srsName(input.value) : select.value;
+    if (current !== wanted || !this.body.contains(note)) return;
+    if (info.crs === null || info.error) {
+      note.innerHTML = `<span class="error"><code>${escape(wanted)}</code> isn't a CRS xeibe knows.</span>`;
+      return;
+    }
+    const name = info.name ? `${escape(info.name)} (<code>${escape(info.crs)}</code>)` : `<code>${escape(info.crs)}</code>`;
+    const order = info.kind?.startsWith('Geographic') ? ', longitude first' : '';
+    note.innerHTML = `Converts the coordinates to ${name}${order}.`;
+    this.targetCrs = info.crs;
+    this.save.disabled = false;
   }
 
   /** Where the browser refuses the page its storage, say that the file is
@@ -122,7 +197,8 @@ export class ExportDialog {
 
   private async start() {
     const layer = this.layer;
-    if (!layer || this.running) return;
+    const targetCrs = this.targetCrs;
+    if (!layer || this.running || targetCrs === undefined) return;
     let name = fileName(layer.name);
     let target: FileSystemFileHandle | null = null;
     const picker = this.picker();
@@ -144,7 +220,7 @@ export class ExportDialog {
     this.phase('running');
     this.body.innerHTML = `<p>Writing <code>${escape(name)}</code>…</p>`;
     this.progress(0, 0);
-    this.onStart({ layer: layer.name, target, name });
+    this.onStart({ layer: layer.name, targetCrs, target, name });
   }
 
   progress(rows: number, written: number) {
@@ -174,7 +250,12 @@ export class ExportDialog {
       saved = `<p><code>${escape(name)}</code> is ready: ${what}. Your browser saves it to your Downloads folder.
         If it didn't, <a href="${this.url}" download="${escape(name)}">click here to save it</a>.</p>`;
     }
+    for (const r of report.reprojections.filter((r) => !r.error)) {
+      const grids = r.grids.length ? `, with the grids ${r.grids.map((g) => `<code>${escape(g)}</code>`).join(', ')}` : '';
+      saved += `<p class="muted">Converted from <code>${escape(r.srs_name ?? 'no srsName')}</code> to <code>${escape(r.target)}</code>${grids}.</p>`;
+    }
     const notes: string[] = [];
+    for (const r of report.reprojections.filter((r) => r.error)) notes.push(escape(r.error!));
     if (report.skipped.length) {
       notes.push(`${plural(report.skipped.length, 'feature')} skipped: ${escape(report.skipped[0].message)}`);
     }
