@@ -104,6 +104,10 @@ The bytes go to:
   `createSyncAccessHandle`, which every current browser has in a worker)
   elsewhere, downloaded when it is complete. It is on disk, not in memory.
   Only the last export is kept there: its download may still be reading it.
+- **memory**, where the browser refuses the page that storage (Firefox in a
+  private window, or with the site's data blocked: `getDirectory()` throws
+  a `SecurityError`). The file is downloaded as above, but must fit in what
+  the browser will hold.
 
 The dialog shows the rows and bytes written. Close leaves the export running,
 with its share on the Export button; Stop removes what was written. Checked

@@ -299,6 +299,22 @@ async function privateSink(name: string): Promise<Sink> {
   };
 }
 
+/** The file in memory, where the browser has no private storage for the
+ * page (Firefox in a private window, or with the site's data blocked). The
+ * browser may keep a large file on disk; else it must fit in memory. */
+function memorySink(name: string): Sink {
+  let parts: Uint8Array<ArrayBuffer>[] = [];
+  return {
+    write: async (bytes) => {
+      if (bytes.length) parts.push(bytes as Uint8Array<ArrayBuffer>);
+    },
+    close: async () => new File(parts, name, { type: 'application/vnd.apache.parquet' }),
+    abort: async () => {
+      parts = [];
+    },
+  };
+}
+
 async function exportLayer(
   id: number,
   layer: string,
@@ -313,7 +329,7 @@ async function exportLayer(
   let bytes = 0;
   try {
     current = dataset.export(layer, readOptions(axis));
-    sink = target ? await pickedSink(target) : await privateSink(name);
+    sink = target ? await pickedSink(target) : await privateSink(name).catch(() => memorySink(name));
     for (;;) {
       // Let a stop in between batches.
       await new Promise((resolve) => setTimeout(resolve, 0));
