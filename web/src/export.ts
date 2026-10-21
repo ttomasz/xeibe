@@ -78,16 +78,12 @@ export class ExportDialog {
       this.phase('ready');
       const count = layer.features === null ? 'every feature' : `all ${plural(layer.features, 'feature')}`;
       const axis = layer.axis.length
-        ? `<p class="muted">With the axis order you chose for ${layer.axis.map((s) => `<code>${escape(s)}</code>`).join(', ')}.</p>`
+        ? `<p class="muted">Uses the axis order you chose for ${layer.axis.map((s) => `<code>${escape(s)}</code>`).join(', ')}.</p>`
         : '';
-      const storage = this.picker()
-        ? ''
-        : `<p class="muted">This browser can't save to a file you pick, so the file is written to its storage first,
-          then downloaded.</p>`;
-      this.body.innerHTML = `<p>The layer <code>${escape(layer.name)}</code>, ${count}, as GeoParquet: the file
-          <code>xeibe gml convert</code> writes. It is read again from the files, whatever Max features says.</p>
+      const storage = this.picker() ? '' : '<p class="muted">The file downloads when it is ready.</p>';
+      this.body.innerHTML = `<p>Saves ${count} of <code>${escape(layer.name)}</code> as a GeoParquet file.</p>
         ${axis}
-        <p class="muted">Curves, if the layer has any, become straight segments: Parquet has none.</p>
+        <p class="muted">Curves are linearized: each arc becomes many short straight segments.</p>
         ${storage}`;
       this.state.textContent = '';
     }
@@ -149,8 +145,8 @@ export class ExportDialog {
       link.href = this.url;
       link.download = name;
       link.click();
-      saved = `<p><code>${escape(name)}</code>: ${what}. Your browser downloads it; if it doesn't,
-        <a href="${this.url}" download="${escape(name)}">save it from here</a>.</p>`;
+      saved = `<p><code>${escape(name)}</code> is ready: ${what}. Your browser saves it to your Downloads folder.
+        If it didn't, <a href="${this.url}" download="${escape(name)}">click here to save it</a>.</p>`;
     }
     const notes: string[] = [];
     if (report.skipped.length) {
@@ -175,7 +171,7 @@ export class ExportDialog {
   stopped() {
     this.finished();
     this.phase('ready');
-    this.body.innerHTML = '<p class="muted">Stopped; nothing was saved.</p>';
+    this.body.innerHTML = '<p class="muted">Export stopped.</p>';
     this.state.textContent = '';
   }
 
