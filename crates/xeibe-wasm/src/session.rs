@@ -3,7 +3,7 @@
 //! the map. `lib.rs` only wraps this for JavaScript, so it is tested
 //! natively.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use arrow_array::cast::AsArray;
 use arrow_array::{Array, ArrayRef, RecordBatch, RecordBatchReader};
@@ -14,6 +14,8 @@ use xeibe_arrow::report::Warning;
 use xeibe_arrow::{LayerReader, ReadOptions, ReadReport, ScanResult};
 use xeibe_core::archive::{self, Archive, MemberInfo};
 use xeibe_core::{Location, RandomAccess, RandomAccessSource, Source};
+use xeibe_export::{ParquetOptions, ParquetWriter};
+use xeibe_geom::options::{CurveMode, LinearizeOptions};
 use xeibe_geom::{AxisDecision, AxisKey, SrsName};
 use xeibe_reproject::{AxisOrder, Crs, GridRequest, Grids, Transform};
 use xeibe_schema::ScanExtent;
@@ -243,6 +245,108 @@ impl Dataset {
             direct: self.direct.clone(),
         };
         Ok(Reader::new(reader, &options, limit, self.names(), inputs))
+    }
+
+    /// Start writing the whole of `layer` to GeoParquet, with the schema the
+    /// last scan inferred, as `xeibe gml convert` writes it. Curves become
+    /// straight segments: Parquet has none.
+    pub fn export(&self, layer: &str, options: Option<&str>) -> Result<Export> {
+        let mut options = parse_options(options)?;
+        if options.geometry.curves == CurveMode::Preserve {
+            options.geometry.curves = CurveMode::Linearize(LinearizeOptions::default());
+        }
+        let schema = match &self.scan {
+            Some(scan) => Some(scan.arrow_schema(layer).map_err(|e| e.to_string())?),
+            None => None,
+        };
+        let reader = xeibe_arrow::read(self.sources(), layer, schema, &options)
+            .map_err(|e| e.to_string())?;
+        let settings = serde_json::to_string(reader.settings()).map_err(|e| e.to_string())?;
+        let file = File::default();
+        let writer = ParquetWriter::new(
+            file.clone(),
+            reader.schema(),
+            ParquetOptions {
+                primary: options.geometry.primary.clone(),
+                ..ParquetOptions::default()
+            },
+            vec![(meta::SETTINGS.to_string(), settings)],
+        );
+        Ok(Export {
+            layer: layer.to_string(),
+            reader,
+            writer: Some(writer),
+            file,
+            files: self.names(),
+            rows: 0,
+        })
+    }
+}
+
+/// An export in progress: the layer read a batch at a time into the
+/// writer, whose output the page takes as it grows.
+pub struct Export {
+    layer: String,
+    reader: LayerReader,
+    writer: Option<ParquetWriter<File>>,
+    file: File,
+    files: Vec<String>,
+    rows: u64,
+}
+
+/// The bytes written and not yet taken. The Parquet writer owns its sink,
+/// so the export keeps a second handle to take them.
+#[derive(Clone, Default)]
+struct File(Arc<Mutex<Vec<u8>>>);
+
+impl std::io::Write for File {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("not poisoned").extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Export {
+    /// Read and write the next batch. `false` at the end of the layer.
+    pub fn next_batch(&mut self) -> Result<bool> {
+        let writer = self.writer.as_mut().ok_or("the export is finished")?;
+        let Some(batch) = self.reader.next_batch() else {
+            return Ok(false);
+        };
+        let batch = batch.map_err(|e| e.to_string())?;
+        writer
+            .write(&batch)
+            .map_err(|e| format!("layer {}, {e}", self.layer))?;
+        self.rows += batch.num_rows() as u64;
+        Ok(true)
+    }
+
+    /// Rows written so far.
+    pub fn rows(&self) -> u64 {
+        self.rows
+    }
+
+    /// The file's bytes written since the last call: a row group at a time,
+    /// then the footer after [`Export::finish`].
+    pub fn take_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut *self.file.0.lock().expect("not poisoned"))
+    }
+
+    /// Write the file's footer, and report: rows, the writer's warnings and
+    /// the read report.
+    pub fn finish(&mut self) -> Result<Value> {
+        let writer = self.writer.take().ok_or("the export is finished")?;
+        let summary = writer
+            .finish()
+            .map_err(|e| format!("layer {}, {e}", self.layer))?;
+        let mut json = report_json(&self.reader.report(), &self.files);
+        json["rows"] = json!(summary.rows);
+        json["export_warnings"] = json!(summary.warnings);
+        Ok(json)
     }
 }
 

@@ -391,3 +391,103 @@ fn a_rows_xml_is_read_back_from_its_file() {
     assert_eq!(short["truncated"], true);
     assert!(reader.feature_xml(6, 10).is_err());
 }
+
+/// Export `layer` of the dataset: the file, and the report.
+fn export(
+    dataset: &Dataset,
+    layer: &str,
+    options: Option<&str>,
+) -> (bytes::Bytes, serde_json::Value) {
+    let mut export = dataset.export(layer, options).unwrap();
+    let mut file = Vec::new();
+    while export.next_batch().unwrap() {
+        file.extend(export.take_bytes());
+    }
+    let report = export.finish().unwrap();
+    file.extend(export.take_bytes());
+    (bytes::Bytes::from(file), report)
+}
+
+/// The first value of the file's `column`, as WKB.
+fn first_wkb(file: &bytes::Bytes, column: &str) -> Vec<u8> {
+    use arrow_array::cast::AsArray;
+    let batch =
+        parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(file.clone())
+            .unwrap()
+            .build()
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+    batch
+        .column_by_name(column)
+        .unwrap()
+        .as_binary::<i32>()
+        .value(0)
+        .to_vec()
+}
+
+#[test]
+fn a_layer_is_exported_whole_to_geoparquet() {
+    let mut dataset = dataset(&["samples/pl/prg-address-points.gml"]);
+    dataset.scan(None, None).unwrap();
+    let (file, report) = export(&dataset, "AD_PunktAdresowy", None);
+    assert_eq!(report["rows"], 2);
+    let reader =
+        parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(file.clone())
+            .unwrap();
+    let metadata = reader.metadata().file_metadata();
+    assert_eq!(metadata.num_rows(), 2);
+    let keys: Vec<&str> = metadata
+        .key_value_metadata()
+        .unwrap()
+        .iter()
+        .map(|kv| kv.key.as_str())
+        .collect();
+    assert!(
+        keys.contains(&"geo") && keys.contains(&"gml:settings"),
+        "{keys:?}"
+    );
+    // The location column the page's reads carry stays out.
+    assert!(
+        reader
+            .schema()
+            .fields()
+            .iter()
+            .all(|f| f.name() != "xeibe:location")
+    );
+}
+
+#[test]
+fn an_export_follows_the_axis_order_chosen() {
+    let mut dataset = dataset(&["samples/pl/prg-address-points.gml"]);
+    dataset.scan(None, None).unwrap();
+    let (file, _) = export(&dataset, "AD_PunktAdresowy", None);
+    let options = json!({"geometry": {"axis": {"mode": "Auto", "overrides": {"EPSG:2180": "YX"}}}});
+    let (swapped, report) = export(&dataset, "AD_PunktAdresowy", Some(&options.to_string()));
+    let point = |wkb: &[u8]| -> [f64; 2] {
+        let x = f64::from_le_bytes(wkb[5..13].try_into().unwrap());
+        let y = f64::from_le_bytes(wkb[13..21].try_into().unwrap());
+        [x, y]
+    };
+    let [x, y] = point(&first_wkb(&file, "georeferencja"));
+    assert_eq!(point(&first_wkb(&swapped, "georeferencja")), [y, x]);
+    assert!(
+        report["axis_decisions"][0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("override")
+    );
+}
+
+#[test]
+fn curves_are_exported_as_straight_segments() {
+    let mut dataset = dataset(&["samples/pl/rcn-price-register-arcs.gml"]);
+    dataset.scan(None, None).unwrap();
+    let (file, report) = export(&dataset, "RCN_Budynek", None);
+    assert!(report["rows"].as_u64().unwrap() > 0);
+    // ISO WKB type 3 or 6: Polygon or MultiPolygon, no CurvePolygon (10).
+    let wkb = first_wkb(&file, "geometria");
+    let code = u32::from_le_bytes(wkb[1..5].try_into().unwrap()) % 1000;
+    assert!(code == 3 || code == 6, "WKB type {code}");
+}

@@ -19,6 +19,8 @@ xeibe-geom.workspace = true
 xeibe-reproject.workspace = true
 xeibe-schema.workspace = true
 xeibe-arrow.workspace = true
+# The page exports GeoParquet only.
+xeibe-export = { workspace = true, features = ["parquet"] }
 arrow-array.workspace = true
 arrow-cast.workspace = true
 arrow-schema.workspace = true
@@ -37,5 +39,6 @@ web-sys = { version = "0.3", features = ["Blob", "FileReaderSync"] }
 
 [dev-dependencies]
 flate2.workspace = true
+parquet.workspace = true
 xeibe-testkit.workspace = true
 zip = { workspace = true, features = ["deflate-flate2-zlib-rs"] }

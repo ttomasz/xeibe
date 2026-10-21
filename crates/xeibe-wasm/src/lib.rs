@@ -104,6 +104,46 @@ impl Dataset {
                 .map_err(error)?,
         ))
     }
+
+    /// Start writing the whole of `layer` to GeoParquet; `options` is the
+    /// JSON of the read options. Curves become straight segments.
+    pub fn export(&self, layer: &str, options: Option<String>) -> Result<Export, JsError> {
+        Ok(Export(
+            self.0.export(layer, options.as_deref()).map_err(error)?,
+        ))
+    }
+}
+
+/// A whole layer written to GeoParquet: `next()` until it returns `false`,
+/// taking the file's bytes with `takeBytes()` as they come, then `finish()`
+/// and `takeBytes()` once more for the footer.
+#[wasm_bindgen]
+pub struct Export(session::Export);
+
+#[wasm_bindgen]
+impl Export {
+    /// Read and write the next batch; `false` at the end of the layer.
+    #[allow(clippy::should_implement_trait)]
+    pub fn next(&mut self) -> Result<bool, JsError> {
+        self.0.next_batch().map_err(error)
+    }
+
+    /// The file's bytes written since the last call.
+    #[wasm_bindgen(js_name = takeBytes)]
+    pub fn take_bytes(&mut self) -> Vec<u8> {
+        self.0.take_bytes()
+    }
+
+    /// Rows written so far.
+    pub fn rows(&self) -> f64 {
+        self.0.rows() as f64
+    }
+
+    /// Write the footer. JSON: the read report, with `rows` and the
+    /// writer's `export_warnings`.
+    pub fn finish(&mut self) -> Result<String, JsError> {
+        Ok(self.0.finish().map_err(error)?.to_string())
+    }
 }
 
 /// A read in progress. For each batch: `next()`, then the grid loop
