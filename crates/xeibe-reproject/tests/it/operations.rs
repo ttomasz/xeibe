@@ -61,6 +61,21 @@ fn operations_are_described_best_first() {
 }
 
 #[test]
+fn accuracy_999_is_unknown() {
+    // EPSG's 999 for "Kalianpur 1962 to WGS 84 (1)" means unknown, so it
+    // ranks after every operation with a known accuracy, as in PROJ.
+    let t = transform(4145, 4326, Grids::None).unwrap();
+    let info = t.operation_info();
+    let names: Vec<&str> = info.iter().map(|o| o.name.as_str()).collect();
+    assert_eq!(names.last(), Some(&"Kalianpur 1962 to WGS 84 (1)"));
+    assert_eq!(info.last().unwrap().accuracy, None);
+    // In "Pakistan - offshore Indus" the offshore operation (2), ranked
+    // first, is chosen; ranked after (1), it couldn't displace it.
+    let index = t.operation_index_for(25.2, 64.6, None).unwrap();
+    assert_eq!(info[index].name, "Kalianpur 1962 to WGS 84 (2)");
+}
+
+#[test]
 fn one_datum_has_no_operations() {
     let t = transform(4326, 3857, Grids::ProjData).unwrap();
     assert!(t.operation_info().is_empty());

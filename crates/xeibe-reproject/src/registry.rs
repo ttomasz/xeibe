@@ -244,7 +244,8 @@ impl Registry {
                 method: code(&o["method"]).unwrap_or(0),
                 src: code(&o["src"]),
                 dst: code(&o["dst"]),
-                accuracy: o["accuracy"].as_f64(),
+                // EPSG's 999 means unknown; PROJ's factory reads it so.
+                accuracy: o["accuracy"].as_f64().filter(|&a| a != 999.0),
                 scope: o["scope"].as_str().map(str::to_owned),
                 variant: code(&o["variant"]).unwrap_or(0),
                 deprecated: o["deprecated"].as_bool().unwrap_or(false),

@@ -299,6 +299,11 @@ Details that turned out to matter, each found by the differential:
 - **What PROJ can run.** Time-specific Helmert methods (1065, 1066) have no
   PROJ pipeline and never compete; time-dependent ones run at their reference
   epoch when coordinates have no epoch, as in PROJ.
+- **An accuracy of 999 is unknown.** EPSG gives 999 m for 34 operations
+  whose accuracy it doesn't know, and PROJ's factory drops it. Ranked as a
+  known 999 m it sorted ahead of better operations with smaller areas, and
+  an offshore one among them could then never be chosen per point
+  ("Kalianpur 1962 to WGS 84 (2)", Pakistan - offshore Indus).
 
 ### Deviations from PROJ (documented, deliberate)
 
