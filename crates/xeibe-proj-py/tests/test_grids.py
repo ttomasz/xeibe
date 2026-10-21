@@ -155,3 +155,22 @@ def test_data_dirs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     assert datadir.get_data_dir().split(":") == [str(tmp_path), str(other)]
     with pytest.raises(Exception, match="not a directory"):
         datadir.set_data_dir(tmp_path / "missing")
+
+
+def test_local_grids_with_the_network_off(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    """With the network off, an operation whose grid is in a data directory
+    is chosen, as PROJ does with PROJ_DATA."""
+    caplog.set_level(logging.DEBUG, logger="xeibe_proj.grids")
+    _native.clear_grids()
+    monkeypatch.setattr(datadir, "_user_dirs", None)
+    datadir.set_data_dir(GRIDS)
+    t = Transformer.from_crs(4138, 4269)
+    assert not t.is_network_enabled
+    _check(t)
+    assert any("reading grid" in r.getMessage() for r in caplog.records)
+    from xeibe_proj.transformer import TransformerGroup
+
+    group = TransformerGroup(4138, 4269)
+    assert group.best_available and not group.unavailable_operations
+    _native.clear_grids()
+

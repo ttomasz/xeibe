@@ -13,7 +13,7 @@ from functools import cached_property
 from collections.abc import Sequence
 from typing import Any, NamedTuple, Self, cast
 
-from xeibe_proj import _epsg
+from xeibe_proj import _epsg, _native
 from xeibe_proj._json import JsonDict, as_dict, as_list, get_dict, get_dicts, ident
 from xeibe_proj._unsupported import not_yet, out
 from xeibe_proj.aoi import AreaOfUse
@@ -495,6 +495,9 @@ class CRS:
 
     @property
     def coordinate_operation(self) -> CoordinateOperation | None:
+        # PROJ models EPSG's derived vertical CRSs as plain vertical ones.
+        if self._kind() == "DerivedVerticalCRS":
+            return None
         conversion = as_dict(self._projjson.get("conversion"))
         if conversion is None:
             return None
@@ -506,10 +509,33 @@ class CRS:
             return [a for c in self._components() for a in c.axis_info]
         return [axis_from_json(a) for a in self._cs_axes()]
 
+    def _usage(self) -> JsonDict | None:
+        """The first of the PROJJSON's usages (scope, area, bbox), as PROJ
+        reports a CRS's area of use and scope."""
+        usages = get_dicts(self._projjson, "usages")
+        if usages:
+            return usages[0]
+        if any(k in self._projjson for k in ("scope", "area", "bbox")):
+            return self._projjson
+        return None
+
     @property
     def area_of_use(self) -> AreaOfUse | None:
-        """EPSG's area of use as a box in degrees. EPSG's description of
-        the area isn't in the tables, so ``name`` is ``None``."""
+        """EPSG's area of use: its first usage's box in degrees and
+        description."""
+        usage = self._usage()
+        bbox = None if usage is None else as_dict(usage.get("bbox"))
+        if usage is not None and bbox is not None:
+            name = usage.get("area")
+            return AreaOfUse(
+                float(bbox["west_longitude"]),
+                float(bbox["south_latitude"]),
+                float(bbox["east_longitude"]),
+                float(bbox["north_latitude"]),
+                None if name is None else str(name),
+            )
+        # Without a box, None where PROJ says -1000 on every side; the
+        # description is still in the PROJJSON ("area").
         code = self._epsg_code()
         if code is None and self.is_compound:
             components = self._components()
@@ -526,6 +552,8 @@ class CRS:
 
     @property
     def source_crs(self) -> CRS | None:
+        if self._kind() == "DerivedVerticalCRS":
+            return None
         base = as_dict(self._projjson.get("base_crs") or self._projjson.get("source_crs"))
         return None if base is None else CRS._from_projjson(base)
 
@@ -540,12 +568,20 @@ class CRS:
 
     @property
     def remarks(self) -> str | None:
+        """EPSG's remarks (read on first use), or the PROJJSON's."""
         remarks = self._projjson.get("remarks")
-        return None if remarks is None else str(remarks)
+        if remarks is not None:
+            return str(remarks)
+        ident = self._id()
+        if ident is not None and ident[0] == "EPSG" and ident[1].isdigit():
+            return _native.crs_remarks(int(ident[1]))
+        return None
 
     @property
     def scope(self) -> str | None:
-        scope = self._projjson.get("scope")
+        """The first usage's scope."""
+        usage = self._usage()
+        scope = None if usage is None else usage.get("scope")
         return None if scope is None else str(scope)
 
     # Output -------------------------------------------------------------------
@@ -589,29 +625,38 @@ class CRS:
     # Comparison ---------------------------------------------------------------
 
     @cached_property
-    def _definition_key(self) -> str:
-        return json.dumps(_definition(self._projjson, False), sort_keys=True)
+    def _parsed(self) -> _native.Crs | None:
+        """The CRS as ``xeibe-reproject`` reads it, or ``None`` when it can't."""
+        try:
+            return _native.Crs(json.dumps(self._projjson))
+        except CRSError:
+            return None
 
     def equals(self, other: Any, ignore_axis_order: bool = False) -> bool:
-        """Whether both CRSs define the same coordinates: the same PROJJSON
-        once identifiers, descriptions and the names of the CRSs (but not
-        of their datums) are left out. With ``ignore_axis_order``, CRSs that
-        differ only in axis order are equal too (``EPSG:4326`` and
-        ``OGC:CRS84``). An interim rule in Python until ``xeibe-reproject``
-        compares parsed definitions (``docs/pyproj-compat.md``)."""
+        """Whether both CRSs define the same coordinates, as PROJ's
+        ``proj_is_equivalent_to`` judges them: the same datum, ellipsoid,
+        projection and parameters and the same axes, whatever their names
+        and identifiers (``Crs::equivalent`` in ``xeibe-reproject``). With
+        ``ignore_axis_order``, CRSs that differ only in axis order are equal
+        too (``EPSG:4326`` and ``OGC:CRS84``). A CRS ``xeibe-reproject``
+        can't read is compared by its PROJJSON without identifiers,
+        descriptions and CRS names."""
         try:
             other_crs = CRS.from_user_input(other)
         except (CRSError, NotImplementedError, TypeError, ValueError):
             return False
-        if not ignore_axis_order:
-            return self._definition_key == other_crs._definition_key
-        return _definition(self._projjson, True) == _definition(other_crs._projjson, True)
+        a, b = self._parsed, other_crs._parsed
+        if a is not None and b is not None:
+            return a.equivalent(b, ignore_axis_order)
+        return _definition(self._projjson, ignore_axis_order) == _definition(other_crs._projjson, ignore_axis_order)
 
     def __eq__(self, other: object) -> bool:
         return self.equals(other)
 
     def __hash__(self) -> int:
-        return hash(self._definition_key)
+        # Equal CRSs may differ in their numbers by PROJ's tolerance, so the
+        # hash only takes what equal CRSs always share.
+        return hash((self.type_name, len(self.axis_info)))
 
     def is_exact_same(self, other: Any) -> bool:
         """Whether both have the same PROJJSON, identifiers and names included."""

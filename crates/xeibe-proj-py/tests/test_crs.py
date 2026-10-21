@@ -201,3 +201,23 @@ def test_axis_info_is_frozen() -> None:
     assert isinstance(axis, AxisInfo)
     with pytest.raises(AttributeError):
         axis.name = "x"  # type: ignore[misc]
+
+
+def test_every_crs_equals_itself_without_ids() -> None:
+    """Equality compares definitions (Crs::equivalent), not identifiers."""
+    from xeibe_proj import _epsg
+
+    for code in _epsg.records():
+        crs = CRS(code)
+        bare = crs.to_json_dict()
+        bare.pop("id", None)
+        assert crs == CRS(bare), code
+        assert hash(crs) == hash(CRS(bare)), code
+
+
+def test_equality_tolerates_rounding() -> None:
+    projjson = CRS(32633).to_json_dict()
+    projjson["conversion"]["parameters"][3]["value"] *= 1 + 1e-12
+    assert CRS(projjson) == CRS(32633)
+    projjson["conversion"]["parameters"][3]["value"] *= 1 + 1e-6
+    assert CRS(projjson) != CRS(32633)

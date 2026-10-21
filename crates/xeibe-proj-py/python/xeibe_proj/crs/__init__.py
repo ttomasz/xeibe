@@ -6,6 +6,7 @@ from xeibe_proj.crs._objects import (
     CoordinateSystem,
     Datum,
     Ellipsoid,
+    Grid,
     Param,
     PrimeMeridian,
 )
@@ -21,6 +22,7 @@ __all__ = [
     "CoordinateSystem",
     "Datum",
     "Ellipsoid",
+    "Grid",
     "Param",
     "PrimeMeridian",
 ]

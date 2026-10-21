@@ -1,0 +1,207 @@
+"""Differential tests against pyproj on the oracle ``proj.db``.
+
+``scripts/build_proj_oracle.py`` rebuilds PROJ's database from the EPSG
+release in ``xeibe-crs``, so pyproj and xeibe_proj read the same EPSG data
+and any difference is ours to explain (docs/pyproj-compat.md, Testing).
+Skipped when ``target/proj-oracle/proj.db`` is missing or holds another EPSG
+release. The network is off on both sides, so this also checks that the
+choice of operation matches pyproj's default install.
+
+Tolerances are those of docs/reprojection.md: 1 mm for projected and
+geocentric coordinates, 1e-9° for geographic ones.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+from pathlib import Path
+from collections.abc import Iterator
+from typing import Any
+
+import pytest
+
+import xeibe_proj
+from xeibe_proj import CRS, Transformer, _epsg
+from xeibe_proj.exceptions import ProjError
+
+from .conftest import ROOT
+
+pyproj = pytest.importorskip("pyproj")
+pytestmark = pytest.mark.oracle
+
+ORACLE = ROOT / "target/proj-oracle"
+# Pairs whose results differ from PROJ's for reasons in xeibe-reproject's
+# choice of operation: `<source>-><target>  <reason>`. A pair leaves the list
+# when it matches; a pair not on it that differs fails the test.
+KNOWN = Path(__file__).with_name("oracle-known.txt")
+
+
+@pytest.fixture(scope="module", autouse=True)
+def oracle() -> Iterator[None]:
+    if not (ORACLE / "proj.db").exists():
+        pytest.skip("target/proj-oracle/proj.db is missing; run scripts/build_proj_oracle.py")
+    before = pyproj.datadir.get_data_dir()
+    pyproj.datadir.set_data_dir(str(ORACLE))
+    version = pyproj.database.get_database_metadata("EPSG.VERSION")
+    if version != f"v{xeibe_proj.EPSG_VERSION}":
+        pyproj.datadir.set_data_dir(before)
+        pytest.skip(f"the oracle holds EPSG {version}, xeibe-crs {xeibe_proj.EPSG_VERSION}")
+    pyproj.network.set_network_enabled(False)
+    yield
+    pyproj.datadir.set_data_dir(before)
+
+
+def _facts(crs: Any) -> dict[str, object]:
+    """What both packages report about a CRS, for comparison."""
+    area = crs.area_of_use
+    return {
+        "name": crs.name,
+        "type_name": crs.type_name,
+        "is_geographic": crs.is_geographic,
+        "is_projected": crs.is_projected,
+        "is_vertical": crs.is_vertical,
+        "is_geocentric": crs.is_geocentric,
+        "is_compound": crs.is_compound,
+        "is_engineering": crs.is_engineering,
+        "is_deprecated": crs.is_deprecated,
+        "to_epsg": crs.to_epsg(),
+        "utm_zone": crs.utm_zone,
+        "axes": [(a.name, a.abbrev, a.direction, a.unit_name) for a in crs.axis_info],
+        "area": None if area is None else tuple(round(v, 6) for v in area.bounds),
+        "area_name": None if area is None else area.name,
+        "scope": crs.scope,
+        "remarks": crs.remarks,
+        "datum": crs.datum and crs.datum.name,
+        "ellipsoid": crs.ellipsoid and crs.ellipsoid.name,
+        "sub_crs": [c.name for c in crs.sub_crs_list],
+        "method": crs.coordinate_operation and crs.coordinate_operation.method_name,
+    }
+
+
+def _known(key: str, code: int, ours: object, theirs: object) -> bool:
+    """Differences documented in docs/pyproj-compat.md (Implementation status)."""
+    record = _epsg.record(code)
+    kind = None if record is None else record.kind
+    if key == "datum":
+        # A vertical CRS on a datum ensemble: pyproj gives no datum.
+        return kind == "vertical" and theirs is None
+    if key in ("area", "area_name"):
+        # EPSG gives a description but no box: PROJ says -1000 on every
+        # side, we say None (the description stays in the PROJJSON).
+        return ours is None and record is not None and record.area is None
+    if key == "remarks":
+        # PROJ's database leaves most CRS remarks out; where it has one,
+        # it is EPSG's, as ours.
+        return theirs is None and ours is not None
+    if key == "to_epsg":
+        # PROJ's identification skips engineering CRSs, whose id we read.
+        return kind == "engineering" and ours == code and theirs is None
+    return False
+
+
+def test_every_crs_matches() -> None:
+    """Every EPSG CRS reports what PROJ reports, property by property."""
+    mismatches: dict[str, list[str]] = {}
+    for code in _epsg.records():
+        try:
+            theirs = _facts(pyproj.CRS.from_epsg(code))
+        except pyproj.exceptions.CRSError:
+            continue  # PROJ can't instantiate it either
+        ours = _facts(CRS.from_epsg(code))
+        for key, value in ours.items():
+            if value != theirs[key] and not _known(key, code, value, theirs[key]):
+                mismatches.setdefault(key, []).append(f"EPSG:{code}: {value!r} != {theirs[key]!r}")
+    report = {k: (len(v), v[:3]) for k, v in sorted(mismatches.items())}
+    assert not mismatches, report
+
+
+def _areas() -> list[tuple[int, tuple[float, float, float, float]]]:
+    return [
+        (r.code, r.area)
+        for r in _epsg.records().values()
+        if r.kind in ("geographic_2d", "projected") and not r.deprecated and r.area is not None
+        and r.area[0] <= r.area[2]
+    ]
+
+
+def _pairs(n: int, seed: int) -> list[tuple[int, int, list[tuple[float, float]]]]:
+    """Random pairs of CRSs whose areas overlap, with points (longitude,
+    latitude) inside both."""
+    rng = random.Random(seed)
+    areas = _areas()
+    out: list[tuple[int, int, list[tuple[float, float]]]] = []
+    while len(out) < n:
+        (a, aa), (b, ba) = rng.sample(areas, 2)
+        w, s, e, nn = max(aa[0], ba[0]), max(aa[1], ba[1]), min(aa[2], ba[2]), min(aa[3], ba[3])
+        if w >= e or s >= nn:
+            continue
+        points = [(rng.uniform(w, e), rng.uniform(s, nn)) for _ in range(4)]
+        out.append((a, b, points))
+    return out
+
+
+def _close(a: list[float], b: list[float], geographic: bool) -> bool:
+    tolerance = 1e-9 if geographic else 1e-3
+    return all(math.isclose(x, y, rel_tol=0, abs_tol=tolerance) for x, y in zip(a, b, strict=True))
+
+
+def _known_pairs() -> dict[str, str]:
+    out: dict[str, str] = {}
+    for line in KNOWN.read_text().splitlines():
+        if line.strip() and not line.startswith("#"):
+            pair, _, reason = line.partition(" ")
+            out[pair] = reason.strip()
+    return out
+
+
+@pytest.mark.parametrize("seed", range(8))
+def test_random_pairs_match(seed: int) -> None:
+    """Coordinates converted between random EPSG pairs match PROJ's, with
+    the network off on both sides."""
+    known = _known_pairs()
+    seen: set[str] = set()
+    problems: list[str] = []
+    compared = 0
+    for a, b, lonlat in _pairs(100, seed):
+        pair = f"{a}->{b}"
+        seen.add(pair)
+        try:
+            to_a = pyproj.Transformer.from_crs(4326, a, always_xy=True)
+            xs, ys = zip(*(to_a.transform(lon, lat, errcheck=True) for lon, lat in lonlat), strict=True)
+        except pyproj.exceptions.ProjError:
+            continue
+        try:
+            theirs_t = pyproj.Transformer.from_crs(a, b, always_xy=True)
+        except pyproj.exceptions.ProjError:
+            continue  # PROJ can't set it up either
+        ballpark = "ballpark" in theirs_t.description.lower()
+        try:
+            ours_t = Transformer.from_crs(a, b, always_xy=True)
+        except ProjError as e:
+            if not ballpark:
+                problems.append(f"{pair}: we raise ({e}), PROJ uses {theirs_t.description}")
+            continue
+        if ballpark:
+            problems.append(f"{pair}: PROJ uses a ballpark, we don't raise")
+            continue
+        try:
+            tx, ty = theirs_t.transform(list(xs), list(ys), errcheck=True)
+        except pyproj.exceptions.ProjError:
+            continue
+        try:
+            ox, oy = ours_t.transform(list(xs), list(ys))
+        except ProjError as e:
+            problems.append(f"{pair}: we raise ({e}), PROJ converts")
+            continue
+        compared += 1
+        geographic = pyproj.CRS(b).is_geographic
+        if not (_close(ox, tx, geographic) and _close(oy, ty, geographic)):
+            worst = max(max(abs(p - q) for p, q in zip(ox, tx)), max(abs(p - q) for p, q in zip(oy, ty)))
+            problems.append(f"{pair}: off by {worst:.3g} ({ours_t.description} | {theirs_t.description})")
+    assert compared > 40, f"only {compared} pairs could be compared"
+    differing = {p.split(":", 1)[0] for p in problems}
+    new = [p for p in problems if p.split(":", 1)[0] not in known]
+    fixed = sorted(p for p in known if p in seen and p not in differing)
+    assert not new, f"{len(new)} of {compared} pairs differ from PROJ:\n" + "\n".join(new)
+    assert not fixed, f"these pairs match PROJ now; remove them from {KNOWN.name}: {fixed}"

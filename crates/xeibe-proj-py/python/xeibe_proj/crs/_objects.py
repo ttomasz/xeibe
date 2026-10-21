@@ -13,6 +13,7 @@ from xeibe_proj.aoi import AreaOfUse
 
 __all__ = [
     "AxisInfo",
+    "Grid",
     "CoordinateOperation",
     "CoordinateSystem",
     "Datum",
@@ -283,14 +284,34 @@ def _param(param: JsonDict) -> Param:
     )
 
 
+@dataclass(frozen=True)
+class Grid:
+    """A grid file an operation reads, from PROJ-data."""
+
+    short_name: str
+    full_name: str
+    package_name: str
+    url: str
+    direct_download: bool
+    open_license: bool
+    available: bool
+
+
 class CoordinateOperation(_JsonObject):
-    """A conversion (the map projection of a projected CRS)."""
+    """A coordinate operation: the conversion of a projected CRS, or one a
+    transformer may use."""
 
     _type = "Conversion"
 
-    def __init__(self, projjson: JsonDict, area_of_use: AreaOfUse | None = None) -> None:
+    def __init__(
+        self,
+        projjson: JsonDict,
+        area_of_use: AreaOfUse | None = None,
+        grids: list[Grid] | None = None,
+    ) -> None:
         super().__init__(projjson)
         self._area = area_of_use
+        self._grids = grids or []
 
     @property
     def type_name(self) -> str:
@@ -338,8 +359,8 @@ class CoordinateOperation(_JsonObject):
         return []
 
     @property
-    def grids(self) -> list[object]:
-        return []
+    def grids(self) -> list[Grid]:
+        return list(self._grids)
 
     @property
     def operations(self) -> tuple[CoordinateOperation, ...]:

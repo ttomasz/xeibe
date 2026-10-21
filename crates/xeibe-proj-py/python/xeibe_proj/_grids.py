@@ -31,7 +31,7 @@ from typing import Protocol
 from xeibe_proj import datadir, network
 from xeibe_proj.exceptions import ProjError
 
-__all__ = ["LOGGER", "load"]
+__all__ = ["CDN", "LOGGER", "load", "local_files"]
 
 LOGGER = logging.getLogger("xeibe_proj.grids")
 
@@ -44,6 +44,18 @@ class _Transform(Protocol):
         self, bounds: tuple[float, float, float, float] | None = None
     ) -> list[tuple[str, int, int | None]]: ...
     def add_grid_data(self, file: str, offset: int, data: bytes) -> None: ...
+
+
+def local_files() -> list[str]:
+    """The files in the data directories: PROJ-data's grids, by name, that
+    the choice of operation may use with the network off."""
+    files: set[str] = set()
+    for d in datadir._data_dirs():  # pyright: ignore[reportPrivateUsage]
+        try:
+            files.update(p.name for p in Path(d).iterdir() if p.is_file())
+        except OSError:
+            continue
+    return sorted(files)
 
 
 def _local(file: str) -> Path | None:

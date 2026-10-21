@@ -72,6 +72,18 @@ fn f(value: f32) -> f64 {
     value.to_string().parse().unwrap_or(value as f64)
 }
 
+/// EPSG's remarks on a CRS, or `None`.
+#[pyfunction]
+fn crs_remarks(code: u32) -> Option<&'static str> {
+    xeibe_crs::crs_remarks(code)
+}
+
+/// EPSG's remarks on a coordinate operation, or `None`.
+#[pyfunction]
+fn operation_remarks(code: u32) -> Option<&'static str> {
+    xeibe_crs::operation_remarks(code)
+}
+
 /// Every EPSG CRS: `(code, name, kind, dimension, deprecated, area)`, with
 /// the area as `(west, south, east, north)` in degrees.
 #[pyfunction]
@@ -135,6 +147,66 @@ fn scale(values: &mut [f64], factor: f64) {
     values.iter_mut().for_each(|v| *v *= factor);
 }
 
+/// A CRS read by `xeibe-reproject`, for comparing definitions.
+#[pyclass(frozen, name = "Crs", module = "xeibe_proj._native")]
+struct ParsedCrs {
+    inner: Crs,
+}
+
+#[pymethods]
+impl ParsedCrs {
+    /// `Crs(projjson)`; a `CRSError` when `xeibe-reproject` can't read it.
+    #[new]
+    fn new(py: Python<'_>, projjson: &str) -> PyResult<Self> {
+        let inner = Crs::from_projjson(projjson).map_err(|e| error(py, e))?;
+        Ok(ParsedCrs { inner })
+    }
+
+    /// `Crs::equivalent`: the same definition, whatever the names and ids.
+    #[pyo3(signature = (other, ignore_axis_order = false))]
+    fn equivalent(&self, other: &ParsedCrs, ignore_axis_order: bool) -> bool {
+        self.inner.equivalent(&other.inner, ignore_axis_order)
+    }
+}
+
+/// One of the operations a transform chooses among
+/// (`xeibe_reproject::OperationInfo`).
+#[pyclass(frozen, get_all, module = "xeibe_proj._native")]
+struct OperationInfo {
+    /// PROJ's name for it.
+    name: String,
+    /// The EPSG operation it is, with whether it runs inverted.
+    code: Option<(u32, bool)>,
+    /// The EPSG transformations it runs, in order.
+    steps: Vec<(u32, bool)>,
+    /// Metres, or `None`.
+    accuracy: Option<f64>,
+    /// `(west, south, east, north)` in degrees, or `None`.
+    area: Option<(f64, f64, f64, f64)>,
+    area_name: Option<String>,
+    /// PROJ-data's names of its grid files.
+    grids: Vec<String>,
+    time_dependent: bool,
+    /// EPSG's scope, when it is one EPSG operation.
+    scope: Option<String>,
+}
+
+impl From<xeibe_reproject::OperationInfo> for OperationInfo {
+    fn from(o: xeibe_reproject::OperationInfo) -> Self {
+        OperationInfo {
+            name: o.name,
+            code: o.code,
+            steps: o.steps,
+            accuracy: o.accuracy,
+            area: o.area.map(|[w, s, e, n]| (w, s, e, n)),
+            area_name: o.area_name,
+            grids: o.grids,
+            time_dependent: o.time_dependent,
+            scope: o.scope,
+        }
+    }
+}
+
 /// A conversion between two CRSs (`xeibe_reproject::Transform`).
 #[pyclass(frozen, module = "xeibe_proj._native")]
 struct Transform {
@@ -143,22 +215,30 @@ struct Transform {
 
 #[pymethods]
 impl Transform {
-    /// `Transform(source, target, always_xy, grids)`: the CRSs as PROJJSON
-    /// text. `grids=False` keeps to operations without grids.
+    /// `Transform(source, target, always_xy, grids, local=None)`: the CRSs
+    /// as PROJJSON text. `grids=True` may use PROJ-data's grids on the CDN;
+    /// with `False`, only those in `local` (PROJ-data's file names), or
+    /// none.
     #[new]
+    #[pyo3(signature = (source, target, always_xy, grids, local = None))]
     fn new(
         py: Python<'_>,
         source: &str,
         target: &str,
         always_xy: bool,
         grids: bool,
+        local: Option<Vec<String>>,
     ) -> PyResult<Self> {
         let order = if always_xy {
             AxisOrder::EastFirst
         } else {
             AxisOrder::Authority
         };
-        let grids = if grids { Grids::ProjData } else { Grids::None };
+        let grids = match (grids, local) {
+            (true, _) => Grids::ProjData,
+            (false, Some(files)) if !files.is_empty() => Grids::local(files),
+            (false, _) => Grids::None,
+        };
         let inner = py
             .detach(|| {
                 let src = Crs::from_projjson(source)?;
@@ -190,6 +270,32 @@ impl Transform {
     #[pyo3(signature = (x, y, z = None))]
     fn operation_for(&self, x: f64, y: f64, z: Option<f64>) -> Option<String> {
         self.inner.operation_for(x, y, z).map(str::to_owned)
+    }
+
+    /// The operations this transform chooses among, best first.
+    fn operation_info(&self) -> Vec<OperationInfo> {
+        self.inner
+            .operation_info()
+            .into_iter()
+            .map(OperationInfo::from)
+            .collect()
+    }
+
+    /// The index in `operation_info()` of the operation one coordinate
+    /// (in the source CRS's axis order) goes through.
+    #[pyo3(signature = (x, y, z = None))]
+    fn operation_index_for(&self, x: f64, y: f64, z: Option<f64>) -> Option<usize> {
+        self.inner.operation_index_for(x, y, z)
+    }
+
+    /// The transform through operation `index` of `operation_info()` only,
+    /// for every coordinate; `None` when there is no such operation.
+    fn with_operation_index(&self, py: Python<'_>, index: usize) -> PyResult<Option<Transform>> {
+        match self.inner.with_operation_index(index) {
+            None => Ok(None),
+            Some(Ok(inner)) => Ok(Some(Transform { inner })),
+            Some(Err(e)) => Err(error(py, e)),
+        }
     }
 
     /// PROJ-data's names of the grid files this transform may read.
@@ -325,8 +431,12 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(projjson, m)?)?;
     m.add_function(wrap_pyfunction!(alias, m)?)?;
     m.add_function(wrap_pyfunction!(crs_records, m)?)?;
+    m.add_function(wrap_pyfunction!(crs_remarks, m)?)?;
+    m.add_function(wrap_pyfunction!(operation_remarks, m)?)?;
     m.add_function(wrap_pyfunction!(clear_grids, m)?)?;
     m.add_function(wrap_pyfunction!(extent, m)?)?;
     m.add_class::<Transform>()?;
+    m.add_class::<OperationInfo>()?;
+    m.add_class::<ParsedCrs>()?;
     Ok(())
 }

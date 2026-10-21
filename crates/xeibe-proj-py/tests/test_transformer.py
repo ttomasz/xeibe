@@ -186,3 +186,62 @@ def test_ogc_crs84_uses_epsg_operations() -> None:
     ours = Transformer.from_crs("OGC:CRS84", 2180).transform(21.0, 52.0)
     theirs = pyproj.Transformer.from_crs("OGC:CRS84", 2180).transform(21.0, 52.0)
     assert ours == pytest.approx(theirs, abs=1e-3)
+
+
+def test_metadata_of_a_conversion() -> None:
+    t = Transformer.from_crs(4326, 3857)
+    assert t.accuracy == 0.0
+    assert t.operations == ()
+    assert t.area_of_use is not None and t.area_of_use.west == -180.0
+    assert t.remarks is None and t.scope is None
+
+
+def test_metadata_when_chosen_per_coordinate() -> None:
+    t = Transformer.from_crs(4277, 4326)
+    # Several candidates: PROJ reports -1 and no area, as here.
+    assert t.accuracy == -1.0
+    assert t.area_of_use is None
+    with pytest.raises(ProjError, match="Last used operation not found"):
+        t.get_last_used_operation()
+    t.transform(52.0, -1.5)
+    used = t.get_last_used_operation()
+    theirs = pyproj.Transformer.from_crs(4277, 4326)
+    theirs.transform(52.0, -1.5)
+    assert used.description == theirs.get_last_used_operation().description == "OSGB36 to WGS 84 (6)"
+    assert used.accuracy == 2.0
+    assert used.area_of_use is not None and used.area_of_use.name is not None
+    [operation] = used.operations or ()
+    assert operation.name == "OSGB36 to WGS 84 (6)" and operation.accuracy == 2.0
+    assert operation.to_json_dict()["id"] == {"authority": "EPSG", "code": 1314}
+    copy = pickle.loads(pickle.dumps(used))
+    assert copy.description == used.description
+    assert copy.transform(52.0, -1.5) == used.transform(52.0, -1.5)
+
+
+def test_transformer_group() -> None:
+    import warnings
+
+    from xeibe_proj import network
+    from xeibe_proj.transformer import TransformerGroup
+
+    with pytest.warns(UserWarning, match="uk_os_OSTN15_NTv2_OSGBtoETRS.tif"):
+        group = TransformerGroup(4277, 4326)
+    assert not group.best_available
+    assert [t.description for t in group.transformers][:2] == ["OSGB36 to WGS 84 (6)", "OSGB36 to WGS 84 (1)"]
+    [missing] = group.unavailable_operations
+    assert missing.name == "OSGB36 to WGS 84 (9)"
+    assert [g.short_name for g in missing.grids] == ["uk_os_OSTN15_NTv2_OSGBtoETRS.tif"]
+    assert not missing.grids[0].available
+    # Each transformer runs its own operation everywhere.
+    second = group.transformers[1]
+    assert second.accuracy == 21.0 and second.operations
+    assert second.transform(52.0, -1.5) != group.transformers[0].transform(52.0, -1.5)
+    # With the network on, the grid can be fetched: nothing is fetched yet.
+    network.set_network_enabled(True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        online = TransformerGroup(4277, 4326)
+    assert online.best_available and not online.unavailable_operations
+    assert online.transformers[0].description == "OSGB36 to WGS 84 (9)"
+    # One datum: the conversion itself.
+    assert len(TransformerGroup(4326, 3857).transformers) == 1

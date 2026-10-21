@@ -27,38 +27,86 @@ What it offers over pyproj:
 
 ## Implementation status
 
-Built on the Rust crates' current public API only, while their changes
-(see [below](#changes-needed-in-the-rust-crates)) are made separately:
+As of 2026-10-21, phase 0 and phase 1 are implemented, apart from
+`TransformerGroup.download_grids` and `get_units_map` (both phase 2).
 
-- **Done.** The crate, abi3 wheel (2.0 MB with `--profile dist`), and
-  the strict type checks. `CRS` from every input form in the table below
-  except WKT and PROJ strings, with its properties, parts, `repr`,
-  equality, hashing and pickling. `Transformer.from_crs`, `transform`,
-  `itransform` and `transform_bounds` with the container rules, radians
-  and directions. Grids fetched by range, cached, read from data
-  directories and logged. `pyproj.database`'s queries but
-  `get_units_map`, `aoi`, `enums`, `exceptions`, `network` and `datadir`.
-  Tests: `crates/xeibe-proj-py/tests` (see [testing.md](testing.md)).
-- **Interim, until the Rust change lands.** `CRS.equals` compares PROJJSON
-  in Python, without identifiers, descriptions and CRS names, instead of
-  `Crs::equivalent`. `to_epsg` on a CRS without an id finds the EPSG CRS
-  of the same name (or components) and definition, instead of
-  identification. The first-use log message names the grids a transformer
-  may read, not the operation that read them. A local grid is only used
-  with the network on, because without `Grids::Local` the selection can't
-  know which grids are local.
-- **Waiting on the Rust changes.** `TransformerGroup` and `Transformer`'s
-  `accuracy`, `area_of_use`, `remarks`, `scope`, `operations` and
-  `get_last_used_operation` (operation metadata). They raise
-  `NotImplementedError` naming the missing metadata.
-- **Differences found while building it.** `get_data_dir()` returns `""`
-  when no directory is set, where pyproj raises `DataDirError`: no data
-  directory is needed. `AreaOfUse.name` is `None`, because EPSG's
-  descriptions of areas aren't in `xeibe-crs`. `Transformer.name` is
-  `"noop"`, `"conversion"` or `"transformation"`, and `description` is the
-  best candidate's name, not a PROJ pipeline's. The parts of a CRS
-  (`Datum`, `Ellipsoid`, …) print their names, not WKT. `CRS.to_string`
-  is implemented already: the authority code, else the input.
+- **Done.**
+  - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
+    type checks.
+  - `CRS` from every input form in the table below except WKT and PROJ
+    strings, with its properties, parts, `repr`, equality, hashing and
+    pickling.
+  - `Transformer.from_crs`, `transform`, `itransform` and
+    `transform_bounds` with the container rules, radians, directions and
+    operation metadata, `get_last_used_operation`, and `TransformerGroup`.
+  - Grids fetched by range, cached, read from data directories (and chosen
+    among with the network off) and logged.
+  - `pyproj.database`'s queries except `get_units_map`, plus `aoi`,
+    `enums`, `exceptions`, `network` and `datadir`.
+- **The Rust changes phase 1 needed are made**:
+  - `Transform::operation_info`, `operation_index_for` and
+    `with_operation_index` for the metadata and the group;
+  - `Grids::Local`;
+  - `Crs::equivalent`, which `CRS.equals` uses. CRSs `xeibe-reproject` can't
+    read (26 of EPSG's) are compared by their PROJJSON without identifiers.
+  - In `xeibe-crs`: each CRS's areas of use (EPSG's description and box)
+    and scopes in its PROJJSON, as PROJ writes them; operations' scopes;
+    EPSG's remarks on CRSs and operations in a file of their own, read on
+    first use. The wheel grew from 2.0 to 2.2 MB.
+- **Measured** (see [Testing](#testing)):
+  - pyproj's own suite: 129 of its 960 tests pass, against 120 before the
+    Rust changes.
+  - Against the oracle `proj.db`, every EPSG CRS reports what PROJ does,
+    scopes, area descriptions and remarks included, except four documented
+    differences:
+    - `area_of_use` is `None` where EPSG has an area but no box (15 CRSs;
+      PROJ gives -1000 on every side). The description stays in the
+      PROJJSON;
+    - remarks PROJ's database leaves out (most CRSs'): ours are EPSG's, and
+      where PROJ has one, they agree;
+    - the datum of vertical CRSs on an ensemble;
+    - `to_epsg` of engineering CRSs, which PROJ's identification skips.
+  - Random EPSG pairs found 77 pairs that differ in `xeibe-reproject`'s
+    choice of operation, listed in `tests/oracle-known.txt`:
+    - 55 with no route where PROJ goes through a realization of a datum
+      ensemble or NATRF2022;
+    - 14 that choose differently per point;
+    - 8 time-dependent Helmerts without an epoch.
+
+    They are `xeibe-reproject` work, not this package's.
+- **Fixed on the way.** `always_xy` follows PROJ's rule
+  (`mustAxisOrderBeSwitchedForVisualization`). Northing-easting axes are
+  swapped. Of the polar CRSs with both axes along meridians, only UPS North
+  and South (N,E) and RSPS2000 are swapped. `xeibe-reproject`'s own
+  east-first order, which swaps whenever the first axis points north, is
+  not used for this. It differed on EASE-Grid 2.0 and SCAR IMW CRSs.
+- **Interim.**
+  - `to_epsg` on a CRS without an id finds the EPSG CRS of the same name
+    (or components) and an equivalent definition. Identification by
+    definition alone comes with phase 2.
+  - The first-use log message names the grids a transformer may read, not
+    the operation that read them.
+- **Differences found while building it.**
+  - `get_data_dir()` returns `""` when no directory is set, where pyproj
+    raises `DataDirError`: no data directory is needed.
+  - `Transformer.remarks` and `scope` are those of the operation when it
+    is a single EPSG operation, and `None` otherwise.
+  - `Transformer.name` is `"noop"`, `"conversion"` or `"transformation"`,
+    and `description` is the best candidate's name, not a PROJ pipeline's.
+  - `accuracy` is -1 and `area_of_use` is `None` when the operation is
+    chosen per point, as in PROJ. This happens more often than in PROJ,
+    because `xeibe-reproject` also offers routes through a datum
+    ensemble's members ([reprojection.md](reprojection.md#deviations-from-proj-documented-deliberate)).
+    EPSG:4326 to 2180 has 8 candidates where PROJ has one.
+  - `Transformer.operations` gives the operation itself, not a
+    concatenation's steps.
+  - `TransformerGroup` has no ballpark member.
+  - `CRS.__hash__` takes only the CRS type and number of axes, because
+    equal CRSs may differ in their numbers by the tolerance.
+  - The parts of a CRS (`Datum`, `Ellipsoid`, …) print their names, not
+    WKT.
+  - `CRS.to_string` is implemented already: the authority code, else the
+    input.
 
 ## Naming and layout
 
@@ -359,9 +407,9 @@ use are dropped. Seeing them takes one line, for example
 
 | Change | Crate | For |
 |---|---|---|
-| Operation metadata for each candidate: EPSG code, name, accuracy, area of use, remarks, scope, grids, availability | reproject (from `operations_json`) | `Transformer.accuracy`, `TransformerGroup`, `operations` (1) |
-| `Crs::equivalent(&other, ignore_axis_order)` on the parsed definition | reproject | `CRS.equals`, `__eq__`, hashing (1) |
-| `Grids::Local(files)` (or a callback that decides availability) next to `ProjData` and `None` | reproject | local grid directories (1) |
+| **Done:** operation metadata for each candidate (`Transform::operation_info`: name, EPSG code and steps, accuracy, area of use, grids), `operation_index_for`, `with_operation_index`. Each operation's scope is in `operations_json`, and its remarks are in `xeibe_crs::operation_remarks` | reproject | `Transformer.accuracy`, `TransformerGroup`, `operations`, `get_last_used_operation` (1) |
+| **Done:** `Crs::equivalent(&other, ignore_axis_order)` on the parsed definition | reproject | `CRS.equals`, `__eq__` (1) |
+| **Done:** `Grids::Local(files)` next to `ProjData` and `None` (`Grids` is no longer `Copy`) | reproject | local grid directories (1) |
 | Selection restricted to an area of interest and a minimum accuracy | reproject (`select/`) | `area_of_interest`, `accuracy`, `only_best` (2) |
 | WKT1/WKT2 reader and WKT2/WKT1_GDAL writer, to and from PROJJSON | reproject, new `wkt` module (shared with the CLI and wasm) | `from_wkt`, `to_wkt` (2) |
 | CRS identification: best EPSG match for a definition, with a confidence | reproject | `to_epsg` on WKT input (2) |
@@ -402,15 +450,29 @@ These are documented in the package README and in its `NotImplementedError` and
 
 ## Testing
 
-- **pyproj's own test suite** (MIT), fetched at a pinned tag by a script
-  into `target/`, not committed, and run against `xeibe_proj` through
-  the shim. A committed list of expected-to-pass test IDs is the compatibility
-  measure. CI fails when a listed test stops passing, and the list only grows.
-- **Differential tests** against pyproj with the `proj.db` that
-  `scripts/build_proj_oracle.py` builds from our EPSG archive, so both sides
-  see the same EPSG data. They cover CRS properties, `equals`, `transform` and
-  `transform_bounds` for random EPSG pairs, the existing vectors in
-  `tests/data/reprojection/`, and WKT round trips once phase 2 lands.
+- **pyproj's own test suite** (MIT), fetched at a pinned tag into
+  `target/pyproj-src` (not committed) and run against `xeibe_proj` by
+  `tests/pyproj_suite/run.py`.
+  - A pytest plugin (`xeibe_pyproj_shim.py`) aliases pyproj's modules to
+    xeibe_proj's.
+  - Names xeibe_proj doesn't have become placeholders that raise when
+    used, and a test that touches one fails.
+  - A test file whose module-level code fails is imported statement by
+    statement, so it still yields the tests it can.
+  - The committed `pass-list.txt` is the compatibility measure. The run
+    exits 1 when a listed test fails, and `--update` adds new passes, so
+    the list only grows.
+- **Differential tests** (`tests/test_oracle.py`, marked `oracle`) against
+  pyproj with the `proj.db` that `scripts/build_proj_oracle.py` builds from
+  our EPSG archive, so both sides see the same EPSG data:
+  - every EPSG CRS's properties;
+  - coordinates between random EPSG pairs at the tolerances of
+    [reprojection.md](reprojection.md), with the network off on both
+    sides. The pairs that differ for reasons in `xeibe-reproject` are
+    listed with the reason in `tests/oracle-known.txt`, a list that only
+    shrinks.
+
+  WKT round trips come with phase 2.
 - **Container tests**: each input type × each argument combination returns
   what pyproj returns.
 - **Grids**: with the network off, operation choice matches pyproj's default.

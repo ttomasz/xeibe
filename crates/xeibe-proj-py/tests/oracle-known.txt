@@ -1,0 +1,89 @@
+# Pairs where xeibe-reproject differs from PROJ on the oracle proj.db
+# (tests/test_oracle.py, test_random_pairs_match). Format:
+# `<source>-><target>  <reason>`. Remove a pair once it matches PROJ.
+# Units: metres for projected targets, degrees for geographic ones.
+
+# No route: PROJ goes through a datum ensemble and one of its realizations
+# (WGS 84 (G730), ETRF2014, …) or NATRF2022; xeibe-reproject finds none.
+10178->23065  no route; PROJ: several candidates
+10606->28600  no route; PROJ: several candidates
+10606->3153  no route; PROJ: several candidates
+10690->9069  no route; PROJ: Inverse of ETRS89 to ETRS89-FIN [EUREF-FIN] + ETRS89 to ETRF2014
+20031->9057  no route; PROJ: Inverse of 6-degree Gauss-Kruger zone 31 + Pulkovo 1995 to WGS 84 (2) + WGS 84 to WGS 84 (G1762)
+20904->9755  no route; PROJ: Inverse of 6-degree Gauss-Kruger zone 4 + GSK-2011 to WGS 84 (1) + WGS 84 to WGS 84 (G2139)
+22154->10178  no route; PROJ: several candidates
+2222->9053  no route; PROJ: Inverse of SPCS83 Arizona East zone (international foot) + NAD83 to WGS 84 (1) + WGS 84 to WGS 84 (G730)
+2227->10606  no route; PROJ: Inverse of SPCS83 California zone 3 (US survey foot) + NAD83 to WGS 84 (1) + WGS 84 to WGS 84 (G2296)
+22990->8888  no route; PROJ: Inverse of SPCS2022 New Mexico East zone (foot) + NATRF2022e2020 to WGS 84 (1) + WGS 84 to WGS 84 (Transit)
+23106->9057  no route; PROJ: Inverse of SPCS2022 Ohio Coshocton zone (foot) + NATRF2022e2020 to WGS 84 (1) + WGS 84 to WGS 84 (G1762)
+2397->9065  no route; PROJ: Inverse of 3-degree Gauss-Kruger zone 3 + Pulkovo 1942(83) to ETRS89 (2) + ETRS89 to ETRF96
+28405->9053  no route; PROJ: several candidates
+3054->9755  no route; PROJ: Inverse of UTM zone 26N + Hjorsey 1955 to WGS 84 (2) + WGS 84 to WGS 84 (G2139)
+31300->9755  no route; PROJ: several candidates
+32067->9057  no route; PROJ: several candidates
+32444->10606  no route; PROJ: Inverse of UTM zone 44N + WGS 72BE to WGS 84 (1) + WGS 84 to WGS 84 (G2296)
+3457->9054  no route; PROJ: several candidates
+3485->8888  no route; PROJ: Inverse of SPCS83 Arkansas North zone (US survey foot) + NAD83(NSRS2007) to WGS 84 (1) + WGS 84 to WGS 84 (Transit)
+3486->8888  no route; PROJ: Inverse of SPCS83 Arkansas South zone (meter) + NAD83(NSRS2007) to WGS 84 (1) + WGS 84 to WGS 84 (Transit)
+3703->9056  no route; PROJ: Inverse of SPCS83 Wyoming East Central zone (meter) + NAD83(NSRS2007) to WGS 84 (1) + WGS 84 to WGS 84 (G1674)
+3705->9057  no route; PROJ: Inverse of SPCS83 Wyoming West zone (meter) + NAD83(NSRS2007) to WGS 84 (1) + WGS 84 to WGS 84 (G1762)
+3776->9755  no route; PROJ: Inverse of Alberta 3-degree TM reference meridian 114 W + NAD83 to WGS 84 (1) + WGS 84 to WGS 84 (G2139)
+4124->10807  no route; PROJ: RT90 to ETRS89 (1) + ETRS89 to NKG_ETRF14
+4319->10606  no route; PROJ: several candidates
+4326->10571  no route; PROJ: several candidates
+4728->9055  no route; PROJ: PN84 to WGS 84 (1) + WGS 84 to WGS 84 (G1150)
+5922->9000  no route; PROJ: Inverse of EPSG Arctic Regional LCC zone A2 + WGS 84 to WGS 84 (G2139) + Conversion from WGS 84 (G2139) (geog2D) to WGS 84 (G2139) (geocentr
+8180->9053  no route; PROJ: several candidates
+8529->9053  no route; PROJ: Inverse of Kansas regional zone 12 Ulysses (ftUS) + NAD83(2011) to WGS 84 (1) + WGS 84 to WGS 84 (G730)
+8888->22136  no route; PROJ: Inverse of WGS 84 to WGS 84 (Transit) + Inverse of NATRF2022e2020 to WGS 84 (1) + SPCS2022 Illinois Sterling zone (foot)
+8888->32322  no route; PROJ: several candidates
+9000->5933  no route; PROJ: Conversion from ITRF2014 (geog2D) to ITRF2014 (geocentric) + Inverse of WGS 84 (G2139) to ITRF2014 (1) + Conversion from WGS 84 (G2139) (geo
+9053->22345  no route; PROJ: Inverse of WGS 84 to WGS 84 (G730) + Inverse of NATRF2022e2020 to WGS 84 (1) + SPCS2022 Indiana Elkhart-Kosciusko-Wabash zone (meter)
+9053->23157  no route; PROJ: Inverse of WGS 84 to WGS 84 (G730) + Inverse of NATRF2022e2020 to WGS 84 (1) + SPCS2022 Ohio Jackson zone (meter)
+9053->23511  no route; PROJ: Inverse of WGS 84 to WGS 84 (G730) + Inverse of NATRF2022e2020 to WGS 84 (1) + SPCS2022 Texas zone (meter)
+9054->26392  no route; PROJ: several candidates
+9054->3547  no route; PROJ: Inverse of WGS 84 to WGS 84 (G873) + Inverse of NAD83(NSRS2007) to WGS 84 (1) + SPCS83 Kentucky Single Zone (US survey foot)
+9054->6340  no route; PROJ: Inverse of WGS 84 to WGS 84 (G873) + Inverse of NAD83(2011) to WGS 84 (1) + UTM zone 11N
+9055->3715  no route; PROJ: Inverse of WGS 84 to WGS 84 (G1150) + Inverse of NAD83(NSRS2007) to WGS 84 (1) + UTM zone 8N
+9056->20015  no route; PROJ: Inverse of WGS 84 to WGS 84 (G1674) + Inverse of Pulkovo 1995 to WGS 84 (2) + 6-degree Gauss-Kruger zone 15
+9056->24190  no route; PROJ: Inverse of WGS 84 to WGS 84 (G1674) + Inverse of NATRF2022e2020 to WGS 84 (1) + SPCS2022 Wisconsin Monroe zone (foot)
+9056->3534  no route; PROJ: Inverse of WGS 84 to WGS 84 (G1674) + Inverse of NAD83(NSRS2007) to WGS 84 (1) + SPCS83 Indiana West zone (meter)
+9056->5356  no route; PROJ: Inverse of WGS 84 to WGS 84 (G1674) + Inverse of MARGEN to WGS 84 (1) + UTM zone 19S
+9057->29371  no route; PROJ: several candidates
+9057->32100  no route; PROJ: Inverse of WGS 84 to WGS 84 (G1762) + Inverse of NAD83 to WGS 84 (1) + SPCS83 Montana zone (meter)
+9057->4180  no route; PROJ: Inverse of WGS 84 to WGS 84 (G1762) + Inverse of ETRS89-EST [EST97] to WGS 84 (1)
+9057->4698  no route; PROJ: Inverse of WGS 84 to WGS 84 (G1762) + Inverse of IGN 1962 Kerguelen to WGS 84 (1)
+9060->5932  no route; PROJ: several candidates
+9060->6708  no route; PROJ: Inverse of ETRS89 to ETRF90 + ETRS89 to ETRS89-ITA [RDN2008] + UTM zone 33N
+9069->3023  no route; PROJ: Inverse of ETRS89 to ETRF2014 + Inverse of RT90 to ETRS89 (1) + Sweden zone 2.5 gon O
+9140->9062  no route; PROJ: Inverse of ETRS89 to ETRS89-XKX [KOSOVAREF01] + ETRS89 to ETRF92
+9755->23246  no route; PROJ: Inverse of WGS 84 to WGS 84 (G2139) + Inverse of NATRF2022e2020 to WGS 84 (1) + SPCS2022 Ohio Stark zone (foot)
+9755->3355  no route; PROJ: Inverse of WGS 84 to WGS 84 (G2139) + Inverse of Egypt Gulf of Suez S-650 TL to WGS 84 (2) + Egypt Red Belt
+9990->3040  no route; PROJ: several candidates
+
+# Per-point choice: several candidates, and a different one is used.
+10598->4217  per-point choice, off by 3.64; ours: Inverse of GLANCE projection - North America + Inverse of NAD83 to WGS 84 (2) + BLM zone 59N (US survey foot)
+24311->4324  per-point choice, off by 4.44e-05; ours: Inverse of UTM zone 41N + Kalianpur 1962 to WGS 84 (1) + Inverse of WGS 72BE to WGS 84 (1)
+32632->5674  per-point choice, off by 128; ours: Inverse of UTM zone 32N + Inverse of Pulkovo 1942(83) to WGS 84 (1) + 3-degree Gauss-Kruger zone 4
+3370->32459  per-point choice, off by 223; ours: Inverse of UTM zone 59N + NAD27 to WGS 84 (22) + Inverse of WGS 72BE to WGS 84 (1) + UTM zone 59N
+3373->3371  per-point choice, off by 207; ours: Inverse of UTM zone 60N + NAD83 to WGS 84 (2) + Inverse of NAD27 to WGS 84 (22) + UTM zone 60N
+3574->5132  per-point choice, off by 0.00214; ours: Inverse of North Pole Lambert Azimuthal Equal Area (Atlantic) + Inverse of Korean 1985 to WGS 84 (1) + Inverse
+3857->2403  per-point choice, off by 43.7; ours: Inverse of Popular Visualisation Pseudo-Mercator + Inverse of Beijing 1954 to WGS 84 (4) + 3-degree Gauss-Krug
+3906->8687  per-point choice, off by 0.153; ours: MGI 1901 to ETRS89-SVN [D96] (12) + UTM zone 33N
+4178->2179  per-point choice, off by 122; ours: Pulkovo 1942(83) to WGS 84 (5) + Inverse of ETRS89-POL [PL-ETRF2000] to WGS 84 (1) + Poland CS2000 zone 8
+4802->6250  per-point choice, off by 0.00423; ours: Bogota 1975 (Bogota) to Bogota 1975 (1) + Bogota 1975 to MAGNA-SIRGAS (10) + Cartagena urban grid
+4805->3044  per-point choice, off by 38.7; ours: MGI (Ferro) to MGI (1) + MGI to ETRS89 (1) + UTM zone 32N
+5252->9391  per-point choice, off by 0.357; ours: TUREF to WGS 84 (1) + Inverse of ETRS89-BGR [BGS2005] to WGS 84 (1) + UTM zone 35N
+6991->3034  per-point choice, off by 63.3; ours: Inverse of Israeli TM + Inverse of WGS 84 to IG05/12 Intermediate CRS + Inverse of ETRS89 to WGS 84 (1) + Euro
+9794->4314  per-point choice, off by 1.29e-05; ours: Inverse of Lambert-93 + ETRS89-FRA [RGF93 v2b] to WGS 84 (1) + Inverse of DHDN to WGS 84 (2)
+
+# Time-dependent Helmert (ITRF to NAD83 and between ITRFs) without a
+# coordinate epoch.
+11370->8997  time-dependent Helmert, off by 2.98e-06
+6439->8997  time-dependent Helmert, off by 1.79e-06
+6510->8994  time-dependent Helmert, off by 2.06e-06
+6633->8995  time-dependent Helmert, off by 7.7e-06
+6786->8996  time-dependent Helmert, off by 2.49e-06
+6884->8999  time-dependent Helmert, off by 1.17e-07
+8991->7314  time-dependent Helmert, off by 0.709
+8998->8384  time-dependent Helmert, off by 0.594

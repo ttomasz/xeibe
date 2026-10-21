@@ -50,3 +50,4 @@ pythonVersion = "3.11"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["oracle: compares with pyproj on target/proj-oracle/proj.db (about a minute; -m 'not oracle' skips)"]
