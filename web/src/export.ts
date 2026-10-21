@@ -37,6 +37,18 @@ function fileName(layer: string): string {
   return `${layer.replace(/[\\/:*?"<>|]/g, '_')}.parquet`;
 }
 
+/** Whether the browser lets the page store files (OPFS). Firefox refuses in
+ * a private window, or with the site's data blocked, and the export then
+ * keeps the file in memory. */
+async function storageAllowed(): Promise<boolean> {
+  try {
+    await navigator.storage.getDirectory();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export class ExportDialog {
   private dialog: HTMLDialogElement;
   private body: HTMLElement;
@@ -51,6 +63,7 @@ export class ExportDialog {
   private started = 0;
   /** The last download's object URL. */
   private url: string | null = null;
+  private storage: Promise<boolean> | null = null;
   /** For the bar at the top: what the export is doing. */
   label = 'Export…';
   running = false;
@@ -80,14 +93,27 @@ export class ExportDialog {
       const axis = layer.axis.length
         ? `<p class="muted">Uses the axis order you chose for ${layer.axis.map((s) => `<code>${escape(s)}</code>`).join(', ')}.</p>`
         : '';
-      const storage = this.picker() ? '' : '<p class="muted">The file downloads when it is ready.</p>';
+      const storage = this.picker() ? '' : '<p class="muted storage">The file downloads when it is ready.</p>';
       this.body.innerHTML = `<p>Saves ${count} of <code>${escape(layer.name)}</code> as a GeoParquet file.</p>
         ${axis}
         <p class="muted">Curves are linearized: each arc becomes many short straight segments.</p>
         ${storage}`;
       this.state.textContent = '';
     }
+    if (!this.running && !this.picker()) void this.memoryNote();
     if (!this.dialog.open) this.dialog.showModal();
+  }
+
+  /** Where the browser refuses the page its storage, say that the file is
+   * kept in memory. */
+  private async memoryNote() {
+    const note = this.body.querySelector('.storage');
+    this.storage ??= storageAllowed();
+    if (note && !(await this.storage)) {
+      note.textContent =
+        "This browser doesn't let the page store files, so the file stays in memory until it downloads. " +
+        'A very large layer may not fit.';
+    }
   }
 
   private picker(): SaveFilePicker | undefined {
