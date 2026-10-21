@@ -12,6 +12,8 @@
 #[cfg(target_arch = "wasm32")]
 mod blob;
 pub mod display;
+#[cfg(target_arch = "wasm32")]
+mod grids;
 pub mod session;
 mod wkt;
 
@@ -106,12 +108,28 @@ impl Dataset {
     }
 
     /// Start writing the whole of `layer` to GeoParquet; `options` is the
-    /// JSON of the read options. Curves become straight segments.
+    /// JSON of the read options. Curves become straight segments. With
+    /// `geometry.target_crs`, the grids the conversion needs are fetched
+    /// from `cdn.proj.org` as the read asks for them.
     pub fn export(&self, layer: &str, options: Option<String>) -> Result<Export, JsError> {
+        #[cfg(target_arch = "wasm32")]
+        let grids = Some(grids::cdn());
+        #[cfg(not(target_arch = "wasm32"))]
+        let grids = None;
         Ok(Export(
-            self.0.export(layer, options.as_deref()).map_err(error)?,
+            self.0
+                .export(layer, options.as_deref(), grids)
+                .map_err(error)?,
         ))
     }
+}
+
+/// JSON: what the EPSG tables say about the CRS `srsName` names
+/// (`EPSG:4326`, a URN or a URL), for the CRS an export converts to, and
+/// `error`: why a read can't convert to it.
+#[wasm_bindgen(js_name = crsInfo)]
+pub fn crs_info(srs_name: &str) -> String {
+    session::crs_info(srs_name).to_string()
 }
 
 /// A whole layer written to GeoParquet: `next()` until it returns `false`,

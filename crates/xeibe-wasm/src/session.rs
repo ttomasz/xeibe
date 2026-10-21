@@ -11,7 +11,7 @@ use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use arrow_schema::{DataType, Field, TimeUnit};
 use serde_json::{Value, json};
 use xeibe_arrow::report::Warning;
-use xeibe_arrow::{LayerReader, ReadOptions, ReadReport, ScanResult};
+use xeibe_arrow::{GridLoader, LayerReader, ReadOptions, ReadReport, ScanResult};
 use xeibe_core::archive::{self, Archive, MemberInfo};
 use xeibe_core::{Location, RandomAccess, RandomAccessSource, Source};
 use xeibe_export::{ParquetOptions, ParquetWriter};
@@ -249,9 +249,16 @@ impl Dataset {
 
     /// Start writing the whole of `layer` to GeoParquet, with the schema the
     /// last scan inferred, as `xeibe gml convert` writes it. Curves become
-    /// straight segments: Parquet has none.
-    pub fn export(&self, layer: &str, options: Option<&str>) -> Result<Export> {
+    /// straight segments: Parquet has none. `grids` fetches the grids a
+    /// conversion to `target_crs` needs.
+    pub fn export(
+        &self,
+        layer: &str,
+        options: Option<&str>,
+        grids: Option<GridLoader>,
+    ) -> Result<Export> {
         let mut options = parse_options(options)?;
+        options.grid_loader = grids;
         if options.geometry.curves == CurveMode::Preserve {
             options.geometry.curves = CurveMode::Linearize(LinearizeOptions::default());
         }
@@ -958,6 +965,14 @@ fn base_geographic(crs: &xeibe_geom::CrsRef) -> Option<Crs> {
     Crs::from_projjson(&base.to_string()).ok()
 }
 
+/// What the EPSG tables say about the CRS `srs_name` names, for the CRS an
+/// export converts to, and `error`: why a read can't convert to it.
+pub fn crs_info(srs_name: &str) -> Value {
+    let mut json = crs_json(srs_name);
+    json["error"] = json!(xeibe_arrow::reproject::crs(srs_name).err());
+    json
+}
+
 /// An srsName with what the EPSG tables say about its CRS.
 fn crs_json(srs_name: &str) -> Value {
     let parsed = SrsName::parse(srs_name);
@@ -1057,5 +1072,12 @@ fn report_json(report: &ReadReport, files: &[String]) -> Value {
         "axis_decisions": report.axis_decisions.iter()
             .map(|(key, decision)| axis_json(key, decision, files))
             .collect::<Vec<_>>(),
+        "reprojections": report.reprojections.iter().map(|r| json!({
+            "srs_name": r.srs_name,
+            "target": r.target,
+            "operations": r.operations,
+            "grids": r.grids,
+            "error": r.error,
+        })).collect::<Vec<_>>(),
     })
 }

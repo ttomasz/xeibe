@@ -328,8 +328,8 @@ impl Conversions {
 }
 
 /// An srsName as a CRS `xeibe-reproject` can convert: an EPSG code or a
-/// compound of them, or OGC's CRS84 and kin.
-fn crs(srs: &str) -> Result<Crs, String> {
+/// compound of them, or OGC's CRS84 and kin. What `target_crs` accepts.
+pub fn crs(srs: &str) -> Result<Crs, String> {
     let crs = SrsName::parse(srs)
         .crs
         .ok_or_else(|| "names no known CRS".to_string())?;

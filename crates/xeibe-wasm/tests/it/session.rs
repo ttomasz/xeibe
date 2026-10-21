@@ -2,7 +2,7 @@
 
 use serde_json::json;
 use xeibe_testkit::read_data;
-use xeibe_wasm::session::{Choice, Dataset, Reader};
+use xeibe_wasm::session::{Choice, Dataset, Reader, crs_info};
 
 /// The files, all chosen.
 fn dataset(files: &[&str]) -> Dataset {
@@ -398,7 +398,7 @@ fn export(
     layer: &str,
     options: Option<&str>,
 ) -> (bytes::Bytes, serde_json::Value) {
-    let mut export = dataset.export(layer, options).unwrap();
+    let mut export = dataset.export(layer, options, None).unwrap();
     let mut file = Vec::new();
     while export.next_batch().unwrap() {
         file.extend(export.take_bytes());
@@ -490,4 +490,48 @@ fn curves_are_exported_as_straight_segments() {
     let wkb = first_wkb(&file, "geometria");
     let code = u32::from_le_bytes(wkb[1..5].try_into().unwrap()) % 1000;
     assert!(code == 3 || code == 6, "WKB type {code}");
+}
+
+#[test]
+fn an_export_converts_to_the_crs_chosen() {
+    let mut dataset = dataset(&["samples/pl/prg-address-points.gml"]);
+    dataset.scan(None, None).unwrap();
+    let options = json!({"geometry": {"target_crs": "EPSG:4326"}});
+    let (file, report) = export(&dataset, "AD_PunktAdresowy", Some(&options.to_string()));
+    let wkb = first_wkb(&file, "georeferencja");
+    let lon = f64::from_le_bytes(wkb[5..13].try_into().unwrap());
+    let lat = f64::from_le_bytes(wkb[13..21].try_into().unwrap());
+    // Longitude first, in Poland.
+    assert!(
+        (14.0..25.0).contains(&lon) && (49.0..55.0).contains(&lat),
+        "{lon} {lat}"
+    );
+    assert_eq!(report["reprojections"][0]["target"], "EPSG:4326");
+    assert!(report["reprojections"][0]["error"].is_null());
+    let reader =
+        parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(file).unwrap();
+    let geo = reader
+        .metadata()
+        .file_metadata()
+        .key_value_metadata()
+        .unwrap()
+        .iter()
+        .find(|kv| kv.key == "geo")
+        .and_then(|kv| kv.value.clone())
+        .unwrap();
+    let geo: serde_json::Value = serde_json::from_str(&geo).unwrap();
+    assert_eq!(
+        geo["columns"]["georeferencja"]["crs"]["id"],
+        json!({"authority": "EPSG", "code": 4326})
+    );
+}
+
+#[test]
+fn the_crs_to_convert_to_is_looked_up() {
+    let info = crs_info("EPSG:2180");
+    assert_eq!(info["crs"], "EPSG:2180");
+    assert_eq!(info["name"], "ETRS89 / PL-1992");
+    assert!(info["error"].is_null());
+    assert!(crs_info("not a crs")["error"].is_string());
+    assert!(crs_info("EPSG:99999")["error"].is_string());
 }
