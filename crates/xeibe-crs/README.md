@@ -240,6 +240,10 @@ releases embedded in each.
   (`src/datums.rs`), for definitions that name datums without ids.
 - `projjson()` gives datums EPSG's anchor epoch (`anchor_epoch`, about
   2,400 CRSs), as PROJ writes it.
+- `CrsRecord::datum` and `CrsRecord::method`: the EPSG codes of each CRS's
+  datum (or ensemble) and projection method, through its base CRS or
+  horizontal part, which narrow identification's candidates
+  (`docs/crs-wkt.md`). Breaking for code that builds `CrsRecord` values.
 
 ### 0.3.1
 

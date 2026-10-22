@@ -305,16 +305,20 @@ fn coordinate_error(index: usize, x: f64, y: f64, reason: CoordinateError) -> Er
 }
 
 /// The CRS as the selection knows it: its EPSG code, or a compound CRS's
-/// two codes.
+/// two codes. A CRS without one (WKT without ids) has the code of the EPSG
+/// CRS it is equivalent to ([`Crs::identify`]).
 fn crs_ref(crs: &Crs) -> Option<CrsRef> {
-    if let Some(code) = crs.code() {
+    if let Some(code) = crs.epsg_code() {
         return Some(CrsRef::Epsg(code));
     }
     match &crs.kind {
         Kind::Compound {
             horizontal,
             vertical,
-        } => Some(CrsRef::Compound(horizontal.code()?, vertical.code()?)),
+        } => Some(CrsRef::Compound(
+            horizontal.epsg_code()?,
+            vertical.epsg_code()?,
+        )),
         _ => None,
     }
 }

@@ -1,12 +1,12 @@
 //! CRS definitions as WKT (ISO 19162), read into PROJJSON and written
 //! from it (`docs/crs-wkt.md`).
 //!
-//! WKT2, both the 2015 and the 2019 revision, is read now, and WKT2 2019
-//! written. WKT1 in GDAL's and ESRI's forms comes next; until then reading
-//! it is an [`Error::Unsupported`]. A CRS read from WKT is converted like
-//! one from `xeibe-crs`: [`Crs::from_wkt`](crate::Crs::from_wkt).
+//! WKT2, both the 2015 and the 2019 revision, and WKT1 as GDAL writes it
+//! are read; WKT2 2019 and WKT1_GDAL are written. A CRS read from WKT is
+//! converted like one from `xeibe-crs` ([`Crs::from_wkt`](crate::Crs::from_wkt)),
+//! and [`Crs::identify`](crate::Crs::identify) finds its EPSG code.
 
-mod datums;
+pub(crate) mod datums;
 mod names;
 mod parse;
 mod wkt1;
@@ -81,11 +81,18 @@ pub fn from_projjson(json: &str, version: Version, pretty: bool) -> Result<Strin
 }
 
 pub(crate) fn to_value(text: &str) -> Result<Value, Error> {
+    read(text).map(|(value, _)| value)
+}
+
+/// The PROJJSON for a CRS given as WKT, and whether its horizontal axes
+/// are WKT1's defaults (a `GEOGCS` or `PROJCS` without `AXIS`), which
+/// identification compares by unit only.
+pub(crate) fn read(text: &str) -> Result<(Value, bool), Error> {
     let node = parse::parse(text)?;
     match node.keyword.as_str() {
         "GEOGCS" | "PROJCS" | "GEOCCS" | "VERT_CS" | "COMPD_CS" | "LOCAL_CS" | "FITTED_CS" => {
-            wkt1::crs(&node)
+            Ok((wkt1::crs(&node)?, wkt1::implicit_axes(&node)))
         }
-        _ => wkt2::crs(&node),
+        _ => Ok((wkt2::crs(&node)?, false)),
     }
 }

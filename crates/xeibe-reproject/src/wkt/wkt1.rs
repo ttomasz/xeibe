@@ -913,6 +913,24 @@ fn vertical(node: &Node) -> Result<Value, Error> {
     Ok(Value::Object(o))
 }
 
+/// Whether a `GEOGCS` or `PROJCS`, alone or first in a `COMPD_CS`, has no
+/// `AXIS`, so its axes are the defaults [`axes`] and
+/// [`default_projected_axes`] give rather than stated.
+pub(super) fn implicit_axes(node: &Node) -> bool {
+    match node.keyword.as_str() {
+        "GEOGCS" | "PROJCS" => node.child(&["AXIS"]).is_none(),
+        "COMPD_CS" => node
+            .args
+            .iter()
+            .find_map(|a| match a {
+                Arg::Node(n) if n.keyword != "AUTHORITY" => Some(implicit_axes(n)),
+                _ => None,
+            })
+            .unwrap_or(false),
+        _ => false,
+    }
+}
+
 fn compound(node: &Node) -> Result<Value, Error> {
     let mut o = named("CompoundCRS", node)?;
     let mut components = Vec::new();

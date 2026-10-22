@@ -48,6 +48,7 @@ mod error;
 mod extent;
 mod geocentric;
 mod grid;
+mod identify;
 mod methods;
 mod name;
 mod operation;

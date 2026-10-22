@@ -39,12 +39,7 @@ fn index() -> &'static HashMap<String, Vec<u32>> {
 /// The EPSG datum (or ensemble) of this kind that `name` names: the only
 /// one, or the only one not deprecated.
 pub(crate) fn by_name(name: &str, kind: DatumKind) -> Option<&'static DatumName> {
-    let codes = index().get(&canonical(name, true))?;
-    let found: Vec<&DatumName> = codes
-        .iter()
-        .filter_map(|&c| xeibe_crs::datum(c))
-        .filter(|d| d.kind == kind)
-        .collect();
+    let found = all_by_name(name, kind);
     match found[..] {
         [one] => Some(one),
         _ => {
@@ -55,6 +50,19 @@ pub(crate) fn by_name(name: &str, kind: DatumKind) -> Option<&'static DatumName>
             }
         }
     }
+}
+
+/// Every EPSG datum (or ensemble) of this kind that `name` names, by its
+/// own name or an alias: a deprecated datum shares its name with the one
+/// that replaced it (EPSG:6640 and EPSG:1047), or lives on as its alias.
+pub(crate) fn all_by_name(name: &str, kind: DatumKind) -> Vec<&'static DatumName> {
+    index()
+        .get(&canonical(name, true))
+        .into_iter()
+        .flatten()
+        .filter_map(|&c| xeibe_crs::datum(c))
+        .filter(|d| d.kind == kind)
+        .collect()
 }
 
 #[cfg(test)]

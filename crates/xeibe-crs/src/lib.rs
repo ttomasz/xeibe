@@ -105,6 +105,13 @@ pub struct CrsRecord {
     /// than EPSG's. Callers that want it in axis order should use
     /// [`CrsRecord::area_in_axis_order`].
     pub area_wgs84: Option<[f32; 4]>,
+    /// The EPSG code of the datum or datum ensemble, through the base CRS
+    /// of a projected or derived CRS and the horizontal part of a compound
+    /// one. `None` where the CRS has no PROJJSON.
+    pub datum: Option<u32>,
+    /// The EPSG code of the projection method, for a projected CRS or a
+    /// compound CRS whose horizontal part is one.
+    pub method: Option<u32>,
     /// EPSG has retired this code. It is still resolvable, because real data
     /// keeps using retired codes for years.
     pub deprecated: bool,

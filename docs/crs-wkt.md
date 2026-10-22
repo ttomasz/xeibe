@@ -1,9 +1,9 @@
 # CRS WKT: reading, writing and identifying
 
-> **Status: design, 2026-10-22. Steps 1 to 3 are implemented:** reading
+> **Status: design, 2026-10-22. Steps 1 to 4 are implemented:** reading
 > WKT2 and WKT1 (GDAL's form), writing WKT2 2019 and WKT1_GDAL
-> (`xeibe_reproject::wkt`, `Crs::from_wkt`; see
-> [Implementation](#implementation)).
+> (`xeibe_reproject::wkt`, `Crs::from_wkt`), and identification
+> (`Crs::identify`; see [Implementation](#implementation)).
 > This is the first part of phase 2 in [pyproj-compat.md](pyproj-compat.md#phases).
 > Facts about PROJ were checked against PROJ 9.8.1 through pyproj 3.8.0, and
 > facts about EPSG against EPSG 13.106.
@@ -353,54 +353,88 @@ From a PROJJSON value:
 
 ## Identification
 
-`identify(&Value) -> Vec<(u32, u8)>` returns EPSG codes with a confidence,
-best first. `to_epsg`, `to_authority` and `list_authority` are thin layers
-over it. The levels are PROJ's:
+`Crs::identify() -> Vec<(u32, u8)>` returns EPSG codes with a confidence,
+best first. pyproj's `to_epsg()` is the first at 70 or more, and
+`to_authority` and `list_authority` are thin layers over it. The levels
+are PROJ's:
 
 | Confidence | Meaning |
 |---|---|
-| 100 | Equivalent definitions, and the names match (after normalising, or through an alias) |
-| 90 | Equivalent, and the names are similar |
-| 70 | Equivalent, and the names don't match at all |
+| 100 | Equivalent, with EPSG's name |
+| 90 | Equivalent, with a name that matches EPSG's or one of its aliases after normalising (`WGS_1984` for "WGS 84") |
+| 70 | Equivalent, under another name; or as for 60, with a datum named "unknown" or "unnamed" |
+| 60 | Equivalent but for the datum, which has no EPSG code or name, and has the EPSG CRS's ellipsoid and prime meridian |
 | 25 | Not equivalent, but the input's `ID`/`AUTHORITY` names this code, or the names match |
 
-PROJ also gives 60 and 50 (736 and 143 times in the identification
-vectors). 60 comes with several equally good candidates, for example
-EPSG:4173 as WKT1_GDAL without ids: `[[4173,60],[7084,60],…]`, and
-`to_epsg()` gives None. The vectors pin down when each occurs. Other
-measured rules:
+The search is simpler than PROJ's. PROJ searches by name, exactly and
+then approximately, falls back to datum or ellipsoid searches, has
+shortcuts for WGS 84, NAD27 and NAD83 and their UTM zones, and ranks
+with a long list of tie-breaks. Here:
 
-- PROJ identifies **no engineering CRS**, not even with its `ID`.
-  `identify` does the same.
-- For a **deprecated CRS** without ids, PROJ ranks the live CRS that
-  replaced it first: EPSG:3785 gives 3857 (and the deprecated code only 25).
+```mermaid
+flowchart TD
+    A[CRS] --> B{EPSG id?}
+    B -->|equivalent| C[that code at 100, alone]
+    B -->|not equivalent| D[that code at 25]
+    B -->|none| E
+    D --> E[EPSG CRSs of the same kind,<br/>on a datum bearing the datum's name,<br/>with the same method]
+    E --> F{"Crs::matches"}
+    F -->|equivalent| G[100 / 90 / 70 by name]
+    F -->|"datum unnamed in EPSG:<br/>same ellipsoid and meridian"| H[60, or 70 for 'unknown']
+    A --> I[EPSG CRSs with the name<br/>or an alias] --> J[25 if not found above]
+```
 
-Candidates:
+- **Candidates** come from `xeibe-crs`'s table, which now carries each
+  CRS's datum and method codes (`CrsRecord::datum`, `method`), so finding
+  them is a scan of a static table, and only they are parsed. Building an
+  index from all PROJJSON instead would cost about 180 ms on first use.
+- **Datums**: the input's datum id, and every EPSG datum that bears its
+  name or the id's name, by name or alias. EPSG deprecated some datums
+  for duplicates of the same name (EPSG:6640 and 1047, RRAF 1991) and
+  keeps others' names as aliases (Guyane Francaise on EPSG:6623).
+  Candidates on any of them are compared in full, datum names included.
+  When no EPSG datum has the name, every CRS of the kind and method is a
+  candidate, compared without the datum's identity (about 50 ms).
+- **Comparison** is `Crs::equivalent` with three relaxations
+  (`crs::Relax`). The axis order is one. The horizontal axes by unit
+  only is another, for a WKT1 `GEOGCS` or `PROJCS` without `AXIS`,
+  whose axes are defaults; Krovak and its north-orientated variant
+  count as one method there. Datums by ellipsoid and prime meridian only
+  is the third, for the 60 level.
+- **Methods** match by code or by EPSG name. EPSG reuses two methods'
+  names for their deprecated duplicates (9823 and 1029, 9842 and 1028),
+  so a method read by name has the live code.
+- **Ranking**: confidence, then live before deprecated, then code.
+  Geographic 2D and 3D are one kind, told apart by their axes, because
+  EPSG classes some 3D CRSs as 2D (NAD83(FBN), EPSG:8449).
 
-1. **The input's own id.** It is kept at 100 when the definitions are
-   equivalent. Otherwise it drops to 25, which is why PROJ's own WKT1_GDAL
-   for EPSG:2180 (east, north, with `AUTHORITY["EPSG","2180"]`) gives
-   `to_epsg() == None`.
-2. **Otherwise, every EPSG CRS of the same kind on the resolved datum.**
-   - Projected CRSs are narrowed further by method.
-   - Candidates are compared with `Crs::equivalent`, and with
-     `ignore_axis_order` where PROJ ignores it.
-   - Measured examples, all at 100:
-     - EPSG:2180 written as WKT1_GDAL with no `AUTHORITY` and axes east,
-       north;
-     - its ESRI form;
-     - EPSG:2180's WKT2 with every `ID` removed.
+Where it differs from PROJ on purpose:
 
-     The same ESRI string under another name (`my_poland`) gives 70.
-3. **Names.** The input's name is normalised and compared against EPSG's
-   names and aliases (`xeibe_crs::alias`) and ESRI's, if embedded. Names
-   decide between 100, 90 and 70. A name alone, without an equivalent
-   definition, gives 25.
+- **WKT1 without `AXIS`** matches by axis units with or without its
+  `AUTHORITY`. GDAL's WKT1 for EPSG:2180 (easting first, EPSG has
+  northing first) is EPSG:2180 at 100. PROJ applies that rule to its name
+  search only and gives the `AUTHORITY` 25, so `to_epsg()` is None for
+  its own WKT1_GDAL of 2,459 CRSs.
+- **Deprecated CRSs** are candidates; PROJ leaves them out of its search.
+  A deprecated CRS by its own name ranks before a live one under another
+  name: EPSG deprecated NAD83 / South Dakota North (ftUS), EPSG:3454, for
+  having South's parameters, so it is equivalent to EPSG:3455, and the
+  name says which was meant. Of two equivalent CRSs with the same name,
+  the live one comes first.
+- **The CRS's own name** wins over PROJ's UTM shortcut: WGS 84 / TMzn35N
+  (EPSG:4037) as WKT1 is 4037, where PROJ builds WGS 84 / UTM zone 35N.
+- A **CRS whose method `Crs` can't build** (26 EPSG CRSs: Lambert Conic
+  Conformal (West Orientated), Polar Stereographic (variant C), Tunisia
+  Mining Grid, Lambert Conic Near-Conformal, the UTM grid systems) can't
+  be identified, because identification compares `Crs` values.
 
-The candidate index (kind, datum, method) is built lazily on the first
-call. Nothing is stored in `xeibe-crs` beyond the datum aliases the reader
-also needs. Those are a new, small table, generated by `gen_crs_tables.py`
-from EPSG's alias table as the CRS aliases are now.
+Unchanged from PROJ: no **engineering CRS** is identified, not even with
+its `ID`.
+
+**Transforming.** `Transform` looks operations between datums up by EPSG
+code. A CRS without one (WKT without ids) now uses the code of the EPSG
+CRS it is equivalent to, never one found at the 60/70 datum-relaxed
+level.
 
 ## Validation
 
@@ -520,6 +554,29 @@ Against PROJ, for every EPSG CRS:
   from EPSG:3785, which PROJ writes through a path of its own. Read back,
   each is the EPSG CRS exactly when PROJ's own WKT1 is (WKT1 loses
   northing-first axis order: 2,442 projected and compound CRSs).
+
+**Step 4 (2026-10-22): identification** (`Crs::identify`), as described
+under [Identification](#identification). Against PROJ's
+`list_authority`/`to_epsg` on its WKT2 2019, WKT2 2015 and WKT1_GDAL for
+every EPSG CRS, with ids and without (52,400 identifications):
+
+- `to_epsg()` agrees with PROJ's, or finds the CRS the WKT was written
+  for where PROJ doesn't. That covers deprecated CRSs (about 300 per
+  version), 142 WKT1 compound CRSs PROJ finds only at 25, and the WKT1
+  `AUTHORITY` case above.
+- The rest is listed in the test: 10 deprecated CRSs where a live CRS of
+  the same name and definition comes first (RRAF 1991, IGD05); 3
+  Lambert Azimuthal Equal Area (Spherical) CRSs, which WKT1 reads as the
+  ellipsoidal method and so as EPSG:6931 and its siblings; 4235 and 32663,
+  as in reading; and 3785 and 5817, which aren't read yet.
+- Where both rank the same code first (25,564 of the strings without
+  ids), the confidence is PROJ's in all but 157. 151 are CRSs PROJ finds
+  only at 25 (the WKT1 compound CRSs, RRAF 1991). 3 WKT1 compound CRSs
+  are at 60 here and 25 in PROJ. NTF (Paris) / Lambert zone II (EPSG:27500)
+  is at 100 here and 70 in PROJ. And 32663 is listed above. Names are
+  compared trimmed, as the reader trims them: two EPSG names end in a
+  space.
+- About 0.7 ms per identification in a release build.
 
 ## Order of work
 

@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde_json::{Map, Value, json};
-use xeibe_reproject::{Crs, Error, wkt};
+use xeibe_reproject::{AxisOrder, Crs, Error, Transform, wkt};
 
 /// The records of a JSONL file whose first line is a header.
 fn records(path: &Path) -> Vec<Value> {
@@ -782,4 +782,230 @@ fn every_proj_wkt1_gdal_reads_as_proj_reads_it() {
     );
     println!("{read} WKT1_GDAL strings\n{report}");
     assert!(report.is_empty(), "{report}");
+}
+
+/// pyproj's `to_epsg()`: the best match at 70 or more.
+fn to_epsg(matches: &[(u32, u8)]) -> Option<u32> {
+    matches.first().filter(|m| m.1 >= 70).map(|m| m.0)
+}
+
+fn deprecated(code: u32) -> bool {
+    xeibe_crs::get(code).is_some_and(|r| r.deprecated)
+}
+
+/// How a `to_epsg()` result relates to the CRS the WKT was written for.
+fn outcome(code: u32, found: Option<u32>) -> &'static str {
+    match found {
+        Some(c) if c == code => "itself",
+        Some(_) => "another code",
+        None => "nothing",
+    }
+}
+
+/// Where `to_epsg()` knowingly differs from PROJ's, other than where it
+/// finds the CRS the WKT was written for, which is right by construction
+/// (deprecated CRSs, which PROJ's search leaves out; WKT1 compound CRSs,
+/// which PROJ doesn't find; a CRS by its own name before the UTM CRS PROJ
+/// builds for any UTM zone on WGS 84).
+const KNOWN_IDENTIFY: &[(&[u32], &str)] = &[
+    // Deprecated CRSs on a deprecated datum with the name of its
+    // replacement, where a live CRS has their name too (RRAF 1991,
+    // IGD05): the live one, which PROJ finds at 25 only.
+    (
+        &[2989, 4640, 4972, 4973, 6978, 6979, 6980, 6985, 6986, 6987],
+        "a live CRS of the same name and definition",
+    ),
+    // Lambert Azimuthal Equal Area (Spherical) on WGS 84, as WKT1 can't
+    // say: read as the ellipsoidal method, as PROJ reads it, which is
+    // EPSG:6931's and the others'. PROJ finds them at 25.
+    (&[3973, 3974, 3975], "a spherical method in WKT1"),
+    // As read (KNOWN_WKT1): "degree minute second hemisphere" with a
+    // degree's factor, and 9842 written as Equirectangular.
+    (&[4235], "a unit equal by factor, not by name"),
+    (&[32663], "a deprecated method under another's WKT1 name"),
+    // Not read yet (KNOWN_WKT1): TOWGS84, step 6 of docs/crs-wkt.md, and
+    // an engineering CRS with an unspecified axis.
+    (&[3785], "TOWGS84"),
+    (&[5817], "an unspecified axis"),
+];
+
+/// Identifies PROJ's WKT for each EPSG CRS in `identify.jsonl`, with its
+/// ids (the string as `wkt.jsonl` has it) and without, and compares
+/// `to_epsg()` with PROJ's. Returns the number identified, a report of
+/// the differences (by version, ids, PROJ's outcome and ours), and how
+/// many CRSs were left out for a projection method `Crs` doesn't build.
+fn check_identify(dir: &Path) -> (usize, String, usize) {
+    let mut written: BTreeMap<(u32, String), String> = BTreeMap::new();
+    for r in records(&dir.join("wkt.jsonl")) {
+        let code = r["code"].as_u64().unwrap() as u32;
+        for (version, text) in r["wkt"].as_object().unwrap() {
+            if let Some(text) = text.as_str() {
+                written.insert((code, version.clone()), text.to_owned());
+            }
+        }
+    }
+    let mut checked = 0;
+    let mut unsupported = std::collections::BTreeSet::new();
+    let mut differing: BTreeMap<String, Vec<u32>> = BTreeMap::new();
+    for r in records(&dir.join("identify.jsonl")) {
+        let code = r["code"].as_u64().unwrap() as u32;
+        let version = r["version"].as_str().unwrap();
+        if version == "WKT1_ESRI" {
+            continue; // step 5 of docs/crs-wkt.md
+        }
+        if xeibe_crs::get(code).is_none() {
+            continue; // EPSG's worked examples, which xeibe-crs leaves out
+        }
+        let known = KNOWN_IDENTIFY
+            .iter()
+            .any(|(codes, _)| codes.contains(&code));
+        let stripped = r["wkt"].as_str().unwrap();
+        let kept = &written[&(code, version.to_owned())];
+        for (ids, text, proj) in [
+            ("stripped", stripped, &r["stripped"]),
+            ("kept", kept.as_str(), &r["kept"]),
+        ] {
+            let Some(theirs) = proj.get("to_epsg") else {
+                continue;
+            };
+            let ours = match Crs::from_wkt(text) {
+                Ok(crs) => to_epsg(&crs.identify()),
+                Err(Error::Unsupported { what, .. })
+                    if what.starts_with("the projection method") =>
+                {
+                    unsupported.insert(code);
+                    continue;
+                }
+                Err(_) if known => continue,
+                Err(e) => {
+                    differing
+                        .entry(format!("{version} {ids}: {e}"))
+                        .or_default()
+                        .push(code);
+                    continue;
+                }
+            };
+            checked += 1;
+            let theirs = theirs.as_u64().map(|c| c as u32);
+            if ours != theirs && ours != Some(code) && !known {
+                differing
+                    .entry(format!(
+                        "{version} {ids}{}: PROJ {}, ours {}",
+                        if deprecated(code) { " deprecated" } else { "" },
+                        outcome(code, theirs),
+                        outcome(code, ours)
+                    ))
+                    .or_default()
+                    .push(code);
+            }
+        }
+    }
+    let mut report = String::new();
+    for (what, codes) in &differing {
+        report += &format!(
+            "{} x {what}: {:?}\n",
+            codes.len(),
+            &codes[..codes.len().min(12)]
+        );
+    }
+    (checked, report, unsupported.len())
+}
+
+#[test]
+fn epsg_crss_are_identified_as_proj_identifies_them() {
+    let (checked, report, _) = check_identify(&xeibe_testkit::data_dir().join("crs-wkt"));
+    assert!(checked > 500, "{checked}");
+    assert!(report.is_empty(), "{report}");
+}
+
+#[test]
+#[ignore = "needs target/crs-wkt/ (scripts/gen_wkt_vectors.py --all)"]
+fn every_epsg_crs_is_identified_as_proj_identifies_it() {
+    let (checked, report, unsupported) =
+        check_identify(&xeibe_testkit::data_dir().join("../../target/crs-wkt"));
+    println!(
+        "{checked} identifications, {unsupported} CRSs with a method Crs doesn't build\n{report}"
+    );
+    assert!(report.is_empty(), "{report}");
+}
+
+/// EPSG:2180 as GDAL writes it, with `name` and `datum`, and `extra`
+/// (an `AUTHORITY`) at the end.
+fn poland(name: &str, datum: &str, extra: &str) -> String {
+    format!(
+        r#"PROJCS["{name}",GEOGCS["ETRS89",DATUM["{datum}",
+            SPHEROID["GRS 1980",6378137,298.257222101]],PRIMEM["Greenwich",0],
+            UNIT["degree",0.0174532925199433]],PROJECTION["Transverse_Mercator"],
+            PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",19],
+            PARAMETER["scale_factor",0.9993],PARAMETER["false_easting",500000],
+            PARAMETER["false_northing",-5300000],UNIT["metre",1]{extra}]"#
+    )
+}
+
+#[test]
+fn identification_rules() {
+    let etrs = "European_Terrestrial_Reference_System_1989";
+    let identify = |text: &str| Crs::from_wkt(text).unwrap().identify();
+    // No AXIS: easting first, against EPSG's northing first, and still
+    // EPSG:2180, with its AUTHORITY or by its name (PROJ: 25 and 100).
+    let authority = r#",AUTHORITY["EPSG","2180"]"#;
+    assert_eq!(
+        identify(&poland("ETRS89 / PL-1992", etrs, authority)),
+        [(2180, 100)]
+    );
+    assert_eq!(
+        identify(&poland("ETRS89 / PL-1992", etrs, ""))[0],
+        (2180, 100)
+    );
+    // Through an alias, and under another name.
+    assert_eq!(
+        identify(&poland("ETRS89 / Poland CS92", etrs, ""))[0],
+        (2180, 90)
+    );
+    assert_eq!(identify(&poland("my_poland", etrs, ""))[0], (2180, 70));
+    // A datum EPSG doesn't name: the same ellipsoid, at 60, or 70 for an
+    // "unknown" datum; pyproj's to_epsg() gives nothing for the first.
+    assert_eq!(
+        identify(&poland("my_poland", "my_datum", ""))[0],
+        (2180, 60)
+    );
+    assert_eq!(identify(&poland("my_poland", "unknown", ""))[0], (2180, 70));
+    // An AUTHORITY that doesn't fit the definition.
+    assert_eq!(
+        identify(&poland("my_poland", etrs, r#",AUTHORITY["EPSG","2177"]"#))
+            .iter()
+            .find(|m| m.0 == 2177),
+        Some(&(2177, 25))
+    );
+    // A deprecated CRS by its own name before the live CRS it equals:
+    // EPSG:3454 was deprecated for having EPSG:3455's parameters.
+    let json = xeibe_crs::projjson(3454).unwrap();
+    let text = wkt::from_projjson(json, wkt::Version::Wkt2_2019, false).unwrap();
+    let without_id = text.replace(r#",ID["EPSG",3454]"#, "");
+    assert_eq!(identify(&without_id)[..2], [(3454, 100), (3455, 70)]);
+    // No engineering CRS is identified, as in PROJ.
+    let json = xeibe_crs::projjson(5800).unwrap();
+    let text = wkt::from_projjson(json, wkt::Version::Wkt2_2019, false).unwrap();
+    assert_eq!(identify(&text), []);
+}
+
+#[test]
+fn wkt_without_ids_transforms_between_datums() {
+    // The datum transformation is looked up by the EPSG CRS the WKT is.
+    let text = poland(
+        "my_poland",
+        "European_Terrestrial_Reference_System_1989",
+        "",
+    );
+    let from_wkt = Crs::from_wkt(&text).unwrap();
+    assert_eq!(from_wkt.code(), None);
+    let pulkovo = Crs::from_epsg(4179).unwrap();
+    let ours = Transform::new(&from_wkt, &pulkovo, AxisOrder::EastFirst).unwrap();
+    let epsg = Transform::from_epsg(2180, 4179, AxisOrder::EastFirst).unwrap();
+    assert_eq!(ours.operations(), epsg.operations());
+    let (x, y) = (636_640.467, 483_432.201);
+    assert_eq!(
+        ours.convert(x, y, None).unwrap(),
+        epsg.convert(x, y, None).unwrap()
+    );
 }

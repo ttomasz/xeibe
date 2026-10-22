@@ -23,6 +23,21 @@ pub struct Crs {
     pub(crate) code: Option<u32>,
     pub(crate) kind: Kind,
     pub(crate) axes: Axes,
+    /// The horizontal axes are WKT1's defaults, not stated (a `GEOGCS` or
+    /// `PROJCS` without `AXIS`): identification compares them by unit only.
+    pub(crate) implicit_axes: bool,
+}
+
+/// What [`Crs::matches`] leaves out of equivalence, for identification.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Relax {
+    /// The two horizontal axes in either order.
+    pub(crate) axis_order: bool,
+    /// The horizontal axes by unit only, not by direction or order.
+    pub(crate) axis_directions: bool,
+    /// Geodetic datums by ellipsoid and prime meridian only, not by code
+    /// or name.
+    pub(crate) datum_identity: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -71,7 +86,6 @@ pub(crate) struct EngineeringDatum {
 pub(crate) struct VerticalDatum {
     /// `EPSG:5181`, or the name when there is no id.
     pub(crate) key: String,
-    #[allow(dead_code)] // kept for diagnostics
     pub(crate) name: String,
 }
 
@@ -81,7 +95,6 @@ pub(crate) struct VerticalDatum {
 pub(crate) struct Datum {
     /// `EPSG:6258`, or the name when there is no id.
     pub(crate) key: String,
-    #[allow(dead_code)] // in error messages of level 1, kept for diagnostics
     pub(crate) name: String,
     pub(crate) ellipsoid: Ellipsoid,
     /// Prime meridian, radians east of Greenwich.
@@ -135,11 +148,22 @@ fn same_key(key_a: &str, name_a: &str, key_b: &str, name_b: &str) -> bool {
 }
 
 impl Datum {
-    fn same(&self, other: &Datum) -> bool {
-        same_key(&self.key, &self.name, &other.key, &other.name)
+    fn same(&self, other: &Datum, relax: Relax) -> bool {
+        (relax.datum_identity || same_key(&self.key, &self.name, &other.key, &other.name))
             && close(self.ellipsoid.a, other.ellipsoid.a)
             && close(self.ellipsoid.b, other.ellipsoid.b)
             && same_meridian(self.prime_meridian, other.prime_meridian)
+    }
+}
+
+/// A projection method's code, with Krovak's north-orientated variants
+/// (1041, 1043) as Krovak (9819, 1042): they differ in their axes only, so
+/// where the axes are unknown (WKT1 without `AXIS`) they are one method.
+pub(crate) fn oriented_alike(method: u32) -> u32 {
+    match method {
+        1041 => 9819,
+        1043 => 1042,
+        other => other,
     }
 }
 
@@ -177,17 +201,25 @@ impl Axes {
         self.axes.len()
     }
 
-    /// The same axes, in the same order (or with `ignore_order`, the two
-    /// horizontal ones in either order).
-    fn same(&self, other: &Axes, ignore_order: bool) -> bool {
+    /// The same axes, in the same order (or as `relax` allows, the two
+    /// horizontal ones in either order, or in any directions with the same
+    /// units).
+    fn same(&self, other: &Axes, relax: Relax) -> bool {
         if self.axes.len() != other.axes.len() {
             return false;
+        }
+        if relax.axis_directions {
+            return self.axes.iter().zip(&other.axes).all(|(x, y)| {
+                close(x.factor, y.factor) && (x.vertical == 0.0) == (y.vertical == 0.0) && {
+                    x.vertical == 0.0 || x.same(y)
+                }
+            });
         }
         let pairwise = |a: &[Axis], b: &[Axis]| a.iter().zip(b).all(|(x, y)| x.same(y));
         if pairwise(&self.axes, &other.axes) {
             return true;
         }
-        if !ignore_order || self.axes.len() < 2 {
+        if !relax.axis_order || self.axes.len() < 2 {
             return false;
         }
         let (a, b) = (&self.axes, &other.axes);
@@ -275,7 +307,10 @@ impl Crs {
 
     /// A CRS from WKT: see [`crate::wkt`] for what is read.
     pub fn from_wkt(text: &str) -> Result<Self, Error> {
-        Self::from_value(&crate::wkt::to_value(text)?)
+        let (value, implicit_axes) = crate::wkt::read(text)?;
+        let mut crs = Self::from_value(&value)?;
+        crs.implicit_axes = implicit_axes;
+        Ok(crs)
     }
 
     pub(crate) fn from_value(value: &Value) -> Result<Self, Error> {
@@ -410,6 +445,7 @@ impl Crs {
             code,
             kind,
             axes,
+            implicit_axes: false,
         })
     }
 
@@ -448,6 +484,7 @@ impl Crs {
                 vertical: Box::new(vertical.clone()),
             },
             axes,
+            implicit_axes: horizontal.implicit_axes,
         })
     }
 
@@ -484,11 +521,25 @@ impl Crs {
     /// CRSs whose two horizontal axes differ only in order are equivalent
     /// too (EPSG:4326 and OGC:CRS84).
     pub fn equivalent(&self, other: &Crs, ignore_axis_order: bool) -> bool {
-        let same_axes = self.axes.same(&other.axes, ignore_axis_order);
+        self.matches(
+            other,
+            Relax {
+                axis_order: ignore_axis_order,
+                ..Relax::default()
+            },
+        )
+    }
+
+    /// [`Crs::equivalent`], leaving out what `relax` says. The axis
+    /// relaxations apply to the horizontal axes; a compound CRS's vertical
+    /// part, and a vertical or engineering datum, are always compared in
+    /// full.
+    pub(crate) fn matches(&self, other: &Crs, relax: Relax) -> bool {
+        let same_axes = self.axes.same(&other.axes, relax);
         match (&self.kind, &other.kind) {
             (Kind::Geographic { datum: a }, Kind::Geographic { datum: b })
             | (Kind::Geocentric { datum: a }, Kind::Geocentric { datum: b }) => {
-                a.same(b) && same_axes
+                a.same(b, relax) && same_axes
             }
             (
                 Kind::Projected {
@@ -506,11 +557,18 @@ impl Crs {
                     ..
                 },
             ) => {
-                let same_method = match (ca, cb) {
-                    (Some(x), Some(y)) => x == y,
-                    _ => ma.eq_ignore_ascii_case(mb),
-                };
-                a.same(b) && same_method && pa.same(pb) && same_axes
+                // By name too: EPSG names two deprecated methods as their
+                // replacements (9823 and 1029, 9842 and 1028), so a method
+                // read by name has the replacement's code.
+                let same_method = ma.eq_ignore_ascii_case(mb)
+                    || match (ca, cb) {
+                        (Some(x), Some(y)) if relax.axis_directions => {
+                            oriented_alike(*x) == oriented_alike(*y)
+                        }
+                        (Some(x), Some(y)) => x == y,
+                        _ => false,
+                    };
+                a.same(b, relax) && same_method && pa.same(pb) && same_axes
             }
             (Kind::Vertical { datum: a }, Kind::Vertical { datum: b }) => {
                 same_key(&a.key, &a.name, &b.key, &b.name) && same_axes
@@ -527,7 +585,7 @@ impl Crs {
                     horizontal: hb,
                     vertical: vb,
                 },
-            ) => ha.equivalent(hb, ignore_axis_order) && va.equivalent(vb, false),
+            ) => ha.matches(hb, relax) && va.equivalent(vb, false),
             _ => false,
         }
     }

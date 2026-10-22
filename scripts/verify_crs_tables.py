@@ -78,7 +78,8 @@ RECORD = re.compile(
     r"kind: CrsKind::(?P<kind>\w+), first_axis: FirstAxis::(?P<axis>\w+), "
     r"dimension: (?P<dim>\d+), linear_unit_m: (?P<lin>None|Some\([^)]*\)), "
     r"angular_unit_rad: (?P<ang>None|Some\([^)]*\)), "
-    r"area_wgs84: (?P<area>None|Some\(\[[^\]]*\]\)), deprecated: (?P<dep>true|false) \}"
+    r"area_wgs84: (?P<area>None|Some\(\[[^\]]*\]\)), datum: (?:None|Some\(\d+\)), "
+    r"method: (?:None|Some\(\d+\)), deprecated: (?P<dep>true|false) \}"
 )
 
 
