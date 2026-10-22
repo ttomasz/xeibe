@@ -219,6 +219,33 @@ fn every_alias_names_a_crs_in_the_table() {
 }
 
 #[test]
+fn methods_and_parameters_by_name() {
+    use xeibe_crs::{method_code, parameter_code};
+    assert_eq!(method_code("Transverse Mercator"), Some(9807));
+    assert_eq!(method_code("lambert conic conformal (2SP)"), Some(9802));
+    assert_eq!(parameter_code("False easting"), Some(8806));
+    assert_eq!(parameter_code(" Latitude of natural origin "), Some(8801));
+    // EPSG's aliases count too.
+    assert_eq!(parameter_code("Central Meridian"), Some(8802));
+    assert_eq!(method_code("not a method"), None);
+    // Every conversion in the PROJJSON names its method and parameters in a
+    // way the lookup gives back.
+    for code in [2180, 3035, 3857, 5514, 27700, 32633] {
+        let doc: serde_json::Value =
+            serde_json::from_str(xeibe_crs::projjson(code).unwrap()).unwrap();
+        let conv = &doc["conversion"];
+        let id = |v: &serde_json::Value| v["id"]["code"].as_u64().map(|c| c as u32);
+        assert_eq!(
+            method_code(conv["method"]["name"].as_str().unwrap()),
+            id(&conv["method"])
+        );
+        for p in conv["parameters"].as_array().unwrap() {
+            assert_eq!(parameter_code(p["name"].as_str().unwrap()), id(p), "{code}");
+        }
+    }
+}
+
+#[test]
 fn operations_hold_the_registry() {
     let doc: serde_json::Value = serde_json::from_str(xeibe_crs::operations_json()).unwrap();
     assert_eq!(doc["epsg_version"], xeibe_crs::EPSG_VERSION);

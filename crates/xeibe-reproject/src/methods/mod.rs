@@ -123,6 +123,11 @@ pub(crate) enum BuildError {
     Invalid(String),
 }
 
+/// Parameters a method fixes, added where the definition leaves them out.
+pub(crate) fn complete(code: Option<u32>, params: &mut Params) {
+    krovak::complete(code, params);
+}
+
 /// The projection for an EPSG method code. The name is only for messages.
 pub(crate) fn build(
     code: Option<u32>,

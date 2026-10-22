@@ -143,6 +143,14 @@ sources, but their contents haven't been checked against the local copies:
   PROJ's results on them; `scripts/gen_grid_catalog.py` regenerates the
   EPSG-to-PROJ-data grid name table from PROJ's `grid_alternatives`. See
   `docs/reprojection.md`.
+- `scripts/gen_wkt_vectors.py` writes WKT test vectors with PROJ on the full
+  oracle database (`target/proj-oracle/`): every EPSG CRS in `WKT2_2019`,
+  `WKT2_2015`, `WKT1_GDAL` and `WKT1_ESRI` with PROJ's reading of each back
+  (`wkt.jsonl`), and PROJ's `list_authority`/`to_epsg` for each string with
+  and without its ids (`identify.jsonl`), plus EPSG's own WKT2 from the
+  `EPSG-*-WKT.Zip` archive in `example_data/` (`epsg.jsonl`). A committed subset goes to
+  `tests/data/crs-wkt/`; `--all` writes everything to `target/crs-wkt/`
+  (~3 min on 12 CPUs). See `docs/crs-wkt.md`.
 - `scripts/check_epsg_release.py` asks the public EPSG API
   (`apps.epsg.org/api/v1/VersionHistory`, no account needed) whether a newer
   Dataset release exists than the one in `crates/xeibe-crs`. Exits 1 if so.

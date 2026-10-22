@@ -266,7 +266,7 @@ Where each design topic lives in the code (`crates/<crate>/src/…`):
 | Zip archives (architecture.md) | `xeibe-core`: `archive` (on top of the `zip` crate) |
 | Geometry model, `geo-traits`, WKB (geometry.md) | `xeibe-geom`: `model`, `traits`, `wkb`, `linearize` |
 | Geometry parsing, coordinates, arcs (geometry.md) | `xeibe-geom`: `parse/{coords,primitives,curves,surfaces,aggregates,envelope,assemble}`, `arcs`, `dialect` |
-| EPSG tables, PROJJSON, aliases (geometry.md) | `xeibe-crs`: `table`, `aliases` (generated), `data/projjson.bin`, `data/usages.bin`, `data/operations.bin`, `data/remarks.bin` (generated) |
+| EPSG tables, PROJJSON, aliases (geometry.md) | `xeibe-crs`: `table`, `aliases`, `names` (generated), `data/projjson.bin`, `data/usages.bin`, `data/operations.bin`, `data/remarks.bin` (generated) |
 | CRS, srsName forms, axis order (geometry.md) | `xeibe-geom`: `crs`, `epsg` (lookups into `xeibe-crs`), `axis`; `xeibe-arrow`: `axis` (applies decisions) |
 | Geometry sampling during scans (schema-inference.md) | `xeibe-geom`: `sniff` |
 | Path tree, value stats, merge, scan (schema-inference.md) | `xeibe-schema`: `observation`, `node`, `value`, `geometry_stats`, `merge`, `scan` |

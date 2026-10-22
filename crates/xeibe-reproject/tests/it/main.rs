@@ -7,3 +7,4 @@ mod operations;
 mod support;
 mod transformations;
 mod vectors;
+mod wkt;

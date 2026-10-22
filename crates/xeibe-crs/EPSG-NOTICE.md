@@ -36,6 +36,8 @@ release and emits:
   verbatim.
 - `src/aliases.rs` -- EPSG's aliases for CRSs (table `epsg_alias`), lowercased,
   keeping only those that name a single CRS.
+- `src/names.rs` -- the names and aliases of EPSG's operation methods and
+  parameters, lowercased, keeping only those that name a single one.
 
 Values are reproduced as EPSG publishes them, with two representation changes
 that the Terms permit because they preserve numeric equivalence:

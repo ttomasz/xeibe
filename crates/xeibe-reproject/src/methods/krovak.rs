@@ -26,6 +26,34 @@ const MAX_ITER: usize = 100;
 /// 59°42′42.69689″).
 const COLATITUDE: f64 = std::f64::consts::FRAC_PI_2 - 1.04216856380474;
 
+/// The evaluation point and C1 to C10 of every Modified Krovak CRS EPSG has
+/// (S-JTSK/05), which PROJ's `mod_krovak` fixes and PROJ's WKT leaves out.
+const MODIFIED: [(u32, f64); 12] = [
+    (param::EVALUATION_POINT_ORDINATE_1, 1_089_000.0),
+    (param::EVALUATION_POINT_ORDINATE_2, 654_000.0),
+    (param::KROVAK_C1, 2.946529277e-2),
+    (param::KROVAK_C1 + 1, 2.515965696e-2),
+    (param::KROVAK_C1 + 2, 1.193845912e-7),
+    (param::KROVAK_C1 + 3, -4.668270147e-7),
+    (param::KROVAK_C1 + 4, 9.233980362e-12),
+    (param::KROVAK_C1 + 5, 1.523735715e-12),
+    (param::KROVAK_C1 + 6, 1.696780024e-18),
+    (param::KROVAK_C1 + 7, 4.408314235e-18),
+    (param::KROVAK_C1 + 8, -8.331083518e-24),
+    (param::KROVAK_C1 + 9, -3.689471323e-24),
+];
+
+/// For Modified Krovak given without its correction (as PROJ writes it),
+/// EPSG's correction: the CRS is then the EPSG one, also to `equivalent`.
+/// A correction given in part stays as given, and fails to build.
+pub(crate) fn complete(code: Option<u32>, params: &mut Params) {
+    if matches!(code, Some(1042 | 1043)) && MODIFIED.iter().all(|(c, _)| params.get(*c).is_err()) {
+        for (c, v) in MODIFIED {
+            params.push(c, v);
+        }
+    }
+}
+
 /// The Modified Krovak correction: an evaluation point and ten coefficients.
 #[derive(Debug)]
 struct Modified {

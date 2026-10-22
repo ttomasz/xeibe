@@ -1,7 +1,8 @@
 # CRS WKT: reading, writing and identifying
 
-> **Status: design, 2026-10-22. Nothing is implemented yet.** This is the
-> first part of phase 2 in [pyproj-compat.md](pyproj-compat.md#phases).
+> **Status: design, 2026-10-22. Step 1, the WKT2 reader, is implemented**
+> (`xeibe_reproject::wkt`, `Crs::from_wkt`; see [Implementation](#implementation)).
+> This is the first part of phase 2 in [pyproj-compat.md](pyproj-compat.md#phases).
 > Facts about PROJ were checked against PROJ 9.8.1 through pyproj 3.8.0, and
 > facts about EPSG against EPSG 13.106.
 
@@ -178,6 +179,13 @@ a recorded reason when PROJJSON has nowhere to put it. Operation WKT is
 **out of scope** (`Transformer.from_pipeline` takes PROJ strings, not WKT
 operations). `BOUNDCRS` is read; see [TOWGS84](#towgs84-and-boundcrs).
 
+Methods and parameters often come without ids (PROJ's simplified output,
+hand-written WKT). `Crs` then finds their EPSG codes by name, through
+`xeibe_crs::method_code` and `parameter_code` (EPSG's names and aliases,
+generated into `xeibe-crs`). A parameter without a unit takes the CRS's
+length unit, its base's angle unit or unity, by what its name says it
+measures.
+
 ### WKT1
 
 WKT1 needs translation, not just mapping:
@@ -344,6 +352,17 @@ over it. The levels are PROJ's:
 | 70 | Equivalent, and the names don't match at all |
 | 25 | Not equivalent, but the input's `ID`/`AUTHORITY` names this code, or the names match |
 
+PROJ also gives 60 and 50 (736 and 143 times in the identification
+vectors). 60 comes with several equally good candidates, for example
+EPSG:4173 as WKT1_GDAL without ids: `[[4173,60],[7084,60],…]`, and
+`to_epsg()` gives None. The vectors pin down when each occurs. Other
+measured rules:
+
+- PROJ identifies **no engineering CRS**, not even with its `ID`.
+  `identify` does the same.
+- For a **deprecated CRS** without ids, PROJ ranks the live CRS that
+  replaced it first: EPSG:3785 gives 3857 (and the deprecated code only 25).
+
 Candidates:
 
 1. **The input's own id.** It is kept at 100 when the definitions are
@@ -384,6 +403,43 @@ from EPSG's alias table as the CRS aliases are now.
 All of these run against the oracle database and the EPSG archive, so like
 the PROJ comparisons today they are `--ignored` tests run locally. The
 committed subsets run everywhere, CI included.
+
+## Implementation
+
+**Step 1 (2026-10-22): the WKT2 reader.** It reads WKT2 2015 and 2019 into
+PROJJSON (`xeibe_reproject::wkt::to_projjson`); `Crs::from_wkt` converts
+with it. `scripts/gen_wkt_vectors.py` writes the vectors: EPSG's archive
+(`epsg.jsonl`), PROJ's output (`wkt.jsonl`) and PROJ's identification
+(`identify.jsonl`).
+
+- All **8,356 CRSs in EPSG's archive** read as the PROJJSON `xeibe-crs`
+  has for the code, and as a `Crs` equivalent to the EPSG one.
+- **PROJ's WKT2 2019 and 2015** (8,883 and 8,882 strings) read as CRSs
+  equivalent to the EPSG ones, apart from the 40 on GR96 in 2015 (below).
+
+What the comparison turned up, in EPSG's export:
+
+- It rounds prime meridians: Paris is `0.040792344` radian, 9.6e-9 from
+  the database's 2.5969213 grad (2.5 mm). PROJ still finds the CRS
+  equivalent; its tolerance for prime meridians is 1e-8 relative
+  (measured), which `Crs::equivalent` now uses too.
+- Four ensembles' ids say `"EPSG "`; the reader trims authorities.
+- `BASEGEOGCRS` carries no coordinate system and often no unit, so a base
+  CRS's axis units (grads for NTF (Paris)) are lost. The reader gives the
+  base latitude and longitude in the unit it has, or degrees, as PROJ does.
+- Axis abbreviations can hold brackets: `"Easting (E(X))"`.
+
+In PROJ's output:
+
+- WKT2 2015 has no ensembles, and PROJ writes each as a `DATUM` named
+  without the word "ensemble". `Crs::equivalent` matches those names, as
+  PROJ does. GR96 is the exception: PROJ writes its ensemble under the
+  name of the datum it superseded, "Greenland 1996" (EPSG:6747). Matching
+  that needs EPSG's datum names (decision 4), so these 40 strings are
+  listed as known until WKT1 brings them.
+- Modified Krovak (EPSG:5224, 5225, 5515, 5516) comes without its
+  evaluation point and C1 to C10, which PROJ fixes in code. `Crs` adds
+  EPSG's values, the same for all four, when none are given.
 
 ## Order of work
 

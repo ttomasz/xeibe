@@ -7,6 +7,10 @@ pub enum Error {
     /// The PROJJSON is malformed or lacks something the conversion needs.
     #[error("{crs}: invalid PROJJSON: {message}")]
     Projjson { crs: String, message: String },
+    /// WKT that doesn't parse, or misses something its node needs.
+    /// `offset` is in bytes from the start of the text.
+    #[error("invalid WKT at byte {offset}: {message}")]
+    Wkt { offset: usize, message: String },
     /// The CRS is valid but uses something this crate doesn't implement: a
     /// projection method, a CRS type, an axis direction.
     #[error("{crs}: {what} is not supported")]

@@ -115,9 +115,16 @@ fn close(a: f64, b: f64) -> bool {
 }
 
 /// Two datums named by key (`EPSG:6258`, or the name without one), or by
-/// name: one CRS may come with identifiers and the other without.
+/// name: one CRS may come with identifiers and the other without. An
+/// ensemble's name matches without its last word, as PROJ matches it:
+/// WKT2 2015, which has no ensembles, writes EPSG:4326's as
+/// `DATUM["World Geodetic System 1984"]`.
 fn same_key(key_a: &str, name_a: &str, key_b: &str, name_b: &str) -> bool {
-    key_a == key_b || name_a.trim().eq_ignore_ascii_case(name_b.trim())
+    fn bare(name: &str) -> &str {
+        let name = name.trim();
+        name.strip_suffix(" ensemble").unwrap_or(name)
+    }
+    key_a == key_b || bare(name_a).eq_ignore_ascii_case(bare(name_b))
 }
 
 impl Datum {
@@ -125,8 +132,15 @@ impl Datum {
         same_key(&self.key, &self.name, &other.key, &other.name)
             && close(self.ellipsoid.a, other.ellipsoid.a)
             && close(self.ellipsoid.b, other.ellipsoid.b)
-            && close(self.prime_meridian, other.prime_meridian)
+            && same_meridian(self.prime_meridian, other.prime_meridian)
     }
+}
+
+/// Prime meridians within 1e-8 relative, PROJ's tolerance for them
+/// (measured: it accepts EPSG's own WKT for Paris, rounded to 0.040792344
+/// radian, 9.6e-9 from the database's 2.5969213 grad, and rejects 1.2e-8).
+fn same_meridian(a: f64, b: f64) -> bool {
+    a == b || (a - b).abs() <= 1e-8 * a.abs().max(b.abs())
 }
 
 impl Axis {
@@ -252,6 +266,11 @@ impl Crs {
         Self::from_value(&value)
     }
 
+    /// A CRS from WKT: see [`crate::wkt`] for what is read.
+    pub fn from_wkt(text: &str) -> Result<Self, Error> {
+        Self::from_value(&crate::wkt::to_value(text)?)
+    }
+
     pub(crate) fn from_value(value: &Value) -> Result<Self, Error> {
         let name = value["name"].as_str().unwrap_or("unnamed CRS").to_owned();
         let code = epsg_id(value);
@@ -300,8 +319,9 @@ impl Crs {
                     .as_str()
                     .unwrap_or("unnamed method")
                     .to_owned();
-                let method_code = epsg_id(&conversion["method"]);
-                let params = ctx.params(conversion)?;
+                let method_code = method_id(&conversion["method"]);
+                let mut params = ctx.params(conversion)?;
+                methods::complete(method_code, &mut params);
                 let projection = methods::build(method_code, &method, &params, &datum.ellipsoid)
                     .map_err(|e| match e {
                         methods::BuildError::UnknownMethod => {
@@ -339,7 +359,7 @@ impl Crs {
                 // A change of unit or of direction (height to depth) of its
                 // base: both are in the axis, so only the datum comes from
                 // the base.
-                let method = epsg_id(&value["conversion"]["method"]);
+                let method = method_id(&value["conversion"]["method"]);
                 if !matches!(method, Some(1068 | 1069 | 1104)) {
                     let name = value["conversion"]["method"]["name"].as_str().unwrap_or("");
                     return Err(ctx.unsupported(&format!("a vertical CRS derived by {name}")));
@@ -589,6 +609,12 @@ fn epsg_id(value: &Value) -> Option<u32> {
     }
 }
 
+/// A method's EPSG code: its id, else its EPSG name, for definitions such
+/// as WKT that may name it without one.
+fn method_id(method: &Value) -> Option<u32> {
+    epsg_id(method).or_else(|| method["name"].as_str().and_then(xeibe_crs::method_code))
+}
+
 /// The components of a diagonal direction (northEast and the like).
 const DIAGONAL: f64 = std::f64::consts::FRAC_1_SQRT_2;
 
@@ -747,7 +773,10 @@ impl Ctx<'_> {
     fn params(&self, conversion: &Value) -> Result<Params, Error> {
         let mut params = Params::default();
         for param in conversion["parameters"].as_array().into_iter().flatten() {
-            let Some(code) = epsg_id(param) else {
+            // By name when the definition gives no id, as WKT may.
+            let code = epsg_id(param)
+                .or_else(|| param["name"].as_str().and_then(xeibe_crs::parameter_code));
+            let Some(code) = code else {
                 let name = param["name"].as_str().unwrap_or("unnamed");
                 return Err(self.unsupported(&format!("the parameter {name} without an EPSG id")));
             };

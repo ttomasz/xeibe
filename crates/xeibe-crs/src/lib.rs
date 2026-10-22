@@ -34,6 +34,7 @@ use std::sync::{Mutex, OnceLock};
 
 // Generated data: bbox longitudes such as 3.14 are not π.
 mod aliases;
+mod names;
 #[allow(clippy::approx_constant)]
 mod table;
 
@@ -146,6 +147,28 @@ pub fn alias(name: &str) -> Option<u32> {
         .binary_search_by(|(alias, _)| (*alias).cmp(name.as_str()))
         .ok()
         .map(|index| aliases[index].1)
+}
+
+/// The EPSG code of an operation method, by its name or one of EPSG's
+/// aliases for it, case-insensitively: `"Transverse Mercator"` is 9807.
+/// For definitions that name methods without ids, such as WKT.
+pub fn method_code(name: &str) -> Option<u32> {
+    by_name(names::METHODS, name)
+}
+
+/// The EPSG code of an operation parameter, by its name or one of EPSG's
+/// aliases for it, case-insensitively: `"False easting"` is 8806 and
+/// `"Central Meridian"` is 8802.
+pub fn parameter_code(name: &str) -> Option<u32> {
+    by_name(names::PARAMETERS, name)
+}
+
+fn by_name(table: &[(&str, u32)], name: &str) -> Option<u32> {
+    let name = name.trim().to_lowercase();
+    table
+        .binary_search_by(|(n, _)| (*n).cmp(name.as_str()))
+        .ok()
+        .map(|index| table[index].1)
 }
 
 // -------------------------------------------------------------------------

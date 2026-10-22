@@ -53,6 +53,7 @@ mod operation;
 mod registry;
 mod select;
 mod transform;
+pub mod wkt;
 
 pub use bounds::DEFAULT_DENSIFY;
 pub use crs::Crs;

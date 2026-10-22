@@ -1,7 +1,7 @@
 [package]
 name = "xeibe-crs"
 description = "EPSG CRS facts, PROJJSON definitions and coordinate operations, generated from the EPSG Geodetic Parameter Dataset. Experimental: AI-generated, not thoroughly tested, unstable API"
-version = "0.3.1+epsg-13.106"
+version = "0.4.0+epsg-13.106"
 edition.workspace = true
 rust-version.workspace = true
 repository.workspace = true
