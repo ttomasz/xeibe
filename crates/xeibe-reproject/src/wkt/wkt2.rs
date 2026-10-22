@@ -16,7 +16,7 @@ use serde_json::{Map, Value, json};
 use super::parse::{Arg, Node};
 use crate::error::Error;
 
-type Obj = Map<String, Value>;
+pub(super) type Obj = Map<String, Value>;
 
 /// A CRS node to its PROJJSON object.
 pub(crate) fn crs(node: &Node) -> Result<Value, Error> {
@@ -123,7 +123,10 @@ const CS_TYPES: &[&str] = &[
 // --- node access -----------------------------------------------------------
 
 impl Node {
-    fn children<'a, 'k>(&'a self, keywords: &'k [&'k str]) -> impl Iterator<Item = &'a Node> + 'k
+    pub(super) fn children<'a, 'k>(
+        &'a self,
+        keywords: &'k [&'k str],
+    ) -> impl Iterator<Item = &'a Node> + 'k
     where
         'a: 'k,
     {
@@ -133,35 +136,35 @@ impl Node {
         })
     }
 
-    fn child(&self, keywords: &[&str]) -> Option<&Node> {
+    pub(super) fn child(&self, keywords: &[&str]) -> Option<&Node> {
         self.args.iter().find_map(|a| match a {
             Arg::Node(n) if keywords.contains(&n.keyword.as_str()) => Some(n),
             _ => None,
         })
     }
 
-    fn text(&self, i: usize) -> Result<&str, Error> {
+    pub(super) fn text(&self, i: usize) -> Result<&str, Error> {
         match self.args.get(i) {
             Some(Arg::Text(s)) => Ok(s),
             _ => Err(self.invalid(&format!("expected a quoted string as value {}", i + 1))),
         }
     }
 
-    fn number(&self, i: usize) -> Result<f64, Error> {
+    pub(super) fn number(&self, i: usize) -> Result<f64, Error> {
         match self.args.get(i) {
             Some(Arg::Number(v)) => Ok(*v),
             _ => Err(self.invalid(&format!("expected a number as value {}", i + 1))),
         }
     }
 
-    fn word(&self, i: usize) -> Result<&str, Error> {
+    pub(super) fn word(&self, i: usize) -> Result<&str, Error> {
         match self.args.get(i) {
             Some(Arg::Word(w)) => Ok(w),
             _ => Err(self.invalid(&format!("expected a word as value {}", i + 1))),
         }
     }
 
-    fn invalid(&self, message: &str) -> Error {
+    pub(super) fn invalid(&self, message: &str) -> Error {
         Error::Wkt {
             offset: self.offset,
             message: format!("{}: {message}", self.keyword),
@@ -169,7 +172,7 @@ impl Node {
     }
 
     /// Fails on a child node not in `allowed` (nor in [`SKIPPED`]).
-    fn only(&self, allowed: &[&[&str]]) -> Result<(), Error> {
+    pub(super) fn only(&self, allowed: &[&[&str]]) -> Result<(), Error> {
         for a in &self.args {
             if let Arg::Node(n) = a {
                 let k = n.keyword.as_str();
@@ -182,7 +185,7 @@ impl Node {
     }
 }
 
-fn unsupported(node: &Node, what: &str) -> Error {
+pub(super) fn unsupported(node: &Node, what: &str) -> Error {
     Error::Unsupported {
         crs: format!("WKT at byte {}", node.offset),
         what: what.to_owned(),
@@ -191,7 +194,7 @@ fn unsupported(node: &Node, what: &str) -> Error {
 
 /// An integral value as a JSON integer, as PROJ writes `6378137`, not
 /// `6378137.0`.
-fn num(v: f64) -> Value {
+pub(super) fn num(v: f64) -> Value {
     if v.fract() == 0.0 && v.abs() < 9.007_199_254_740_992e15 {
         json!(v as i64)
     } else {
@@ -202,7 +205,7 @@ fn num(v: f64) -> Value {
 // --- units -----------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum UnitKind {
+pub(super) enum UnitKind {
     Linear,
     Angular,
     Scale,
@@ -212,40 +215,40 @@ enum UnitKind {
 }
 
 #[derive(Debug, Clone)]
-struct Unit {
-    kind: UnitKind,
-    json: Value,
+pub(super) struct Unit {
+    pub(super) kind: UnitKind,
+    pub(super) json: Value,
 }
 
 impl Unit {
-    fn metre() -> Self {
+    pub(super) fn metre() -> Self {
         Self {
             kind: UnitKind::Linear,
             json: json!("metre"),
         }
     }
 
-    fn degree() -> Self {
+    pub(super) fn degree() -> Self {
         Self {
             kind: UnitKind::Angular,
             json: json!("degree"),
         }
     }
 
-    fn unity() -> Self {
+    pub(super) fn unity() -> Self {
         Self {
             kind: UnitKind::Scale,
             json: json!("unity"),
         }
     }
 
-    fn is(&self, shorthand: &str) -> bool {
+    pub(super) fn is(&self, shorthand: &str) -> bool {
         self.json == shorthand
     }
 
     /// A value in this unit: a bare number in metres or degrees, as PROJJSON
     /// writes the common cases, else `{value, unit}`.
-    fn measure(&self, v: f64, bare: &str) -> Value {
+    pub(super) fn measure(&self, v: f64, bare: &str) -> Value {
         if self.is(bare) {
             num(v)
         } else {
@@ -254,12 +257,12 @@ impl Unit {
     }
 
     /// Whether this unit can apply to a value of `kind`.
-    fn fits(&self, kind: UnitKind) -> bool {
+    pub(super) fn fits(&self, kind: UnitKind) -> bool {
         self.kind == kind || self.kind == UnitKind::Any
     }
 }
 
-fn unit(node: &Node) -> Result<Unit, Error> {
+pub(super) fn unit(node: &Node) -> Result<Unit, Error> {
     let kind = match node.keyword.as_str() {
         "LENGTHUNIT" => UnitKind::Linear,
         "ANGLEUNIT" => UnitKind::Angular,
@@ -303,7 +306,7 @@ fn unit(node: &Node) -> Result<Unit, Error> {
 }
 
 /// The unit node directly inside `node`, if any.
-fn own_unit(node: &Node) -> Result<Option<Unit>, Error> {
+pub(super) fn own_unit(node: &Node) -> Result<Option<Unit>, Error> {
     node.child(UNITS).map(unit).transpose()
 }
 
@@ -342,7 +345,7 @@ fn id(node: &Node) -> Result<Value, Error> {
 }
 
 /// `id`, or `ids` when there are several.
-fn ids(node: &Node, out: &mut Obj) -> Result<(), Error> {
+pub(super) fn ids(node: &Node, out: &mut Obj) -> Result<(), Error> {
     let all = node
         .children(&["ID"])
         .map(id)
@@ -427,10 +430,16 @@ fn finish(node: &Node, out: &mut Obj) -> Result<(), Error> {
     ids(node, out)
 }
 
+/// An object's type and name, without the " (deprecated)" PROJ appends to
+/// deprecated CRSs in WKT1.
 fn named(type_name: &str, node: &Node) -> Result<Obj, Error> {
     let mut o = Obj::new();
     o.insert("type".into(), json!(type_name));
-    o.insert("name".into(), json!(node.text(0)?));
+    let name = node.text(0)?;
+    o.insert(
+        "name".into(),
+        json!(name.strip_suffix(" (deprecated)").unwrap_or(name)),
+    );
     Ok(o)
 }
 
@@ -458,11 +467,17 @@ fn ellipsoid(node: &Node) -> Result<Value, Error> {
 fn prime_meridian(node: &Node) -> Result<Option<Value>, Error> {
     node.only(&[UNITS, &["ID"]])?;
     let name = node.text(0)?;
-    let longitude = node.number(1)?;
+    let mut longitude = node.number(1)?;
     if longitude == 0.0 && name.eq_ignore_ascii_case("Greenwich") {
         return Ok(None);
     }
-    let u = own_unit(node)?.unwrap_or_else(Unit::degree);
+    let mut u = own_unit(node)?.unwrap_or_else(Unit::degree);
+    // PROJ's correction for meridians defined in degrees, minutes and
+    // seconds: EPSG's export rounds Lisbon to -9.131906111.
+    if let Some(degrees) = super::wkt1::sexagesimal(name, longitude) {
+        longitude = degrees;
+        u = Unit::degree();
+    }
     let mut o = Obj::new();
     o.insert("name".into(), json!(name));
     o.insert("longitude".into(), u.measure(longitude, "degree"));

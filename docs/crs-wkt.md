@@ -1,8 +1,9 @@
 # CRS WKT: reading, writing and identifying
 
-> **Status: design, 2026-10-22. Steps 1 and 2, the WKT2 reader and the
-> WKT2 2019 writer, are implemented** (`xeibe_reproject::wkt`,
-> `Crs::from_wkt`; see [Implementation](#implementation)).
+> **Status: design, 2026-10-22. Steps 1 to 3 are implemented:** reading
+> WKT2 and WKT1 (GDAL's form), writing WKT2 2019 and WKT1_GDAL
+> (`xeibe_reproject::wkt`, `Crs::from_wkt`; see
+> [Implementation](#implementation)).
 > This is the first part of phase 2 in [pyproj-compat.md](pyproj-compat.md#phases).
 > Facts about PROJ were checked against PROJ 9.8.1 through pyproj 3.8.0, and
 > facts about EPSG against EPSG 13.106.
@@ -426,7 +427,7 @@ with it. `scripts/gen_wkt_vectors.py` writes the vectors: EPSG's archive
 - All **8,356 CRSs in EPSG's archive** read as the PROJJSON `xeibe-crs`
   has for the code, and as a `Crs` equivalent to the EPSG one.
 - **PROJ's WKT2 2019 and 2015** (8,883 and 8,882 strings) read as CRSs
-  equivalent to the EPSG ones, apart from the 40 on GR96 in 2015 (below).
+  equivalent to the EPSG ones.
 
 What the comparison turned up, in EPSG's export:
 
@@ -442,12 +443,13 @@ What the comparison turned up, in EPSG's export:
 
 In PROJ's output:
 
-- WKT2 2015 has no ensembles, and PROJ writes each as a `DATUM` named
-  without the word "ensemble". `Crs::equivalent` matches those names, as
-  PROJ does. GR96 is the exception: PROJ writes its ensemble under the
-  name of the datum it superseded, "Greenland 1996" (EPSG:6747). Matching
-  that needs EPSG's datum names (decision 4), so these 40 strings are
-  listed as known until WKT1 brings them.
+- WKT2 2015 has no ensembles, so PROJ writes three of them under
+  traditional datum names (`ensembleNameToNonEnsembleName`): WGS 84 as
+  "World Geodetic System 1984", ETRS89 as "European Terrestrial Reference
+  System 1989", and GR96 as "Greenland 1996", the name of the datum it
+  superseded (EPSG:6747). `Crs::equivalent` matches datum names with the
+  same map, and as PROJ's `isEquivalentName` compares them (ported in
+  `name.rs`).
 - Modified Krovak (EPSG:5224, 5225, 5515, 5516) comes without its
   evaluation point and C1 to C10, which PROJ fixes in code. `Crs` adds
   EPSG's values, the same for all four, when none are given.
@@ -471,6 +473,53 @@ the EPSG one. The generator now writes EPSG's anchor epochs into the
 PROJJSON (`xeibe-crs` 0.4.0), which the comparison showed missing for
 about 2,400 CRSs. Pretty output matches PROJ's indentation (axes one level
 deeper than their CS).
+
+**Step 3 (2026-10-22): WKT1.** Reading follows PROJ's `WKTParser` and
+writing its WKT1_GDAL export, rule for rule:
+
+- `scripts/gen_wkt1_names.py` generates `src/wkt/names.rs` from PROJ's
+  mapping tables (`parammappings.cpp`, MIT): 36 methods with their WKT1
+  and EPSG names and 178 parameters, plus PROJ's ESRI table (40
+  projections) for step 5. PROJ's own WKT1 output for every EPSG CRS
+  reads back through it as the same methods and parameters, apart from
+  PROJ's own quirks, which it lists.
+- `xeibe-crs` gains EPSG's datums and their aliases (`DATUMS`,
+  `DATUM_ALIASES`) and units by name (`unit_code`). A datum named only
+  GDAL's way (`Ordnance_Survey_of_Great_Britain_1936`) resolves to its
+  EPSG datum by PROJ's name matching, as PROJ resolves it.
+- Reading: PROJ's default axes (a `GEOGCS`'s from the EPSG CRS its
+  `AUTHORITY` names, else longitude, latitude; a `PROJCS`'s by method:
+  south-west for Krovak, along meridians for polar ones), its prime
+  meridian corrections (Paris in degrees under grads, sexagesimal
+  meridians, which the WKT2 reader now applies too), Web Mercator by its
+  `PROJ4` extension, the Mercator_1SP, Polar_Stereographic, Lambert
+  Conformal Conic and Hotine special cases, and methods PROJ writes under
+  their EPSG names. The one difference: the default polar axes' meridians
+  turn with the longitude of origin, where PROJ gives 90° and 0° (its own
+  conversions ignore them).
+- Writing: `AUTHORITY` on every object (a CRS's degrees as 9122), datum
+  names as GDAL 2 wrote them (`morphNameToESRI`), the prime meridian in
+  degrees, `AXIS` only where PROJ writes it, " (deprecated)" on deprecated
+  geodetic and projected CRSs, scale factors as plain factors, and an
+  error where PROJ has none (geographic 3D CRSs and projected CRSs on
+  them, methods PROJ gives no WKT1 name).
+
+Against PROJ, for every EPSG CRS:
+
+- **Reading PROJ's WKT1_GDAL** (8,524 strings): the axes PROJ reads, and
+  equivalent to the EPSG CRS exactly when PROJ finds it equal, apart from
+  13 listed in the test. In 6 PROJ is stricter than `Crs::equivalent`:
+  polar axes that amount to east and north (3408, 3409, 27702), a unit
+  equal by factor but not by name (4226), and a datum equal by id but not
+  by name (M'poraloko). In 4 PROJ is more lenient: it compares polar axes
+  by direction only, so UPS North and South and RSPS2000 written with
+  easting first equal EPSG's northing first, and it takes a deprecated
+  method under another's WKT1 name (3786). And EPSG:3785 (`TOWGS84`) and
+  5817 (an unspecified axis direction) wait for later steps.
+- **Writing WKT1_GDAL** (8,521 CRSs): PROJ's text token for token, apart
+  from EPSG:3785, which PROJ writes through a path of its own. Read back,
+  each is the EPSG CRS exactly when PROJ's own WKT1 is (WKT1 loses
+  northing-first axis order: 2,442 projected and compound CRSs).
 
 ## Order of work
 

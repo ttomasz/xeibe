@@ -171,21 +171,10 @@ fn category(d: &str) -> String {
     out
 }
 
-/// Known: PROJ's WKT2 2015 writes the GR96 ensemble (EPSG:1421) under the
-/// name of the datum it superseded, "Greenland 1996" (EPSG:6747). Telling
-/// them apart needs EPSG's datum names, which come with WKT1
-/// (`docs/crs-wkt.md`, decision 4).
-fn known(source: &str, text: &str) -> bool {
-    source == "PROJ's WKT2_2015" && text.contains(r#"DATUM["Greenland 1996""#)
-}
-
 /// Why the CRS read from `text` isn't the EPSG one, for codes
 /// `Crs::from_epsg` takes.
 fn converts(code: u32, text: &str, source: &str) -> Option<String> {
     let epsg = Crs::from_epsg(code).ok()?;
-    if known(source, text) {
-        return None;
-    }
     match Crs::from_wkt(text) {
         Ok(crs) if crs.equivalent(&epsg, false) => None,
         Ok(_) => Some(format!("{source}: not equivalent")),
@@ -338,11 +327,11 @@ fn what_is_not_read_is_named() {
         ANGLEUNIT["degree",0.0174532925199433],FROBNICATE[1]]"#;
     let e = wkt::to_projjson(unknown).unwrap_err();
     assert!(e.to_string().contains("FROBNICATE in GEOGCRS"), "{e}");
-    let wkt1 = r#"GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],
-        PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]"#;
+    let towgs84 = r#"GEOGCS["x",DATUM["y",SPHEROID["GRS 1980",6378137,298.257222101],
+        TOWGS84[0,0,0,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]"#;
     assert!(matches!(
-        wkt::to_projjson(wkt1),
-        Err(Error::Unsupported { what, .. }) if what == "WKT1"
+        wkt::to_projjson(towgs84),
+        Err(Error::Unsupported { what, .. }) if what.contains("TOWGS84")
     ));
     let missing = r#"GEOGCRS["x",CS[ellipsoidal,2],AXIS["lat",north],AXIS["lon",east]]"#;
     assert!(matches!(wkt::to_projjson(missing), Err(Error::Wkt { .. })));
@@ -456,7 +445,12 @@ fn without_remark(wkt: &str) -> &str {
 /// - PROJ makes a vertical datum with a frame reference epoch dynamic.
 ///   EPSG types RH2000 (EPSG:5208) as a plain vertical datum with an epoch
 ///   of 2000, and its own WKT has no `DYNAMIC`; we follow EPSG.
-fn known_writing(at: &str, what: &str) -> bool {
+fn known_writing(version: wkt::Version, code: u32, at: &str, what: &str) -> bool {
+    if version == wkt::Version::Wkt1Gdal {
+        return KNOWN_WKT1_WRITING
+            .iter()
+            .any(|(codes, _)| codes.contains(&code));
+    }
     (at.ends_with("VERTCRS") && what.starts_with(r#"Some(Open("BASEVERTCRS"))"#))
         || (at.ends_with("PROJCRS/CONVERSION") && what.starts_with(r#"Some(Open("PARAMETER"))"#))
         || (at.ends_with("VERTCRS") && what == r#"Some(Open("VDATUM")) != Some(Open("DYNAMIC"))"#)
@@ -464,18 +458,39 @@ fn known_writing(at: &str, what: &str) -> bool {
 
 /// Our WKT2 2019 for each EPSG CRS in `wkt.jsonl` against PROJ's, and read
 /// back by our reader as a CRS equivalent to the EPSG one.
-fn check_writing(path: &Path) -> (usize, usize, String) {
+/// Where our WKT1_GDAL knowingly differs from PROJ's.
+const KNOWN_WKT1_WRITING: &[(&[u32], &str)] = &[
+    // PROJ writes this deprecated CRS through a path of its own, with
+    // TOWGS84 and without the "(deprecated)" it gives other deprecated
+    // CRSs.
+    (&[3785], "Popular Visualisation CRS / Mercator"),
+];
+
+fn check_writing(path: &Path, version: wkt::Version) -> (usize, usize, String) {
+    let key = match version {
+        wkt::Version::Wkt1Gdal => "WKT1_GDAL",
+        _ => "WKT2_2019",
+    };
     let mut same = 0;
     let mut written = 0;
     let mut differing: BTreeMap<String, Vec<(u32, String)>> = BTreeMap::new();
     for r in records(path) {
         let code = r["code"].as_u64().unwrap() as u32;
-        let (Some(json), Some(theirs)) =
-            (xeibe_crs::projjson(code), r["wkt"]["WKT2_2019"].as_str())
-        else {
+        let Some(json) = xeibe_crs::projjson(code) else {
             continue;
         };
-        let ours = match wkt::from_projjson(json, wkt::Version::Wkt2_2019, false) {
+        let ours = wkt::from_projjson(json, version, false);
+        let Some(theirs) = r["wkt"][key].as_str() else {
+            // PROJ can't write it either.
+            if let Ok(ours) = ours {
+                differing
+                    .entry("written where PROJ can't".into())
+                    .or_default()
+                    .push((code, ours));
+            }
+            continue;
+        };
+        let ours = match ours {
             Ok(w) => w,
             Err(e) => {
                 differing
@@ -486,8 +501,15 @@ fn check_writing(path: &Path) -> (usize, usize, String) {
             }
         };
         written += 1;
+        // Read back, the CRS is the EPSG one; in WKT1 only when PROJ's own
+        // WKT1 reads back so (it can't say northing, easting).
+        let expected = match version {
+            wkt::Version::Wkt1Gdal => r["read"][key]["equals"].as_bool().unwrap_or(false),
+            _ => true,
+        };
         if let Ok(epsg) = Crs::from_epsg(code)
-            && !Crs::from_wkt(&ours).is_ok_and(|c| c.equivalent(&epsg, false))
+            && Crs::from_wkt(&ours).is_ok_and(|c| c.equivalent(&epsg, false)) != expected
+            && !KNOWN_WKT1.iter().any(|(codes, _)| codes.contains(&code))
         {
             differing
                 .entry("read back: not the EPSG CRS".into())
@@ -496,7 +518,7 @@ fn check_writing(path: &Path) -> (usize, usize, String) {
         }
         match first_difference(without_remark(&ours), without_remark(theirs)) {
             None => same += 1,
-            Some((at, what)) if known_writing(&at, &what) => same += 1,
+            Some((at, what)) if known_writing(version, code, &at, &what) => same += 1,
             Some((at, what)) => differing.entry(at).or_default().push((code, what)),
         }
     }
@@ -510,8 +532,10 @@ fn check_writing(path: &Path) -> (usize, usize, String) {
 
 #[test]
 fn epsg_crss_write_as_proj_writes_them() {
-    let (written, same, report) =
-        check_writing(&xeibe_testkit::data_dir().join("crs-wkt/wkt.jsonl"));
+    let (written, same, report) = check_writing(
+        &xeibe_testkit::data_dir().join("crs-wkt/wkt.jsonl"),
+        wkt::Version::Wkt2_2019,
+    );
     assert!(written > 80, "{written}");
     assert_eq!(same, written, "{report}");
 }
@@ -519,10 +543,34 @@ fn epsg_crss_write_as_proj_writes_them() {
 #[test]
 #[ignore = "needs target/crs-wkt/wkt.jsonl (scripts/gen_wkt_vectors.py --all)"]
 fn every_epsg_crs_writes_as_proj_writes_it() {
-    let (written, same, report) =
-        check_writing(&xeibe_testkit::data_dir().join("../../target/crs-wkt/wkt.jsonl"));
+    let (written, same, report) = check_writing(
+        &xeibe_testkit::data_dir().join("../../target/crs-wkt/wkt.jsonl"),
+        wkt::Version::Wkt2_2019,
+    );
     println!("{written} written, {same} as PROJ writes them (or a listed difference)\n{report}");
     assert_eq!(same, written, "{report}");
+}
+
+#[test]
+fn epsg_crss_write_wkt1_as_proj_writes_them() {
+    let (written, same, report) = check_writing(
+        &xeibe_testkit::data_dir().join("crs-wkt/wkt.jsonl"),
+        wkt::Version::Wkt1Gdal,
+    );
+    assert!(written > 80, "{written}");
+    assert!(report.is_empty(), "{report}");
+    assert_eq!(same, written);
+}
+
+#[test]
+#[ignore = "needs target/crs-wkt/wkt.jsonl (scripts/gen_wkt_vectors.py --all)"]
+fn every_epsg_crs_writes_wkt1_as_proj_writes_it() {
+    let (written, same, report) = check_writing(
+        &xeibe_testkit::data_dir().join("../../target/crs-wkt/wkt.jsonl"),
+        wkt::Version::Wkt1Gdal,
+    );
+    println!("{written} written, {same} as PROJ writes them (or a listed difference)\n{report}");
+    assert!(report.is_empty(), "{report}");
 }
 
 #[test]
@@ -571,4 +619,167 @@ fn pretty_wkt_is_indented_as_proj_indents_it() {
         BBOX[41.31,-4.87,51.14,9.63]],
     ID["EPSG",4807]]"#;
     assert_eq!(text, proj);
+}
+
+// --- WKT1 ------------------------------------------------------------------
+
+/// The axis directions of a PROJJSON CRS, a compound CRS's in turn.
+fn directions(v: &Value) -> Vec<String> {
+    match v["components"].as_array() {
+        Some(list) => list.iter().flat_map(directions).collect(),
+        None => v["coordinate_system"]["axis"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|a| a["direction"].as_str().unwrap_or("").to_owned())
+            .collect(),
+    }
+}
+
+/// Where our reading of PROJ's WKT1 knowingly differs from PROJ's:
+const KNOWN_WKT1: &[(&[u32], &str)] = &[
+    // PROJ compares axes along meridians by direction only. UPS North and
+    // South and RSPS2000 have northing first in EPSG; WKT1 without AXIS
+    // gives easting first, which PROJ calls equal and we don't.
+    (
+        &[5482, 32661, 32761],
+        "PROJ ignores the order of polar axes",
+    ),
+    // Deprecated method 9823 written as Equirectangular reads back as 1029.
+    (&[3786], "a deprecated method under another's WKT1 name"),
+    // Axes along meridians that amount to east and north (EPSG's) against
+    // WKT1's east and north: equal here, not in PROJ.
+    (&[3408, 3409, 27702], "polar axes that are east and north"),
+    // "degree minute second hemisphere" with a degree's factor.
+    (&[4226], "a unit equal by factor, not by name"),
+    // GDAL writes M'poraloko as M_poraloko; the AUTHORITY ids agree.
+    (&[4266, 26632, 26692], "a datum equal by id, not by name"),
+    // An unspecified axis direction, which `Crs` doesn't take.
+    (&[5817], "an unspecified axis"),
+    // TOWGS84: a bound CRS, step 6 of docs/crs-wkt.md.
+    (&[3785], "TOWGS84"),
+];
+
+/// Reads PROJ's WKT1 for each EPSG CRS in `wkt.jsonl` and compares with
+/// PROJ's own reading of it: the same axes, and equivalent to the EPSG CRS
+/// exactly when PROJ finds it equal.
+fn check_wkt1(path: &Path, version: &str) -> (usize, String) {
+    let mut read = 0;
+    let mut differing: BTreeMap<String, Vec<u32>> = BTreeMap::new();
+    for r in records(path) {
+        let code = r["code"].as_u64().unwrap() as u32;
+        let Some(text) = r["wkt"][version].as_str() else {
+            continue;
+        };
+        let proj = &r["read"][version];
+        read += 1;
+        if KNOWN_WKT1.iter().any(|(codes, _)| codes.contains(&code)) {
+            continue;
+        }
+        let ours: Value = match wkt::to_projjson(text) {
+            Ok(j) => serde_json::from_str(&j).unwrap(),
+            Err(e) => {
+                differing
+                    .entry(format!("error: {e}"))
+                    .or_default()
+                    .push(code);
+                continue;
+            }
+        };
+        let theirs: Vec<String> = proj["axes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|a| a.as_str().unwrap().to_owned())
+            .collect();
+        if directions(&ours) != theirs {
+            differing
+                .entry(format!("axes {:?} != PROJ's {theirs:?}", directions(&ours)))
+                .or_default()
+                .push(code);
+        }
+        if let Ok(epsg) = Crs::from_epsg(code) {
+            let equal = match Crs::from_wkt(text) {
+                Ok(c) => c.equivalent(&epsg, false),
+                Err(e) => {
+                    differing.entry(format!("Crs: {e}")).or_default().push(code);
+                    continue;
+                }
+            };
+            if Some(equal) != proj["equals"].as_bool() {
+                differing
+                    .entry(format!(
+                        "equivalent {equal}, PROJ's equals {}",
+                        proj["equals"]
+                    ))
+                    .or_default()
+                    .push(code);
+            }
+        }
+    }
+    let mut report = String::new();
+    for (what, codes) in &differing {
+        report += &format!(
+            "{} x {what}: {:?}\n",
+            codes.len(),
+            &codes[..codes.len().min(8)]
+        );
+    }
+    (read, report)
+}
+
+#[test]
+fn proj_wkt1_gdal_reads_as_proj_reads_it() {
+    let (read, report) = check_wkt1(
+        &xeibe_testkit::data_dir().join("crs-wkt/wkt.jsonl"),
+        "WKT1_GDAL",
+    );
+    assert!(read > 80, "{read}");
+    assert!(report.is_empty(), "{report}");
+}
+
+#[test]
+fn wkt1_reading() {
+    // No AXIS and no AUTHORITY: WKT1's longitude, latitude.
+    let lonlat = r#"GEOGCS["x",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],
+        PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]"#;
+    let json: Value = serde_json::from_str(&wkt::to_projjson(lonlat).unwrap()).unwrap();
+    assert_eq!(directions(&json), ["east", "north"]);
+    // GDAL's WGS_1984 is EPSG's datum ensemble.
+    assert_eq!(
+        json["datum"]["id"],
+        json!({"authority": "EPSG", "code": 6326})
+    );
+    // An AUTHORITY: the EPSG CRS's axes, latitude first.
+    let epsg = lonlat.replace(
+        r#"0.0174532925199433]]"#,
+        r#"0.0174532925199433],AUTHORITY["EPSG","4326"]]"#,
+    );
+    let json: Value = serde_json::from_str(&wkt::to_projjson(&epsg).unwrap()).unwrap();
+    assert_eq!(directions(&json), ["north", "east"]);
+    assert!(
+        Crs::from_wkt(&epsg)
+            .unwrap()
+            .equivalent(&Crs::from_epsg(4326).unwrap(), false)
+    );
+    // Paris written in degrees under a grad unit, as GDAL writes it.
+    let paris = r#"GEOGCS["NTF (Paris)",DATUM["Nouvelle_Triangulation_Francaise_Paris",
+        SPHEROID["Clarke 1880 (IGN)",6378249.2,293.466021293627]],PRIMEM["Paris",2.33722917],
+        UNIT["grad",0.0157079632679489],AUTHORITY["EPSG","4807"]]"#;
+    assert!(
+        Crs::from_wkt(paris)
+            .unwrap()
+            .equivalent(&Crs::from_epsg(4807).unwrap(), false)
+    );
+}
+
+#[test]
+#[ignore = "needs target/crs-wkt/wkt.jsonl (scripts/gen_wkt_vectors.py --all)"]
+fn every_proj_wkt1_gdal_reads_as_proj_reads_it() {
+    let (read, report) = check_wkt1(
+        &xeibe_testkit::data_dir().join("../../target/crs-wkt/wkt.jsonl"),
+        "WKT1_GDAL",
+    );
+    println!("{read} WKT1_GDAL strings\n{report}");
+    assert!(report.is_empty(), "{report}");
 }

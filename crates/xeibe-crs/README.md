@@ -15,7 +15,7 @@ Since 0.3.0 also each CRS's areas of use and scopes, and EPSG's remarks.
 > stable and will change in the near future, in breaking ways. Do not use it in
 > production.
 
-Everything in `src/table.rs`, `src/aliases.rs`, `src/names.rs` and `data/` is **generated** by
+Everything in `src/table.rs`, `src/aliases.rs`, `src/names.rs`, `src/datums.rs` and `data/` is **generated** by
 `scripts/gen_crs_tables.py`; do not edit any of it by hand. `src/lib.rs` and the
 tests are hand-written.
 
@@ -40,6 +40,7 @@ flowchart TD
     D --> I["src/table.rs"]
     B --> J["aliases naming<br/>one CRS"] --> K["src/aliases.rs"]
     B --> R["method and parameter<br/>names and aliases"] --> S["src/names.rs"]
+    B --> T["datum names<br/>and aliases"] --> U["src/datums.rs"]
     B --> L["coordinate operations,<br/>datums, areas of use"] --> M["data/operations.bin"]
     B --> N["each CRS's areas of use<br/>and scopes, by reference"] --> O["data/usages.bin"]
     B --> P["remarks on CRSs<br/>and operations"] --> Q["data/remarks.bin"]
@@ -232,6 +233,11 @@ releases embedded in each.
   and parameters by name or alias, case-insensitively (`src/names.rs`, 317
   method and 264 parameter names). They are for definitions that name
   methods without ids, such as WKT (`docs/crs-wkt.md`).
+- `unit_code(name)`: EPSG's units of measure by exact name, for WKT1's
+  unit authorities.
+- `DATUMS`, `DATUM_ALIASES` and `datum(code)`: EPSG's datums and datum
+  ensembles (code, name, kind, deprecation) and its aliases for them
+  (`src/datums.rs`), for definitions that name datums without ids.
 - `projjson()` gives datums EPSG's anchor epoch (`anchor_epoch`, about
   2,400 CRSs), as PROJ writes it.
 

@@ -4,7 +4,10 @@ Some of the code in this crate is ported from PROJ 9.8.1
 (<https://proj.org>, <https://github.com/OSGeo/PROJ>). Each ported module says
 so at the top, with the PROJ source file it follows. The grid name table in
 `src/grid/catalog.rs` is generated from PROJ's data
-(`data/sql/grid_alternatives*.sql`). PROJ's licence applies to those parts:
+(`data/sql/grid_alternatives*.sql`), and the WKT1 and ESRI method and
+parameter name tables in `src/wkt/names.rs` from PROJ's
+`src/iso19111/operation/parammappings.cpp` and `esriparammappings.cpp`.
+PROJ's licence applies to those parts:
 
 ```text
 All source, data files and other contents of the PROJ package are

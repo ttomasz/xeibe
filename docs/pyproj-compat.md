@@ -425,7 +425,7 @@ use are dropped. Seeing them takes one line, for example
 | **Done:** `Crs::equivalent(&other, ignore_axis_order)` on the parsed definition | reproject | `CRS.equals`, `__eq__` (1) |
 | **Done:** `Grids::Local(files)` next to `ProjData` and `None` (`Grids` is no longer `Copy`) | reproject | local grid directories (1) |
 | Selection restricted to an area of interest and a minimum accuracy | reproject (`select/`) | `area_of_interest`, `accuracy`, `only_best` (2) |
-| WKT1/WKT2 reader and WKT2 2019/WKT1_GDAL writer, to and from PROJJSON ([crs-wkt.md](crs-wkt.md)). **Done:** the WKT2 reader (`wkt::to_projjson`, `Crs::from_wkt`) and the WKT2 2019 writer (`wkt::from_projjson`) | reproject, new `wkt` module | `from_wkt`, `to_wkt` (2) |
+| WKT1/WKT2 reader and WKT2 2019/WKT1_GDAL writer, to and from PROJJSON ([crs-wkt.md](crs-wkt.md)). **Done:** the WKT2 and WKT1 readers (`wkt::to_projjson`, `Crs::from_wkt`) and the WKT2 2019 and WKT1_GDAL writers (`wkt::from_projjson`) | reproject, new `wkt` module | `from_wkt`, `to_wkt` (2) |
 | CRS identification: best EPSG match for a definition, with a confidence | reproject | `to_epsg` on WKT input (2) |
 | `BoundCRS` (a CRS with its transformation to a hub such as WGS 84) in `Crs` and the selection ([crs-wkt.md](crs-wkt.md#towgs84-and-boundcrs)) | reproject | WKT1 `TOWGS84` (2), `+towgs84` (3) |
 | The rest of `geodesic.c`: lines, polygon area and perimeter | reproject | `Geod` (2) |

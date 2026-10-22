@@ -151,6 +151,12 @@ sources, but their contents haven't been checked against the local copies:
   `EPSG-*-WKT.Zip` archive in `example_data/` (`epsg.jsonl`). A committed subset goes to
   `tests/data/crs-wkt/`; `--all` writes everything to `target/crs-wkt/`
   (~3 min on 12 CPUs). See `docs/crs-wkt.md`.
+- `scripts/gen_wkt1_names.py` regenerates `crates/xeibe-reproject/src/wkt/names.rs`,
+  the WKT1_GDAL and ESRI method and parameter names, from the mapping tables
+  in PROJ's source (`parammappings.cpp`, `esriparammappings.cpp`; the
+  tarball `build_proj_oracle.py` pins). It then reads PROJ's `WKT1_GDAL`
+  and `WKT1_ESRI` output in `target/crs-wkt/wkt.jsonl` through the tables and
+  reports where they disagree with the same CRS's WKT2.
 - `scripts/check_epsg_release.py` asks the public EPSG API
   (`apps.epsg.org/api/v1/VersionHistory`, no account needed) whether a newer
   Dataset release exists than the one in `crates/xeibe-crs`. Exits 1 if so.

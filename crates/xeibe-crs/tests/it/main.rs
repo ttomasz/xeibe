@@ -246,6 +246,31 @@ fn methods_and_parameters_by_name() {
 }
 
 #[test]
+fn datums_and_units_by_name() {
+    let d = xeibe_crs::datum(6258).unwrap();
+    assert_eq!(
+        d.name,
+        "European Terrestrial Reference System 1989 ensemble"
+    );
+    assert_eq!(d.kind, xeibe_crs::DatumKind::Geodetic);
+    assert_eq!(
+        xeibe_crs::datum(5100).unwrap().kind,
+        xeibe_crs::DatumKind::Vertical
+    );
+    assert!(xeibe_crs::datum(6747).unwrap().deprecated, "Greenland 1996");
+    assert!(xeibe_crs::DATUMS.windows(2).all(|w| w[0].code < w[1].code));
+    assert!(
+        xeibe_crs::DATUM_ALIASES
+            .iter()
+            .any(|&(code, alias)| code == 6258 && alias == "ETRS89")
+    );
+    assert_eq!(xeibe_crs::unit_code("metre"), Some(9001));
+    assert_eq!(xeibe_crs::unit_code("US survey foot"), Some(9003));
+    assert_eq!(xeibe_crs::unit_code("grad"), Some(9105));
+    assert_eq!(xeibe_crs::unit_code("Metre"), None, "exact names");
+}
+
+#[test]
 fn operations_hold_the_registry() {
     let doc: serde_json::Value = serde_json::from_str(xeibe_crs::operations_json()).unwrap();
     assert_eq!(doc["epsg_version"], xeibe_crs::EPSG_VERSION);

@@ -49,6 +49,7 @@ mod extent;
 mod geocentric;
 mod grid;
 mod methods;
+mod name;
 mod operation;
 mod registry;
 mod select;

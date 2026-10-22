@@ -115,16 +115,23 @@ fn close(a: f64, b: f64) -> bool {
 }
 
 /// Two datums named by key (`EPSG:6258`, or the name without one), or by
-/// name: one CRS may come with identifiers and the other without. An
-/// ensemble's name matches without its last word, as PROJ matches it:
-/// WKT2 2015, which has no ensembles, writes EPSG:4326's as
-/// `DATUM["World Geodetic System 1984"]`.
+/// name as PROJ compares names (`Ordnance_Survey_of_Great_Britain_1936` is
+/// "Ordnance Survey of Great Britain 1936"): one CRS may come with
+/// identifiers and the other without. Three
+/// ensembles also match their traditional datum names, which WKT2 2015
+/// (with no ensembles) gives them: PROJ's `ensembleNameToNonEnsembleName`.
 fn same_key(key_a: &str, name_a: &str, key_b: &str, name_b: &str) -> bool {
-    fn bare(name: &str) -> &str {
-        let name = name.trim();
-        name.strip_suffix(" ensemble").unwrap_or(name)
+    fn traditional(name: &str) -> &str {
+        match name.trim() {
+            "World Geodetic System 1984 ensemble" => "World Geodetic System 1984",
+            "European Terrestrial Reference System 1989 ensemble" => {
+                "European Terrestrial Reference System 1989"
+            }
+            "Greenland Reference 1996 ensemble" => "Greenland 1996",
+            other => other,
+        }
     }
-    key_a == key_b || bare(name_a).eq_ignore_ascii_case(bare(name_b))
+    key_a == key_b || crate::name::equivalent(traditional(name_a), traditional(name_b))
 }
 
 impl Datum {

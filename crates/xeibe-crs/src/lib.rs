@@ -34,11 +34,13 @@ use std::sync::{Mutex, OnceLock};
 
 // Generated data: bbox longitudes such as 3.14 are not π.
 mod aliases;
+mod datums;
 mod names;
 #[allow(clippy::approx_constant)]
 mod table;
 
 pub use aliases::ALIASES;
+pub use datums::{DATUM_ALIASES, DATUMS};
 pub use table::{CRS, EPSG_DATE, EPSG_VERSION, PROJJSON_COUNT};
 
 /// Direction of a CRS's first axis, in the authority's own axis order.
@@ -149,6 +151,34 @@ pub fn alias(name: &str) -> Option<u32> {
         .map(|index| aliases[index].1)
 }
 
+/// What a datum (or a datum ensemble's members) is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DatumKind {
+    /// Geodetic reference frames, dynamic ones included.
+    Geodetic,
+    /// Vertical reference frames, dynamic ones included.
+    Vertical,
+    Engineering,
+}
+
+/// One of EPSG's datums or datum ensembles: [`DATUMS`] lists them all by
+/// code, and [`DATUM_ALIASES`] EPSG's other names for them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DatumName {
+    pub code: u32,
+    pub name: &'static str,
+    pub kind: DatumKind,
+    pub deprecated: bool,
+}
+
+/// An EPSG datum's (or ensemble's) record, by code.
+pub fn datum(code: u32) -> Option<&'static DatumName> {
+    DATUMS
+        .binary_search_by_key(&code, |d| d.code)
+        .ok()
+        .map(|i| &DATUMS[i])
+}
+
 /// The EPSG code of an operation method, by its name or one of EPSG's
 /// aliases for it, case-insensitively: `"Transverse Mercator"` is 9807.
 /// For definitions that name methods without ids, such as WKT.
@@ -161,6 +191,16 @@ pub fn method_code(name: &str) -> Option<u32> {
 /// `"Central Meridian"` is 8802.
 pub fn parameter_code(name: &str) -> Option<u32> {
     by_name(names::PARAMETERS, name)
+}
+
+/// The EPSG code of a unit of measure by its exact name: `"metre"` is
+/// 9001, `"US survey foot"` 9003. (A CRS's degrees are 9122, "degree
+/// (supplier to define representation)", which `"degree"` (9102) is not.)
+pub fn unit_code(name: &str) -> Option<u32> {
+    names::UNITS
+        .binary_search_by(|(n, _)| (*n).cmp(name))
+        .ok()
+        .map(|i| names::UNITS[i].1)
 }
 
 fn by_name(table: &[(&str, u32)], name: &str) -> Option<u32> {

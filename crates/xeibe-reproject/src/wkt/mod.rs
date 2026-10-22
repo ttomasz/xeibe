@@ -6,9 +6,13 @@
 //! it is an [`Error::Unsupported`]. A CRS read from WKT is converted like
 //! one from `xeibe-crs`: [`Crs::from_wkt`](crate::Crs::from_wkt).
 
+mod datums;
+mod names;
 mod parse;
+mod wkt1;
 mod wkt2;
 mod write;
+mod write1;
 
 use serde_json::Value;
 
@@ -43,6 +47,10 @@ pub fn to_projjson(text: &str) -> Result<String, Error> {
 pub enum Version {
     /// ISO 19162:2019, as PROJ writes it by default (`WKT2_2019`).
     Wkt2_2019,
+    /// WKT1 as GDAL writes it (`WKT1_GDAL`): what pyogrio and rasterio
+    /// take. Geographic 3D and derived projected CRSs, and methods PROJ
+    /// gives no WKT1 name, can't be written.
+    Wkt1Gdal,
 }
 
 /// A CRS's PROJJSON as WKT, on one line or, with `pretty`, indented by
@@ -68,6 +76,7 @@ pub fn from_projjson(json: &str, version: Version, pretty: bool) -> Result<Strin
     })?;
     match version {
         Version::Wkt2_2019 => Ok(write::format(&write::crs(&value)?, pretty)),
+        Version::Wkt1Gdal => Ok(write::format(&write1::crs(&value)?, pretty)),
     }
 }
 
@@ -75,10 +84,7 @@ pub(crate) fn to_value(text: &str) -> Result<Value, Error> {
     let node = parse::parse(text)?;
     match node.keyword.as_str() {
         "GEOGCS" | "PROJCS" | "GEOCCS" | "VERT_CS" | "COMPD_CS" | "LOCAL_CS" | "FITTED_CS" => {
-            Err(Error::Unsupported {
-                crs: format!("{} WKT", node.keyword),
-                what: "WKT1".into(),
-            })
+            wkt1::crs(&node)
         }
         _ => wkt2::crs(&node),
     }
