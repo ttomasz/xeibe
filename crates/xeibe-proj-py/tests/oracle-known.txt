@@ -7,14 +7,4 @@
 # from PROJ: EPSG's remarks side with ours).
 3906->8687  tie, off by 0.153; ours: MGI 1901 to ETRS89-SVN [D96] (12) + UTM zone 33N
 4802->6250  tie, off by 0.00423; ours: Bogota 1975 (Bogota) to Bogota 1975 (1) + Bogota 1975 to MAGNA-SIRGAS (10) + Cartagena urban grid
-
-# Time-dependent Helmert (ITRF to NAD83 and between ITRFs) without a
-# coordinate epoch.
-11370->8997  time-dependent Helmert, off by 2.98e-06
-6439->8997  time-dependent Helmert, off by 1.79e-06
-6510->8994  time-dependent Helmert, off by 2.06e-06
-6633->8995  time-dependent Helmert, off by 7.7e-06
-6786->8996  time-dependent Helmert, off by 2.49e-06
-6884->8999  time-dependent Helmert, off by 1.17e-07
-8991->7314  time-dependent Helmert, off by 0.709
-8998->8384  time-dependent Helmert, off by 0.594
+6884->8999  tie, off by 1.17e-07; ours: Inverse of ITRF2000 to NAD83(CORS96) (1) + ITRF2000 to ITRF2008 (1), PROJ's goes through ITRF97 to NAD83(CORS96) (1), which EPSG says is replaced

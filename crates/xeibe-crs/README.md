@@ -225,6 +225,13 @@ they match the Cargo version so the two cannot drift.
 The crate's own versions; [`CHANGELOG.md`](CHANGELOG.md) lists the EPSG Dataset
 releases embedded in each.
 
+### 0.3.1
+
+- `operations_json()` gives each datum EPSG's own publication date as well
+  as the date PROJ derives (the frame reference epoch first, which is 1989
+  for every ETRF realization). `xeibe-reproject` prefers routes through the
+  realizations EPSG published last when nothing else tells them apart.
+
 ### 0.3.0
 
 - `projjson()` includes each CRS's areas of use (EPSG's description and

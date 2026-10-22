@@ -158,6 +158,10 @@ pub(crate) struct Datum {
     pub(crate) anchor_epoch: Option<f64>,
     /// A vertical datum, or an ensemble of them.
     pub(crate) vertical: bool,
+    /// EPSG's publication date, as `YYYY-MM-DD`: when this realization was
+    /// published (`publication_date` gives every ETRF 1989, its frame
+    /// reference epoch). None for ensembles.
+    pub(crate) published: Option<String>,
 }
 
 #[derive(Debug)]
@@ -325,6 +329,7 @@ impl Registry {
                 ensemble_accuracy: d[8].as_f64(),
                 anchor_epoch: d[9].as_f64(),
                 vertical: d[10].as_bool().unwrap_or(false),
+                published: d[11].as_str().map(str::to_owned),
             };
             datums.insert(datum.code, datum);
         }
@@ -494,6 +499,12 @@ mod tests {
         assert_eq!(r.geodetic[&4258].kind, GeodeticKind::Geographic2d);
         // The ETRS89 ensemble lists ETRF2000-PL among its members.
         assert!(r.datums[&6258].members.as_ref().unwrap().contains(&1305));
+        // ETRF2020: frame reference epoch 1989, published in 2024.
+        assert_eq!(
+            r.datums[&1382].publication_date.as_deref(),
+            Some("1989-01-01")
+        );
+        assert_eq!(r.datums[&1382].published.as_deref(), Some("2024-01-31"));
         let etrs89 = &r.crs_by_datum[&6258];
         assert!(etrs89.is_sorted() && etrs89.contains(&4258));
         let poland = &r.crs_extent[&2180];

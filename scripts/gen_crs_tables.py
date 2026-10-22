@@ -891,6 +891,13 @@ def publication_date(row: sqlite3.Row) -> str | None:
         if abs(frac - 0.5) < 1e-6:
             return f"{year:04d}-07-01"
         raise ValueError(f"datum {row['datum_code']}: unexpected epoch {epoch}")
+    return epsg_publication_date(row)
+
+
+def epsg_publication_date(row: sqlite3.Row) -> str | None:
+    """EPSG's own publication date of a datum, padded to a full date: when
+    a realization was published, which the frame reference epoch (1989.0
+    for every ETRF) doesn't tell."""
     date = row["publication_date"] or ""
     if not date:
         return None
@@ -1123,6 +1130,8 @@ def export_operations(e: Epsg, version: str) -> dict:
                 float(r["anchor_epoch"]) if r["anchor_epoch"] is not None else None,
                 # A vertical datum (or ensemble of them).
                 is_vertical,
+                # EPSG's publication date: the newer of two realizations.
+                None if members is not None else epsg_publication_date(r),
             ]
         )
     return {

@@ -18,7 +18,7 @@ use super::candidate::{
     BALLPARK_GEOCENTRIC_TRANSLATION, BALLPARK_GEOGRAPHIC_OFFSET, Candidate,
     NULL_GEOCENTRIC_TRANSLATION, NULL_GEOGRAPHIC_OFFSET, SingleKind,
 };
-use super::crs::{CrsCache, CrsKind};
+use super::crs::{CrsCache, CrsKind, CrsRef};
 use crate::extent::Extent;
 use crate::operation::param::LONGITUDE_OFFSET;
 use crate::registry::{ParamValue, registry};
@@ -135,14 +135,33 @@ struct Keys {
     /// Registry operations that emulate another one (an NTv2 version of a
     /// geocentric grid method, by EPSG's remarks).
     emulations: usize,
+    /// Registry operations EPSG's remarks say are replaced.
+    replaced: usize,
     /// Registry operations run against their published direction.
     inverted: usize,
     /// Longitude rotations that disagree with their CRSs' prime meridians.
     off_meridian: usize,
     /// The registry operations, in order: (EPSG variant, code, inverse).
     registry: Vec<(u32, u32, bool)>,
-    /// PROJ's duplicate test: the pipeline and the area.
-    duplicate: String,
+    /// The CRSs each registry operation runs between: the same for the
+    /// variants of one route.
+    shape: Vec<(Option<u32>, Option<u32>)>,
+    /// When the datums the route passes through were published (not the
+    /// source's or target's), newest first.
+    via: Vec<String>,
+    /// xeibe's own identities between an ensemble and a member, the fallback
+    /// where PROJ has no null operation between the two.
+    own_identities: usize,
+    /// Steps, counting each of a concatenation's: a route through the same
+    /// operations may add null geographic offsets between geog2D and geog3D.
+    leaves: usize,
+    /// Registry operations to or from a compound CRS: EPSG publishes some
+    /// geoid models twice, to the vertical CRS and, as a "reversible
+    /// alternative", to the compound one.
+    compound_ops: usize,
+    /// CRSs the route passes through whose dimension isn't the source's
+    /// (geog2D on the way between geocentric CRSs).
+    off_dimension: usize,
 }
 
 fn area_for_sort(op: &Candidate, areas: &Areas) -> f64 {
@@ -170,6 +189,62 @@ fn area_for_sort(op: &Candidate, areas: &Areas) -> f64 {
 }
 
 /// What PROJ's `removeDuplicateOps` compares: the pipeline and the area.
+/// The number of dimensions of a CRS's horizontal position and height
+/// together; none for a vertical CRS.
+fn dimension(kind: CrsKind) -> Option<u8> {
+    match kind {
+        CrsKind::Geographic2d | CrsKind::Projected => Some(2),
+        CrsKind::Geographic3d | CrsKind::Geocentric | CrsKind::Compound => Some(3),
+        _ => None,
+    }
+}
+
+/// The CRSs a route passes through (not its source or target) whose
+/// dimension isn't the source's.
+fn off_dimension(op: &Candidate, crs: &mut CrsCache) -> usize {
+    let Some(want) = dimension(crs.kind(op.src)) else {
+        return 0;
+    };
+    let mut seen = Vec::new();
+    for s in op.leaves() {
+        for c in [s.src, s.dst] {
+            if c != op.src && c != op.dst && !seen.contains(&c) {
+                seen.push(c);
+            }
+        }
+    }
+    seen.into_iter()
+        .filter(|&c| dimension(crs.kind(c)).is_some_and(|d| d != want))
+        .count()
+}
+
+/// When the datums a route passes through were published, newest first (EPSG's
+/// publication dates). The source's and target's datums are left out, and so
+/// are ensembles, which have no date.
+fn via_published(op: &Candidate, crs: &mut CrsCache) -> Vec<String> {
+    let mut ends = Vec::new();
+    for c in [op.src, op.dst] {
+        ends.extend(crs.datum(c));
+        ends.extend(crs.vertical_datum(c));
+    }
+    let mut datums = Vec::new();
+    for s in op.leaves() {
+        for c in [s.src, s.dst] {
+            for d in [crs.datum(c), crs.vertical_datum(c)].into_iter().flatten() {
+                if !ends.contains(&d) && !datums.contains(&d) {
+                    datums.push(d);
+                }
+            }
+        }
+    }
+    let mut dates: Vec<String> = datums
+        .iter()
+        .filter_map(|d| registry().datums.get(d)?.published.clone())
+        .collect();
+    dates.sort_unstable_by(|a, b| b.cmp(a));
+    dates
+}
+
 fn duplicate_key(op: &Candidate, crs: &mut CrsCache) -> String {
     let mut key = format!("{:?}", pipeline_tokens(op, crs));
     if let Some(e) = &op.extent {
@@ -210,8 +285,40 @@ fn keys(op: &Candidate, areas: &Areas, crs: &mut CrsCache) -> Keys {
             .iter()
             .filter(|(_, code, _)| !crate::registry::registry().ops[code].emulates.is_empty())
             .count(),
+        replaced: registry
+            .iter()
+            .filter(|(_, code, _)| crate::registry::registry().ops[code].replaced)
+            .count(),
         inverted: registry.iter().filter(|(_, _, inverse)| *inverse).count(),
-        duplicate: duplicate_key(op, crs),
+        own_identities: op
+            .leaves()
+            .iter()
+            .filter(|s| matches!(s.kind, SingleKind::EnsembleMember))
+            .count(),
+        leaves: op.leaves().len(),
+        compound_ops: registry
+            .iter()
+            .filter(|(_, code, _)| {
+                let o = &crate::registry::registry().ops[code];
+                [o.src, o.dst]
+                    .into_iter()
+                    .flatten()
+                    .any(|c| crs.kind(CrsRef::Epsg(c)) == CrsKind::Compound)
+            })
+            .count(),
+        off_dimension: off_dimension(op, crs),
+        shape: registry
+            .iter()
+            .map(|(_, code, inverse)| {
+                let op = &crate::registry::registry().ops[code];
+                if *inverse {
+                    (op.dst, op.src)
+                } else {
+                    (op.src, op.dst)
+                }
+            })
+            .collect(),
+        via: via_published(op, crs),
         off_meridian: registry
             .iter()
             .filter(|(_, code, _)| off_meridian(*code))
@@ -242,7 +349,7 @@ fn off_meridian(code: u32) -> bool {
 }
 
 /// `SortFunction::compare`: whether `a` goes before `b`.
-fn before(a: &Candidate, ka: &Keys, b: &Candidate, kb: &Keys) -> bool {
+fn before(ka: &Keys, kb: &Keys) -> bool {
     if ka.exportable != kb.exportable {
         return ka.exportable;
     }
@@ -292,12 +399,6 @@ fn before(a: &Candidate, ka: &Keys, b: &Candidate, kb: &Keys) -> bool {
     {
         return ka.proj_step_count < kb.proj_step_count;
     }
-    // Two operations with the same pipeline and area differ by name only,
-    // and nothing in EPSG's data tells them apart: PROJ's order, the
-    // shorter name first (its duplicate removal then keeps that one).
-    if ka.duplicate == kb.duplicate && a.name.len() != b.name.len() {
-        return a.name.len() < b.name.len();
-    }
     // From here PROJ compares names: the shorter first, then the reverse
     // alphabetical order, with a preference for one of the NTF operations.
     // xeibe prefers the operation EPSG defines over its emulation by
@@ -305,25 +406,57 @@ fn before(a: &Candidate, ka: &Keys, b: &Candidate, kb: &Keys) -> bool {
     if ka.emulations != kb.emulations {
         return ka.emulations < kb.emulations;
     }
+    // PROJ's null operation between an ensemble and a member rather than
+    // xeibe's identity, which stands in only where PROJ has none.
+    if ka.own_identities != kb.own_identities {
+        return ka.own_identities < kb.own_identities;
+    }
+    // The operation to the vertical CRS rather than its twin to the
+    // compound one: EPSG publishes some geoid models twice, and its remarks
+    // call only one of the pair replaced.
+    if ka.compound_ops != kb.compound_ops {
+        return ka.compound_ops < kb.compound_ops;
+    }
+    // Fewer operations EPSG says are replaced ("Replaced by RAF18b model").
+    if ka.replaced != kb.replaced {
+        return ka.replaced < kb.replaced;
+    }
     if ka.inverted != kb.inverted {
         return ka.inverted < kb.inverted;
     }
     if ka.off_meridian != kb.off_meridian {
         return ka.off_meridian < kb.off_meridian;
     }
-    // The newer variants first, then the EPSG codes, so the order is total.
-    // With the same operations, the names differ in how the route reaches
-    // them (through geog2D or geog3D CRSs): PROJ's reverse alphabetical
-    // order.
+    // The same operations reached with fewer steps, or through CRSs of the
+    // source's dimension: PROJ gets these from its names (the shorter
+    // first, then the reverse alphabetical order).
+    if ka.leaves != kb.leaves {
+        return ka.leaves < kb.leaves;
+    }
+    if ka.off_dimension != kb.off_dimension {
+        return ka.off_dimension < kb.off_dimension;
+    }
+    // Different routes: through the newest realizations (between ITRF2008,
+    // ITRF2014 and ITRF2020, the last).
+    if ka.via != kb.via {
+        return ka.via > kb.via;
+    }
+    // Between other routes nothing in EPSG's data tells them apart: the
+    // CRSs they go through, by code. Variants of one route: the newer
+    // variants first (EPSG numbers the operations between two CRSs in the
+    // order it adds them).
+    match ka.shape.cmp(&kb.shape) {
+        Ordering::Equal => {}
+        o => return o == Ordering::Less,
+    }
     let variants = |k: &Keys| k.registry.iter().map(|r| r.0).collect::<Vec<_>>();
     match variants(kb).cmp(&variants(ka)) {
         Ordering::Equal => {}
         o => return o == Ordering::Less,
     }
-    match ka.registry.cmp(&kb.registry) {
-        Ordering::Equal => a.name > b.name,
-        o => o == Ordering::Less,
-    }
+    // Then the EPSG codes. Candidates still equal keep the order the search
+    // found them in.
+    ka.registry < kb.registry
 }
 
 /// `filterAndSort`: filter, sort, then PROJ's clean-ups.
@@ -336,11 +469,11 @@ pub(crate) fn filter_and_sort(
     let contains_without_grid = has_op_containing_interest_without_grid(&res, areas);
     let keyed: Vec<Keys> = res.iter().map(|op| keys(op, areas, crs)).collect();
     let mut order: Vec<usize> = (0..res.len()).collect();
-    // The comparison orders strictly (the codes, then the names, last).
+    // A stable sort: candidates equal in every key keep the search's order.
     order.sort_by(|&i, &j| {
-        if before(&res[i], &keyed[i], &res[j], &keyed[j]) {
+        if before(&keyed[i], &keyed[j]) {
             Ordering::Less
-        } else if before(&res[j], &keyed[j], &res[i], &keyed[i]) {
+        } else if before(&keyed[j], &keyed[i]) {
             Ordering::Greater
         } else {
             Ordering::Equal

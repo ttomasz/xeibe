@@ -79,17 +79,16 @@ const DATUM_ALIAS_PAIRS: &[(u32, u32)] = &[
     (6144, 4979),
 ];
 
-/// Ties PROJ breaks by name (the shorter first) and xeibe by EPSG's data
-/// (the newer variant first): (xeibe's choice, PROJ's).
+/// Ties PROJ breaks by name (the shorter first, then the reverse
+/// alphabetical order) and xeibe by EPSG's data (`docs/reprojection.md`,
+/// deviations): (xeibe's choice, PROJ's).
 const TIE_BREAK_DEVIATIONS: &[(&str, &str)] = &[
-    // ITRF2008 to ETRS89 through any of three ETRF realizations and the
-    // ensemble's null operation, all 0.11 m: PROJ takes the last by name,
-    // xeibe the lowest EPSG code, ETRF2000, the realization EUREF
-    // recommends. Time-dependent Helmerts at their reference epochs, for
-    // coordinates without one: up to 1.2 m apart.
+    // Through either datum ensemble, which have no publication date to
+    // tell them apart: xeibe by the CRS codes, PROJ by name. The same
+    // coordinates.
     (
-        "Conversion from ITRF2008 (geog2D) to ITRF2008 (geocentric) + ITRF2008 to ETRF2000 (1) + Conversion from ETRF2000 (geocentric) to ETRF2000 (geog2D) + Inverse of ETRS89 to ETRF2000",
-        "Conversion from ITRF2008 (geog2D) to ITRF2008 (geocentric) + ITRF2008 to ETRF2020 (1) + Conversion from ETRF2020 (geocentric) to ETRF2020 (geog2D) + Inverse of ETRS89 to ETRF2020",
+        "Monte Mario to ETRS89 (1) + Inverse of ED50 to ETRS89 (10)",
+        "Monte Mario to WGS 84 (4) + Inverse of ED50 to WGS 84 (17)",
     ),
     // (12) replaces (1), says EPSG; 0.25 m apart.
     (
@@ -157,8 +156,8 @@ const GRID_TIE_BREAK_DEVIATIONS: &[(&str, &str)] = &[
 /// differs from PROJ's on purpose.
 const VERTICAL_PAIR_DEVIATIONS: &[(u32, u32)] = &[
     // NTF + NGF-IGN69 height to WGS 84 3D: tied routes through RGF93 v2 and
-    // RAF18 (PROJ, the shorter name) or RGF93 v2b and RAF20 (xeibe, the newer
-    // EPSG variant: geoid model (5) against (3)); heights up to 0.041 m
+    // RAF18 (PROJ, the shorter name) or RGF93 v2b and RAF20 (xeibe: EPSG
+    // says RAF18 is "Replaced by RAF18b model"); heights up to 0.041 m
     // apart.
     (5707, 4979),
     (7400, 4979),

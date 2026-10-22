@@ -69,17 +69,21 @@ As of 2026-10-21, phase 0 and phase 1 are implemented, apart from
     - the datum of vertical CRSs on an ensemble;
     - `to_epsg` of engineering CRSs, which PROJ's identification skips.
   - Random EPSG pairs, compared with PROJ without ballparks (divergence 1),
-    found 10 pairs that differ in `xeibe-reproject`'s choice of operation,
-    listed in `tests/oracle-known.txt`:
-    - 2 ties broken by EPSG's data, documented in
-      [reprojection.md](reprojection.md#deviations-from-proj-documented-deliberate);
-    - 8 time-dependent Helmerts without an epoch.
+    found 3 pairs that differ in `xeibe-reproject`'s choice of operation,
+    listed in `tests/oracle-known.txt`: ties broken by EPSG's data,
+    documented in
+    [reprojection.md](reprojection.md#deviations-from-proj-documented-deliberate)
+    (up to 0.15 m).
 
     Before 2026-10-22 there were 65. 55 went through PROJ's null operations
     between a datum ensemble and its members ("WGS 84 to WGS 84 (G730)",
     "ETRS89 to ETRF2014"), which `xeibe-reproject` now has too
     ([reprojection.md](reprojection.md#implementation)): 53 had no route
     at all, and ITRF2008/2014/2020 to WGS 84 moved points by 1 to 11 m.
+    7 of the other 10, between ITRF realizations and NAD83, chose another
+    of several equally accurate routes (up to 0.21 m apart: time-dependent
+    Helmerts without an epoch), because EPSG's variant numbers were
+    compared across different routes; the 8th is now a documented tie.
     Before 2026-10-21 there were 14 pairs that chose differently per
     point. 9 of them were PROJ's per-point ballpark (now compared without),
     and one was a bug: EPSG's accuracy 999 counted as 999 m, where PROJ

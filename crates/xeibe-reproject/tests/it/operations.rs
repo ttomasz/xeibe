@@ -76,6 +76,20 @@ fn accuracy_999_is_unknown() {
 }
 
 #[test]
+fn ties_go_to_the_newest_realization() {
+    // Equally accurate routes through different realizations: the one EPSG
+    // published last (ITRF2020 in 2022, ETRF2020 in 2024), whatever their
+    // operations' variant numbers ("ITRF2005 to ITRF2008 (2)").
+    let first = |src, dst| {
+        transform(src, dst, Grids::None).unwrap().operation_info()[0]
+            .name
+            .clone()
+    };
+    assert!(first(8998, 6318).contains("ITRF2005 to ITRF2020 (1)"));
+    assert!(first(8999, 4258).contains("ITRF2008 to ETRF2020 (1)"));
+}
+
+#[test]
 fn one_datum_has_no_operations() {
     let t = transform(4326, 3857, Grids::ProjData).unwrap();
     assert!(t.operation_info().is_empty());

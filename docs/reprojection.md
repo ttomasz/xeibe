@@ -317,8 +317,8 @@ Details that turned out to matter, each found by the differential:
   random EPSG pairs PROJ joins this way had no route at all.
 - **Routes that differ only in their CRSs' dimension.** The same
   operations reached through geog2D or geog3D CRSs give the same pipeline;
-  PROJ keeps the first by its name order (the shorter, then the reverse
-  alphabetical), so xeibe orders them so too.
+  PROJ keeps the first by its name order, which prefers the CRSs of the
+  source's dimension. xeibe ranks by that directly (see the tie-breaks).
 - **An accuracy of 999 is unknown.** EPSG gives 999 m for 34 operations
   whose accuracy it doesn't know, and PROJ's factory drops it. Ranked as a
   known 999 m it sorted ahead of better operations with smaller areas, and
@@ -327,8 +327,8 @@ Details that turned out to matter, each found by the differential:
 
 ### Deviations from PROJ (documented, deliberate)
 
-- **The last tie-breaks use EPSG's data, not names.** When candidates tie on
-  area, accuracy, number of operations and pipeline steps, PROJ takes the
+- **The last tie-breaks use EPSG's data, never names.** When candidates tie
+  on area, accuracy, number of operations and pipeline steps, PROJ takes the
   shorter name, then the reverse alphabetical order, and prefers
   "NTF (Paris) to NTF (1)" over "(2)" by name. xeibe takes, in order:
   1. no emulation where EPSG has the operation it emulates: EPSG's remarks
@@ -337,23 +337,43 @@ Details that turned out to matter, each found by the differential:
      the generator records that relation. PROJ, by name, takes the original
      one way and the emulation the other; xeibe takes the original both ways
      (only with grids: see level 3);
-  2. fewer operations run against their published direction;
-  3. a longitude rotation that agrees with its CRSs' prime meridians. NTF is
+  2. PROJ's null operation between a datum ensemble and a member rather
+     than xeibe's own identity, which stands in only where PROJ has none;
+  3. an operation to a vertical CRS rather than its twin to the compound
+     CRS: EPSG publishes some geoid models both ways, the second as a
+     "reversible alternative", and its remarks sometimes call only one of
+     the pair replaced;
+  4. fewer operations EPSG's remarks say are replaced ("Replaced by RAF18b
+     model", "Replaced by CT code 6866 from 2002-01-01");
+  5. fewer operations run against their published direction;
+  6. a longitude rotation that agrees with its CRSs' prime meridians. NTF is
      the only case in EPSG: "(1)" uses IGN's Paris meridian, the one EPSG
      defines it with, "(2)" the Royal Geographic Society's, 1.6 m away, and
      EPSG notes "OGP prefers value from IGN Paris";
-  4. the newer EPSG variant (EPSG numbers the operations between two CRSs in
-     the order it adds them; codes don't always follow);
-  5. the EPSG codes, then PROJ's name order (routes through the same
-     operations differ only in how they reach them), so the order is
-     total.
+  7. fewer steps, then fewer CRSs on the way whose dimension isn't the
+     source's: the same operations reached through extra null geographic
+     offsets, or through geog2D CRSs between geocentric ones;
+  8. the route through the realizations EPSG published last (its
+     `publication_date`, not the frame reference epoch, which is 1989 for
+     every ETRF): ITRF2020 (2022) over ITRF2014 and ITRF2008, ETRF2020
+     (2024) over ETRF2000 (2001). Ensembles have no date;
+  9. the CRSs the route goes through, by code; between variants of one
+     route, the newer variant (EPSG numbers the operations between two CRSs
+     in the order it adds them; codes don't always follow);
+  10. the EPSG codes. Candidates still equal keep the order the search found
+      them in.
 
-  Measured on 2026-10-22, 38 of 22,128 points in 5 pairs differ from PROJ.
-  ITRF2008 to ETRS89 goes through ETRF2000, ETRF2014 or ETRF2020 and the
-  ensemble, all stated 0.11 m: PROJ takes ETRF2020 by name, xeibe ETRF2000
-  by the lowest code, the realization EUREF recommends (time-dependent
-  Helmerts at their reference epochs, up to 1.2 m apart). In the others
-  EPSG's remarks side with xeibe's choice or call the two equivalent: "MGI 1901 to ETRS89-SVN [D96] (12)" replaces "(1)" (0.25 m);
+  Before 2026-10-22, PROJ's name order decided the last ties, and variant
+  numbers were compared across routes, numbers EPSG counts per pair of
+  CRSs: ITRF2005 to NAD83(2011) went through ITRF2008 because its operation
+  from ITRF2005 is the second EPSG added, 0.18 m from PROJ's route through
+  ITRF2020. Rules 2, 3, 7 and 8 give PROJ's choice everywhere the vectors
+  reach but one pair, Monte Mario to ED50 through ETRS89 rather than
+  WGS 84: both ensembles, undated; the same coordinates.
+
+  Measured on 2026-10-22, 28 of 22,128 points in 5 pairs differ from PROJ:
+  Monte Mario, and four where EPSG's remarks side with xeibe's choice or
+  call the two equivalent: "MGI 1901 to ETRS89-SVN [D96] (12)" replaces "(1)" (0.25 m);
   for Bogota 1975 to MAGNA-SIRGAS "OGP recommends" the Molodensky-Badekas
   version PROJ passes over (2 mm); two LUREF methods are declared equivalent
   (1 mm); one Slovak route gives the same coordinates. Against all of EPSG's
@@ -438,7 +458,7 @@ subset in `tests/data/reprojection/`, everything with `--all` into `target/`):
    same coordinates, except through xeibe's own ensemble-member identity
    and PROJ's datum aliases (above, judged by coordinates), the routes
    through a national realization (3 points, listed in the test) and the
-   ties broken by EPSG's data (38 points, listed in the test); 846 pairs
+   ties broken by EPSG's data (28 points, listed in the test); 846 pairs
    have no usable transformation on either side. These vectors run with
    `Grids::None`. On 2026-10-22, the first run with PROJ's null
    operations: no coordinate failures, and no pair that only one side
@@ -714,7 +734,8 @@ The level 2 deviations hold. Grids add:
   (47)" rather than "(1)"): level 2's newer-variant tie-break, met again in
   each route. NTF compounds with NGF-IGN69 heights to WGS 84 tie between
   RGF93 v2 with the RAF18 geoid (PROJ, by name length) and RGF93 v2b with
-  RAF20 (xeibe, the newer variant): heights up to 0.041 m apart (48 points).
+  RAF20 (xeibe: EPSG says RAF18 is replaced): heights up to 0.041 m apart
+  (48 points).
 - **No alias datums with heights either.** At one inland point, CD Norway
   depth's newest grid has no value. PROJ takes ETRS89-NOR [EUREF89] for
   ETRS89 by an EPSG alias, so its next candidate is the older grid; xeibe's
@@ -762,10 +783,10 @@ without it the operations and pinned pairs whose grids are committed.
    NTv1 1), 12 points each, match PROJ to within 6.4e-14° and 7.5e-9 m;
    every point PROJ rejects (outside the grid) xeibe rejects too.
 2. **Selection differential**, the 2,654 pairs of level 2 with grids:
-   22,944 points on 2026-10-22. 22,767 take PROJ's operation with PROJ's
+   22,944 points on 2026-10-22. 22,777 take PROJ's operation with PROJ's
    coordinates; the rest are xeibe's own ensemble identity and PROJ's
    datum aliases (48 points, judged by coordinates), the listed deviations
-   (realization routes 65 points, ties 50, pairs 14); 741 pairs have no
+   (realization routes 65 points, ties 40, pairs 14); 741 pairs have no
    transformation on either side. These pairs run in the direction EPSG publishes; the committed
    vectors also pin St. George Island's NADCON5 in reverse, where PROJ's
    estimate differs (12 points). The test accepts a difference only when
