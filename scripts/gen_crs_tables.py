@@ -262,6 +262,10 @@ class Epsg:
         out = {"type": kind, "name": d["datum_name"]}
         if kind.startswith("Dynamic") and d["frame_reference_epoch"] is not None:
             out["frame_reference_epoch"] = d["frame_reference_epoch"]
+        # The epoch at which a static frame was aligned to its parent; PROJ
+        # writes it (WKT2 ANCHOREPOCH) where EPSG gives one.
+        if d["anchor_epoch"] is not None and not kind.startswith("Engineering"):
+            out["anchor_epoch"] = d["anchor_epoch"]
         if d["ellipsoid_code"]:
             out["ellipsoid"] = self.ellipsoid(d["ellipsoid_code"])
         pm = self.prime_meridian(d["prime_meridian_code"])

@@ -19,8 +19,7 @@ fn records(path: &Path) -> Vec<Value> {
 }
 
 /// Keys EPSG's WKT export leaves out (usages, remarks), and keys only the
-/// WKT has: anchor epochs and geoid models, which the generator doesn't
-/// emit. Ids that only the WKT has (conversions, coordinate systems) and
+/// WKT has: geoid models, which the generator doesn't emit. Ids that only the WKT has (conversions, coordinate systems) and
 /// the coordinate system of a base CRS, which WKT doesn't carry and the
 /// reader fills in, are skipped in `normalise`.
 const IGNORED: &[&str] = &[
@@ -33,7 +32,6 @@ const IGNORED: &[&str] = &[
     "vertical_extent",
     "temporal_extent",
     "anchor",
-    "anchor_epoch",
     "geoid_model",
     "geoid_models",
     "deformation_models",
@@ -348,4 +346,229 @@ fn what_is_not_read_is_named() {
     ));
     let missing = r#"GEOGCRS["x",CS[ellipsoidal,2],AXIS["lat",north],AXIS["lon",east]]"#;
     assert!(matches!(wkt::to_projjson(missing), Err(Error::Wkt { .. })));
+}
+
+// --- writing ---------------------------------------------------------------
+
+#[derive(Debug, PartialEq)]
+enum Token {
+    Open(String),
+    Close,
+    Text(String),
+    Number(f64),
+    Word(String),
+}
+
+/// WKT as tokens, without commas and white space.
+fn tokens(s: &str) -> Vec<Token> {
+    let b = s.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        if c == b'"' {
+            let mut t = String::new();
+            i += 1;
+            loop {
+                if b[i] == b'"' {
+                    if b.get(i + 1) == Some(&b'"') {
+                        t.push('"');
+                        i += 2;
+                        continue;
+                    }
+                    i += 1;
+                    break;
+                }
+                let ch = s[i..].chars().next().unwrap();
+                t.push(ch);
+                i += ch.len_utf8();
+            }
+            out.push(Token::Text(t));
+        } else if c == b']' {
+            out.push(Token::Close);
+            i += 1;
+        } else if c.is_ascii_alphanumeric() || matches!(c, b'-' | b'+' | b'.') {
+            let start = i;
+            while i < b.len()
+                && (b[i].is_ascii_alphanumeric() || matches!(b[i], b'-' | b'+' | b'.' | b'_'))
+            {
+                i += 1;
+            }
+            let word = &s[start..i];
+            if b.get(i) == Some(&b'[') {
+                out.push(Token::Open(word.to_owned()));
+                i += 1;
+            } else if let Ok(v) = word.parse() {
+                out.push(Token::Number(v));
+            } else {
+                out.push(Token::Word(word.to_owned()));
+            }
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+/// Where two WKT texts first differ: the keywords enclosing it and the two
+/// tokens. Numbers within 1e-11 relative are the same.
+fn first_difference(ours: &str, theirs: &str) -> Option<(String, String)> {
+    let (a, b) = (tokens(ours), tokens(theirs));
+    let mut path: Vec<&str> = Vec::new();
+    for i in 0..a.len().max(b.len()) {
+        let same = match (a.get(i), b.get(i)) {
+            (Some(Token::Number(x)), Some(Token::Number(y))) => {
+                (x - y).abs() <= 1e-11 * x.abs().max(y.abs())
+            }
+            (x, y) => x == y,
+        };
+        if !same {
+            return Some((path.join("/"), format!("{:?} != {:?}", a.get(i), b.get(i))));
+        }
+        match &a[i] {
+            Token::Open(k) => path.push(k),
+            Token::Close => {
+                path.pop();
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// PROJ writes the remarks its database has; `xeibe-crs`'s PROJJSON has
+/// none. The last node before the final bracket.
+fn without_remark(wkt: &str) -> &str {
+    match wkt.rfind(",REMARK[") {
+        Some(at) if wkt.ends_with("\"]]") => &wkt[..at],
+        _ => wkt.strip_suffix(']').unwrap_or(wkt),
+    }
+}
+
+/// Where our WKT differs from PROJ's because PROJ's database differs from
+/// EPSG's dataset, not because of how either writes WKT:
+///
+/// - PROJ stores EPSG's derived vertical CRSs (depths, feet) as plain ones
+///   with their base's datum, so it writes `VDATUM` where EPSG's
+///   definition, and ours, has `BASEVERTCRS` and a conversion;
+/// - PROJ fixes Modified Krovak's evaluation point and C1 to C10 in code
+///   and leaves them out, where EPSG gives them as parameters;
+/// - PROJ makes a vertical datum with a frame reference epoch dynamic.
+///   EPSG types RH2000 (EPSG:5208) as a plain vertical datum with an epoch
+///   of 2000, and its own WKT has no `DYNAMIC`; we follow EPSG.
+fn known_writing(at: &str, what: &str) -> bool {
+    (at.ends_with("VERTCRS") && what.starts_with(r#"Some(Open("BASEVERTCRS"))"#))
+        || (at.ends_with("PROJCRS/CONVERSION") && what.starts_with(r#"Some(Open("PARAMETER"))"#))
+        || (at.ends_with("VERTCRS") && what == r#"Some(Open("VDATUM")) != Some(Open("DYNAMIC"))"#)
+}
+
+/// Our WKT2 2019 for each EPSG CRS in `wkt.jsonl` against PROJ's, and read
+/// back by our reader as a CRS equivalent to the EPSG one.
+fn check_writing(path: &Path) -> (usize, usize, String) {
+    let mut same = 0;
+    let mut written = 0;
+    let mut differing: BTreeMap<String, Vec<(u32, String)>> = BTreeMap::new();
+    for r in records(path) {
+        let code = r["code"].as_u64().unwrap() as u32;
+        let (Some(json), Some(theirs)) =
+            (xeibe_crs::projjson(code), r["wkt"]["WKT2_2019"].as_str())
+        else {
+            continue;
+        };
+        let ours = match wkt::from_projjson(json, wkt::Version::Wkt2_2019, false) {
+            Ok(w) => w,
+            Err(e) => {
+                differing
+                    .entry(format!("error: {e}"))
+                    .or_default()
+                    .push((code, String::new()));
+                continue;
+            }
+        };
+        written += 1;
+        if let Ok(epsg) = Crs::from_epsg(code)
+            && !Crs::from_wkt(&ours).is_ok_and(|c| c.equivalent(&epsg, false))
+        {
+            differing
+                .entry("read back: not the EPSG CRS".into())
+                .or_default()
+                .push((code, ours.clone()));
+        }
+        match first_difference(without_remark(&ours), without_remark(theirs)) {
+            None => same += 1,
+            Some((at, what)) if known_writing(&at, &what) => same += 1,
+            Some((at, what)) => differing.entry(at).or_default().push((code, what)),
+        }
+    }
+    let mut report = String::new();
+    for (at, ds) in &differing {
+        let codes: Vec<u32> = ds.iter().take(6).map(|d| d.0).collect();
+        report += &format!("{} at {at}: {} {codes:?}\n", ds.len(), ds[0].1);
+    }
+    (written, same, report)
+}
+
+#[test]
+fn epsg_crss_write_as_proj_writes_them() {
+    let (written, same, report) =
+        check_writing(&xeibe_testkit::data_dir().join("crs-wkt/wkt.jsonl"));
+    assert!(written > 80, "{written}");
+    assert_eq!(same, written, "{report}");
+}
+
+#[test]
+#[ignore = "needs target/crs-wkt/wkt.jsonl (scripts/gen_wkt_vectors.py --all)"]
+fn every_epsg_crs_writes_as_proj_writes_it() {
+    let (written, same, report) =
+        check_writing(&xeibe_testkit::data_dir().join("../../target/crs-wkt/wkt.jsonl"));
+    println!("{written} written, {same} as PROJ writes them (or a listed difference)\n{report}");
+    assert_eq!(same, written, "{report}");
+}
+
+#[test]
+fn pretty_wkt_is_indented_as_proj_indents_it() {
+    let text = wkt::from_projjson(
+        xeibe_crs::projjson(9651).unwrap(),
+        wkt::Version::Wkt2_2019,
+        true,
+    )
+    .unwrap();
+    // PROJ 9.8.1's `CRS(9651).to_wkt(pretty=True)`.
+    let proj = r#"VERTCRS["PL-EVRF2007 height",
+    VDATUM["European Vertical Reference Frame 2007 Poland"],
+    CS[vertical,1],
+        AXIS["gravity-related height (H)",up,
+            LENGTHUNIT["metre",1]],
+    USAGE[
+        SCOPE["Geodesy, engineering survey, topographic mapping."],
+        AREA["Poland - onshore."],
+        BBOX[49,14.14,54.89,24.15]],
+    ID["EPSG",9651]]"#;
+    assert_eq!(text, proj);
+    // Axes one level deeper than their CS, units in grads.
+    let text = wkt::from_projjson(
+        xeibe_crs::projjson(4807).unwrap(),
+        wkt::Version::Wkt2_2019,
+        true,
+    )
+    .unwrap();
+    let proj = r#"GEOGCRS["NTF (Paris)",
+    DATUM["Nouvelle Triangulation Francaise (Paris)",
+        ELLIPSOID["Clarke 1880 (IGN)",6378249.2,293.466021293627,
+            LENGTHUNIT["metre",1]]],
+    PRIMEM["Paris",2.5969213,
+        ANGLEUNIT["grad",0.0157079632679489]],
+    CS[ellipsoidal,2],
+        AXIS["geodetic latitude (Lat)",north,
+            ORDER[1],
+            ANGLEUNIT["grad",0.0157079632679489]],
+        AXIS["geodetic longitude (Lon)",east,
+            ORDER[2],
+            ANGLEUNIT["grad",0.0157079632679489]],
+    USAGE[
+        SCOPE["Geodesy."],
+        AREA["France - onshore - mainland and Corsica."],
+        BBOX[41.31,-4.87,51.14,9.63]],
+    ID["EPSG",4807]]"#;
+    assert_eq!(text, proj);
 }

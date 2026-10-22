@@ -232,6 +232,8 @@ releases embedded in each.
   and parameters by name or alias, case-insensitively (`src/names.rs`, 317
   method and 264 parameter names). They are for definitions that name
   methods without ids, such as WKT (`docs/crs-wkt.md`).
+- `projjson()` gives datums EPSG's anchor epoch (`anchor_epoch`, about
+  2,400 CRSs), as PROJ writes it.
 
 ### 0.3.1
 

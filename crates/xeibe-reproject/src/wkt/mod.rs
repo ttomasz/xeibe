@@ -1,13 +1,14 @@
-//! CRS definitions as WKT (ISO 19162), read into PROJJSON
-//! (`docs/crs-wkt.md`).
+//! CRS definitions as WKT (ISO 19162), read into PROJJSON and written
+//! from it (`docs/crs-wkt.md`).
 //!
-//! WKT2, both the 2015 and the 2019 revision, is read now. WKT1 in GDAL's
-//! and ESRI's forms comes next; until then it is an
-//! [`Error::Unsupported`]. A CRS read from WKT is converted like one from
-//! `xeibe-crs`: [`Crs::from_wkt`](crate::Crs::from_wkt).
+//! WKT2, both the 2015 and the 2019 revision, is read now, and WKT2 2019
+//! written. WKT1 in GDAL's and ESRI's forms comes next; until then reading
+//! it is an [`Error::Unsupported`]. A CRS read from WKT is converted like
+//! one from `xeibe-crs`: [`Crs::from_wkt`](crate::Crs::from_wkt).
 
 mod parse;
 mod wkt2;
+mod write;
 
 use serde_json::Value;
 
@@ -34,6 +35,40 @@ use crate::error::Error;
 /// ```
 pub fn to_projjson(text: &str) -> Result<String, Error> {
     Ok(to_value(text)?.to_string())
+}
+
+/// A WKT version this crate writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Version {
+    /// ISO 19162:2019, as PROJ writes it by default (`WKT2_2019`).
+    Wkt2_2019,
+}
+
+/// A CRS's PROJJSON as WKT, on one line or, with `pretty`, indented by
+/// 4 spaces per level as PROJ indents it.
+///
+/// The output follows PROJ's: ids on the CRS, its base CRS, the method and
+/// the parameters only; each axis with its unit; numbers with 15
+/// significant digits. Usages and remarks in the PROJJSON are written for
+/// the outermost CRS.
+///
+/// ```
+/// use xeibe_reproject::wkt::{self, Version};
+///
+/// let json = xeibe_crs::projjson(2180).unwrap();
+/// let text = wkt::from_projjson(json, Version::Wkt2_2019, false).unwrap();
+/// assert!(text.starts_with(r#"PROJCRS["ETRS89 / PL-1992",BASEGEOGCRS["ETRS89""#));
+/// assert!(text.ends_with(r#"ID["EPSG",2180]]"#));
+/// ```
+pub fn from_projjson(json: &str, version: Version, pretty: bool) -> Result<String, Error> {
+    let value: Value = serde_json::from_str(json).map_err(|e| Error::Projjson {
+        crs: "PROJJSON".into(),
+        message: e.to_string(),
+    })?;
+    match version {
+        Version::Wkt2_2019 => Ok(write::format(&write::crs(&value)?, pretty)),
+    }
 }
 
 pub(crate) fn to_value(text: &str) -> Result<Value, Error> {

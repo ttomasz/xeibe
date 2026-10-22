@@ -1,7 +1,8 @@
 # CRS WKT: reading, writing and identifying
 
-> **Status: design, 2026-10-22. Step 1, the WKT2 reader, is implemented**
-> (`xeibe_reproject::wkt`, `Crs::from_wkt`; see [Implementation](#implementation)).
+> **Status: design, 2026-10-22. Steps 1 and 2, the WKT2 reader and the
+> WKT2 2019 writer, are implemented** (`xeibe_reproject::wkt`,
+> `Crs::from_wkt`; see [Implementation](#implementation)).
 > This is the first part of phase 2 in [pyproj-compat.md](pyproj-compat.md#phases).
 > Facts about PROJ were checked against PROJ 9.8.1 through pyproj 3.8.0, and
 > facts about EPSG against EPSG 13.106.
@@ -324,7 +325,17 @@ WGS 84.
 From a PROJJSON value:
 
 - **WKT2 2019** is the mapping above in reverse, in the order ISO 19162
-  gives. EPSG CRSs add `USAGE` (scope, area, bounding box).
+  gives, with PROJ's choices where WKT leaves room (measured on its output
+  for every EPSG CRS):
+  - ids only on the CRS itself, its base CRS, `METHOD` and `PARAMETER`;
+    none on compound components, datums, ellipsoids, members or units;
+  - every axis with its own unit, and `ORDER` when there are several;
+  - axis names with a lower-case first letter, and left out for Easting
+    (E) as the first axis, Northing (N) as the second, and Geocentric X,
+    Y, Z in their places: `AXIS["(E)",east]`, but `"northing (N)"` first;
+  - a `PRIMEM` always, Greenwich included;
+  - the PROJJSON's usages and remarks for the outermost CRS only;
+  - numbers as `%.15g`, and an ensemble's accuracy as its text (`2.0`).
 - **WKT1_GDAL** is the WKT1 table in reverse. `AXIS` follows pyproj's
   `output_axis_rule` (`None` meaning PROJ's automatic rule, which the
   vectors pin down). Web Mercator gets GDAL's `PROJ4` extension back.
@@ -440,6 +451,26 @@ In PROJ's output:
 - Modified Krovak (EPSG:5224, 5225, 5515, 5516) comes without its
   evaluation point and C1 to C10, which PROJ fixes in code. `Crs` adds
   EPSG's values, the same for all four, when none are given.
+
+**Step 2 (2026-10-22): the WKT2 2019 writer** (`wkt::from_projjson`, one
+line or pretty). For all 8,880 EPSG CRSs PROJ writes, ours is PROJ's token
+for token (numbers within 1e-11), apart from `REMARK`, which `xeibe-crs`'s
+PROJJSON doesn't carry, and 150 CRSs where PROJ's database differs from
+EPSG's dataset:
+
+- 131 derived vertical CRSs (depths, heights in feet), which PROJ stores
+  as plain vertical CRSs with their base's datum: `VDATUM` where EPSG,
+  and we, have `BASEVERTCRS` and a conversion;
+- 15 on RH2000, whose datum EPSG types as plain vertical with a frame
+  reference epoch of 2000 (its own WKT has no `DYNAMIC`); PROJ makes it
+  dynamic;
+- the 4 Modified Krovak CRSs, whose correction PROJ fixes in code.
+
+Each of them also reads back, through our reader, as a CRS equivalent to
+the EPSG one. The generator now writes EPSG's anchor epochs into the
+PROJJSON (`xeibe-crs` 0.4.0), which the comparison showed missing for
+about 2,400 CRSs. Pretty output matches PROJ's indentation (axes one level
+deeper than their CS).
 
 ## Order of work
 
