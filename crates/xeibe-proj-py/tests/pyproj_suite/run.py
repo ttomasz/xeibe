@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -44,18 +45,18 @@ TEST_DEPS = ["pytest==9.1.1", "numpy", "packaging", "pandas", "shapely", "xarray
 
 
 def fetch() -> None:
-    if (SRC / "test").is_dir():
-        tag = subprocess.run(
-            ["git", "-C", str(SRC), "describe", "--tags"], capture_output=True, text=True
-        ).stdout.strip()
-        if tag == PYPROJ_TAG:
-            return
-        sys.exit(f"{SRC} holds pyproj {tag or '?'}, not {PYPROJ_TAG}: remove it")
+    # The tag is recorded in a file, not read back with git: CI's cache of
+    # target/ restores the checkout without what `git describe` needs.
+    marker = SRC / ".xeibe-pyproj-tag"
+    if marker.is_file() and marker.read_text().strip() == PYPROJ_TAG:
+        return
+    shutil.rmtree(SRC, ignore_errors=True)
     subprocess.run(
         ["git", "clone", "--quiet", "--depth", "1", "--branch", PYPROJ_TAG,
          "https://github.com/pyproj4/pyproj", str(SRC)],
         check=True,
     )
+    marker.write_text(PYPROJ_TAG + "\n")
 
 
 def build() -> Path:
