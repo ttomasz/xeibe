@@ -7,6 +7,7 @@ import functools
 import http.server
 import json
 import logging
+import os
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -115,7 +116,7 @@ def test_local_grids(cdn: list[str], caplog: pytest.LogCaptureFixture, monkeypat
     datadir.set_data_dir(GRIDS)
     _check(Transformer.from_crs(4138, 4269))
     assert not cdn
-    assert any("reading grid" in r.getMessage() and "from /" in r.getMessage() for r in caplog.records)
+    assert any("reading grid" in r.getMessage() and f"from {GRIDS}" in r.getMessage() for r in caplog.records)
 
 
 def test_download_failure(cdn: list[str], monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
@@ -152,7 +153,7 @@ def test_data_dirs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     other = tmp_path / "other"
     other.mkdir()
     datadir.append_data_dir(other)
-    assert datadir.get_data_dir().split(":") == [str(tmp_path), str(other)]
+    assert datadir.get_data_dir().split(os.pathsep) == [str(tmp_path), str(other)]
     with pytest.raises(Exception, match="not a directory"):
         datadir.set_data_dir(tmp_path / "missing")
 
