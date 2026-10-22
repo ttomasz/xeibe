@@ -8,8 +8,11 @@
 
 PROJ (pyproj 3.8.0 = PROJ 9.8.1) runs on a `proj.db` rebuilt from the same
 EPSG release as `xeibe-crs` (`scripts/build_proj_oracle.py`), so the vectors
-test our code, not the gap between EPSG releases. It runs without network,
-with ballpark transformations disallowed (`ONLY_BEST=NO`), and either:
+test our code, not the gap between EPSG releases. Its operations are EPSG's
+plus PROJ's null operations between a datum ensemble and its members, which
+xeibe-reproject has too (`target/proj-oracle-epsg`). It runs without
+network, with ballpark transformations disallowed (`ONLY_BEST=NO`), and
+either:
 
 * without grids, discarding grid-based operations: level 2's world; or
 * with `--grids DIR`, a directory of PROJ-data's grids (all of them, as on
@@ -50,7 +53,7 @@ import zstandard
 from pyproj.transformer import TransformerGroup
 
 ROOT = Path(__file__).resolve().parent.parent
-ORACLE = ROOT / "target" / "proj-oracle"
+ORACLE = ROOT / "target" / "proj-oracle-epsg"
 OPERATIONS_BIN = ROOT / "crates/xeibe-crs/data/operations.bin"
 COMMITTED = ROOT / "tests/data/reprojection"
 ALL = ROOT / "target/reprojection"
@@ -319,14 +322,12 @@ def selection_record(src_code, dst_code) -> dict | None:
         warnings.simplefilter("ignore")
         try:
             # Informational only: pyproj's TransformerGroup fails on a few pairs.
-            group = TransformerGroup(src, dst, authority="EPSG", allow_ballpark=False)
+            group = TransformerGroup(src, dst, allow_ballpark=False)
             record["operations"] = [t.description for t in group.transformers]
         except (pyproj.exceptions.ProjError, pyproj.exceptions.CRSError, IndexError):
             record["operations"] = None
         try:
-            transformer = pyproj.Transformer.from_crs(
-                src, dst, authority="EPSG", allow_ballpark=False, only_best=False
-            )
+            transformer = pyproj.Transformer.from_crs(src, dst, allow_ballpark=False, only_best=False)
         except (pyproj.exceptions.ProjError, pyproj.exceptions.CRSError):
             record["points"] = []
             return record
@@ -509,7 +510,7 @@ def main() -> int:
     parser.add_argument("--vertical", action="store_true", help="selection between CRSs with heights")
     args = parser.parse_args()
     if not (ORACLE / "proj.db").exists():
-        sys.exit("target/proj-oracle/proj.db is missing; run scripts/build_proj_oracle.py")
+        sys.exit("target/proj-oracle-epsg/proj.db is missing; run scripts/build_proj_oracle.py")
     pyproj.datadir.set_data_dir(str(ORACLE))
     if args.grids:
         pyproj.datadir.append_data_dir(str(args.grids.resolve()))

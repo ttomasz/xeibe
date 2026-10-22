@@ -358,6 +358,13 @@ impl Registry {
             })
             .collect();
 
+        for op in ensemble_operations(&ops, &geodetic, &vertical, &datums, &crs_extent) {
+            for crs in [op.src, op.dst].into_iter().flatten() {
+                by_crs.entry(crs).or_default().push(op.code);
+            }
+            ops.insert(op.code, op);
+        }
+
         Registry {
             ops,
             by_crs,
@@ -369,6 +376,104 @@ impl Registry {
             crs_extent,
         }
     }
+}
+
+/// Codes from here on are PROJ's operations, not EPSG's
+/// ([`ensemble_operations`]).
+pub(crate) const PROJ_CODES: u32 = 0x4000_0000;
+
+/// The null operations PROJ's `build_db.py`
+/// (`create_datumensemble_transformations`) adds between the CRS of a datum
+/// ensemble and the CRS of each of its members, with the ensemble's
+/// accuracy and the member CRS's area: "WGS 84 to WGS 84 (G2296)", "ETRS89
+/// to ETRF2014", "BI height to ODN height". PROJ's search uses them like
+/// any other operation, so routes may pass through an ensemble anywhere.
+///
+/// Each datum's CRS is its only live geographic 2D CRS (not a "(lon-lat)"
+/// one), or its only live vertical CRS; datums with none or several are
+/// skipped, where PROJ's script would stop. A geodetic member is also
+/// skipped where EPSG has an operation named "A to B (1)" between the two.
+fn ensemble_operations(
+    ops: &HashMap<u32, Operation>,
+    geodetic: &HashMap<u32, GeodeticCrs>,
+    vertical: &HashMap<u32, VerticalCrs>,
+    datums: &HashMap<u32, Datum>,
+    crs_extent: &HashMap<u32, Extent>,
+) -> Vec<Operation> {
+    let crs_of = |datum: u32, is_vertical: bool| -> Option<(u32, &str)> {
+        let mut found: Vec<(u32, &str)> = if is_vertical {
+            vertical
+                .values()
+                .filter(|c| !c.deprecated && c.datum == datum)
+                .map(|c| (c.code, c.name.as_str()))
+                .collect()
+        } else {
+            geodetic
+                .values()
+                .filter(|c| {
+                    !c.deprecated
+                        && c.datum == datum
+                        && c.kind == GeodeticKind::Geographic2d
+                        && !c.name.ends_with("(lon-lat)")
+                })
+                .map(|c| (c.code, c.name.as_str()))
+                .collect()
+        };
+        (found.len() == 1).then(|| found.pop()).flatten()
+    };
+    let names: std::collections::HashSet<&str> = ops.values().map(|o| o.name.as_str()).collect();
+    let mut ensembles: Vec<&Datum> = datums
+        .values()
+        .filter(|d| d.members.is_some() && d.ensemble_accuracy.is_some())
+        .collect();
+    ensembles.sort_by_key(|d| d.code);
+    let mut out = Vec::new();
+    for ensemble in ensembles {
+        let Some((src, src_name)) = crs_of(ensemble.code, ensemble.vertical) else {
+            continue;
+        };
+        for &member in ensemble.members.iter().flatten() {
+            let Some((dst, dst_name)) = crs_of(member, ensemble.vertical) else {
+                continue;
+            };
+            if !ensemble.vertical
+                && (names.contains(format!("{dst_name} to {src_name} (1)").as_str())
+                    || names.contains(format!("{src_name} to {dst_name} (1)").as_str()))
+            {
+                continue;
+            }
+            let (method, params) = if ensemble.vertical {
+                (9616, vec![(8603, ParamValue::Number(0.0))])
+            } else {
+                let zero = |c| (c, ParamValue::Number(0.0));
+                (9603, vec![zero(8605), zero(8606), zero(8607)])
+            };
+            out.push(Operation {
+                code: PROJ_CODES + out.len() as u32,
+                name: format!("{src_name} to {dst_name}"),
+                table: if ensemble.vertical {
+                    Table::Other
+                } else {
+                    Table::Helmert
+                },
+                method,
+                src: Some(src),
+                dst: Some(dst),
+                accuracy: ensemble.ensemble_accuracy,
+                scope: None,
+                variant: 0,
+                deprecated: false,
+                replaced: false,
+                emulates: Vec::new(),
+                extents: Vec::new(),
+                area: crs_extent.get(&dst).cloned(),
+                params,
+                steps: Vec::new(),
+                superseded_by: Vec::new(),
+            });
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -397,5 +502,22 @@ mod tests {
             Some("Poland - onshore and offshore.")
         );
         assert_eq!((poland.west, poland.east), (14.14, 24.15));
+    }
+
+    #[test]
+    fn adds_proj_ensemble_operations() {
+        let r = registry();
+        let proj: Vec<&Operation> = r.ops.values().filter(|o| o.code >= PROJ_CODES).collect();
+        let named = |name: &str| *proj.iter().find(|o| o.name == name).unwrap();
+        let g2296 = named("WGS 84 to WGS 84 (G2296)");
+        assert_eq!((g2296.src, g2296.accuracy), (Some(4326), Some(2.0)));
+        assert_eq!(g2296.param(8605), Some(0.0));
+        assert!(r.by_crs[&4326].contains(&g2296.code));
+        assert_eq!(named("ETRS89 to ETRF2014").accuracy, Some(0.1));
+        let odn = named("BI height to ODN height");
+        assert_eq!((odn.method, odn.accuracy), (9616, Some(0.4)));
+        // Every one PROJ 9.8.1 adds from EPSG 13.106's ensembles
+        // (target/proj-oracle-epsg/proj.db).
+        assert_eq!(proj.len(), 91);
     }
 }

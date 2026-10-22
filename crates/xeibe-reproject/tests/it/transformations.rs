@@ -7,12 +7,15 @@
 //! * `operations.jsonl`: one EPSG transformation forced with
 //!   [`Transform::via`], to test each method's math.
 //! * `selection.jsonl`: the automatic choice between two CRSs, per point:
-//!   the same operation as PROJ (by name), and the same coordinates. Where
-//!   xeibe passes coordinates unchanged between a datum ensemble and one of
-//!   its members, which PROJ doesn't do, only the coordinates are compared,
-//!   except for the pairs in [`ENSEMBLE_DEVIATIONS`]. Where candidates tie
-//!   and PROJ decides by name, xeibe may pick another one
-//!   ([`TIE_BREAK_DEVIATIONS`]).
+//!   the same operation as PROJ (by name), and the same coordinates. PROJ
+//!   runs on EPSG's operations plus its own null operations between a datum
+//!   ensemble and each member, which xeibe has too. Where xeibe passes
+//!   coordinates unchanged between CRSs of an ensemble and a member without
+//!   PROJ's operation (its own identity), and where PROJ counts a member as
+//!   the ensemble by an alias ([`DATUM_ALIAS_PAIRS`]), only the coordinates
+//!   are compared. Routes through an ensemble that knowingly differ are in
+//!   [`ENSEMBLE_DEVIATIONS`]. Where candidates tie and PROJ decides by name,
+//!   xeibe may pick another one ([`TIE_BREAK_DEVIATIONS`]).
 //! * `selection-vertical*.jsonl`: the same between CRSs with heights:
 //!   compound CRSs to geographic 3D CRSs and to each other.
 
@@ -32,42 +35,20 @@ const ANGULAR_DEG: f64 = 1e-8;
 /// The name of xeibe's identity between an ensemble and its member.
 const ENSEMBLE_MEMBER: &str = "Ensemble member identity";
 
-/// Pairs where that identity knowingly differs from PROJ.
+/// Pairs where xeibe goes through a datum ensemble (PROJ's null operation
+/// between it and a member, or xeibe's identity) and knowingly differs from
+/// PROJ: routes through a national realization, where EPSG's operation to
+/// it (often its replacement for the one to the ensemble) plus the null
+/// operation states a better accuracy than PROJ's direct one. PROJ looks
+/// for routes through other CRSs only when there is no direct operation.
 const ENSEMBLE_DEVIATIONS: &[(u32, u32)] = &[
-    // With no EPSG transformation between a national ETRS89 realization and
-    // ETRS89, PROJ goes to an older national datum and back with two
-    // separately fitted Helmerts; EPSG states the ensemble's members agree
-    // to 0.1 m.
-    (4619, 4258),  // ETRS89-SWE [SWEREF 99], via RT90: up to 0.62 m
-    (4765, 4258),  // ETRS89-SVN [D96], via MGI 1901: up to 0.81 m
-    (8685, 4258),  // ETRS89-SRB [STRS00], via MGI 1901: up to 0.03 m
-    (9140, 4258),  // ETRS89-XKX [KOSOVAREF01], via MGI 1901: up to 2.2 km
-    (10328, 4258), // ETRS89-BIH [BH_ETRS89], via MGI 1901: up to 2.0 m
-    // Through a national realization, where EPSG's operation to it (often
-    // its replacement for the one to ETRS89) plus the identity states a
-    // better accuracy than PROJ's direct route.
-    (4124, 4258), // RT90 via SWEREF 99: 0.5 m -> 0.2 m, moves up to 0.30 m
-    (3021, 4258), // RT90 2.5 gon V, the same
-    (4123, 4258), // KKJ via EUREF-FIN: 1.5 m -> 0.6 m, up to 0.07 m
-    (2393, 4258), // KKJ / Finland Uniform, the same
-    (4121, 4258), // GGRS87 via HTRS07: 2.0 m (via WGS 84) -> 1.1 m, up to 1.08 m
-    (3906, 4258), // MGI 1901 via D96: 1.0 m -> 0.4 m, up to 0.18 m
-    // ETRS89 + EVRF2000 height and ETRF2000 + EOMA 1980 height (Hungary):
-    // PROJ goes back through HD72's grid as above, 85 m off at the border.
-    (7409, 10659),
-    (10659, 7409),
-    // ETRS89 + EVRF2000 height to KKJ / Finland Uniform + N60 height: the
-    // same route through EUREF-FIN as KKJ above, up to 1.4 m.
-    (7409, 3901),
     // Pulkovo 1942(83) in Bulgaria: PROJ falls back to an East German
     // operation outside its area; xeibe uses the Bulgarian one, up to 1.03 m.
     (4178, 4258),
-    // With grids. Back through HD72 with the Hungarian grid, which is zero
-    // outside Hungary: PROJ is 100 m off at the border.
-    (11163, 4258),
-    // Through a realization with a grid: HD72 to ETRF2000 (2), 0.015 m,
-    // against PROJ's 0.4 m Helmert (0.1-0.3 m apart; at the border the grid
-    // is zero, as above).
+    // MGI 1901 via D96: 1.0 m -> 0.4 m, up to 0.18 m.
+    (3906, 4258),
+    // With grids. HD72 to ETRF2000 (2) by grid, 0.015 m, against PROJ's
+    // 0.4 m Helmert (0.1-0.3 m apart).
     (4237, 4258),
     // GDA94 to GDA2020 (2) by grid and on to WGS 84 (G1762): 2.25 m against
     // the null GDA94 to WGS 84 (1), 3 m; 1.5 m apart. Projected CRSs on
@@ -79,9 +60,37 @@ const ENSEMBLE_DEVIATIONS: &[(u32, u32)] = &[
     (28351, 4326),
 ];
 
+/// Pairs where PROJ counts a national realization of ETRS89 as ETRS89
+/// itself, by an EPSG alias of its datum (EUREF-FIN and EUREF89 were once
+/// named "European Terrestrial Reference System 1989"), and needs no step
+/// between them; xeibe goes through PROJ's null operation between the
+/// ensemble and the member. The same coordinates: judged by them.
+const DATUM_ALIAS_PAIRS: &[(u32, u32)] = &[
+    (3067, 4258), // ETRS89-FIN [EUREF-FIN] / TM35FIN
+    // ETRS89-NOR [EUREF89] with SVD2006, NN2000:2018 and NN54 heights.
+    (20001, 4937),
+    (4937, 20001),
+    (20001, 4979),
+    (5942, 4937),
+    (4937, 5942),
+    (5942, 4979),
+    (6144, 4937),
+    (4937, 6144),
+    (6144, 4979),
+];
+
 /// Ties PROJ breaks by name (the shorter first) and xeibe by EPSG's data
 /// (the newer variant first): (xeibe's choice, PROJ's).
 const TIE_BREAK_DEVIATIONS: &[(&str, &str)] = &[
+    // ITRF2008 to ETRS89 through any of three ETRF realizations and the
+    // ensemble's null operation, all 0.11 m: PROJ takes the last by name,
+    // xeibe the lowest EPSG code, ETRF2000, the realization EUREF
+    // recommends. Time-dependent Helmerts at their reference epochs, for
+    // coordinates without one: up to 1.2 m apart.
+    (
+        "Conversion from ITRF2008 (geog2D) to ITRF2008 (geocentric) + ITRF2008 to ETRF2000 (1) + Conversion from ETRF2000 (geocentric) to ETRF2000 (geog2D) + Inverse of ETRS89 to ETRF2000",
+        "Conversion from ITRF2008 (geog2D) to ITRF2008 (geocentric) + ITRF2008 to ETRF2020 (1) + Conversion from ETRF2020 (geocentric) to ETRF2020 (geog2D) + Inverse of ETRS89 to ETRF2020",
+    ),
     // (12) replaces (1), says EPSG; 0.25 m apart.
     (
         "MGI 1901 to ETRS89-SVN [D96] (12)",
@@ -416,8 +425,11 @@ struct SelectionStats {
     same_datum_points: usize,
     /// Through xeibe's ensemble-member identity: judged by coordinates.
     ensemble_points: usize,
-    /// Of those, PROJ transforms them otherwise (`ENSEMBLE_DEVIATIONS`).
+    /// Points of `ENSEMBLE_DEVIATIONS` pairs where xeibe and PROJ differ.
     ensemble_deviations: usize,
+    /// Points of `DATUM_ALIAS_PAIRS` pairs where xeibe and PROJ differ by
+    /// name: judged by coordinates.
+    alias_points: usize,
     /// Pairs PROJ has no transformation for, and xeibe only this identity.
     ensemble_only_ours: usize,
     /// Ties broken otherwise than PROJ (`TIE_BREAK_DEVIATIONS`).
@@ -502,6 +514,7 @@ fn check_selection(records: &[Value], world: World) -> (SelectionStats, Vec<Stri
                 s.same_datum_points += 1;
             }
             let ensemble = ours.as_deref().is_some_and(|n| n.contains(ENSEMBLE_MEMBER));
+            let alias = ours != theirs && DATUM_ALIAS_PAIRS.contains(&(src, dst));
             if ensemble {
                 s.ensemble_points += 1;
                 if theirs.is_none() {
@@ -511,6 +524,11 @@ fn check_selection(records: &[Value], world: World) -> (SelectionStats, Vec<Stri
                     s.ensemble_deviations += 1;
                     continue;
                 }
+            } else if ours != theirs && ENSEMBLE_DEVIATIONS.contains(&(src, dst)) {
+                s.ensemble_deviations += 1;
+                continue;
+            } else if alias {
+                s.alias_points += 1;
             } else if let (Some(o), Some(t)) = (&ours, &theirs)
                 && (TIE_BREAK_DEVIATIONS.contains(&(o.as_str(), t.as_str()))
                     || (matches!(world, World::Grids(_))
@@ -536,12 +554,18 @@ fn check_selection(records: &[Value], world: World) -> (SelectionStats, Vec<Stri
                 continue;
             } else if ours != theirs && !(conversion && theirs.is_some()) {
                 s.different_operation += 1;
+                let apart = match (convert(&t, &input), floats(&p["out"])) {
+                    (Ok(got), Some(want)) => {
+                        format!("{:.3e}", within(horizontal_code(dst_v), got, &want).1)
+                    }
+                    _ => "-".into(),
+                };
                 failures.push(format!(
-                    "{sl} -> {dl} at {input:?}:\n    ours:  {ours:?}\n    PROJ:  {theirs:?}"
+                    "{sl} -> {dl} at {input:?} (apart {apart}):\n    ours:  {ours:?}\n    PROJ:  {theirs:?}"
                 ));
                 continue;
             }
-            if !ensemble {
+            if !ensemble && !alias {
                 s.same_operation += 1;
             }
             if let (Ok(got), Some(want)) = (convert(&t, &input), floats(&p["out"])) {
@@ -620,7 +644,8 @@ fn report_operations(stats: &BTreeMap<u64, OperationStats>) {
 fn report_selection(s: &SelectionStats) {
     eprintln!(
         "pairs {}, points {}: same operation {} (of which on one datum {}), different {}, coordinate failures {}, \
-         no transformation either side {}; ensemble-member identity {} (PROJ differs knowingly {}), pairs only xeibe transforms {}; \
+         no transformation either side {}; ensemble-member identity {}, through an ensemble knowingly unlike PROJ {}, \
+         PROJ's datum alias {}, pairs only xeibe transforms {}; \
          ties broken otherwise {} (by variant in a route {}); listed pair deviations {} (and {} pairs PROJ can't transform); PROJ's inverse approximate {}",
         s.pairs,
         s.points,
@@ -631,6 +656,7 @@ fn report_selection(s: &SelectionStats) {
         s.no_transform_both,
         s.ensemble_points,
         s.ensemble_deviations,
+        s.alias_points,
         s.ensemble_only_ours,
         s.tie_break_deviations,
         s.variant_ties,

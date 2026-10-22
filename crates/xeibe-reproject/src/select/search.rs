@@ -28,12 +28,45 @@ use super::crs::{CrsCache, CrsKind, CrsRef};
 use super::filter::{Areas, filter_out, is_exportable, is_null_transformation};
 use crate::extent::Extent;
 use crate::grid::Grids;
-use crate::registry::{Operation, registry};
+use crate::registry::{Operation, PROJ_CODES, registry};
 
 mod vertical;
 
 /// PROJ's recursion limit for `createOperations`.
 const MAX_RECURSION: usize = 10;
+
+/// PROJ's `useOnlyIntermediateCRSThroughDatumEnsembleNullOp`: every
+/// operation is a concatenation with a step through one of PROJ's null
+/// operations between a datum ensemble and a member. PROJ then also looks
+/// through other datums' CRSs, which may hold a better route: WGS 84 (G1674)
+/// to GDA94 through ITRF2008 (0.04 m) rather than through WGS 84 (5 m).
+fn only_through_ensemble_operations(ops: &[Candidate]) -> bool {
+    ops.iter()
+        .all(|op| op.steps.len() > 1 && through_ensemble_operation(op))
+}
+
+/// Whether a step is one of PROJ's null operations between a datum
+/// ensemble and a member.
+fn through_ensemble_operation(op: &Candidate) -> bool {
+    op.leaves()
+        .iter()
+        .any(|s| matches!(s.kind, SingleKind::Registry { code, .. } if code >= PROJ_CODES))
+}
+
+/// The one of PROJ's null operations between a datum ensemble and a member
+/// that joins the two CRSs (`crate::registry`), and whether it runs
+/// inverted from `a` to `b`.
+fn proj_ensemble_operation(a: CrsRef, b: CrsRef) -> Option<(u32, bool)> {
+    let (CrsRef::Epsg(a), CrsRef::Epsg(b)) = (a, b) else {
+        return None;
+    };
+    let r = registry();
+    r.by_crs.get(&a)?.iter().find_map(|&code| {
+        let op = &r.ops[&code];
+        (code >= PROJ_CODES && (op.dst == Some(b) || op.src == Some(b)))
+            .then_some((code, op.src == Some(b)))
+    })
+}
 
 pub(crate) struct Search {
     pub(crate) crs: CrsCache,
@@ -143,7 +176,11 @@ impl Search {
     /// EPSG publishes.
     fn query_database(&mut self, s: CrsRef, t: CrsRef, res: &mut Vec<Candidate>) -> bool {
         let done = self.query_registry(s, t, res);
-        if let Some(step) = ensemble_member(&mut self.crs, s, t) {
+        // Not where PROJ's own null operation joins the two CRSs: the same
+        // coordinates, under PROJ's name.
+        if proj_ensemble_operation(s, t).is_none()
+            && let Some(step) = ensemble_member(&mut self.crs, s, t)
+        {
             res.push(Candidate::single(step));
         }
         res.extend(self.via_realizations(s, t));
@@ -178,12 +215,14 @@ impl Search {
                 .map(|&c| CrsRef::Epsg(c))
                 .collect()
         };
+        // EPSG's operations only: one of PROJ's null operations to the
+        // member would come straight back.
         let mut non_empty = false;
         for mid in member_crss(dt, ds) {
             for first in self.find_ops_direct(s, mid, &mut non_empty) {
-                if let Some(id) = ensemble_member(&mut self.crs, mid, t)
-                    && let Some(c) =
-                        concatenate(vec![first, Candidate::single(id)], true, &mut self.crs)
+                if !through_ensemble_operation(&first)
+                    && let Some(id) = self.ensemble_step(mid, t)
+                    && let Some(c) = concatenate(vec![first, id], true, &mut self.crs)
                 {
                     out.push(c);
                 }
@@ -191,15 +230,25 @@ impl Search {
         }
         for mid in member_crss(ds, dt) {
             for second in self.find_ops_direct(mid, t, &mut non_empty) {
-                if let Some(id) = ensemble_member(&mut self.crs, s, mid)
-                    && let Some(c) =
-                        concatenate(vec![Candidate::single(id), second], true, &mut self.crs)
+                if !through_ensemble_operation(&second)
+                    && let Some(id) = self.ensemble_step(s, mid)
+                    && let Some(c) = concatenate(vec![id, second], true, &mut self.crs)
                 {
                     out.push(c);
                 }
             }
         }
         out
+    }
+
+    /// The step between a CRS on a datum ensemble and one on a member: PROJ's
+    /// null operation between the two where there is one, else xeibe's
+    /// identity. The same coordinates either way.
+    fn ensemble_step(&mut self, a: CrsRef, b: CrsRef) -> Option<Candidate> {
+        match proj_ensemble_operation(a, b) {
+            Some((code, inverse)) => registry_candidate(code, inverse, &mut self.crs),
+            None => ensemble_member(&mut self.crs, a, b).map(Candidate::single),
+        }
     }
 
     fn query_registry(&mut self, s: CrsRef, t: CrsRef, res: &mut Vec<Candidate>) -> bool {
@@ -256,6 +305,7 @@ impl Search {
                     || only_replaced
                     || too_small
                     || (all_need_time && neither_dynamic)
+                    || only_through_ensemble_operations(res)
                 {
                     let names: HashSet<String> = if too_small {
                         res.iter().map(|op| op.name.clone()).collect()

@@ -129,8 +129,10 @@ sources, but their contents haven't been checked against the local copies:
 - `scripts/gen_reprojection_vectors.py` writes level-1 test vectors for
   `xeibe-reproject` (PROJ via pyproj, fed our PROJJSON);
   `scripts/build_proj_oracle.py` rebuilds PROJ's `proj.db` from our EPSG
-  archive into `target/proj-oracle/` (PROJ's own `build_db.py`, ~1 min), and
-  `scripts/gen_transformation_vectors.py` writes level-2 vectors with it (and
+  archive into `target/proj-oracle/` (PROJ's own `build_db.py`, ~1 min), plus
+  a copy with only EPSG's operations and PROJ's null operations between
+  datum ensembles and their members in `target/proj-oracle-epsg/`, and
+  `scripts/gen_transformation_vectors.py` writes level-2 vectors with that (and
   level-3 vectors with `--grids DIR`, and between CRSs with heights with
   `--vertical`). Both write committed subsets to
   `tests/data/reprojection/`; `--all` writes everything to

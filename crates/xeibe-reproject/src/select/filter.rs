@@ -312,13 +312,16 @@ fn before(a: &Candidate, ka: &Keys, b: &Candidate, kb: &Keys) -> bool {
         return ka.off_meridian < kb.off_meridian;
     }
     // The newer variants first, then the EPSG codes, so the order is total.
+    // With the same operations, the names differ in how the route reaches
+    // them (through geog2D or geog3D CRSs): PROJ's reverse alphabetical
+    // order.
     let variants = |k: &Keys| k.registry.iter().map(|r| r.0).collect::<Vec<_>>();
     match variants(kb).cmp(&variants(ka)) {
         Ordering::Equal => {}
         o => return o == Ordering::Less,
     }
     match ka.registry.cmp(&kb.registry) {
-        Ordering::Equal => a.name < b.name,
+        Ordering::Equal => a.name > b.name,
         o => o == Ordering::Less,
     }
 }

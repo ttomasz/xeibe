@@ -16,7 +16,7 @@ use crate::error::{CoordinateError, Error};
 use crate::grid::Grids;
 use crate::grid::store::GridFile;
 use crate::operation::{self, Method};
-use crate::registry::registry;
+use crate::registry::{PROJ_CODES, registry};
 use crate::transform::{from_geographic, to_geographic};
 
 pub(crate) mod candidate;
@@ -88,7 +88,8 @@ pub struct OperationInfo {
     /// search put together.
     pub code: Option<(u32, bool)>,
     /// The EPSG transformations it runs, in order, each with whether it
-    /// runs inverted. Map projections and the changes on one datum are left
+    /// runs inverted. Map projections, the changes on one datum and PROJ's
+    /// null operations between a datum ensemble and its members are left
     /// out.
     pub steps: Vec<(u32, bool)>,
     /// In metres; `None` when unknown.
@@ -112,7 +113,9 @@ impl OperationInfo {
         fn transformations(steps: &[candidate::Single], out: &mut Vec<(u32, bool)>) {
             for s in steps {
                 match &s.kind {
-                    SingleKind::Registry { code, inverse } => out.push((*code, *inverse)),
+                    SingleKind::Registry { code, inverse } if *code < PROJ_CODES => {
+                        out.push((*code, *inverse));
+                    }
                     SingleKind::Composite { parts, .. } => transformations(parts, out),
                     _ => {}
                 }
@@ -132,7 +135,7 @@ impl OperationInfo {
         }
         OperationInfo {
             name: c.name.clone(),
-            code: c.registry,
+            code: c.registry.filter(|&(code, _)| code < PROJ_CODES),
             steps: codes,
             accuracy: (c.accuracy >= 0.0).then_some(c.accuracy),
             area: c

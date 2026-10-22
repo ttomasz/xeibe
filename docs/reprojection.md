@@ -284,6 +284,7 @@ The port follows PROJ 9.8.1's code paths, with the registry in place of
 | `ConcatenatedOperation::createComputeMetadata`, `getAccuracy`, `getExtent`, naming of inverses and concatenations | `select/candidate.rs` |
 | `GeographicBoundingBox`, `Extent` | `extent.rs` |
 | `isSameGeodeticDatum` (replaced: EPSG codes and ensemble membership, see the deviations) | `datum.rs` |
+| `build_db.py`'s `create_datumensemble_transformations` (PROJ's null operations between a datum ensemble and its members) | `registry.rs` |
 | `crs_to_crs.cpp` (alternatives, areas in source CRS), `trans.cpp` (per-point choice, retries, fallback) | `select/mod.rs` |
 
 Details that turned out to matter, each found by the differential:
@@ -299,6 +300,25 @@ Details that turned out to matter, each found by the differential:
 - **What PROJ can run.** Time-specific Helmert methods (1065, 1066) have no
   PROJ pipeline and never compete; time-dependent ones run at their reference
   epoch when coordinates have no epoch, as in PROJ.
+- **PROJ's own operations between a datum ensemble and its members.**
+  PROJ's `build_db.py` adds a null operation between the CRS of each datum
+  ensemble and the CRS of each of its members ("WGS 84 to WGS 84 (G2296)",
+  "ETRS89 to ETRF2014", "BI height to ODN height"), with the ensemble's
+  accuracy and the member CRS's area, unless EPSG has an operation "A to B
+  (1)" between them: 91 for EPSG 13.106. Its search uses them anywhere in a
+  route, and when every route it found goes through one, it also looks
+  through other datums' CRSs (`useOnlyIntermediateCRSThroughDatumEnsembleNullOp`).
+  The registry adds the same 91, with codes from `PROJ_CODES` up, and they
+  are never reported as EPSG operations. Before, xeibe's tests ran PROJ on
+  EPSG's operations only, which hid them, while PROJ's default uses them:
+  ITRF2008, ITRF2014 or ITRF2020 to WGS 84 went through NAD83(2011)'s
+  Puerto Rico operation, outside its area, and moved points by 1 to 11 m,
+  where WGS 84 (G2296) is aligned to ITRF2020 at centimetres; 53 of 55
+  random EPSG pairs PROJ joins this way had no route at all.
+- **Routes that differ only in their CRSs' dimension.** The same
+  operations reached through geog2D or geog3D CRSs give the same pipeline;
+  PROJ keeps the first by its name order (the shorter, then the reverse
+  alphabetical), so xeibe orders them so too.
 - **An accuracy of 999 is unknown.** EPSG gives 999 m for 34 operations
   whose accuracy it doesn't know, and PROJ's factory drops it. Ranked as a
   known 999 m it sorted ahead of better operations with smaller areas, and
@@ -324,11 +344,16 @@ Details that turned out to matter, each found by the differential:
      EPSG notes "OGP prefers value from IGN Paris";
   4. the newer EPSG variant (EPSG numbers the operations between two CRSs in
      the order it adds them; codes don't always follow);
-  5. the EPSG codes, so the order is total.
+  5. the EPSG codes, then PROJ's name order (routes through the same
+     operations differ only in how they reach them), so the order is
+     total.
 
-  Measured on 2026-10-18, 38 of 21,132 points in 4 pairs differ from PROJ.
-  In each, EPSG's remarks side with xeibe's choice or call the two
-  equivalent: "MGI 1901 to ETRS89-SVN [D96] (12)" replaces "(1)" (0.25 m);
+  Measured on 2026-10-22, 38 of 22,128 points in 5 pairs differ from PROJ.
+  ITRF2008 to ETRS89 goes through ETRF2000, ETRF2014 or ETRF2020 and the
+  ensemble, all stated 0.11 m: PROJ takes ETRF2020 by name, xeibe ETRF2000
+  by the lowest code, the realization EUREF recommends (time-dependent
+  Helmerts at their reference epochs, up to 1.2 m apart). In the others
+  EPSG's remarks side with xeibe's choice or call the two equivalent: "MGI 1901 to ETRS89-SVN [D96] (12)" replaces "(1)" (0.25 m);
   for Bogota 1975 to MAGNA-SIRGAS "OGP recommends" the Molodensky-Badekas
   version PROJ passes over (2 mm); two LUREF methods are declared equivalent
   (1 mm); one Slovak route gives the same coordinates. Against all of EPSG's
@@ -351,42 +376,39 @@ Details that turned out to matter, each found by the differential:
 - **Datums are compared by EPSG code, and an ensemble stands in for its
   members.** PROJ compares datum names through EPSG's aliases and its own (old
   EPSG names, short names), so EUREF-FIN, once named "European Terrestrial
-  Reference System 1989", is ETRS89 to it. xeibe instead adds a candidate
-  between a datum ensemble and each of its members: coordinates pass
-  unchanged, with the ensemble's accuracy (0.1 m for ETRS89, 2 m for WGS 84),
-  competing with whatever EPSG publishes. Measured against PROJ (2026-10-18),
-  612 points in 51 pairs go through it:
-  - 46 pairs give the same coordinates, because PROJ reaches the identity
-    another way (two null transformations through WGS 84, its own null
-    offset, or a Helmert and its inverse that cancel);
-  - 5 pairs differ, where EPSG has no direct operation and PROJ goes to an
-    older national datum and back with two separately fitted Helmerts:
-    SWEREF 99 via RT90 (up to 0.62 m), D96 via MGI 1901 (0.81 m), STRS00
-    (0.03 m), BH_ETRS89 (2.0 m) and KOSOVAREF01 (2.2 km);
-  - 22 pairs (WGS 84 and ETRF realizations, a few national ETRS89 ones)
-    transform in xeibe only, where PROJ, ballparks disallowed, has nothing.
+  Reference System 1989", is ETRS89 to it, with no step between them. xeibe
+  goes through PROJ's null operation between the ensemble and the member
+  instead (the same coordinates: 12 points in 1 pair without heights, 56 in
+  9 pairs with Norwegian heights on EUREF89). Where PROJ has no such
+  operation (between CRSs other than the ensemble's and the member's
+  geographic 2D ones, or where EPSG has its own "A to B (1)"), xeibe adds
+  an identity of its own, "Ensemble member identity", with the ensemble's
+  accuracy: 36 points, all with PROJ's coordinates.
 - **Routes through a national realization compete with direct operations.**
   EPSG has replaced many operations to ETRS89 with ones to a country's
   realization of it ("RT90 to ETRS89-SWE [SWEREF 99] (1)", 0.1 m, replaces
   "RT90 to ETRS89 (1)", 0.5 m). When one side is on a datum ensemble, xeibe
   also tries an EPSG operation to a CRS on one of its members followed by the
-  member identity; PROJ looks for routes through other CRSs only when no
-  direct operation exists. Measured on 2026-10-18, 62 points in 7 pairs take
-  such a route, each with a better stated accuracy: RT90 0.5 → 0.2 m (moving
-  up to 0.30 m), KKJ 1.5 → 0.6 m (0.07 m), GGRS87 2.0 → 1.1 m (1.08 m),
-  MGI 1901 1.0 → 0.4 m (0.18 m), and Pulkovo 1942(83) in Bulgaria, where PROJ
-  falls back to an East German operation outside its area and xeibe uses the
-  Bulgarian one (1.03 m). The two directions now agree: ETRS89 → RT90 already
-  went through SWEREF 99. The search takes about 8% longer.
+  step between member and ensemble; PROJ looks for routes through other
+  CRSs only when no direct operation exists, or only replaced ones. Measured
+  on 2026-10-22, 3 points in 2 pairs take such a route where PROJ doesn't,
+  each with a better stated accuracy: MGI 1901 1.0 → 0.4 m (0.18 m), and
+  Pulkovo 1942(83) in Bulgaria, where PROJ falls back to an East German
+  operation outside its area and xeibe uses the Bulgarian one (1.03 m).
+  With grids, HD72 to ETRF2000 (2) (0.015 m against 0.4 m) and GDA94 to
+  GDA2020 by grid on to WGS 84 (2.25 m against 3 m) as well. RT90, KKJ,
+  GGRS87, SWEREF 99, D96, STRS00, BH_ETRS89 and KOSOVAREF01, which went
+  their own way here before, now match PROJ, which reaches the same routes
+  through its null operations.
 
 - **No ballpark fallback.** When no EPSG operation applies, `Transform::new`
   fails with `NoTransformation`; PROJ would offer a "ballpark" approximation.
 - **Grid-based operations are unavailable** with `Grids::None`: they are left
   out as PROJ leaves them out when their grids are missing (`ONLY_BEST=NO`).
   By default (level 3) a grid is available when PROJ-data publishes it.
-- **EPSG operations only.** `proj.db` adds PROJ-authority operations (between
-  ensembles and their members, among others) plus ESRI, IGNF, NKG and NRCAN
-  ones that xeibe doesn't have.
+- **EPSG operations only**, plus PROJ's null operations between datum
+  ensembles and their members (above). `proj.db` adds other PROJ-authority
+  operations plus ESRI, IGNF, NKG and NRCAN ones that xeibe doesn't have.
 - **The inverse transform chooses again** for the opposite direction, rather
   than inverting the chosen list.
 
@@ -395,7 +417,9 @@ Details that turned out to matter, each found by the differential:
 The oracle is PROJ 9.8.1 (pyproj 3.8.0) on a `proj.db` rebuilt from the same
 EPSG release as `xeibe-crs` by `scripts/build_proj_oracle.py`, which runs PROJ's
 own `build_db.py` on our EPSG archive. PROJ runs without grids or network, with
-ballparks disallowed and `ONLY_BEST=NO`, `authority="EPSG"`.
+ballparks disallowed and `ONLY_BEST=NO`, on a copy of that database with
+only EPSG's operations and PROJ's null operations between datum ensembles
+and their members (`target/proj-oracle-epsg`), which xeibe has too.
 `scripts/gen_transformation_vectors.py` writes two kinds of vectors (a committed
 subset in `tests/data/reprojection/`, everything with `--all` into `target/`):
 
@@ -406,17 +430,19 @@ subset in `tests/data/reprojection/`, everything with `--all` into `target/`):
    operations whose CRSs xeibe couldn't read then: 102 *Geographic2D with
    Height Offsets* from compound CRSs and one similarity transformation to
    an engineering CRS, all of which match since level 3.
-2. **Selection differential**, the main test. 2,654 CRS pairs: every pair
+2. **Selection differential**, the main test. 2,690 CRS pairs: every pair
    an EPSG operation joins, every live geographic 2D CRS to WGS 84 and to
    ETRS89, every tenth projected CRS to WGS 84, and every CRS with several
-   areas of use to both. For 21,132 points in the area of interest, xeibe
+   areas of use to both. For 22,128 points in the area of interest, xeibe
    picks the same operation as PROJ (by name) for every point and gives the
-   same coordinates, except through the ensemble-member identity
-   above (judged by coordinates, with the twelve known deviations listed in
-   the test) and the ties broken by EPSG's data (38 points, listed in the
-   test);
-   871 pairs have no usable transformation on either side. These vectors
-   run with `Grids::None`.
+   same coordinates, except through xeibe's own ensemble-member identity
+   and PROJ's datum aliases (above, judged by coordinates), the routes
+   through a national realization (3 points, listed in the test) and the
+   ties broken by EPSG's data (38 points, listed in the test); 846 pairs
+   have no usable transformation on either side. These vectors run with
+   `Grids::None`. On 2026-10-22, the first run with PROJ's null
+   operations: no coordinate failures, and no pair that only one side
+   transforms.
 
 "Good precision" means choosing the operation with the best accuracy EPSG states.
 That is the best signal available, PROJ included, but it remains a proxy.
@@ -692,8 +718,11 @@ The level 2 deviations hold. Grids add:
 - **No alias datums with heights either.** At one inland point, CD Norway
   depth's newest grid has no value. PROJ takes ETRS89-NOR [EUREF89] for
   ETRS89 by an EPSG alias, so its next candidate is the older grid; xeibe's
-  own candidates through the ensemble identity come first and use up the
-  three attempts, and the point fails (3 points).
+  candidates through the ensemble come first and use up the three
+  attempts, and the point fails (3 points). Elsewhere the alias only
+  changes names: PROJ applies EUREF89's geoid models to ETRS89 directly,
+  xeibe through PROJ's null operation between the two (56 points, the same
+  heights).
 - **PROJ can't build two of EPSG's concatenations.** "BES2020 Saba to
   Saba height (1)" and its Sint Eustatius twin chain a Helmert and a
   constant geoid height of zero; PROJ fails on its own pipeline ("Mismatched
@@ -720,7 +749,7 @@ The level 2 deviations hold. Grids add:
 
 ### Validation
 
-The oracle is the same PROJ, with every PROJ-data grid in a local directory
+The oracle is the same PROJ and database, with every PROJ-data grid in a local directory
 (copied from the `scripts/gdal` image, which bundles PROJ-data; all but one
 geoid grid of the catalog): PROJ then counts every published grid as
 available, as with network access. `scripts/gen_transformation_vectors.py
@@ -733,10 +762,11 @@ without it the operations and pinned pairs whose grids are committed.
    NTv1 1), 12 points each, match PROJ to within 6.4e-14° and 7.5e-9 m;
    every point PROJ rejects (outside the grid) xeibe rejects too.
 2. **Selection differential**, the 2,654 pairs of level 2 with grids:
-   22,224 points. 21,428 take PROJ's operation with PROJ's coordinates; the
-   rest are the listed deviations (ensemble and realization routes 196
-   points, ties 69, pairs 14); 780 pairs have no transformation on either
-   side. These pairs run in the direction EPSG publishes; the committed
+   22,944 points on 2026-10-22. 22,767 take PROJ's operation with PROJ's
+   coordinates; the rest are xeibe's own ensemble identity and PROJ's
+   datum aliases (48 points, judged by coordinates), the listed deviations
+   (realization routes 65 points, ties 50, pairs 14); 741 pairs have no
+   transformation on either side. These pairs run in the direction EPSG publishes; the committed
    vectors also pin St. George Island's NADCON5 in reverse, where PROJ's
    estimate differs (12 points). The test accepts a difference only when
    xeibe's result converts back to the input and PROJ's doesn't.
@@ -757,11 +787,11 @@ without it the operations and pinned pairs whose grids are committed.
 6. **Selection with heights** (`--vertical`): 1,621 pairs, every EPSG
    compound CRS to the geographic 3D CRS on its datum and back, to WGS 84
    3D, every fifth to its geographic 2D CRS, and compound CRSs across each
-   EPSG vertical operation. Of 13,044 points, 12,115 take PROJ's operation
-   with PROJ's coordinates (heights to 1 mm); the rest are the ensemble
-   identity (677 points, 36 of them knowingly different), the variant ties
-   (201) and the listed pairs (51 points, and the 4 pairs PROJ can't
-   build); 530 pairs have no transformation on either side. The committed
+   EPSG vertical operation. Of 13,524 points on 2026-10-22, 13,217 take
+   PROJ's operation with PROJ's coordinates (heights to 1 mm); the rest are
+   PROJ's datum aliases (56 points, the same coordinates), the variant ties
+   (201) and the listed pairs (50 points, and the 4 pairs PROJ can't
+   build); 490 pairs have no transformation on either side. The committed
    vectors run without grids, and with the fixtures' geoid model and offset
    grids. Where PROJ has no transformation, the test also checks that xeibe
    has none, but for the listed pairs.

@@ -32,9 +32,15 @@ The EPSG version in the database metadata is set to the archive's.
     scripts/build_proj_oracle.py                 # newest EPSG-*-PostgreSQL.zip in example_data/
     scripts/build_proj_oracle.py --sql PATH
 
-Output: `target/proj-oracle/proj.db`. Use it from pyproj with
-`pyproj.datadir.set_data_dir("target/proj-oracle")` (pyproj ignores
-`PROJ_DATA` in favour of its bundled data).
+Output: `target/proj-oracle/proj.db`, PROJ's database as PROJ builds it,
+and `target/proj-oracle-epsg/proj.db`, the same with only EPSG's operations
+plus the null operations `build_db.py` adds between a datum ensemble and
+each of its members ("WGS 84 to WGS 84 (G2296)", "ETRS89 to ETRF2014"),
+which `xeibe-reproject` adds too (`docs/reprojection.md`, level 2). The
+reprojection vectors use the second, with no authority restriction; pyproj
+compatibility tests the first. Use either from pyproj with
+`pyproj.datadir.set_data_dir(...)` (pyproj ignores `PROJ_DATA` in favour of
+its bundled data).
 """
 
 from __future__ import annotations
@@ -53,6 +59,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 OUT = REPO / "target" / "proj-oracle"
+OUT_EPSG = REPO / "target" / "proj-oracle-epsg"
 
 # The PROJ release pyproj 3.8.0 wraps; keep the two in step.
 PROJ_VERSION = "9.8.1"
@@ -176,6 +183,30 @@ def assemble(src: Path, db_path: Path, version: str, date: str) -> list[str]:
     return [f"{n} x {file}: {message}" for (file, message), n in rejected.items()]
 
 
+def epsg_only(full: Path, out: Path) -> dict[str, int]:
+    """A copy of `full` without other authorities' operations, except PROJ's
+    null operations between a datum ensemble and its members. Returns how
+    many of those it keeps, by table."""
+    out.unlink(missing_ok=True)
+    shutil.copyfile(full, out)
+    db = sqlite3.connect(out, isolation_level=None)
+    ensemble = "auth_name = 'PROJ' AND description LIKE '%from datum ensemble definition'"
+    db.execute(f"DELETE FROM helmert_transformation_table WHERE auth_name != 'EPSG' AND NOT ({ensemble})")
+    db.execute(f"DELETE FROM other_transformation WHERE auth_name != 'EPSG' AND NOT ({ensemble})")
+    db.execute("DELETE FROM grid_transformation WHERE auth_name != 'EPSG'")
+    db.execute("DELETE FROM concatenated_operation_step WHERE operation_auth_name != 'EPSG'")
+    db.execute("DELETE FROM concatenated_operation WHERE auth_name != 'EPSG'")
+    kept = {
+        table: n
+        for table, n in db.execute(
+            "SELECT table_name, count(*) FROM coordinate_operation_view WHERE auth_name != 'EPSG' GROUP BY 1"
+        )
+    }
+    db.execute("VACUUM")
+    db.close()
+    return kept
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--sql", type=Path, help="EPSG PostgreSQL scripts zip")
@@ -193,6 +224,10 @@ def main() -> int:
     for line in rejected:
         print(f"  rejected by PROJ's checks: {line}")
     print(f"wrote {(OUT / 'proj.db').relative_to(REPO)} ({(OUT / 'proj.db').stat().st_size // 1024} KiB)")
+    OUT_EPSG.mkdir(parents=True, exist_ok=True)
+    kept = epsg_only(OUT / "proj.db", OUT_EPSG / "proj.db")
+    summary = ", ".join(f"{n} in {table}" for table, n in sorted(kept.items()))
+    print(f"wrote {(OUT_EPSG / 'proj.db').relative_to(REPO)}: EPSG plus PROJ's ensemble operations ({summary})")
     return 0
 
 
