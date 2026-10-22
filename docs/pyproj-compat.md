@@ -69,24 +69,21 @@ As of 2026-10-21, phase 0 and phase 1 are implemented, apart from
     - the datum of vertical CRSs on an ensemble;
     - `to_epsg` of engineering CRSs, which PROJ's identification skips.
   - Random EPSG pairs, compared with PROJ without ballparks (divergence 1),
-    found 65 pairs that differ in `xeibe-reproject`'s choice of operation,
+    found 10 pairs that differ in `xeibe-reproject`'s choice of operation,
     listed in `tests/oracle-known.txt`:
-    - 55 that go through PROJ's null operations between a datum ensemble
-      and its members ("WGS 84 to WGS 84 (G730)", "ETRS89 to ETRF2014"),
-      which PROJ's `build_db.py` adds with the ensemble's accuracy and its
-      search uses anywhere in a route. `xeibe-reproject` has the same
-      identity only at either end of a route. In 53 pairs we have no route;
-      in 2 PROJ's is more accurate (0.36 m, 1.3e-5°). PROJ restricted to EPSG's
-      operations, as `xeibe-reproject`'s own differential runs it, has no
-      route for any of the 53;
     - 2 ties broken by EPSG's data, documented in
       [reprojection.md](reprojection.md#deviations-from-proj-documented-deliberate);
     - 8 time-dependent Helmerts without an epoch.
 
-    They are `xeibe-reproject` work, not this package's. Before 2026-10-21
-    there were 14 pairs that chose differently per point. 9 of them were
-    PROJ's per-point ballpark (now compared without), and one was a bug:
-    EPSG's accuracy 999 counted as 999 m, where PROJ reads it as unknown.
+    Before 2026-10-22 there were 65. 55 went through PROJ's null operations
+    between a datum ensemble and its members ("WGS 84 to WGS 84 (G730)",
+    "ETRS89 to ETRF2014"), which `xeibe-reproject` now has too
+    ([reprojection.md](reprojection.md#implementation)): 53 had no route
+    at all, and ITRF2008/2014/2020 to WGS 84 moved points by 1 to 11 m.
+    Before 2026-10-21 there were 14 pairs that chose differently per
+    point. 9 of them were PROJ's per-point ballpark (now compared without),
+    and one was a bug: EPSG's accuracy 999 counted as 999 m, where PROJ
+    reads it as unknown.
 - **Fixed on the way.** `always_xy` follows PROJ's rule
   (`mustAxisOrderBeSwitchedForVisualization`). Northing-easting axes are
   swapped. Of the polar CRSs with both axes along meridians, only UPS North
