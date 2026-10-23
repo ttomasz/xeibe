@@ -30,7 +30,8 @@ What it offers over pyproj:
 As of 2026-10-21, phase 0 and phase 1 are implemented, apart from
 `TransformerGroup.download_grids` and `get_units_map` (both phase 2). As of
 2026-10-23, so is phase 2's WKT part ([crs-wkt.md](crs-wkt.md)): WKT in and
-out, identification by definition, Bound CRSs and Esri's old codes.
+out, identification by definition, Bound CRSs and Esri's old codes. The
+rest of phase 2 is designed in [pyproj-phase2.md](pyproj-phase2.md).
 
 - **Done.**
   - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
