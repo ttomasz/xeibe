@@ -4,17 +4,17 @@
 //! Ported from PROJ 9.8.1 `src/projections/aeqd.cpp` (MIT, see
 //! PROJ-NOTICE.md). PROJ maps EPSG:1125 and EPSG:9832 to the same `aeqd`: the
 //! modified method (EPSG's series approximation) is computed exactly, as the
-//! distance and azimuth of a geodesic (see [`super::geodesic`]), with series
+//! distance and azimuth of a geodesic (see [`crate::geodesic`]), with series
 //! for the polar cases. EPSG:9831 is `aeqd` with `guam`, the Guam
 //! approximation.
 
 use std::f64::consts::{FRAC_PI_2, PI};
 
 use super::auxlat::{self, AuxLat, ORDER};
-use super::geodesic::Geodesic;
 use super::{BuildError, Params, Projection, adjlon, param};
 use crate::ellipsoid::Ellipsoid;
 use crate::error::CoordinateError;
+use crate::geodesic::Geodesic;
 
 const EPS10: f64 = 1e-10;
 const TOL: f64 = 1e-14;
@@ -150,7 +150,7 @@ impl AzimuthalEquidistant {
         if lam.abs() < EPS10 && (phi - self.phi0).abs() < EPS10 {
             return (0.0, 0.0);
         }
-        let (s12, azi1) = geod.inverse(
+        let (s12, azi1, _) = geod.inverse(
             self.phi0 / DEG_TO_RAD,
             0.0,
             phi / DEG_TO_RAD,
@@ -303,7 +303,7 @@ impl Projection for AzimuthalEquidistant {
                     (0.0, self.phi0)
                 } else if matches!(self.mode, Mode::Oblique | Mode::Equatorial) {
                     let azi1 = x.atan2(y) / DEG_TO_RAD;
-                    let (lat2, lon2) = geod.direct(self.phi0 / DEG_TO_RAD, azi1, s12);
+                    let (lat2, lon2, _) = geod.direct(self.phi0 / DEG_TO_RAD, 0.0, azi1, s12);
                     (lon2 * DEG_TO_RAD, lat2 * DEG_TO_RAD)
                 } else {
                     let north = self.mode == Mode::NPole;

@@ -362,8 +362,8 @@ becomes the package's status tracker.
 | API | Phase | Notes |
 |---|---|---|
 | `Geod(ellps=…)`, `Geod(a=, b=, f=, rf=, es=, sphere=)`, `Geod("+ellps=…")`, `CRS.get_geod()` | 2 | Needs PROJ's ellipsoid name table (`ellps.cpp`, MIT). |
-| `Geod.inv`, `fwd`, `line_length`, `line_lengths` | 2 | Already ported (`methods/geodesic.rs`). |
-| `npts`, `fwd_intermediate`, `inv_intermediate`, `polygon_area_perimeter`, `geometry_length`, `geometry_area_perimeter` | 2 | Port the rest of `geodesic.c`: geodesic lines and polygon areas. |
+| `Geod.inv`, `fwd`, `line_length`, `line_lengths` | 2 | **Rust done:** all of `geodesic.c` is ported (`xeibe_reproject::geodesic`, [pyproj-phase2.md](pyproj-phase2.md#geodesics)). |
+| `npts`, `fwd_intermediate`, `inv_intermediate`, `polygon_area_perimeter`, `geometry_length`, `geometry_area_perimeter` | 2 | Geodesic lines and polygon areas. **Rust done**, as above. |
 | `Proj(crs)(lon, lat, inverse=, radians=)`, `Proj(proj="utm", zone=…)` | 2 / 3 | Phase 2 for EPSG and WKT input (geographic CRS of the same datum ↔ projected). Keyword PROJ parameters arrive with the phase 3 translator. |
 | `Proj.get_factors` | Out | |
 | `pyproj.database`: `query_crs_info`, `query_utm_crs_info`, `get_authorities`, `get_codes`, `get_units_map`, `get_database_metadata("EPSG.VERSION")` | 1 / 2 | From the `xeibe-crs` tables. `query_utm_crs_info` (GeoPandas' `estimate_utm_crs`) needs each projected CRS's datum, which the PROJJSON has. |
@@ -438,8 +438,8 @@ use are dropped. Seeing them takes one line, for example
 | WKT1/WKT2 reader and WKT2 2019/WKT1_GDAL writer, to and from PROJJSON ([crs-wkt.md](crs-wkt.md)). **Done:** the WKT2 and WKT1 readers (`wkt::to_projjson`, `Crs::from_wkt`, ESRI's WKT1 included, with Esri's names from the new `xeibe-esri` crate) and the WKT2 2019 and WKT1_GDAL writers (`wkt::from_projjson`) | reproject, new `wkt` module | `from_wkt`, `to_wkt` (2) |
 | CRS identification: best EPSG match for a definition, with a confidence. **Done:** `Crs::identify` ([crs-wkt.md](crs-wkt.md#identification)); `Transform` uses it for a CRS without a code | reproject | `to_epsg` on WKT input (2) |
 | `BoundCRS` (a CRS with its transformation to a hub such as WGS 84) in `Crs` and the selection ([crs-wkt.md](crs-wkt.md#towgs84-and-boundcrs)). **Done** for Helmert transformations: read (WKT1 `TOWGS84`, WKT2 `BOUNDCRS`), written, and converted as PROJ routes them | reproject | WKT1 `TOWGS84` (2), `+towgs84` (3) |
-| The rest of `geodesic.c`: lines, polygon area and perimeter | reproject | `Geod` (2) |
-| PROJ's ellipsoid name table | reproject | `Geod(ellps=)`, `+ellps` (2) |
+| The rest of `geodesic.c`: lines, polygon area and perimeter. **Done:** `xeibe_reproject::geodesic`, bit for bit with pyproj on Linux | reproject | `Geod` (2) |
+| PROJ's ellipsoid name table. **Done:** `xeibe_reproject::proj_tables`, with the prime meridians | reproject | `Geod(ellps=)`, `+ellps` (2) |
 | PROJ string ↔ PROJJSON translator for the supported methods | reproject | `from_proj4`, `to_proj4`, `Proj(**kwargs)` (3) |
 
 ## Deliberate divergences from pyproj

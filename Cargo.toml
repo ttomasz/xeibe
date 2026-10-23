@@ -85,7 +85,8 @@ bytes = "1"
 indexmap = { version = "2", features = ["serde"] }
 bitflags = { version = "2", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# Exact decimal parsing, as PROJ's strtod: the default parser can be one ulp off.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
 globset = "0.4"
 # `rustls-no-provider` + `rustls/ring`: object_store (through reqwest 0.12) already

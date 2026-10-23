@@ -7,6 +7,10 @@ so at the top, with the PROJ source file it follows. The grid name table in
 (`data/sql/grid_alternatives*.sql`), and the WKT1 and ESRI method and
 parameter name tables in `src/wkt/names.rs` from PROJ's
 `src/iso19111/operation/parammappings.cpp` and `esriparammappings.cpp`.
+The named ellipsoid and prime meridian tables in `src/proj_tables.rs` are
+copied from PROJ's `src/ellps.cpp` and `src/datums.cpp`, and the geodesic
+tests in `tests/it/geodesic.rs` port PROJ's `src/tests/geodtest.c` and
+`geodsigntest.c` (C. F. F. Karney, MIT).
 Reading ESRI WKT (`src/wkt/esri.rs`) follows PROJ's `io.cpp`, and the
 equivalence of conversions PROJ's `singleoperation.cpp` and
 `conversion.cpp` (`convertToOtherMethod`, in `src/methods/lcc.rs` and

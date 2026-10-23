@@ -22,7 +22,6 @@ mod col_urban;
 mod common;
 mod eqc;
 mod eqearth;
-mod geodesic;
 mod krovak;
 mod labrd;
 mod laea;

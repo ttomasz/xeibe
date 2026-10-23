@@ -156,6 +156,11 @@ sources, but their contents haven't been checked against the local copies:
   (`parts.jsonl`). A committed subset goes to
   `tests/data/crs-wkt/`; `--all` writes everything to `target/crs-wkt/`
   (~4 min on 12 CPUs). See `docs/crs-wkt.md`.
+- `scripts/gen_geodesic_vectors.py` writes geodesic test vectors with
+  pyproj's `Geod` (no oracle database needed): inverse and direct
+  problems, geodesic lines and polygon areas on several ellipsoids,
+  random and hard cases. A committed subset goes to `tests/data/geodesic/`;
+  `--all` writes more to `target/geodesic/`. See `docs/pyproj-phase2.md`.
 - `scripts/gen_esri_tables.py` downloads Esri's projection engine database
   CSVs (Apache-2.0, pinned commit) into `example_data/esri-pedb/` and
   regenerates `crates/xeibe-esri`: Esri's names of EPSG's CRSs and datums

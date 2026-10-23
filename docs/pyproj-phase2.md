@@ -1,6 +1,7 @@
 # pyproj compatibility, phase 2: geodesics, `Proj` and the rest
 
-> **Status: designed, 2026-10-23; not implemented yet.** This is the rest
+> **Status: designed, 2026-10-23; step 1 of 8 implemented (the geodesic
+> port in Rust, see [Order of work](#order-of-work)).** This is the rest
 > of phase 2 in [pyproj-compat.md](pyproj-compat.md#phases), after the WKT
 > part ([crs-wkt.md](crs-wkt.md)). Facts about PROJ and pyproj were checked
 > against PROJ 9.8.1 through pyproj 3.8.0.
@@ -70,8 +71,26 @@ Each vector covers random lines on WGS 84, plus a set of hard cases:
 - a sphere, and flattenings of ±1/150 and ±1/50 (`Geod(a=, f=)` takes
   any `f`).
 
-The vectors are compared exactly, or within 1 ulp if a platform's `libm`
-needs it.
+The committed vectors are compared bit for bit on Linux with glibc, and
+within 4 ulps elsewhere, where `sin`, `cos` and `atan2` come from another
+libm. All 3,324 committed values match exactly. Of the 441,495 values from
+`--all`, 21 are 1 or 2 ulps off. They come from 9 nearly antipodal
+lines, where the starting guess (`Astroid`) takes a cube root: Rust's
+`cbrt` is `compiler_builtins`' (musl's) rather than glibc's, and the two
+round differently now and then. glibc's is LGPL, so it isn't ported; the
+full set is checked within 4 ulps.
+
+Two things came out of the comparison:
+
+- **`serde_json`'s default float parser can be one ulp off.** At first
+  741 of 3,324 values differed by up to 9 ulps, because the test read its
+  inputs one ulp away from pyproj's. The workspace now turns on
+  `float_roundtrip`, which parses exactly, as PROJ's `strtod` does. That
+  also applies to every PROJJSON parameter the library reads.
+- **The reduced port applied `AngRound` in `sincosdx`**, which C's
+  doesn't, and its `remainder` was approximate for large arguments. The
+  full port reduces exactly (`remquo` on Rust's exact `%`) and follows C
+  in both.
 
 ### `Geod` in `xeibe_proj`
 
@@ -246,7 +265,8 @@ The tests use the local HTTP server the grid tests already use.
 1. **The geodesic port in Rust**: the rest of `geodesic.c`, the
    Azimuthal Equidistant moved onto it, PROJ's tests,
    `gen_geodesic_vectors.py`, and the ellipsoid and prime meridian
-   tables. It is gated on PROJ's tests and pyproj's numbers.
+   tables. It is gated on PROJ's tests and pyproj's numbers. **Done:**
+   `xeibe_reproject::geodesic` and `xeibe_reproject::proj_tables`.
 2. **`Geod` in `xeibe_proj`**, with `get_geod`, `pj_ellps`,
    `get_ellps_map` and `get_prime_meridians_map`, gated on pyproj and its
    `test_geod.py`.
