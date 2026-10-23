@@ -2,18 +2,23 @@ from typing import Any, final
 
 __all__ = [
     "Crs",
+    "Geodesic",
+    "GeodesicLine",
     "OperationInfo",
     "Transform",
     "alias",
     "clear_grids",
     "crs_remarks",
     "crs_records",
+    "ellipsoids",
     "epsg_date",
     "epsg_version",
     "esri_code",
     "extent",
     "operation_remarks",
+    "prime_meridians",
     "projjson",
+    "reverse_azimuth",
     "to_wkt",
     "wkt_to_projjson",
 ]
@@ -91,3 +96,32 @@ class Transform:
     def convert_bounds(
         self, bounds: tuple[float, float, float, float], densify: int
     ) -> tuple[float, float, float, float]: ...
+
+@final
+class Geodesic:
+    def __new__(cls, a: float, f: float) -> Geodesic: ...
+    def fwd(self, lons: Any, lats: Any, azis: Any, dists: Any, radians: bool, back_azimuth: bool) -> None: ...
+    def inv(self, lons1: Any, lats1: Any, lons2: Any, lats2: Any, radians: bool, back_azimuth: bool) -> None: ...
+    def line(self, lat1: float, lon1: float, azi1: float) -> GeodesicLine: ...
+    def inverse_line(self, lat1: float, lon1: float, lat2: float, lon2: float) -> GeodesicLine: ...
+    def line_length(self, lons: Any, lats: Any, radians: bool) -> float: ...
+    def polygon_area_perimeter(self, lons: Any, lats: Any, radians: bool) -> tuple[float, float]: ...
+
+@final
+class GeodesicLine:
+    @property
+    def distance(self) -> float: ...
+    def fill(
+        self,
+        lons: Any,
+        lats: Any,
+        azis: Any | None,
+        initial_idx: int,
+        del_s: float,
+        radians: bool,
+        back_azimuth: bool,
+    ) -> None: ...
+
+def reverse_azimuth(azis: Any, radians: bool) -> None: ...
+def ellipsoids() -> list[tuple[str, float, str, float, str]]: ...
+def prime_meridians() -> list[tuple[str, str]]: ...

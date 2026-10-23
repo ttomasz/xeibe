@@ -39,3 +39,11 @@ assert_type(crs.to_json_dict(), dict[str, Any])
 # Not in the signatures: rejected by the type checker as well as at runtime.
 t.transform(21.0, 52.0, errcheck=True)  # type: ignore[call-overload]  # pyright: ignore[reportCallIssue]
 t.transform(21.0, 52.0, inplace=True)  # type: ignore[call-overload]  # pyright: ignore[reportCallIssue]
+
+from xeibe_proj import Geod  # noqa: E402
+
+g = Geod(ellps="WGS84")
+assert_type(g.inv(0.0, 0.0, 1.0, 1.0), tuple[Any, Any, Any])
+assert_type(g.polygon_area_perimeter([0.0, 1.0, 1.0], [0.0, 0.0, 1.0]), tuple[float, float])
+assert_type(crs.get_geod(), Geod | None)
+g.fwd(0.0, 0.0, 90.0, 1.0, inplace=True)  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]

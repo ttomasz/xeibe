@@ -30,6 +30,7 @@ from xeibe_proj.crs._objects import (
     axis_from_json,
 )
 from xeibe_proj.exceptions import CRSError
+from xeibe_proj.geod import Geod
 
 __all__ = ["CRS", "AuthorityMatchInfo"]
 
@@ -708,8 +709,15 @@ class CRS:
     def to_3d(self, name: str | None = None) -> CRS:
         raise not_yet("CRS.to_3d", 2)
 
-    def get_geod(self) -> Any:
-        raise not_yet("CRS.get_geod", 2)
+    def get_geod(self) -> Geod | None:
+        """The ``Geod`` of the CRS's ellipsoid, or ``None`` without one."""
+        if self.ellipsoid is None:
+            return None
+        return Geod(
+            a=self.ellipsoid.semi_major_metre,
+            rf=self.ellipsoid.inverse_flattening,
+            b=self.ellipsoid.semi_minor_metre,
+        )
 
     def get_non_deprecated(self) -> list[CRS]:
         raise not_yet("CRS.get_non_deprecated", 2)

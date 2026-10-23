@@ -32,7 +32,7 @@ def test_versions() -> None:
     with pytest.raises(AttributeError, match="no PROJ"):
         xeibe_proj.proj_version_str  # noqa: B018
     with pytest.raises(AttributeError, match="phase 2"):
-        xeibe_proj.Geod  # noqa: B018
+        xeibe_proj.Proj  # noqa: B018
     assert not hasattr(xeibe_proj, "PROJ_VERSION")
 
 

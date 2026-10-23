@@ -1,7 +1,7 @@
 # Notices
 
 The xeibe source code in this package is CC0-1.0, like the rest of the xeibe
-workspace. Three parts are not:
+workspace. Four parts are not:
 
 ## EPSG Dataset
 
@@ -68,6 +68,35 @@ The Transverse Mercator code follows PROJ's Poder/Engsager implementation,
 which PROJ credits to Knud Poder and Karsten Engsager (used by permission of
 the Danish Kort og Matrikelstyrelsen), with the auxiliary-latitude series of
 C. F. F. Karney, "On auxiliary latitudes", Survey Review 56, 165–180 (2024).
+
+## pyproj
+
+`xeibe_proj.geod` follows pyproj's `geod.py` and `_geod.pyx`
+(<https://github.com/pyproj4/pyproj>, 3.8.0): its argument handling, its
+intermediate-point logic and its geometry helpers. pyproj's licence applies
+to those parts:
+
+```text
+Copyright (c) 2006-2018, Jeffrey Whitaker.
+Copyright (c) 2019-2024, Open source contributors.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the
+Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
 
 ## Esri's names
 

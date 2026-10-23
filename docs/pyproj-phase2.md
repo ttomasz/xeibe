@@ -1,7 +1,8 @@
 # pyproj compatibility, phase 2: geodesics, `Proj` and the rest
 
-> **Status: designed, 2026-10-23; step 1 of 8 implemented (the geodesic
-> port in Rust, see [Order of work](#order-of-work)).** This is the rest
+> **Status: designed, 2026-10-23; steps 1 and 2 of 8 implemented (the
+> geodesic port in Rust and `Geod`, see [Order of work](#order-of-work)).**
+> This is the rest
 > of phase 2 in [pyproj-compat.md](pyproj-compat.md#phases), after the WKT
 > part ([crs-wkt.md](crs-wkt.md)). Facts about PROJ and pyproj were checked
 > against PROJ 9.8.1 through pyproj 3.8.0.
@@ -114,9 +115,12 @@ Two things came out of the comparison:
 - **`CRS.get_geod()`:** `Geod(a=, rf=, b=)` from the CRS's ellipsoid, or
   `None` without one, as in pyproj.
 
-The native side has one function per loop (`fwd`, `inv`, `intermediate`,
-`line_length`, `polygon_area`). Each runs without the GIL on the buffers
-from `_containers.to_buffer`. The tests compare every method with pyproj's,
+The native side is a `Geodesic` class with one method per loop (`fwd`,
+`inv`, `line_length`, `polygon_area_perimeter`) and geodesic lines whose
+`fill` writes the intermediate points. Each runs without the GIL on the
+buffers from `_containers.to_buffer`. The point count and spacing of
+`inv_intermediate` are worked out in Python, as pyproj does, with C's
+rounding and division. The tests compare every method with pyproj's,
 and add pyproj's `test_geod.py` to the suite's pass list.
 
 ## `Proj`
@@ -269,7 +273,9 @@ The tests use the local HTTP server the grid tests already use.
    `xeibe_reproject::geodesic` and `xeibe_reproject::proj_tables`.
 2. **`Geod` in `xeibe_proj`**, with `get_geod`, `pj_ellps`,
    `get_ellps_map` and `get_prime_meridians_map`, gated on pyproj and its
-   `test_geod.py`.
+   `test_geod.py`. **Done:** `xeibe_proj.geod` and `xeibe_proj.list`. All
+   of pyproj's `test_geod.py` passes but `inplace=` (decision 4), and the
+   suite went from 149 to 318 of 960.
 3. **`Proj`**, gated on pyproj over every EPSG CRS.
 4. **`to_2d`, `to_3d`, `get_non_deprecated`**, gated on pyproj over every
    EPSG CRS.

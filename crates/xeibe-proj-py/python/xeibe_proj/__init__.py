@@ -17,20 +17,28 @@ from xeibe_proj._native import epsg_version as _epsg_version
 from xeibe_proj.crs import CRS
 from xeibe_proj.database import get_authorities, get_codes, get_units_map
 from xeibe_proj.exceptions import DataDirError, ProjError
+from xeibe_proj.geod import Geod, geodesic_version_str, pj_ellps
+from xeibe_proj.list import get_ellps_map, get_prime_meridians_map, get_proj_operations_map
 from xeibe_proj.transformer import Transformer, itransform, transform
 
 __all__ = [
     "CRS",
     "EPSG_VERSION",
     "DataDirError",
+    "Geod",
     "ProjError",
     "Transformer",
     "__version__",
+    "geodesic_version_str",
     "get_authorities",
     "get_codes",
+    "get_ellps_map",
+    "get_prime_meridians_map",
+    "get_proj_operations_map",
     "get_units_map",
     "itransform",
     "network",
+    "pj_ellps",
     "set_use_global_context",
     "show_versions",
     "transform",
@@ -51,14 +59,8 @@ _MISSING = {
     "PROJ_VERSION_STR": "there is no PROJ to report a version of",
     "PROJ_COMPILED_VERSION": "there is no PROJ to report a version of",
     "PROJ_COMPILED_VERSION_STR": "there is no PROJ to report a version of",
-    "Geod": "not implemented yet (phase 2)",
-    "geodesic_version_str": "not implemented yet (phase 2)",
-    "pj_ellps": "not implemented yet (phase 2)",
-    "get_ellps_map": "not implemented yet (phase 2)",
-    "get_prime_meridians_map": "not implemented yet (phase 2)",
     "Proj": "not implemented yet (phase 2)",
     "pj_list": "not supported: it lists PROJ's projections",
-    "get_proj_operations_map": "not supported: it lists PROJ's operations",
 }
 
 

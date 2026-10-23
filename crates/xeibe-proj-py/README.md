@@ -28,6 +28,12 @@ crs == CRS(2180)                                    # True
 prj = CRS(open("parcels.prj").read())               # WKT1 (GDAL's or Esri's) or WKT2
 prj.to_epsg(), prj.list_authority()                 # identified by its definition
 prj.to_wkt("WKT1_GDAL", pretty=True)                # or "WKT2_2019"
+
+from xeibe_proj import Geod
+
+g = Geod(ellps="WGS84")                             # or crs.get_geod()
+az12, az21, dist = g.inv(-73.78, 40.64, 103.99, 1.36)
+area, perimeter = g.polygon_area_perimeter([0, 1, 1], [0, 0, 1])
 ```
 
 Coordinates come back in the type they went in: a number, a list, a tuple,
@@ -46,8 +52,10 @@ yet.
 ## Differences from pyproj
 
 - **Failed coordinates raise** `ProjError`, which names the coordinate.
-  There is no `inf` result: `errcheck` and `inplace` don't exist, and passing
-  either raises `NotImplementedError`. `direction` is keyword-only.
+  There is no `inf` result: `errcheck` and `inplace` don't exist (on
+  `Geod.fwd` and `inv` neither), and passing either raises
+  `NotImplementedError`. `direction` and `return_back_azimuth` are
+  keyword-only.
 - **No ballpark transformations.** Without a usable EPSG operation,
   `Transformer.from_crs` raises `ProjError`.
 - **Grids are fetched by default**, from `cdn.proj.org`, by byte range, and

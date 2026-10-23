@@ -31,7 +31,8 @@ As of 2026-10-21, phase 0 and phase 1 are implemented, apart from
 `TransformerGroup.download_grids` and `get_units_map` (both phase 2). As of
 2026-10-23, so is phase 2's WKT part ([crs-wkt.md](crs-wkt.md)): WKT in and
 out, identification by definition, Bound CRSs and Esri's old codes. The
-rest of phase 2 is designed in [pyproj-phase2.md](pyproj-phase2.md).
+rest of phase 2 is designed in [pyproj-phase2.md](pyproj-phase2.md), and
+its first two steps are done: the geodesic port and `Geod`.
 
 - **Done.**
   - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
@@ -52,6 +53,8 @@ rest of phase 2 is designed in [pyproj-phase2.md](pyproj-phase2.md).
     among with the network off) and logged.
   - `pyproj.database`'s queries except `get_units_map`, plus `aoi`,
     `enums`, `exceptions`, `network` and `datadir`.
+  - `Geod`, complete, with `CRS.get_geod`, `pyproj.geod` and
+    `pyproj.list` ([pyproj-phase2.md](pyproj-phase2.md#geod-in-xeibe_proj)).
 - **The Rust changes phase 1 needed are made**:
   - `Transform::operation_info`, `operation_index_for` and
     `with_operation_index` for the metadata and the group;
@@ -63,8 +66,9 @@ rest of phase 2 is designed in [pyproj-phase2.md](pyproj-phase2.md).
     EPSG's remarks on CRSs and operations in a file of their own, read on
     first use. The wheel grew from 2.0 to 2.2 MB.
 - **Measured** (see [Testing](#testing)):
-  - pyproj's own suite: 149 of its 960 tests pass: 120 before phase 1's
-    Rust changes, 129 after, 149 with the WKT part of phase 2.
+  - pyproj's own suite: 318 of its 960 tests pass: 120 before phase 1's
+    Rust changes, 129 after, 149 with the WKT part of phase 2, 318 with
+    `Geod`.
   - Against the oracle `proj.db`, every EPSG CRS reports what PROJ does,
     scopes, area descriptions and remarks included, except four documented
     differences:
@@ -344,7 +348,7 @@ becomes the package's status tracker.
 | `from_crs(…, area_of_interest=, accuracy=, only_best=)` | 2 | Needs the selection to take an area of interest and a minimum accuracy. |
 | `from_crs(…, authority=, force_over=)` | Out | Only EPSG operations exist. `force_over` is a PROJ pipeline detail. |
 | `transform(xx, yy, zz, tt, radians, direction)` | 1 | A coordinate that fails to convert always raises `ProjError`, which names its index and the reason (`CoordinateError`). pyproj instead writes `inf` unless `errcheck=True`. `tt` passes through unchanged. A transformation that would need it beyond its reference epoch raises an error. Output is always a new object. |
-| `errcheck=` (`transform`, `itransform`, `transform_bounds`, `Proj.__call__`), `inplace=` (`transform`) | Out | Not in the signatures, so type checkers flag them. Passing either at runtime raises `NotImplementedError` explaining that failed coordinates always raise and that output is always a new object. Any value raises, `errcheck=True` and `inplace=False` included, so one rule covers both. The parameters that followed `errcheck` in pyproj (`direction`, and `radians` in `Proj.__call__`) are keyword-only, so a positional call fails instead of binding its `errcheck` value to the next parameter. |
+| `errcheck=` (`transform`, `itransform`, `transform_bounds`, `Proj.__call__`), `inplace=` (`transform`, `Geod.fwd`, `Geod.inv`) | Out | Not in the signatures, so type checkers flag them. Passing either at runtime raises `NotImplementedError` explaining that failed coordinates always raise and that output is always a new object. Any value raises, `errcheck=True` and `inplace=False` included, so one rule covers both. The parameters that followed `errcheck` or `inplace` in pyproj (`direction`, `radians` in `Proj.__call__`, and `Geod`'s `return_back_azimuth`) are keyword-only, so a positional call fails instead of binding its `errcheck` value to the next parameter. |
 | Container rules | 1 | Output has the input's type: a scalar gives `float`, a list a `list`, a tuple a `tuple`, `array.array` an `array.array`, numpy numpy (checked against pyproj 3.8.0). `_containers.py` follows pyproj's `_copytobuffer` (MIT). |
 | `itransform(points, switch, time_3rd, radians, direction)` | 1 | |
 | `transform_bounds(left, bottom, right, top, densify_pts=21, radians, direction)` | 1 | `Transform::convert_bounds`. |
@@ -361,9 +365,9 @@ becomes the package's status tracker.
 
 | API | Phase | Notes |
 |---|---|---|
-| `Geod(ellps=…)`, `Geod(a=, b=, f=, rf=, es=, sphere=)`, `Geod("+ellps=…")`, `CRS.get_geod()` | 2 | Needs PROJ's ellipsoid name table (`ellps.cpp`, MIT). |
-| `Geod.inv`, `fwd`, `line_length`, `line_lengths` | 2 | **Rust done:** all of `geodesic.c` is ported (`xeibe_reproject::geodesic`, [pyproj-phase2.md](pyproj-phase2.md#geodesics)). |
-| `npts`, `fwd_intermediate`, `inv_intermediate`, `polygon_area_perimeter`, `geometry_length`, `geometry_area_perimeter` | 2 | Geodesic lines and polygon areas. **Rust done**, as above. |
+| `Geod(ellps=…)`, `Geod(a=, b=, f=, rf=, es=, sphere=)`, `Geod("+ellps=…")`, `CRS.get_geod()` | 2 | PROJ's ellipsoid name table (`ellps.cpp`, MIT). **Done.** |
+| `Geod.inv`, `fwd`, `line_length`, `line_lengths` | 2 | All of `geodesic.c` is ported (`xeibe_reproject::geodesic`, [pyproj-phase2.md](pyproj-phase2.md#geodesics)). **Done**, without `inplace=` (as for `transform`). |
+| `npts`, `fwd_intermediate`, `inv_intermediate`, `polygon_area_perimeter`, `geometry_length`, `geometry_area_perimeter` | 2 | Geodesic lines and polygon areas. **Done.** |
 | `Proj(crs)(lon, lat, inverse=, radians=)`, `Proj(proj="utm", zone=…)` | 2 / 3 | Phase 2 for EPSG and WKT input (geographic CRS of the same datum ↔ projected). Keyword PROJ parameters arrive with the phase 3 translator. |
 | `Proj.get_factors` | Out | |
 | `pyproj.database`: `query_crs_info`, `query_utm_crs_info`, `get_authorities`, `get_codes`, `get_units_map`, `get_database_metadata("EPSG.VERSION")` | 1 / 2 | From the `xeibe-crs` tables. `query_utm_crs_info` (GeoPandas' `estimate_utm_crs`) needs each projected CRS's datum, which the PROJJSON has. |
