@@ -22,6 +22,7 @@ __all__ = [
     "replacements",
     "reverse_azimuth",
     "to_wkt",
+    "units",
     "wkt_to_projjson",
 ]
 
@@ -128,6 +129,7 @@ class GeodesicLine:
 def reverse_azimuth(azis: Any, radians: bool) -> None: ...
 def ellipsoids() -> list[tuple[str, float, str, float, str]]: ...
 def prime_meridians() -> list[tuple[str, str]]: ...
+def units() -> list[tuple[str, str, str, str, float | None, str | None, bool]]: ...
 
 @final
 class Projection:

@@ -1,8 +1,9 @@
 //! PROJ's built-in tables of named ellipsoids (`+ellps=`, pyproj's
 //! `Geod(ellps=…)` and `get_ellps_map`) and prime meridians (`+pm=`,
 //! `get_prime_meridians_map`), copied from `src/ellps.cpp` and
-//! `src/datums.cpp` in PROJ 9.8.1 (MIT, see PROJ-NOTICE.md), values and
-//! names unchanged.
+//! `src/datums.cpp` in PROJ 9.8.1 (MIT, see PROJ-NOTICE.md), and its unit
+//! short names and own units (`+units=`, `get_units_map`), from
+//! `data/sql/customizations.sql`; values and names unchanged.
 
 /// The second parameter of a named ellipsoid, as PROJ gives it.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -341,6 +342,84 @@ pub static PRIME_MERIDIANS: &[(&str, &str)] = &[
     ("copenhagen", "12d34'40.35\"E"),
 ];
 
+/// PROJ's short names of EPSG's units of measure (`+units=us-ft`), from
+/// PROJ's `data/sql/customizations.sql`, by EPSG code.
+pub static UNIT_SHORT_NAMES: &[(u32, &str)] = &[
+    (1025, "mm"),
+    (1033, "cm"),
+    (9001, "m"),
+    (9002, "ft"),
+    (9003, "us-ft"),
+    (9014, "fath"),
+    (9030, "kmi"),
+    (9033, "us-ch"),
+    (9035, "us-mi"),
+    (9036, "km"),
+    (9081, "ind-ft"),
+    (9085, "ind-yd"),
+    (9093, "mi"),
+    (9096, "yd"),
+    (9097, "ch"),
+    (9098, "link"),
+    (9101, "rad"),
+    (9102, "deg"),
+    (9105, "grad"),
+];
+
+/// PROJ's short name of an EPSG unit, e.g. `"us-ft"` for 9003.
+pub fn unit_short_name(code: u32) -> Option<&'static str> {
+    UNIT_SHORT_NAMES
+        .binary_search_by_key(&code, |(c, _)| *c)
+        .ok()
+        .map(|i| UNIT_SHORT_NAMES[i].1)
+}
+
+/// A length unit PROJ defines itself (authority `PROJ`), from the same file.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ProjUnit {
+    /// PROJ's code, e.g. `"US_IN"`.
+    pub code: &'static str,
+    pub name: &'static str,
+    /// The unit in metres.
+    pub factor: f64,
+    /// The short name, e.g. `"us-in"`.
+    pub short_name: &'static str,
+}
+
+/// PROJ's own length units, by code.
+pub static PROJ_UNITS: &[ProjUnit] = &[
+    ProjUnit {
+        code: "DM",
+        name: "decimeter",
+        factor: 0.01,
+        short_name: "dm",
+    },
+    ProjUnit {
+        code: "IN",
+        name: "inch",
+        factor: 0.0254,
+        short_name: "in",
+    },
+    ProjUnit {
+        code: "IND_CH",
+        name: "Indian chain",
+        factor: 20.11669506,
+        short_name: "ind-ch",
+    },
+    ProjUnit {
+        code: "US_IN",
+        name: "US survey inch",
+        factor: 0.025400050800101,
+        short_name: "us-in",
+    },
+    ProjUnit {
+        code: "US_YD",
+        name: "US survey yard",
+        factor: 0.914401828803658,
+        short_name: "us-yd",
+    },
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,5 +436,9 @@ mod tests {
         assert!(ellipsoid("wgs84").is_none());
         assert_eq!(ellipsoid("sphere").unwrap().f(), 0.0);
         assert_eq!(PRIME_MERIDIANS.len(), 14);
+        assert_eq!(unit_short_name(9003), Some("us-ft"));
+        assert_eq!(unit_short_name(9122), None);
+        assert!(UNIT_SHORT_NAMES.windows(2).all(|w| w[0].0 < w[1].0));
+        assert_eq!(PROJ_UNITS.len(), 5);
     }
 }

@@ -1,8 +1,8 @@
 # pyproj compatibility, phase 2: geodesics, `Proj` and the rest
 
-> **Status: designed, 2026-10-23; steps 1 to 4 of 8 implemented (the
-> geodesic port in Rust, `Geod`, `Proj`, `to_2d`/`to_3d`/`get_non_deprecated`,
-> see [Order of work](#order-of-work)).**
+> **Status: designed, 2026-10-23; steps 1 to 5 of 8 implemented (the
+> geodesic port in Rust, `Geod`, `Proj`, `to_2d`/`to_3d`/`get_non_deprecated`
+> and `get_units_map`, see [Order of work](#order-of-work)).**
 > This is the rest
 > of phase 2 in [pyproj-compat.md](pyproj-compat.md#phases), after the WKT
 > part ([crs-wkt.md](crs-wkt.md)). Facts about PROJ and pyproj were checked
@@ -255,19 +255,23 @@ these pyproj artifacts:
 
 `get_units_map(auth_name=None, category=None, allow_deprecated=False)`
 returns `{name: Unit(auth_name, code, name, category, conv_factor,
-proj_short_name, deprecated)}`. Its data comes from these places:
+proj_short_name, deprecated)}`, as PROJ's `getUnitList` reads its
+database. Its data comes from these places:
 
 - **The units:** EPSG's `epsg_unitofmeasure`, with `conv_factor` as
-  `factor_b / factor_c`, as `build_db.py` computes it. `gen_crs_tables.py`
-  writes it into `xeibe-crs`.
-- **`category`:** PROJ's mapping from the unit type and name
-  (`linear`, `linear_per_time`, `angular`, `scale`, `time`, …;
-  `AuthorityFactory::getUnitList`).
+  `factor_b / factor_c`, as `build_db.py` computes it, and 0 where EPSG
+  gives none. They are in `xeibe_crs::UNITS_OF_MEASURE`.
+- **`category`:** PROJ's mapping from the unit's type and name: `linear`,
+  `angular`, `scale` and `time`, and `linear_per_time`, `angular_per_time`
+  or `scale_per_time` for a name with "per" in it.
 - **`proj_short_name`, and PROJ's own five units:** from PROJ's
-  `data/sql` (MIT), as a table in `xeibe-reproject`.
+  `data/sql/customizations.sql` (MIT), in
+  `xeibe_reproject::proj_tables` (`UNIT_SHORT_NAMES`, `PROJ_UNITS`).
 
-Tested against `get_units_map` on the oracle database, without its ESRI
-entries.
+The units come in PROJ's order, by authority and code. A name used twice
+is the later unit's, as in pyproj's dict. An empty `auth_name` means every
+authority. `test_database.py` compares every filter with pyproj, value by
+value and in order: equal, without Esri's units.
 
 ## Selection: `area_of_interest`, `accuracy`, `only_best`
 
@@ -345,7 +349,8 @@ The tests use the local HTTP server the grid tests already use.
    EPSG CRS. **Done:** `xeibe_proj.crs._dimension` and
    `xeibe_crs::replacements` (with `xeibe_crs::UNITS_OF_MEASURE` for step 5);
    the suite went from 324 to 335 of 963.
-5. **`get_units_map`**, gated on pyproj.
+5. **`get_units_map`**, gated on pyproj. **Done**, equal to pyproj's
+   without Esri's units; the suite went from 335 to 348 of 963.
 6. **`area_of_interest`, `accuracy`, `only_best`**, gated on PROJ's
    candidate lists.
 7. **`Transformer.to_json`, `to_json_dict` and `to_wkt`**, gated on

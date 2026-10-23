@@ -36,3 +36,31 @@ def test_codes_and_metadata() -> None:
     version = database.get_database_metadata("EPSG.VERSION")
     assert version is not None and version.startswith("v13.")
     assert database.get_database_metadata("PROJ.VERSION") is None
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {},
+        {"auth_name": "EPSG"},
+        {"auth_name": "PROJ"},
+        {"auth_name": ""},
+        {"allow_deprecated": True},
+        {"category": "linear"},
+        {"category": "angular"},
+        {"category": "scale"},
+        {"category": "linear_per_time"},
+        {"category": "angular_per_time"},
+        {"category": "scale_per_time"},
+        {"category": "time"},
+    ],
+    ids=repr,
+)
+def test_units_map_matches_pyproj(kwargs: dict[str, object]) -> None:
+    """EPSG's units and PROJ's own, in PROJ's order, as pyproj lists them,
+    without Esri's."""
+    theirs = {k: v for k, v in pyproj.database.get_units_map(**kwargs).items() if v.auth_name != "ESRI"}
+    ours = database.get_units_map(**kwargs)  # type: ignore[arg-type]
+    assert [tuple(u) for u in ours.values()] == [tuple(u) for u in theirs.values()]
+    assert list(ours) == list(theirs)
+    assert database.get_units_map(auth_name="ESRI") == {}

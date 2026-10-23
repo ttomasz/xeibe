@@ -179,6 +179,55 @@ fn crs_records() -> Vec<Record> {
         .collect()
 }
 
+/// A unit as `get_units_map` lists it: (authority, code, name, kind,
+/// factor to SI, PROJ's short name, deprecated).
+type UnitRow = (
+    &'static str,
+    String,
+    &'static str,
+    &'static str,
+    Option<f64>,
+    Option<&'static str>,
+    bool,
+);
+
+/// EPSG's units of measure with PROJ's short names, then PROJ's own
+/// units, ordered by authority and code as PROJ's database lists them.
+#[pyfunction]
+pub(crate) fn units() -> Vec<UnitRow> {
+    use xeibe_crs::UnitKind;
+    let epsg = xeibe_crs::UNITS_OF_MEASURE.iter().map(|u| {
+        let kind = match u.kind {
+            UnitKind::Length => "length",
+            UnitKind::Angle => "angle",
+            UnitKind::Scale => "scale",
+            UnitKind::Time => "time",
+        };
+        let short = xeibe_reproject::proj_tables::unit_short_name(u.code);
+        (
+            "EPSG",
+            u.code.to_string(),
+            u.name,
+            kind,
+            u.factor,
+            short,
+            u.deprecated,
+        )
+    });
+    let proj = xeibe_reproject::proj_tables::PROJ_UNITS.iter().map(|u| {
+        (
+            "PROJ",
+            u.code.to_string(),
+            u.name,
+            "length",
+            Some(u.factor),
+            Some(u.short_name),
+            false,
+        )
+    });
+    epsg.chain(proj).collect()
+}
+
 /// Forget the grid data loaded so far (shared by every transform).
 #[pyfunction]
 fn clear_grids() {
@@ -524,5 +573,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(geod::reverse_azimuth, m)?)?;
     m.add_function(wrap_pyfunction!(geod::ellipsoids, m)?)?;
     m.add_function(wrap_pyfunction!(geod::prime_meridians, m)?)?;
+    m.add_function(wrap_pyfunction!(units, m)?)?;
     Ok(())
 }

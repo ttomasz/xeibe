@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import NamedTuple
 
 from xeibe_proj import _epsg, _native
-from xeibe_proj._unsupported import not_yet
 from xeibe_proj.aoi import AreaOfInterest, AreaOfUse, BBox
 from xeibe_proj.enums import PJType
 
@@ -57,7 +56,7 @@ class CRSInfo(NamedTuple):
 
 
 class Unit(NamedTuple):
-    """A unit of measure (``get_units_map`` comes in phase 2)."""
+    """A unit of measure, as ``get_units_map`` lists it."""
 
     auth_name: str
     code: str
@@ -180,5 +179,30 @@ def get_database_metadata(key: str) -> str | None:
     return None
 
 
+def _unit_category(kind: str, name: str) -> str:
+    """PROJ's category of a unit (``AuthorityFactory::getUnitList``)."""
+    if kind == "length":
+        return "linear_per_time" if " per " in name else "linear"
+    if kind == "angle":
+        return "angular_per_time" if " per " in name else "angular"
+    if kind == "scale":
+        return "scale_per_time" if " per year" in name or " per second" in name else "scale"
+    return kind
+
+
 def get_units_map(auth_name: str | None = None, category: str | None = None, allow_deprecated: bool = False) -> dict[str, Unit]:
-    raise not_yet("get_units_map", 2)
+    """Units of measure by name: EPSG's and PROJ's own (Esri's aren't
+    known), as PROJ's database lists them. ``category`` is one of
+    ``linear``, ``angular``, ``scale``, ``time`` and their ``_per_time``
+    forms. A name used twice is the later unit's."""
+    out: dict[str, Unit] = {}
+    for auth, code, name, kind, factor, short_name, deprecated in _native.units():
+        if auth_name and auth != auth_name:
+            continue
+        unit_category = _unit_category(kind, name)
+        if category is not None and unit_category != category:
+            continue
+        if deprecated and not allow_deprecated:
+            continue
+        out[name] = Unit(auth, code, name, unit_category, factor or 0.0, short_name, deprecated)
+    return out

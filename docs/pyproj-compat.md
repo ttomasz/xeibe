@@ -28,12 +28,13 @@ What it offers over pyproj:
 ## Implementation status
 
 As of 2026-10-21, phase 0 and phase 1 are implemented, apart from
-`TransformerGroup.download_grids` and `get_units_map` (both phase 2). As of
+`TransformerGroup.download_grids` and `get_units_map` (both phase 2;
+`get_units_map` is done since). As of
 2026-10-23, so is phase 2's WKT part ([crs-wkt.md](crs-wkt.md)): WKT in and
 out, identification by definition, Bound CRSs and Esri's old codes. The
 rest of phase 2 is designed in [pyproj-phase2.md](pyproj-phase2.md), and
-its first four steps are done: the geodesic port, `Geod`, `Proj`, and
-`to_2d`, `to_3d` and `get_non_deprecated`.
+its first five steps are done: the geodesic port, `Geod`, `Proj`,
+`to_2d`, `to_3d` and `get_non_deprecated`, and `get_units_map`.
 
 - **Done.**
   - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
@@ -52,8 +53,9 @@ its first four steps are done: the geodesic port, `Geod`, `Proj`, and
     operation metadata, `get_last_used_operation`, and `TransformerGroup`.
   - Grids fetched by range, cached, read from data directories (and chosen
     among with the network off) and logged.
-  - `pyproj.database`'s queries except `get_units_map`, plus `aoi`,
-    `enums`, `exceptions`, `network` and `datadir`.
+  - `pyproj.database`'s queries, `get_units_map` included (EPSG's and
+    PROJ's units, not Esri's), plus `aoi`, `enums`, `exceptions`,
+    `network` and `datadir`.
   - `Geod`, complete, with `CRS.get_geod`, `pyproj.geod` and
     `pyproj.list` ([pyproj-phase2.md](pyproj-phase2.md#geod-in-xeibe_proj)).
   - `Proj` for EPSG and WKT input ([pyproj-phase2.md](pyproj-phase2.md#proj)).
@@ -70,9 +72,10 @@ its first four steps are done: the geodesic port, `Geod`, `Proj`, and
     EPSG's remarks on CRSs and operations in a file of their own, read on
     first use. The wheel grew from 2.0 to 2.2 MB.
 - **Measured** (see [Testing](#testing)):
-  - pyproj's own suite: 335 of its 963 tests pass: 120 before phase 1's
+  - pyproj's own suite: 348 of its 963 tests pass: 120 before phase 1's
     Rust changes, 129 after, 149 with the WKT part of phase 2, 318 with
-    `Geod`, 324 with `Proj`, 335 with `to_2d`/`to_3d`.
+    `Geod`, 324 with `Proj`, 335 with `to_2d`/`to_3d`, 348 with
+    `get_units_map`.
   - Against the oracle `proj.db`, every EPSG CRS reports what PROJ does,
     scopes, area descriptions and remarks included, except four documented
     differences:
@@ -374,7 +377,7 @@ becomes the package's status tracker.
 | `npts`, `fwd_intermediate`, `inv_intermediate`, `polygon_area_perimeter`, `geometry_length`, `geometry_area_perimeter` | 2 | Geodesic lines and polygon areas. **Done.** |
 | `Proj(crs)(lon, lat, inverse=, radians=)`, `Proj(proj="utm", zone=…)` | 2 / 3 | Phase 2 for EPSG and WKT input: the CRS's projection on its own ellipsoid ([pyproj-phase2.md](pyproj-phase2.md#proj)). **Done** for that. Keyword PROJ parameters arrive with the phase 3 translator. |
 | `Proj.get_factors` | Out | |
-| `pyproj.database`: `query_crs_info`, `query_utm_crs_info`, `get_authorities`, `get_codes`, `get_units_map`, `get_database_metadata("EPSG.VERSION")` | 1 / 2 | From the `xeibe-crs` tables. `query_utm_crs_info` (GeoPandas' `estimate_utm_crs`) needs each projected CRS's datum, which the PROJJSON has. |
+| `pyproj.database`: `query_crs_info`, `query_utm_crs_info`, `get_authorities`, `get_codes`, `get_units_map`, `get_database_metadata("EPSG.VERSION")` | 1 / 2 | From the `xeibe-crs` tables; `get_units_map` (2) with PROJ's short names and own units, not Esri's. **Done.** `query_utm_crs_info` (GeoPandas' `estimate_utm_crs`) needs each projected CRS's datum, which the PROJJSON has. |
 | `pyproj.aoi` (`AreaOfInterest`, `AreaOfUse`, `BBox`), `pyproj.enums`, `pyproj.exceptions` (`CRSError`, `ProjError`, `GeodError`, `DataDirError`) | 1 | Same names and hierarchy. Error messages differ. |
 | `pyproj.network.set_network_enabled` / `is_network_enabled`, `PROJ_NETWORK` | 1 | On by default, unlike pyproj. `set_network_enabled(False)` or `PROJ_NETWORK=OFF` turns it off (see [Grids](#grids)). |
 | `pyproj.datadir.get_data_dir` / `set_data_dir` / `append_data_dir`, `PROJ_DATA` | 1 | Directories searched for local PROJ-data grids. `get_data_dir` returns them joined with `os.pathsep`, as pyproj does, or `""` when there are none (GeoPandas calls it in `show_versions`). |
