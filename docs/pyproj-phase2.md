@@ -1,7 +1,7 @@
 # pyproj compatibility, phase 2: geodesics, `Proj` and the rest
 
-> **Status: designed, 2026-10-23; steps 1 and 2 of 8 implemented (the
-> geodesic port in Rust and `Geod`, see [Order of work](#order-of-work)).**
+> **Status: designed, 2026-10-23; steps 1 to 3 of 8 implemented (the
+> geodesic port in Rust, `Geod` and `Proj`, see [Order of work](#order-of-work)).**
 > This is the rest
 > of phase 2 in [pyproj-compat.md](pyproj-compat.md#phases), after the WKT
 > part ([crs-wkt.md](crs-wkt.md)). Facts about PROJ and pyproj were checked
@@ -28,8 +28,8 @@ the [compatibility table](pyproj-compat.md#compatibility-table):
 | 2 | **PROJ's ellipsoid and prime meridian tables** (`ellps.cpp`, `datums.cpp`, MIT) **go into `xeibe-reproject`**, next to the geodesics. | `Geod(ellps=…)` and `get_ellps_map` need the first, and `get_prime_meridians_map` the second. Phase 3's PROJ strings (`+ellps`, `+pm`) need both. |
 | 3 | **`Geod` is pyproj's `geod.py` ported to Python** (MIT, as `_containers.py` already is), over native functions that take the same writable float64 buffers as `Transform.convert`. | pyproj's own Python layer decides the argument handling, the containers and the warnings. Copying it gives the same behaviour, and only the loops are native. |
 | 4 | **`Geod`'s `inplace=` is treated as `Transformer.transform`'s is**: it isn't in the signatures, and passing it raises `NotImplementedError`. | One rule for the whole package ([pyproj-compat.md](pyproj-compat.md#transformer-and-transformergroup)). |
-| 5 | **`Proj(crs)` is the CRS's projection on its own ellipsoid, with no datum change**: longitude from Greenwich and latitude in degrees, in and out, and the output in the CRS's own unit and axis directions, easting first. This is what pyproj gets from the CRS's PROJ string. | pyproj builds `Proj` from `crs.to_proj4()`. For EPSG and WKT input, that string only says the projection, the ellipsoid, the prime meridian and the unit. Checked against pyproj (see [`Proj`](#proj)). |
-| 6 | **`Proj`'s parameters keep EPSG's full precision**, where pyproj's PROJ string rounds them to 15 significant digits. | This is more precise, and differs from pyproj by about 10⁻⁶ of the unit at most (EPSG:2249: 2·10⁻⁶ US feet). The tests allow for it. |
+| 5 | **`Proj(crs)` is the CRS's projection on its own ellipsoid, with no datum change**: longitude from Greenwich and latitude in degrees in, and out the projection's easting and northing in the CRS's own unit (the CRS's axes for the three methods whose PROJ string has an axis order). This is what pyproj gets from the CRS's PROJ string. | pyproj builds `Proj` from `crs.to_proj4()`. For EPSG and WKT input, that string only says the projection, the ellipsoid, the prime meridian and the unit. Checked against pyproj (see [`Proj`](#proj)). |
+| 6 | **`Proj` follows EPSG, not pyproj's PROJ string**: its full-precision parameters, prime meridians and ellipsoids, and the CRS's own datum. | It is what PROJ's own conversion of the CRS gives. pyproj's string rounds parameters, names PROJ's prime meridians and ellipsoids, and with `+datum=NAD83` reads WGS 84 in: up to 0.35 mm, and kilometres for EASE-Grid (see [Validation](#validation)). |
 | 7 | **`Proj` from PROJ parameters (`Proj(proj="utm", zone=33)`), `definition_string` and `to_latlong_def` stay phase 3**, as PROJ strings. | They are PROJ strings in and out. |
 | 8 | **`to_2d` and `to_3d` follow PROJ's `demoteTo2D` and `promoteTo3D`**, including their lookup of the EPSG CRS with the same datum and name (EPSG:4326 ↔ EPSG:4979). | pyproj users get EPSG codes back from these (`to_3d().to_epsg()` is 4979). |
 | 9 | **`get_non_deprecated` and `get_units_map` come from new generated tables in `xeibe-crs`**: EPSG's replacements of deprecated CRSs, and EPSG's units with their conversion factors. | Neither is in the generated data yet. PROJ's `build_db.py` takes both straight from EPSG. |
@@ -130,40 +130,80 @@ with pyproj 3.8.0, it behaves like this:
 
 | CRS | `Proj(crs)(lon, lat)` |
 |---|---|
-| Projected (EPSG:2180, 32633, 3035, 5514, 32661) | Equal to `Transformer.from_crs(crs.geodetic_crs, crs, always_xy=True)`: easting first, whatever the CRS's axis order |
-| Projected with westing, southing (EPSG:2053, `+axis=wsu`) | The same: the directions stay, only the order is normalised |
+| Projected (EPSG:2180, 32633, 3035, 5514) | The projection's easting and northing in the CRS's unit, whatever the CRS's axis order: equal to `Transformer.from_crs(crs.geodetic_crs, crs, always_xy=True)` |
+| Projected with polar axes (EPSG:32661, UPS North (N,E): "south along 180°E", "south along 90°E") | Easting, northing too: the PROJ string has no axis order, so the axes are ignored |
+| Transverse Mercator (South Orientated), Krovak, Krovak Modified (EPSG:2053, `+axis=wsu`) | The CRS's axes: PROJ's mapping of these three methods carries an axis order (`+axis=wsu`, `+axis=swu`, `+czech`) that matches their CRSs |
 | Projected on a non-Greenwich meridian (EPSG:27572, NTF (Paris) in grads) | Longitude from **Greenwich** in degrees, where its base CRS takes grads from Paris |
-| Projected in US feet (EPSG:2249) | Feet, 2·10⁻⁶ ft from ours because the PROJ string rounds `x_0` and `lat_1` |
-| Geographic (EPSG:4326) | The input, unchanged |
+| Projected in US feet (EPSG:2249) | Feet |
+| Geographic (EPSG:4326) | The input, its longitude reduced to [−180°, 180°] (190° gives −170°) |
 | Geographic on a non-Greenwich meridian (EPSG:4807) | Longitude minus the meridian's, in degrees (not grads) |
 | Geocentric (EPSG:4978) | X and Y with the height taken as 0 |
 | Compound (EPSG:9707) | Its horizontal part |
 | Vertical (EPSG:5773) | `ProjError` ("Invalid projection") |
 
-So `Proj(crs)` is built in Rust as a `Transform` with these parts:
+`radians=True` follows PROJ's angular input and output: the longitude and
+latitude side, and a geographic CRS's side, are in radians. Input is
+checked and reduced as PROJ's `fwd_prepare` does it: a latitude beyond the
+poles or a longitude beyond ±10 radians is an error, the longitude is
+reduced, then counted from the prime meridian.
 
-- **Source:** the CRS's geodetic CRS read as longitude from Greenwich and
-  latitude, in degrees.
-- **Target:** the horizontal part of the CRS, easting first.
-- **Operation:** only the conversion, with no datum step.
+### Implementation
 
-For a geographic CRS it is the prime meridian's shift. `inverse=True`
-runs it backwards. `Proj` subclasses `Transformer`, as in pyproj, so
-`transform`, `itransform` and `transform_bounds` also work.
+- **Rust:** `xeibe_reproject::Projection` is the CRS's projection, with
+  no datum step. It goes forwards from degrees to the CRS, or with
+  `inverse()` backwards, and `in_metres()` gives pyproj's
+  `preserve_units=False`. Bounding boxes go through the same port of
+  PROJ's `proj_trans_bounds` as `Transform::convert_bounds`, now generic
+  over both.
+- **Native:** a `Projection` class with the methods `Transformer` calls
+  on a native transform: no operations and no grids.
+- **Python:** `Proj` subclasses `Transformer`, as in pyproj, so
+  `transform`, `itransform` and `transform_bounds` also work.
+  `Transformer._angular` decides which side radians apply to, and `Proj`
+  overrides it.
 
 `Proj` has these attributes and methods:
 
 - `crs` and `srs`. pyproj's `srs` is the PROJ string, so until phase 3
   ours is the CRS's `srs`.
+- `source_crs` and `target_crs`, which are `None`, as for pyproj's
+  pipeline. `name` is EPSG's method name (`Transverse Mercator`), where
+  pyproj gives PROJ's (`tmerc`).
 - `to_latlong()`, which is `Proj(crs.geodetic_crs)`.
-- Pickling.
+- Equality, hashing and pickling, by CRS and `preserve_units`.
 - `get_factors` stays out. `definition_string` and `to_latlong_def` raise
   "phase 3".
 - `Proj(crs, preserve_units=False)` gives metres for a CRS in feet, as
-  pyproj does.
+  pyproj does. The CRS stays the EPSG one; pyproj's becomes a PROJ
+  string's.
 
-The tests run `Proj(code)` forwards and backwards on points inside each
-EPSG CRS's area of use, against pyproj on the oracle database.
+### Validation
+
+`test_oracle.py` projects the middle of each EPSG CRS's area of use with
+`Proj(code)` and back from pyproj's result, against pyproj on the oracle
+database. All 8,000 current CRSs that pyproj's `Proj` handles match within
+1 mm in the CRS's unit and 10⁻⁸°, but two. In 297 more, pyproj's `Proj`
+fails, mostly because PROJ can't write the CRS as a PROJ string, and ours
+works.
+
+The differences all come from pyproj's PROJ strings, and ours follow EPSG,
+as PROJ's own conversion of the CRS does:
+
+- **NAD83, 472 CRSs, 1.05·10⁻⁴ m.** `+datum=NAD83` implies
+  `+towgs84=0,0,0`, so PROJ reads the input as WGS 84 and moves it
+  onto GRS 1980 through geocentric coordinates. The two ellipsoids'
+  semi-minor axes differ by 0.1 mm.
+- **Paris meridian, 29 CRSs, up to 3.5·10⁻⁴ m.** `+pm=paris` is PROJ's
+  2°20′14.025″, 3.3·10⁻⁹° from EPSG's 2.5969213 grad.
+- **Named ellipsoids, 9 CRSs, up to 1.2·10⁻⁴ m.** PROJ writes
+  Schwarzeck's Bessel Namibia (GLM) as `+ellps=bess_nam`, whose
+  semi-major axis is rounded to the millimetre.
+- **Rounded parameters, below 10⁻⁶ of the unit.** The PROJ string has
+  15 significant digits.
+- **EASE-Grid North and South (EPSG:3973, 3974), kilometres.** The PROJ
+  string has `+R_A`, the authalic sphere, for EPSG's spherical LAEA;
+  PROJ's own conversion of these CRSs doesn't. These two are listed in the
+  test.
 
 ## `to_2d`, `to_3d`, `get_non_deprecated`
 
@@ -276,7 +316,11 @@ The tests use the local HTTP server the grid tests already use.
    `test_geod.py`. **Done:** `xeibe_proj.geod` and `xeibe_proj.list`. All
    of pyproj's `test_geod.py` passes but `inplace=` (decision 4), and the
    suite went from 149 to 318 of 960.
-3. **`Proj`**, gated on pyproj over every EPSG CRS.
+3. **`Proj`**, gated on pyproj over every EPSG CRS. **Done:**
+   `xeibe_reproject::Projection` and `xeibe_proj.proj`, matching pyproj but
+   for its PROJ strings' own differences ([Validation](#validation)).
+   pyproj's `test_proj.py` mostly needs PROJ strings (phase 3); the suite
+   went from 318 to 324 of 960.
 4. **`to_2d`, `to_3d`, `get_non_deprecated`**, gated on pyproj over every
    EPSG CRS.
 5. **`get_units_map`**, gated on pyproj.

@@ -276,6 +276,12 @@ test.test_proj.ReprTests::test_sphere
 test.test_proj.TestRadians::test_fwd_radians
 test.test_proj.TestRadians::test_inv_radians
 test.test_proj.TestRadians::test_npts_radians
+test.test_proj::test_equals_different_type
+test.test_proj::test_is_exact_same_different_type
+test.test_proj::test_network__default
+test.test_proj::test_network__disable
+test.test_proj::test_network__enable
+test.test_proj::test_proj_multithread
 test.test_transformer::test_always_xy__from_pipeline_geographic_to_projected
 test.test_transformer::test_always_xy__from_pipeline_projected_to_geographic
 test.test_transformer::test_always_xy__transformer[_make_1_element_array]

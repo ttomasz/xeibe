@@ -280,6 +280,25 @@ impl Axes {
         axes
     }
 
+    /// Size of the horizontal axes' unit (of the first one).
+    pub(crate) fn linear_factor(&self) -> f64 {
+        self.axes
+            .iter()
+            .find(|axis| axis.vertical == 0.0)
+            .map_or(1.0, |axis| axis.factor)
+    }
+
+    /// The same axes with the horizontal ones in metres (or radians).
+    pub(crate) fn in_metres(&self) -> Axes {
+        let mut axes = self.clone();
+        for axis in &mut axes.axes {
+            if axis.vertical == 0.0 {
+                axis.factor = 1.0;
+            }
+        }
+        axes
+    }
+
     /// Size of the longitude (east or west) axis's unit, for a geographic CRS.
     pub(crate) fn east_factor(&self) -> Option<f64> {
         self.axes

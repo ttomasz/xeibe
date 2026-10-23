@@ -34,6 +34,12 @@ from xeibe_proj import Geod
 g = Geod(ellps="WGS84")                             # or crs.get_geod()
 az12, az21, dist = g.inv(-73.78, 40.64, 103.99, 1.36)
 area, perimeter = g.polygon_area_perimeter([0, 1, 1], [0, 0, 1])
+
+from xeibe_proj import Proj
+
+p = Proj(2180)                                      # the CRS's projection, no datum shift
+x, y = p(19.0, 52.0)                                # degrees from Greenwich in
+lon, lat = p(x, y, inverse=True)
 ```
 
 Coordinates come back in the type they went in: a number, a list, a tuple,
@@ -69,6 +75,10 @@ yet.
 - **WKT is written in two versions**, `WKT2_2019` and `WKT1_GDAL`; the
   others raise `NotImplementedError`. The output is PROJ's, but for ids PROJ
   looks up in its database.
+- **`Proj` follows EPSG**, where pyproj's follows the CRS's PROJ string:
+  full-precision parameters, EPSG's prime meridians and the CRS's own
+  datum. Results differ by up to 0.35 mm (kilometres for EASE-Grid). `srs`
+  is the CRS's, not a PROJ string.
 - **Other authorities** than EPSG and OGC (`ESRI:`, `IGNF:`, …) are not
   known, apart from Esri's old codes of EPSG CRSs.
 

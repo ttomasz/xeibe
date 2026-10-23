@@ -559,7 +559,7 @@ impl Transform {
     }
 }
 
-fn coordinate_error(index: usize, x: f64, y: f64, reason: CoordinateError) -> Error {
+pub(crate) fn coordinate_error(index: usize, x: f64, y: f64, reason: CoordinateError) -> Error {
     Error::Coordinate {
         index,
         x,
@@ -729,7 +729,7 @@ pub(crate) fn to_internal(
 }
 
 /// The reverse of [`to_internal`].
-fn from_internal(axes: &Axes, order: AxisOrder, v: [f64; 3]) -> [f64; 3] {
+pub(crate) fn from_internal(axes: &Axes, order: AxisOrder, v: [f64; 3]) -> [f64; 3] {
     let mut out = axes.to_crs(v);
     if order == AxisOrder::EastFirst && axes.first_is_northing() {
         out.swap(0, 1);

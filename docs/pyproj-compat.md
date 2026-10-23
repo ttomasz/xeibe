@@ -32,7 +32,7 @@ As of 2026-10-21, phase 0 and phase 1 are implemented, apart from
 2026-10-23, so is phase 2's WKT part ([crs-wkt.md](crs-wkt.md)): WKT in and
 out, identification by definition, Bound CRSs and Esri's old codes. The
 rest of phase 2 is designed in [pyproj-phase2.md](pyproj-phase2.md), and
-its first two steps are done: the geodesic port and `Geod`.
+its first three steps are done: the geodesic port, `Geod` and `Proj`.
 
 - **Done.**
   - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
@@ -55,6 +55,7 @@ its first two steps are done: the geodesic port and `Geod`.
     `enums`, `exceptions`, `network` and `datadir`.
   - `Geod`, complete, with `CRS.get_geod`, `pyproj.geod` and
     `pyproj.list` ([pyproj-phase2.md](pyproj-phase2.md#geod-in-xeibe_proj)).
+  - `Proj` for EPSG and WKT input ([pyproj-phase2.md](pyproj-phase2.md#proj)).
 - **The Rust changes phase 1 needed are made**:
   - `Transform::operation_info`, `operation_index_for` and
     `with_operation_index` for the metadata and the group;
@@ -66,9 +67,9 @@ its first two steps are done: the geodesic port and `Geod`.
     EPSG's remarks on CRSs and operations in a file of their own, read on
     first use. The wheel grew from 2.0 to 2.2 MB.
 - **Measured** (see [Testing](#testing)):
-  - pyproj's own suite: 318 of its 960 tests pass: 120 before phase 1's
+  - pyproj's own suite: 324 of its 960 tests pass: 120 before phase 1's
     Rust changes, 129 after, 149 with the WKT part of phase 2, 318 with
-    `Geod`.
+    `Geod`, 324 with `Proj`.
   - Against the oracle `proj.db`, every EPSG CRS reports what PROJ does,
     scopes, area descriptions and remarks included, except four documented
     differences:
@@ -368,7 +369,7 @@ becomes the package's status tracker.
 | `Geod(ellps=…)`, `Geod(a=, b=, f=, rf=, es=, sphere=)`, `Geod("+ellps=…")`, `CRS.get_geod()` | 2 | PROJ's ellipsoid name table (`ellps.cpp`, MIT). **Done.** |
 | `Geod.inv`, `fwd`, `line_length`, `line_lengths` | 2 | All of `geodesic.c` is ported (`xeibe_reproject::geodesic`, [pyproj-phase2.md](pyproj-phase2.md#geodesics)). **Done**, without `inplace=` (as for `transform`). |
 | `npts`, `fwd_intermediate`, `inv_intermediate`, `polygon_area_perimeter`, `geometry_length`, `geometry_area_perimeter` | 2 | Geodesic lines and polygon areas. **Done.** |
-| `Proj(crs)(lon, lat, inverse=, radians=)`, `Proj(proj="utm", zone=…)` | 2 / 3 | Phase 2 for EPSG and WKT input (geographic CRS of the same datum ↔ projected). Keyword PROJ parameters arrive with the phase 3 translator. |
+| `Proj(crs)(lon, lat, inverse=, radians=)`, `Proj(proj="utm", zone=…)` | 2 / 3 | Phase 2 for EPSG and WKT input: the CRS's projection on its own ellipsoid ([pyproj-phase2.md](pyproj-phase2.md#proj)). **Done** for that. Keyword PROJ parameters arrive with the phase 3 translator. |
 | `Proj.get_factors` | Out | |
 | `pyproj.database`: `query_crs_info`, `query_utm_crs_info`, `get_authorities`, `get_codes`, `get_units_map`, `get_database_metadata("EPSG.VERSION")` | 1 / 2 | From the `xeibe-crs` tables. `query_utm_crs_info` (GeoPandas' `estimate_utm_crs`) needs each projected CRS's datum, which the PROJJSON has. |
 | `pyproj.aoi` (`AreaOfInterest`, `AreaOfUse`, `BBox`), `pyproj.enums`, `pyproj.exceptions` (`CRSError`, `ProjError`, `GeodError`, `DataDirError`) | 1 | Same names and hierarchy. Error messages differ. |

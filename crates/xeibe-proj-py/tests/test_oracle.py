@@ -213,3 +213,53 @@ def test_random_pairs_match(seed: int) -> None:
     fixed = sorted(p for p in known if p in seen and p not in differing)
     assert not new, f"{len(new)} of {compared} pairs differ from PROJ:\n" + "\n".join(new)
     assert not fixed, f"these pairs match PROJ now; remove them from {KNOWN.name}: {fixed}"
+
+
+# CRSs whose Proj differs from pyproj's beyond the tolerances, with why
+# (docs/pyproj-phase2.md, Proj): pyproj's PROJ string has +R_A (the
+# authalic sphere) for EPSG's spherical LAEA, which PROJ's own conversion
+# of the CRS doesn't use; ours matches that conversion.
+PROJ_KNOWN = {3973, 3974}
+
+
+def test_proj_matches_pyproj() -> None:
+    """``Proj(code)`` forwards from the middle of each EPSG CRS's area, and
+    back from pyproj's result, as pyproj's: within 1 mm (in the CRS's
+    unit) and 1e-8°. pyproj's PROJ strings round parameters to 15 digits,
+    use PROJ's own prime meridians and ellipsoids where EPSG's are close,
+    and read input as WGS 84 when they say +datum=NAD83: up to 0.35 mm."""
+    compared, failed, ours_only = 0, [], 0
+    for code, record in _epsg.records().items():
+        if record.deprecated or record.area is None or record.kind not in (
+            "geographic_2d", "geographic_3d", "projected", "geocentric", "compound"
+        ):
+            continue
+        w, s, e, n = record.area
+        lon = (w + e) / 2 if w <= e else ((w + e + 360) / 2 + 180) % 360 - 180
+        lat = (s + n) / 2
+        try:
+            theirs = pyproj.Proj(code)
+            fwd = theirs(lon, lat, errcheck=True)
+            back = theirs(*fwd, inverse=True, errcheck=True)
+        except (pyproj.exceptions.ProjError, pyproj.exceptions.CRSError):
+            try:
+                xeibe_proj.Proj(code)(lon, lat)
+                ours_only += 1
+            except ProjError:
+                pass
+            continue
+        ours = xeibe_proj.Proj(code)
+        compared += 1
+        geographic = ours.crs.is_geographic
+        ok = _proj_close(ours(lon, lat), fwd, geographic) and _proj_close(ours(*fwd, inverse=True), back, True)
+        if not ok and code not in PROJ_KNOWN:
+            failed.append(f"EPSG:{code} {ours(lon, lat)} != {fwd}")
+    assert compared > 7500 and not failed, (compared, len(failed), failed[:10])
+    # Where PROJ can't write a PROJ string, there is no pyproj Proj to
+    # compare with; ours still projects.
+    assert ours_only > 0
+
+
+def _proj_close(a: tuple[float, float], b: tuple[float, float], geographic: bool) -> bool:
+    tolerance = 1e-8 if geographic else 1e-3
+    return all(math.isclose(x, y, rel_tol=0, abs_tol=tolerance) for x, y in zip(a, b, strict=True))

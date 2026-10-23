@@ -19,6 +19,7 @@ from xeibe_proj.database import get_authorities, get_codes, get_units_map
 from xeibe_proj.exceptions import DataDirError, ProjError
 from xeibe_proj.geod import Geod, geodesic_version_str, pj_ellps
 from xeibe_proj.list import get_ellps_map, get_prime_meridians_map, get_proj_operations_map
+from xeibe_proj.proj import Proj
 from xeibe_proj.transformer import Transformer, itransform, transform
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "EPSG_VERSION",
     "DataDirError",
     "Geod",
+    "Proj",
     "ProjError",
     "Transformer",
     "__version__",
@@ -59,7 +61,6 @@ _MISSING = {
     "PROJ_VERSION_STR": "there is no PROJ to report a version of",
     "PROJ_COMPILED_VERSION": "there is no PROJ to report a version of",
     "PROJ_COMPILED_VERSION_STR": "there is no PROJ to report a version of",
-    "Proj": "not implemented yet (phase 2)",
     "pj_list": "not supported: it lists PROJ's projections",
 }
 

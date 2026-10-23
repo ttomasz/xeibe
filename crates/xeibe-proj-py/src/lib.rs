@@ -8,6 +8,7 @@
 //! Errors are `xeibe_proj.exceptions`' classes.
 
 mod geod;
+mod proj;
 
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyTypeError, PyValueError};
@@ -503,6 +504,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<ParsedCrs>()?;
     m.add_class::<geod::Geodesic>()?;
     m.add_class::<geod::GeodesicLine>()?;
+    m.add_class::<proj::Projection>()?;
     m.add_function(wrap_pyfunction!(geod::reverse_azimuth, m)?)?;
     m.add_function(wrap_pyfunction!(geod::ellipsoids, m)?)?;
     m.add_function(wrap_pyfunction!(geod::prime_meridians, m)?)?;

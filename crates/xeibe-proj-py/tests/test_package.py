@@ -31,8 +31,8 @@ def test_versions() -> None:
     assert xeibe_proj.__version__
     with pytest.raises(AttributeError, match="no PROJ"):
         xeibe_proj.proj_version_str  # noqa: B018
-    with pytest.raises(AttributeError, match="phase 2"):
-        xeibe_proj.Proj  # noqa: B018
+    with pytest.raises(AttributeError, match="not supported"):
+        xeibe_proj.pj_list  # noqa: B018
     assert not hasattr(xeibe_proj, "PROJ_VERSION")
 
 

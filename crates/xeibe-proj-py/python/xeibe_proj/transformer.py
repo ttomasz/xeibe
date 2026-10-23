@@ -169,8 +169,8 @@ class Transformer:
     # Whether always_xy swaps the source's and the target's first two values.
     _swap: tuple[bool, bool]
     # Both in the CRSs' own axis order: always_xy is applied in Python.
-    _forward: _native.Transform
-    _backward: _native.Transform | None
+    _forward: _native.Transform | _native.Projection
+    _backward: _native.Transform | _native.Projection | None
     # The directions (True: forward) whose grid use has been logged.
     _logged: set[bool]
     # For a transformer through one operation (a TransformerGroup member,
@@ -385,7 +385,15 @@ class Transformer:
 
     # Conversion ---------------------------------------------------------------
 
-    def _plan(self, direction: Direction) -> tuple[_native.Transform | None, CRS, CRS, tuple[bool, bool]]:
+    def _angular(self, forward: bool) -> tuple[bool, bool]:
+        """Whether the values going in and coming out are angles in degrees,
+        which ``radians=True`` gives and takes in radians."""
+        source, target = (self._source, self._target) if forward else (self._target, self._source)
+        return _degrees(source), _degrees(target)
+
+    def _plan(
+        self, direction: Direction
+    ) -> tuple[_native.Transform | _native.Projection | None, CRS, CRS, tuple[bool, bool]]:
         """The native transform for ``direction`` (``None`` for IDENT), the
         CRSs coordinates come from and go to, and whether always_xy swaps
         the values going in and coming out."""
@@ -398,7 +406,12 @@ class Transformer:
             self._backward = self._forward.inverse()
         return self._backward, self._target, self._source, (self._swap[1], self._swap[0])
 
-    def _load_grids(self, native: _native.Transform, forward: bool, bounds: tuple[float, float, float, float] | None) -> None:
+    def _load_grids(
+        self,
+        native: _native.Transform | _native.Projection,
+        forward: bool,
+        bounds: tuple[float, float, float, float] | None,
+    ) -> None:
         files = native.grids()
         if not files:
             return
@@ -416,7 +429,7 @@ class Transformer:
 
     def _convert(
         self,
-        native: _native.Transform,
+        native: _native.Transform | _native.Projection,
         forward: bool,
         x: Any,
         y: Any,
@@ -520,7 +533,7 @@ class Transformer:
         that can't be converted."""
         if args or kwargs:
             _reject("transform", args, kwargs)
-        native, source, target, swap = self._plan(direction)
+        native, _, _, swap = self._plan(direction)
         bx, kx = _containers.to_buffer(xx)
         by, ky = _containers.to_buffer(yy)
         bz = kz = None
@@ -528,9 +541,8 @@ class Transformer:
             bz, kz = _containers.to_buffer(zz)
         if native is not None:
             forward = TransformDirection.create(direction) is TransformDirection.FORWARD
-            bx, by = self._convert(
-                native, forward, bx, by, bz, radians and _degrees(source), radians and _degrees(target), swap
-            )
+            angular_in, angular_out = self._angular(forward)
+            bx, by = self._convert(native, forward, bx, by, bz, radians and angular_in, radians and angular_out, swap)
         result: tuple[Any, ...] = (_containers.from_buffer(kx, bx), _containers.from_buffer(ky, by))
         if bz is not None and kz is not None:
             result += (_containers.from_buffer(kz, bz),)
@@ -554,8 +566,9 @@ class Transformer:
         a third value as a time, which passes through."""
         if args or kwargs:
             _reject("itransform", args, kwargs)
-        native, source, target, swap = self._plan(direction)
+        native, _, _, swap = self._plan(direction)
         forward = TransformDirection.create(direction) is TransformDirection.FORWARD
+        angular_in, angular_out = self._angular(forward)
         it = iter(points)
         try:
             first = next(it)
@@ -576,9 +589,7 @@ class Transformer:
             x, y = chunk[a::stride], chunk[b::stride]
             z = chunk[2::stride] if has_z else None
             if native is not None:
-                x, y = self._convert(
-                    native, forward, x, y, z, radians and _degrees(source), radians and _degrees(target), swap
-                )
+                x, y = self._convert(native, forward, x, y, z, radians and angular_in, radians and angular_out, swap)
             chunk[a::stride], chunk[b::stride] = x, y
             if z is not None:
                 chunk[2::stride] = z
@@ -602,18 +613,19 @@ class Transformer:
             _reject("transform_bounds", args, kwargs)
         if densify_pts < 0:
             raise ProjError("densify_pts must be positive")
-        native, source, target, swap = self._plan(direction)
+        native, _, _, swap = self._plan(direction)
         bounds = (float(left), float(bottom), float(right), float(top))
         if native is None:
             return bounds
+        forward = TransformDirection.create(direction) is TransformDirection.FORWARD
+        angular_in, angular_out = self._angular(forward)
         if swap[0]:
             bounds = (bounds[1], bounds[0], bounds[3], bounds[2])
-        if radians and _degrees(source):
+        if radians and angular_in:
             bounds = (math.degrees(bounds[0]), math.degrees(bounds[1]), math.degrees(bounds[2]), math.degrees(bounds[3]))
-        forward = TransformDirection.create(direction) is TransformDirection.FORWARD
         self._load_grids(native, forward, bounds)
         result = native.convert_bounds(bounds, densify_pts)
-        if radians and _degrees(target):
+        if radians and angular_out:
             result = (math.radians(result[0]), math.radians(result[1]), math.radians(result[2]), math.radians(result[3]))
         if swap[1]:
             result = (result[1], result[0], result[3], result[2])
