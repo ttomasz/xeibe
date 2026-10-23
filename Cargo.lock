@@ -4442,6 +4442,7 @@ version = "0.1.0"
 dependencies = [
  "pyo3",
  "xeibe-crs",
+ "xeibe-esri",
  "xeibe-reproject",
 ]
 

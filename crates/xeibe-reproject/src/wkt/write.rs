@@ -365,16 +365,115 @@ impl Writer {
     }
 
     fn engineering(&mut self, v: &Value) -> Result<Node, Error> {
-        let d = &v["datum"];
-        let mut datum = vec![text(str_of(d, "name")?)];
-        if let Some(a) = d["anchor"].as_str() {
-            datum.push(sub(node("ANCHOR", vec![text(a)])));
-        }
-        let mut args = vec![text(str_of(v, "name")?), sub(node("EDATUM", datum))];
+        let mut args = vec![
+            text(str_of(v, "name")?),
+            sub(engineering_datum(&v["datum"])?),
+        ];
         args.extend(cs_args(&v["coordinate_system"])?);
         self.finish(v, &mut args)?;
         Ok(node("ENGCRS", args))
     }
+}
+
+/// A part of a CRS on its own, with its ids, as PROJ writes it: one
+/// node, or a dynamic datum's `DYNAMIC` and `DATUM`, or a coordinate
+/// system's `CS` and `AXIS` nodes.
+pub(crate) fn object(v: &Value) -> Result<Vec<Node>, Error> {
+    let with_ids = |mut n: Node| -> Result<Vec<Node>, Error> {
+        ids(v, &mut n.args)?;
+        Ok(vec![n])
+    };
+    let dynamic_then = |n: Node| -> Result<Vec<Node>, Error> {
+        let mut out: Vec<Node> = dynamic(&Value::Null, v)?.into_iter().collect();
+        out.extend(with_ids(n)?);
+        Ok(out)
+    };
+    match str_of(v, "type")? {
+        "Ellipsoid" => with_ids(ellipsoid(v)?),
+        "PrimeMeridian" => with_ids(prime_meridian(v)?),
+        "GeodeticReferenceFrame" | "DynamicGeodeticReferenceFrame" => {
+            let mut out = dynamic_then(geodetic_datum(v)?)?;
+            if let Some(pm) = not_greenwich(v) {
+                out.push(prime_meridian(pm)?);
+            }
+            Ok(out)
+        }
+        "VerticalReferenceFrame" | "DynamicVerticalReferenceFrame" => {
+            dynamic_then(vertical_datum(v)?)
+        }
+        "DatumEnsemble" => with_ids(ensemble(v, true)?),
+        "EngineeringDatum" => with_ids(engineering_datum(v)?),
+        "CoordinateSystem" => Ok(cs_args(v)?
+            .into_iter()
+            .filter_map(|a| match a {
+                Arg::Node(n) => Some(n),
+                _ => None,
+            })
+            .collect()),
+        "Conversion" => with_ids(conversion("CONVERSION", v)?),
+        "Transformation" => Ok(vec![transformation(v)?]),
+        other => Err(Error::Unsupported {
+            crs: v["name"].as_str().unwrap_or("PROJJSON").into(),
+            what: format!("writing a {other} as WKT"),
+        }),
+    }
+}
+
+/// A geodetic datum's prime meridian when it isn't Greenwich: PROJ writes
+/// it after a datum written on its own.
+pub(super) fn not_greenwich(d: &Value) -> Option<&Value> {
+    let pm = &d["prime_meridian"];
+    let longitude = match &pm["longitude"] {
+        Value::Object(o) => o.get("value")?.as_f64()?,
+        l => l.as_f64()?,
+    };
+    (longitude != 0.0).then_some(pm)
+}
+
+fn engineering_datum(d: &Value) -> Result<Node, Error> {
+    let mut datum = vec![text(str_of(d, "name")?)];
+    if let Some(a) = d["anchor"].as_str() {
+        datum.push(sub(node("ANCHOR", vec![text(a)])));
+    }
+    Ok(node("EDATUM", datum))
+}
+
+/// `COORDINATEOPERATION`: a transformation with its source and target
+/// CRSs, each written whole, and its parameters in their own units.
+fn transformation(t: &Value) -> Result<Node, Error> {
+    let mut args = vec![text(str_of(t, "name")?)];
+    if let Some(v) = t["version"].as_str() {
+        args.push(sub(node("VERSION", vec![text(v)])));
+    }
+    for (keyword, key) in [("SOURCECRS", "source_crs"), ("TARGETCRS", "target_crs")] {
+        let crs = Writer { root: true }.crs(&t[key])?;
+        args.push(sub(node(keyword, vec![sub(crs)])));
+    }
+    let m = &t["method"];
+    let mut method = vec![text(str_of(m, "name")?)];
+    ids(m, &mut method)?;
+    args.push(sub(node("METHOD", method)));
+    for p in t["parameters"].as_array().into_iter().flatten() {
+        let mut a = vec![text(str_of(p, "name")?)];
+        if let Some(file) = p["value"].as_str() {
+            a.push(text(file));
+            ids(p, &mut a)?;
+            args.push(sub(node("PARAMETERFILE", a)));
+            continue;
+        }
+        a.push(Arg::Number(num_of(&p["value"])?));
+        a.push(sub(unit(&p["unit"], parameter_kind(p))?));
+        ids(p, &mut a)?;
+        args.push(sub(node("PARAMETER", a)));
+    }
+    if let Some(accuracy) = t["accuracy"].as_str() {
+        args.push(sub(node(
+            "OPERATIONACCURACY",
+            vec![Arg::Word(accuracy.into())],
+        )));
+    }
+    ids(t, &mut args)?;
+    Ok(node("COORDINATEOPERATION", args))
 }
 
 fn ellipsoid(e: &Value) -> Result<Node, Error> {
@@ -404,10 +503,16 @@ fn ellipsoid(e: &Value) -> Result<Node, Error> {
     ))
 }
 
-fn ensemble(e: &Value) -> Result<Node, Error> {
+/// `ENSEMBLE`, its members with their ids when `member_ids`, as PROJ
+/// writes an ensemble on its own.
+fn ensemble(e: &Value, member_ids: bool) -> Result<Node, Error> {
     let mut args = vec![text(str_of(e, "name")?)];
     for m in e["members"].as_array().into_iter().flatten() {
-        args.push(sub(node("MEMBER", vec![text(str_of(m, "name")?)])));
+        let mut member = vec![text(str_of(m, "name")?)];
+        if member_ids {
+            ids(m, &mut member)?;
+        }
+        args.push(sub(node("MEMBER", member)));
     }
     if e["ellipsoid"].is_object() {
         args.push(sub(ellipsoid(&e["ellipsoid"])?));
@@ -452,6 +557,19 @@ fn dynamic(crs: &Value, datum: &Value) -> Result<Option<Node>, Error> {
     Ok(Some(node("DYNAMIC", args)))
 }
 
+/// `DATUM`, without its prime meridian.
+fn geodetic_datum(d: &Value) -> Result<Node, Error> {
+    let mut a = vec![text(str_of(d, "name")?), sub(ellipsoid(&d["ellipsoid"])?)];
+    anchors(d, &mut a)?;
+    Ok(node("DATUM", a))
+}
+
+fn vertical_datum(d: &Value) -> Result<Node, Error> {
+    let mut a = vec![text(str_of(d, "name")?)];
+    anchors(d, &mut a)?;
+    Ok(node("VDATUM", a))
+}
+
 /// The datum (or ensemble) and prime meridian of a geodetic CRS, with
 /// `DYNAMIC` before them for a dynamic frame.
 fn datum_args(v: &Value) -> Result<Vec<Arg>, Error> {
@@ -461,27 +579,30 @@ fn datum_args(v: &Value) -> Result<Vec<Arg>, Error> {
         if let Some(n) = dynamic(v, d)? {
             args.push(sub(n));
         }
-        let mut a = vec![text(str_of(d, "name")?), sub(ellipsoid(&d["ellipsoid"])?)];
-        anchors(d, &mut a)?;
-        args.push(sub(node("DATUM", a)));
+        args.push(sub(geodetic_datum(d)?));
         &d["prime_meridian"]
     } else if v["datum_ensemble"].is_object() {
-        args.push(sub(ensemble(&v["datum_ensemble"])?));
+        args.push(sub(ensemble(&v["datum_ensemble"], false)?));
         &Value::Null
     } else {
         return Err(invalid("a geodetic CRS without a datum"));
     };
+    args.push(sub(prime_meridian(pm)?));
+    Ok(args)
+}
+
+/// `PRIMEM`, Greenwich for `Value::Null`.
+fn prime_meridian(pm: &Value) -> Result<Node, Error> {
     let (name, longitude, u) = if pm.is_object() {
         let (l, u) = measure(&pm["longitude"], Kind::Angle)?;
         (str_of(pm, "name")?, l, u)
     } else {
         ("Greenwich", 0.0, unit(&Value::Null, Kind::Angle)?)
     };
-    args.push(sub(node(
+    Ok(node(
         "PRIMEM",
         vec![text(name), Arg::Number(longitude), sub(u)],
-    )));
-    Ok(args)
+    ))
 }
 
 fn vertical_datum_args(v: &Value) -> Result<Vec<Arg>, Error> {
@@ -491,11 +612,9 @@ fn vertical_datum_args(v: &Value) -> Result<Vec<Arg>, Error> {
         if let Some(n) = dynamic(v, d)? {
             args.push(sub(n));
         }
-        let mut a = vec![text(str_of(d, "name")?)];
-        anchors(d, &mut a)?;
-        args.push(sub(node("VDATUM", a)));
+        args.push(sub(vertical_datum(d)?));
     } else if v["datum_ensemble"].is_object() {
-        args.push(sub(ensemble(&v["datum_ensemble"])?));
+        args.push(sub(ensemble(&v["datum_ensemble"], false)?));
     } else {
         return Err(invalid("a vertical CRS without a datum"));
     }

@@ -103,14 +103,16 @@ def _swapped_for_xy(crs: CRS) -> bool:
 
 
 def _native_json(crs: CRS) -> str:
-    """The PROJJSON handed to Rust: an OGC CRS as its EPSG twin with its
-    own axes, so that EPSG's transformations apply to it."""
+    """What Rust reads the CRS from: an OGC CRS as its EPSG twin with its
+    own axes, so that EPSG's transformations apply to it, and a CRS made
+    from WKT as that WKT (whose WKT1 axes may be unstated)."""
     projjson = crs.to_json_dict()
     auth, code = ident(projjson) or ("", "")
     twin = OGC_CRS.get(code.upper()) if auth == "OGC" else None
     if twin is not None:
         projjson["id"] = {"authority": "EPSG", "code": twin[0]}
-    return json.dumps(projjson)
+        return json.dumps(projjson)
+    return crs._native_input()  # pyright: ignore[reportPrivateUsage]
 
 
 def _last_value(buffer: Any) -> float | None:

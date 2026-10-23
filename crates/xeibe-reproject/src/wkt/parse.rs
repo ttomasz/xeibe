@@ -31,14 +31,29 @@ pub(crate) enum Arg {
 /// Parses one WKT object, which must be all of `text` apart from white space.
 ///
 /// ESRI writes a horizontal CRS with heights as two objects,
-/// `PROJCS[…],VERTCS[…]` (or `GEOGCS`): those come back as a `COMPD_CS` of
-/// the two, without a name, which the reader gives it from theirs
-/// ("horizontal + vertical", as PROJ names it).
+/// `PROJCS[…],VERTCS[…]` (or `GEOGCS`), or with the `VERTCS` as the last
+/// child of the `PROJCS`, as ArcGIS writes it in `.prj` files: both come
+/// back as a `COMPD_CS` of the two, without a name, which the reader gives
+/// it from theirs ("horizontal + vertical", as PROJ names it). PROJ drops a
+/// nested `VERTCS`; GDAL's ESRI import makes it a compound CRS, as here.
 pub(crate) fn parse(text: &str) -> Result<Node, Error> {
     let mut p = Parser { text, pos: 0 };
     p.skip_space();
     let mut node = p.node(0)?;
     p.skip_space();
+    if matches!(node.keyword.as_str(), "GEOGCS" | "PROJCS")
+        && let Some(at) = node
+            .args
+            .iter()
+            .position(|a| matches!(a, Arg::Node(n) if n.keyword == "VERTCS"))
+    {
+        let vertical = node.args.remove(at);
+        node = Node {
+            keyword: "COMPD_CS".into(),
+            args: vec![Arg::Text(String::new()), Arg::Node(node), vertical],
+            offset: 0,
+        };
+    }
     if p.peek() == Some(b',') && matches!(node.keyword.as_str(), "GEOGCS" | "PROJCS") {
         p.pos += 1;
         p.skip_space();

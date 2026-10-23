@@ -24,6 +24,10 @@ left, bottom, right, top = t.transform_bounds(14.1, 49.0, 24.2, 55.9)
 crs = CRS("urn:ogc:def:crs:EPSG::2180")
 crs.name, crs.axis_info, crs.area_of_use, crs.to_epsg()
 crs == CRS(2180)                                    # True
+
+prj = CRS(open("parcels.prj").read())               # WKT1 (GDAL's or Esri's) or WKT2
+prj.to_epsg(), prj.list_authority()                 # identified by its definition
+prj.to_wkt("WKT1_GDAL", pretty=True)                # or "WKT2_2019"
 ```
 
 Coordinates come back in the type they went in: a number, a list, a tuple,
@@ -34,7 +38,9 @@ declares it.
 
 CRSs can be given as EPSG codes in any common spelling (`4326`,
 `"EPSG:4326"`, `"EPSG:4326+5773"`, OGC URNs and URLs), as `"OGC:CRS84"`, as
-EPSG names (`"WGS 84"`), or as PROJJSON. WKT and PROJ strings are not read
+EPSG names (`"WGS 84"`), as WKT (WKT1 as GDAL and Esri write it, with
+`TOWGS84`, and WKT2), or as PROJJSON. Esri's old codes of CRSs EPSG has
+since defined (`"ESRI:102100"`) give the EPSG CRS. PROJ strings are not read
 yet.
 
 ## Differences from pyproj
@@ -52,6 +58,11 @@ yet.
 - **A newer EPSG release** than pyproj's bundled `proj.db`:
   `xeibe_proj.EPSG_VERSION`. Names and operations can differ.
 - **No PROJ version**: `proj_version_str` and `PROJ_VERSION` don't exist.
+- **WKT is written in two versions**, `WKT2_2019` and `WKT1_GDAL`; the
+  others raise `NotImplementedError`. The output is PROJ's, but for ids PROJ
+  looks up in its database.
+- **Other authorities** than EPSG and OGC (`ESRI:`, `IGNF:`, …) are not
+  known, apart from Esri's old codes of EPSG CRSs.
 
 ## Logging
 
@@ -76,5 +87,6 @@ container rules: `float` in gives `float` out, `list[float]` gives
 ## Licence
 
 The code is CC0-1.0. The embedded EPSG data is IOGP's, used under the EPSG
-Dataset Terms of Use, and some projection code is ported from PROJ (MIT):
-see `NOTICE.md`.
+Dataset Terms of Use, some projection code is ported from PROJ (MIT), and
+Esri's names of EPSG objects, for reading Esri's WKT, are Apache-2.0: see
+`NOTICE.md`.

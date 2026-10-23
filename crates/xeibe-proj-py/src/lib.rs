@@ -1,7 +1,8 @@
 //! The native part of the Python package `xeibe_proj` (`xeibe_proj._native`).
 //!
 //! Kept narrow (`docs/pyproj-compat.md`, Naming and layout): EPSG records and
-//! PROJJSON from `xeibe-crs`, and `xeibe-reproject`'s transforms. The
+//! PROJJSON from `xeibe-crs`, `xeibe-reproject`'s transforms, WKT and
+//! identification, and Esri's old codes from `xeibe-esri`. The
 //! pyproj-shaped API is Python over PROJJSON. Conversion works in place on
 //! float64 buffers the Python side has already copied, and releases the GIL.
 //! Errors are `xeibe_proj.exceptions`' classes.
@@ -10,6 +11,7 @@ use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
+use xeibe_reproject::wkt::{self, AxisRule, Version};
 use xeibe_reproject::{AxisOrder, Crs, Error, Grids};
 
 /// `xeibe_proj.exceptions.<name>(message)`.
@@ -27,7 +29,10 @@ fn exception(py: Python<'_>, name: &str, message: String) -> PyErr {
 /// A CRS that can't be read is a `CRSError`, anything else a `ProjError`.
 fn error(py: Python<'_>, error: Error) -> PyErr {
     let class = match error {
-        Error::UnknownCode(_) | Error::Projjson { .. } | Error::Unsupported { .. } => "CRSError",
+        Error::UnknownCode(_)
+        | Error::Projjson { .. }
+        | Error::Wkt { .. }
+        | Error::Unsupported { .. } => "CRSError",
         _ => "ProjError",
     };
     exception(py, class, error.to_string())
@@ -55,6 +60,52 @@ fn projjson(code: u32) -> Option<&'static str> {
 #[pyfunction]
 fn alias(name: &str) -> Option<u32> {
     xeibe_crs::alias(name)
+}
+
+/// The EPSG code an old Esri code (`ESRI:102100`) moved to, or `None`.
+#[pyfunction]
+fn esri_code(code: u32) -> Option<u32> {
+    xeibe_esri::epsg_code(code)
+}
+
+/// The PROJJSON of a CRS given as WKT (any version PROJ reads but WKT2's
+/// derived geographic, parametric and temporal CRSs).
+#[pyfunction]
+fn wkt_to_projjson(py: Python<'_>, text: &str) -> PyResult<String> {
+    wkt::to_projjson(text).map_err(|e| error(py, e))
+}
+
+/// A CRS's PROJJSON, or a part's, as WKT: `version` `"WKT2_2019"` or
+/// `"WKT1_GDAL"`, `axes` pyproj's `output_axis_rule`.
+#[pyfunction]
+#[pyo3(signature = (projjson, version, pretty = false, axes = None))]
+fn to_wkt(
+    py: Python<'_>,
+    projjson: &str,
+    version: &str,
+    pretty: bool,
+    axes: Option<bool>,
+) -> PyResult<String> {
+    let version = match version {
+        "WKT2_2019" => Version::Wkt2_2019,
+        "WKT1_GDAL" => Version::Wkt1Gdal,
+        other => return Err(PyValueError::new_err(format!("not written: {other}"))),
+    };
+    let axes = match axes {
+        None => AxisRule::Auto,
+        Some(true) => AxisRule::Always,
+        Some(false) => AxisRule::Never,
+    };
+    wkt::from_projjson_with(projjson, version, pretty, axes).map_err(|e| error(py, e))
+}
+
+/// A CRS from PROJJSON, or from WKT when the text isn't a JSON object.
+fn read_crs(text: &str) -> Result<Crs, Error> {
+    if text.trim_start().starts_with('{') {
+        Crs::from_projjson(text)
+    } else {
+        Crs::from_wkt(text)
+    }
 }
 
 type Record = (
@@ -155,11 +206,18 @@ struct ParsedCrs {
 
 #[pymethods]
 impl ParsedCrs {
-    /// `Crs(projjson)`; a `CRSError` when `xeibe-reproject` can't read it.
+    /// `Crs(text)`, PROJJSON or WKT; a `CRSError` when `xeibe-reproject`
+    /// can't read it. WKT1 without `AXIS` is identified by its axes' unit
+    /// only, which reading the PROJJSON made from it can't know.
     #[new]
-    fn new(py: Python<'_>, projjson: &str) -> PyResult<Self> {
-        let inner = Crs::from_projjson(projjson).map_err(|e| error(py, e))?;
+    fn new(py: Python<'_>, text: &str) -> PyResult<Self> {
+        let inner = read_crs(text).map_err(|e| error(py, e))?;
         Ok(ParsedCrs { inner })
+    }
+
+    /// `Crs::identify`: EPSG codes with PROJ's confidence, best first.
+    fn identify(&self, py: Python<'_>) -> Vec<(u32, u8)> {
+        py.detach(|| self.inner.identify())
     }
 
     /// `Crs::equivalent`: the same definition, whatever the names and ids.
@@ -216,7 +274,7 @@ struct Transform {
 #[pymethods]
 impl Transform {
     /// `Transform(source, target, always_xy, grids, local=None)`: the CRSs
-    /// as PROJJSON text. `grids=True` may use PROJ-data's grids on the CDN;
+    /// as PROJJSON or WKT text. `grids=True` may use PROJ-data's grids on the CDN;
     /// with `False`, only those in `local` (PROJ-data's file names), or
     /// none.
     #[new]
@@ -241,8 +299,8 @@ impl Transform {
         };
         let inner = py
             .detach(|| {
-                let src = Crs::from_projjson(source)?;
-                let dst = Crs::from_projjson(target)?;
+                let src = read_crs(source)?;
+                let dst = read_crs(target)?;
                 xeibe_reproject::Transform::with_grids(&src, &dst, order, grids)
             })
             .map_err(|e| error(py, e))?;
@@ -434,6 +492,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(crs_remarks, m)?)?;
     m.add_function(wrap_pyfunction!(operation_remarks, m)?)?;
     m.add_function(wrap_pyfunction!(clear_grids, m)?)?;
+    m.add_function(wrap_pyfunction!(esri_code, m)?)?;
+    m.add_function(wrap_pyfunction!(wkt_to_projjson, m)?)?;
+    m.add_function(wrap_pyfunction!(to_wkt, m)?)?;
     m.add_function(wrap_pyfunction!(extent, m)?)?;
     m.add_class::<Transform>()?;
     m.add_class::<OperationInfo>()?;

@@ -47,7 +47,7 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 | [wfs.md](wfs.md) | WFS bulk-read client: paging, pages streamed into a read |
 | [reprojection.md](reprojection.md) | Pure-Rust reprojection from the EPSG data: levels, PROJ's operation selection, validation |
 | [pyproj-compat.md](pyproj-compat.md) | pyproj-compatible Python package `xeibe_proj` over `xeibe-crs` and `xeibe-reproject`: scope, extras, phases (phases 0 and 1 built) |
-| [crs-wkt.md](crs-wkt.md) | Reading and writing CRS WKT (WKT1, ESRI, WKT2) through PROJJSON, and identifying EPSG codes (design) |
+| [crs-wkt.md](crs-wkt.md) | Reading and writing CRS WKT (WKT1, ESRI, WKT2) through PROJJSON, identifying EPSG codes, and Bound CRSs (implemented) |
 | [web.md](web.md) | Browser page on WebAssembly: layout, map views, inputs, network limits, building it (first version built) |
 | [support-matrix.md](support-matrix.md) | Supported, planned and out-of-scope GML/WFS features (progress tracker) |
 | [testing.md](testing.md) | How the test suites are organized: synthetic tests, the samples, the GDAL reference |

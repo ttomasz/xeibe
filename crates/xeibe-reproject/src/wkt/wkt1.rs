@@ -1096,7 +1096,9 @@ fn projected(node: &Node, cx: &Dialect) -> Result<Value, Error> {
         let projection = node
             .child(&["PROJECTION"])
             .ok_or_else(|| node.invalid("no PROJECTION"))?;
-        conversion(node, projection, sphere, &length, &angle, cx)?
+        let (mut c, m) = conversion(node, projection, sphere, &length, &angle, cx)?;
+        name_utm(&mut c);
+        (c, m)
     };
     let mut axes = axes(node, &length, false)?;
     if axes.is_empty() {
@@ -1116,6 +1118,56 @@ fn projected(node: &Node, cx: &Dialect) -> Result<Value, Error> {
     );
     authority(node, &mut o)?;
     Ok(Value::Object(o))
+}
+
+/// PROJ's `Conversion::identify`: a Transverse Mercator conversion with
+/// UTM's parameters (latitude 0, a zone's central meridian in degrees,
+/// scale 0.9996, false easting 500 000 m, false northing 0 or 10 000 000
+/// m) is named "UTM zone 33N", with EPSG's code for it.
+fn name_utm(conversion: &mut Value) {
+    const DEGREE: f64 = std::f64::consts::PI / 180.0;
+    if conversion["method"]["id"]["code"] != 9807 {
+        return;
+    }
+    let param = |code: u32| {
+        conversion["parameters"]
+            .as_array()?
+            .iter()
+            .find(|p| p["id"]["code"] == code)
+    };
+    let value = |code: u32| param(code).and_then(|p| p["value"].as_f64());
+    let factor = |code: u32| match param(code).map(|p| &p["unit"]) {
+        Some(Value::String(u)) if u == "degree" => Some(DEGREE),
+        Some(Value::String(u)) if u == "metre" || u == "unity" => Some(1.0),
+        Some(u) => u["conversion_factor"].as_f64(),
+        None => None,
+    };
+    let close = |a: f64, b: f64| (a - b).abs() <= 1e-10 * b.abs();
+    let is = |code: u32, wanted: f64, unit: f64| {
+        value(code).is_some_and(|v| (v - wanted).abs() < 1e-10)
+            && factor(code).is_some_and(|f| close(f, unit))
+    };
+    let zone = value(8802)
+        .filter(|_| factor(8802).is_some_and(|f| close(f, DEGREE)))
+        .map(|lon| (lon + 183.0) / 6.0)
+        .filter(|z| *z > 0.9 && *z < 60.1 && (z - z.round()).abs() < 1e-10)
+        .map(|z| z.round() as u32);
+    let north = if is(8807, 0.0, 1.0) {
+        true
+    } else if is(8807, 10_000_000.0, 1.0) {
+        false
+    } else {
+        return;
+    };
+    let utm = value(8801).is_some_and(|v| v.abs() < 1e-10)
+        && is(8805, 0.9996, 1.0)
+        && value(8806) == Some(500_000.0)
+        && factor(8806).is_some_and(|f| close(f, 1.0));
+    if let (true, Some(zone)) = (utm, zone) {
+        let (hemisphere, base) = if north { ('N', 16000) } else { ('S', 16100) };
+        conversion["name"] = json!(format!("UTM zone {zone}{hemisphere}"));
+        conversion["id"] = json!({"authority": "EPSG", "code": base + zone});
+    }
 }
 
 /// EPSG's name for an ESRI `PROJCS` name, through Esri's table. A State

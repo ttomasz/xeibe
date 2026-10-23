@@ -50,9 +50,30 @@ pub enum Version {
     /// ISO 19162:2019, as PROJ writes it by default (`WKT2_2019`).
     Wkt2_2019,
     /// WKT1 as GDAL writes it (`WKT1_GDAL`): what pyogrio and rasterio
-    /// take. Geographic 3D and derived projected CRSs, and methods PROJ
-    /// gives no WKT1 name, can't be written.
+    /// take. Geographic and projected 3D CRSs (but see [`AxisRule::Never`]),
+    /// derived projected CRSs, and methods PROJ gives no WKT1 name, can't
+    /// be written.
     Wkt1Gdal,
+}
+
+/// Which axes WKT output states: pyproj's `output_axis_rule` (`None`,
+/// `True`, `False`), with PROJ's rules for each.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum AxisRule {
+    /// PROJ's default. WKT2: every `CS` and its axes. WKT1_GDAL: `AXIS`
+    /// for geocentric, vertical and local CRSs, and for a projected CRS
+    /// only when it is easting, northing; none for a geographic CRS, whose
+    /// WKT1 default is longitude, latitude.
+    #[default]
+    Auto,
+    /// Every axis: in WKT1_GDAL, a geographic CRS's too, but not those of
+    /// a projected CRS's base. WKT2 is as for `Auto`.
+    Always,
+    /// No axes: WKT2 without `CS` and `AXIS`, WKT1_GDAL without `AXIS`,
+    /// but for an engineering CRS's. A geographic 3D CRS is then written
+    /// in WKT1_GDAL, as a `GEOGCS` that can't say it has a height.
+    Never,
 }
 
 /// A CRS's PROJJSON as WKT, on one line or, with `pretty`, indented by
@@ -63,6 +84,15 @@ pub enum Version {
 /// significant digits. Usages and remarks in the PROJJSON are written for
 /// the outermost CRS.
 ///
+/// A part of a CRS is written too, as PROJ writes it on its own, with its
+/// ids: a datum or datum ensemble, an ellipsoid, a prime meridian, a
+/// coordinate system (WKT2 only: its `CS` and `AXIS` nodes, separated by
+/// commas), a conversion, or a transformation (WKT2 only, as
+/// `COORDINATEOPERATION`, with its `source_crs` and `target_crs`). A
+/// datum is followed by its prime meridian when that isn't Greenwich. In
+/// WKT1_GDAL a conversion is its `PROJECTION` and `PARAMETER` nodes, in
+/// degrees and metres.
+///
 /// ```
 /// use xeibe_reproject::wkt::{self, Version};
 ///
@@ -72,13 +102,59 @@ pub enum Version {
 /// assert!(text.ends_with(r#"ID["EPSG",2180]]"#));
 /// ```
 pub fn from_projjson(json: &str, version: Version, pretty: bool) -> Result<String, Error> {
+    from_projjson_with(json, version, pretty, AxisRule::Auto)
+}
+
+/// [`from_projjson`] with the axes `axes` asks for.
+///
+/// ```
+/// use xeibe_reproject::wkt::{self, AxisRule, Version};
+///
+/// let json = xeibe_crs::projjson(4326).unwrap();
+/// let text = wkt::from_projjson_with(json, Version::Wkt1Gdal, false, AxisRule::Always).unwrap();
+/// assert!(text.contains(r#"AXIS["Latitude",NORTH],AXIS["Longitude",EAST]"#));
+/// ```
+pub fn from_projjson_with(
+    json: &str,
+    version: Version,
+    pretty: bool,
+    axes: AxisRule,
+) -> Result<String, Error> {
     let value: Value = serde_json::from_str(json).map_err(|e| Error::Projjson {
         crs: "PROJJSON".into(),
         message: e.to_string(),
     })?;
-    match version {
-        Version::Wkt2_2019 => Ok(write::format(&write::crs(&value)?, pretty)),
-        Version::Wkt1Gdal => Ok(write::format(&write1::crs(&value)?, pretty)),
+    let wkt1 = version == Version::Wkt1Gdal;
+    let crs = value["type"].as_str().is_some_and(|t| t.ends_with("CRS"));
+    let mut nodes = match (crs, wkt1) {
+        (true, false) => vec![write::crs(&value)?],
+        (true, true) => vec![write1::crs(&value, axes)?],
+        (false, false) => write::object(&value)?,
+        (false, true) => write1::object(&value)?,
+    };
+    if axes == AxisRule::Never {
+        for n in &mut nodes {
+            without_axes(n, wkt1);
+        }
+    }
+    let texts: Vec<String> = nodes.iter().map(|n| write::format(n, pretty)).collect();
+    Ok(texts.join(if pretty { ",\n" } else { "," }))
+}
+
+/// `node` without `AXIS`, and in WKT2 without `CS`; an engineering CRS
+/// keeps its axes, as in PROJ.
+fn without_axes(node: &mut parse::Node, wkt1: bool) {
+    if node.keyword == "LOCAL_CS" || node.keyword == "ENGCRS" {
+        return;
+    }
+    node.args.retain(|a| {
+        !matches!(a, parse::Arg::Node(n)
+            if n.keyword == "AXIS" || (!wkt1 && n.keyword == "CS"))
+    });
+    for a in &mut node.args {
+        if let parse::Arg::Node(n) = a {
+            without_axes(n, wkt1);
+        }
     }
 }
 

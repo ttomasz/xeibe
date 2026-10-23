@@ -1,15 +1,18 @@
 """The parts of a CRS (axes, datum, ellipsoid, …), read from PROJJSON with
-pyproj's attribute names. pyproj's ``repr`` of these is WKT, which comes in
-phase 2; until then it names the object."""
+pyproj's attribute names. As in pyproj, ``to_wkt()`` writes one on its own
+and its ``repr`` is that WKT, pretty."""
 
 from __future__ import annotations
 
 import json
 import math
 from dataclasses import dataclass
+from typing import Any
 
+from xeibe_proj import _wkt
 from xeibe_proj._json import JsonDict, as_dict, get_dict, get_dicts, ident
 from xeibe_proj.aoi import AreaOfUse
+from xeibe_proj.exceptions import CRSError
 
 __all__ = [
     "AxisInfo",
@@ -89,6 +92,16 @@ class _JsonObject:
         """The PROJJSON as text."""
         return json.dumps(self.to_json_dict(), indent=indentation if pretty else None)
 
+    def to_wkt(self, version: Any = "WKT2_2019", pretty: bool = False, output_axis_rule: bool | None = None) -> str | None:
+        """The WKT of this part on its own, as PROJ writes it, or ``None``
+        where PROJ writes nothing (a transformation in WKT1_GDAL).
+        WKT2_2019 and WKT1_GDAL are written; other versions raise
+        ``NotImplementedError``."""
+        try:
+            return _wkt.write(self.to_json_dict(), version, pretty, output_axis_rule)
+        except CRSError:
+            return None
+
     def is_exact_same(self, other: object) -> bool:
         """Whether ``other`` has the same PROJJSON."""
         return isinstance(other, type(self)) and self.to_json_dict() == other.to_json_dict()
@@ -103,7 +116,7 @@ class _JsonObject:
         return self.name
 
     def __repr__(self) -> str:
-        return f"<{type(self).__name__}: {self.name}>"
+        return self.to_wkt(pretty=True) or f"<{type(self).__name__}: {self.name}>"
 
 
 @dataclass(frozen=True)
@@ -155,6 +168,13 @@ class CoordinateSystem(_JsonObject):
     @property
     def axis_list(self) -> list[AxisInfo]:
         return [axis_from_json(a) for a in get_dicts(self._json, "axis")]
+
+    def to_wkt(self, version: Any = "WKT2_2019", pretty: bool = False, output_axis_rule: bool | None = None) -> str | None:
+        """The ``CS`` and ``AXIS`` nodes; empty in WKT1_GDAL, which has no
+        coordinate system on its own, as in PROJ."""
+        if _wkt.version_name(version) == "WKT1_GDAL":
+            return ""
+        return super().to_wkt(version, pretty, output_axis_rule)
 
 
 class Ellipsoid(_JsonObject):
@@ -297,6 +317,13 @@ class Grid:
     available: bool
 
 
+# EPSG's Helmert methods, as PROJ's getTOWGS84Parameters groups them.
+_COORDINATE_FRAME = {"1032", "1038", "9607", "1132", "1133", "1140", "1149"}
+_POSITION_VECTOR = {"1033", "1037", "9606"}
+_TRANSLATIONS = {"1031", "1035", "9603"}
+_ARC_SECOND = math.pi / 180 / 3600
+
+
 class CoordinateOperation(_JsonObject):
     """A coordinate operation: the conversion of a projected CRS, or one a
     transformer may use."""
@@ -356,7 +383,42 @@ class CoordinateOperation(_JsonObject):
 
     @property
     def towgs84(self) -> list[float]:
-        return []
+        """A Helmert transformation's seven values as WKT1's ``TOWGS84``
+        takes them (Position Vector, metres, arc-seconds, parts per
+        million), as PROJ's ``getTOWGS84Parameters`` gives them; empty for
+        any other operation."""
+        method = get_dict(self._json, "method")
+        code = (ident(method) or ("", ""))[1]
+        name = str(method.get("name", "")).lower()
+        params = get_dicts(self._json, "parameters")
+        if code in _COORDINATE_FRAME or (len(params) == 7 and "coordinate frame" in name):
+            seven, sign = True, -1.0
+        elif code in _POSITION_VECTOR or (len(params) == 7 and "position vector" in name):
+            seven, sign = True, 1.0
+        elif code in _TRANSLATIONS or (len(params) == 3 and "geocentric translations" in name):
+            seven, sign = False, 1.0
+        else:
+            return []
+        values: dict[str, float] = {}
+        for p in params:
+            param = _param(p)
+            values[param.code] = param.value * param.unit_conversion_factor
+        if not all(c in values for c in ("8605", "8606", "8607")):
+            return []
+        if seven and not all(c in values for c in ("8608", "8609", "8610", "8611")):
+            return []
+        # Rotations in arc-seconds, the sign of a Position Vector one, and
+        # never -0.0; the scale difference in parts per million.
+        rotations = [sign * values.get(c, 0.0) / _ARC_SECOND + 0.0 for c in ("8608", "8609", "8610")]
+        return [values["8605"], values["8606"], values["8607"], *rotations, values.get("8611", 0.0) / 1e-6]
+
+    def __repr__(self) -> str:
+        return (
+            f"<Coordinate Operation: {self.type_name}>\n"
+            f"Name: {self.name}\n"
+            f"Method: {self.method_name}\n"
+            f"Area of Use:\n{self.area_of_use or '- undefined'}"
+        )
 
     @property
     def grids(self) -> list[Grid]:

@@ -401,7 +401,10 @@ fn tokens(s: &str) -> Vec<Token> {
 /// Where two WKT texts first differ: the keywords enclosing it and the two
 /// tokens. Numbers within 1e-11 relative are the same.
 fn first_difference(ours: &str, theirs: &str) -> Option<(String, String)> {
-    let (a, b) = (tokens(ours), tokens(theirs));
+    first_token_difference(&tokens(ours), &tokens(theirs))
+}
+
+fn first_token_difference(a: &[Token], b: &[Token]) -> Option<(String, String)> {
     let mut path: Vec<&str> = Vec::new();
     for i in 0..a.len().max(b.len()) {
         let same = match (a.get(i), b.get(i)) {
@@ -450,13 +453,13 @@ fn known_writing(version: wkt::Version, code: u32, at: &str, what: &str) -> bool
             .iter()
             .any(|(codes, _)| codes.contains(&code));
     }
+    // A datum or conversion written on its own is at the top: no path.
     (at.ends_with("VERTCRS") && what.starts_with(r#"Some(Open("BASEVERTCRS"))"#))
-        || (at.ends_with("PROJCRS/CONVERSION") && what.starts_with(r#"Some(Open("PARAMETER"))"#))
-        || (at.ends_with("VERTCRS") && what == r#"Some(Open("VDATUM")) != Some(Open("DYNAMIC"))"#)
+        || (at.ends_with("CONVERSION") && what.starts_with(r#"Some(Open("PARAMETER"))"#))
+        || ((at.ends_with("VERTCRS") || at.is_empty())
+            && what == r#"Some(Open("VDATUM")) != Some(Open("DYNAMIC"))"#)
 }
 
-/// Our WKT2 2019 for each EPSG CRS in `wkt.jsonl` against PROJ's, and read
-/// back by our reader as a CRS equivalent to the EPSG one.
 /// Where our WKT1_GDAL knowingly differs from PROJ's.
 const KNOWN_WKT1_WRITING: &[(&[u32], &str)] = &[
     // PROJ writes this deprecated CRS through a path of its own, with
@@ -465,6 +468,8 @@ const KNOWN_WKT1_WRITING: &[(&[u32], &str)] = &[
     (&[3785], "Popular Visualisation CRS / Mercator"),
 ];
 
+/// Our WKT for each EPSG CRS in `wkt.jsonl` against PROJ's, and read back
+/// by our reader as a CRS equivalent to the EPSG one.
 fn check_writing(path: &Path, version: wkt::Version) -> (usize, usize, String) {
     let key = match version {
         wkt::Version::Wkt1Gdal => "WKT1_GDAL",
@@ -618,6 +623,189 @@ fn pretty_wkt_is_indented_as_proj_indents_it() {
         BBOX[41.31,-4.87,51.14,9.63]],
     ID["EPSG",4807]]"#;
     assert_eq!(text, proj);
+}
+
+/// `tokens` without the `ID` and `AUTHORITY` nodes: PROJ looks up the ids
+/// of a CRS's parts in its database when it writes one on its own, where
+/// the PROJJSON has none.
+fn without_ids(tokens: Vec<Token>) -> Vec<Token> {
+    let mut out = Vec::new();
+    let mut skipping = 0;
+    for t in tokens {
+        match &t {
+            Token::Open(k) if skipping > 0 || k == "ID" || k == "AUTHORITY" => skipping += 1,
+            Token::Close if skipping > 0 => skipping -= 1,
+            _ if skipping > 0 => {}
+            _ => out.push(t),
+        }
+    }
+    out
+}
+
+/// A CRS's part as pyproj hands it to the writer: its PROJJSON with a type.
+fn part(v: &Value, kind: &str) -> Value {
+    let mut out = Map::new();
+    out.insert("type".into(), json!(kind));
+    for (k, x) in v.as_object().into_iter().flatten() {
+        out.insert(k.clone(), x.clone());
+    }
+    Value::Object(out)
+}
+
+/// The parts of an EPSG CRS that pyproj's `CRS.datum`, `.ellipsoid`, …
+/// return, by the names `parts.jsonl` uses.
+fn parts_of(crs: &Value) -> Vec<(&'static str, Value)> {
+    let holder = match crs["type"].as_str() {
+        Some("ProjectedCRS") => &crs["base_crs"],
+        Some("DerivedProjectedCRS") => &crs["base_crs"]["base_crs"],
+        Some("DerivedVerticalCRS") => &crs["base_crs"],
+        _ => crs,
+    };
+    let mut out = Vec::new();
+    let datum = if holder["datum"].is_object() {
+        holder["datum"].clone()
+    } else {
+        part(&holder["datum_ensemble"], "DatumEnsemble")
+    };
+    if datum["ellipsoid"].is_object() {
+        out.push(("ellipsoid", part(&datum["ellipsoid"], "Ellipsoid")));
+        let pm = match &datum["prime_meridian"] {
+            Value::Null => json!({"name": "Greenwich", "longitude": 0}),
+            pm => pm.clone(),
+        };
+        out.push(("prime_meridian", part(&pm, "PrimeMeridian")));
+    }
+    out.push(("datum", datum));
+    out.push((
+        "coordinate_system",
+        part(&crs["coordinate_system"], "CoordinateSystem"),
+    ));
+    if crs["conversion"].is_object() && crs["type"] != "DerivedVerticalCRS" {
+        out.push((
+            "coordinate_operation",
+            part(&crs["conversion"], "Conversion"),
+        ));
+    }
+    out
+}
+
+/// Our WKT for each CRS in `parts.jsonl` against PROJ's: with each
+/// `output_axis_rule`, and for each of its parts on its own (without ids).
+fn check_parts(path: &Path) -> (usize, usize, String) {
+    let mut written = 0;
+    let mut same = 0;
+    let mut differing: BTreeMap<String, Vec<(u32, String)>> = BTreeMap::new();
+    let mut compare =
+        |code: u32, at: &str, ours: Result<String, Error>, theirs: &Value, ids: bool| {
+            let (ours, theirs) = match (ours, theirs.as_str()) {
+                (Err(_), None) => return,
+                (Ok(o), None) => {
+                    differing
+                        .entry(format!("{at}: written where PROJ can't"))
+                        .or_default()
+                        .push((code, o));
+                    return;
+                }
+                (Err(e), Some(_)) => {
+                    differing
+                        .entry(format!("{at}: error: {e}"))
+                        .or_default()
+                        .push((code, String::new()));
+                    return;
+                }
+                (Ok(o), Some(t)) => (o, t.to_owned()),
+            };
+            written += 1;
+            let difference = if ids {
+                first_difference(without_remark(&ours), without_remark(&theirs))
+            } else {
+                first_token_difference(&without_ids(tokens(&ours)), &without_ids(tokens(&theirs)))
+            };
+            match difference {
+                None => same += 1,
+                Some((path, what))
+                    if known_writing(
+                        if at.starts_with("WKT1") {
+                            wkt::Version::Wkt1Gdal
+                        } else {
+                            wkt::Version::Wkt2_2019
+                        },
+                        code,
+                        &path,
+                        &what,
+                    ) =>
+                {
+                    same += 1
+                }
+                Some((path, what)) => differing
+                    .entry(format!("{at} {path}"))
+                    .or_default()
+                    .push((code, what)),
+            }
+        };
+    for r in records(path) {
+        let code = r["code"].as_u64().unwrap() as u32;
+        let Some(json) = xeibe_crs::projjson(code) else {
+            continue;
+        };
+        for (key, version, rule) in [
+            (
+                "WKT2_2019 false",
+                wkt::Version::Wkt2_2019,
+                wkt::AxisRule::Never,
+            ),
+            (
+                "WKT1_GDAL true",
+                wkt::Version::Wkt1Gdal,
+                wkt::AxisRule::Always,
+            ),
+            (
+                "WKT1_GDAL false",
+                wkt::Version::Wkt1Gdal,
+                wkt::AxisRule::Never,
+            ),
+        ] {
+            let ours = wkt::from_projjson_with(json, version, false, rule);
+            compare(code, key, ours, &r["axes"][key], true);
+        }
+        let crs: Value = serde_json::from_str(json).unwrap();
+        for (name, value) in parts_of(&crs) {
+            let Some(theirs) = r["parts"].get(name) else {
+                continue;
+            };
+            for (key, version) in [
+                ("WKT2_2019", wkt::Version::Wkt2_2019),
+                ("WKT1_GDAL", wkt::Version::Wkt1Gdal),
+            ] {
+                let ours = wkt::from_projjson(&value.to_string(), version, false);
+                compare(code, &format!("{key} {name}"), ours, &theirs[key], false);
+            }
+        }
+    }
+    let mut report = String::new();
+    for (at, ds) in &differing {
+        let codes: Vec<u32> = ds.iter().take(6).map(|d| d.0).collect();
+        report += &format!("{} at {at}: {} {codes:?}\n", ds.len(), ds[0].1);
+    }
+    (written, same, report)
+}
+
+#[test]
+fn axis_rules_and_parts_write_as_proj_writes_them() {
+    let (written, same, report) =
+        check_parts(&xeibe_testkit::data_dir().join("crs-wkt/parts.jsonl"));
+    assert!(written > 500, "{written}");
+    assert!(report.is_empty(), "{report}");
+    assert_eq!(same, written);
+}
+
+#[test]
+#[ignore = "needs target/crs-wkt/parts.jsonl (scripts/gen_wkt_vectors.py --all)"]
+fn every_axis_rule_and_part_writes_as_proj_writes_it() {
+    let (written, same, report) =
+        check_parts(&xeibe_testkit::data_dir().join("../../target/crs-wkt/parts.jsonl"));
+    println!("{written} written, {same} as PROJ writes them (or a listed difference)\n{report}");
+    assert!(report.is_empty(), "{report}");
 }
 
 // --- WKT1 ------------------------------------------------------------------
@@ -810,6 +998,22 @@ fn wkt1_reading() {
             .unwrap()
             .equivalent(&Crs::from_epsg(4807).unwrap(), false)
     );
+    // A Transverse Mercator with UTM's parameters is named for its zone,
+    // as PROJ names it.
+    let utm = |central_meridian: f64, false_northing: f64| {
+        let text = format!(
+            r#"PROJCS["p",{lonlat},PROJECTION["Transverse_Mercator"],
+            PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",{central_meridian}],
+            PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],
+            PARAMETER["false_northing",{false_northing}],UNIT["metre",1]]"#
+        );
+        let json: Value = serde_json::from_str(&wkt::to_projjson(&text).unwrap()).unwrap();
+        json["conversion"].clone()
+    };
+    assert_eq!(utm(15.0, 0.0)["name"], "UTM zone 33N");
+    assert_eq!(utm(15.0, 0.0)["id"]["code"], 16033);
+    assert_eq!(utm(-177.0, 10_000_000.0)["name"], "UTM zone 1S");
+    assert_eq!(utm(16.0, 0.0)["name"], "unnamed");
 }
 
 #[test]
@@ -1254,6 +1458,32 @@ fn esri_wkt_reading() {
     let both = Crs::from_wkt(&format!("{poland},{height}")).unwrap();
     assert_eq!(both.name(), "ETRS89 / PL-1992 + PL-EVRF2007 height");
     assert_eq!(both.dimension(), 3);
+    // The VERTCS inside the PROJCS, as ArcGIS writes a .prj: the same
+    // compound CRS, where PROJ drops the heights.
+    let nested = poland.replacen(
+        r#"UNIT["Meter",1.0]]"#,
+        &format!(r#"UNIT["Meter",1.0],{height}]"#),
+        1,
+    );
+    let nested = Crs::from_wkt(&nested).unwrap();
+    assert_eq!(nested.name(), both.name());
+    assert!(nested.equivalent(&both, false));
+    // In centimetres, as in pyproj's test_from_esri_wkt.
+    let navd88 = r#"PROJCS["USA_Contiguous_Albers_Equal_Area_Conic_USGS_version",
+        GEOGCS["GCS_North_American_1983",DATUM["D_North_American_1983",
+        SPHEROID["GRS_1980",6378137.0,298.257222101]],PRIMEM["Greenwich",0.0],
+        UNIT["Degree",0.0174532925199433]],PROJECTION["Albers"],
+        PARAMETER["false_easting",0.0],PARAMETER["false_northing",0.0],
+        PARAMETER["central_meridian",-96.0],PARAMETER["standard_parallel_1",29.5],
+        PARAMETER["standard_parallel_2",45.5],PARAMETER["latitude_of_origin",23.0],
+        UNIT["Meter",1.0],VERTCS["NAVD_1988",VDATUM["North_American_Vertical_Datum_1988"],
+        PARAMETER["Vertical_Shift",0.0],PARAMETER["Direction",1.0],UNIT["Centimeter",0.01]]]"#;
+    let json: Value = serde_json::from_str(&wkt::to_projjson(navd88).unwrap()).unwrap();
+    assert_eq!(json["type"], "CompoundCRS");
+    assert_eq!(
+        json["components"][1]["coordinate_system"]["axis"][0]["unit"]["conversion_factor"],
+        0.01
+    );
 }
 
 #[test]

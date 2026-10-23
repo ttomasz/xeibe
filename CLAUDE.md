@@ -151,10 +151,11 @@ sources, but their contents haven't been checked against the local copies:
   `EPSG-*-WKT.Zip` archive in `example_data/` (`epsg.jsonl`) and Esri's own
   WKT1 from the CSVs `gen_esri_tables.py` downloads, with PROJ's reading
   (`esri.jsonl`), and Bound CRSs made from EPSG's Helmert transformations
-  to WGS 84 with PROJ's results to several targets (`bound.jsonl`). A
-  committed subset goes to
+  to WGS 84 with PROJ's results to several targets (`bound.jsonl`), and
+  PROJ's WKT with each `output_axis_rule` and of each CRS's parts
+  (`parts.jsonl`). A committed subset goes to
   `tests/data/crs-wkt/`; `--all` writes everything to `target/crs-wkt/`
-  (~3 min on 12 CPUs). See `docs/crs-wkt.md`.
+  (~4 min on 12 CPUs). See `docs/crs-wkt.md`.
 - `scripts/gen_esri_tables.py` downloads Esri's projection engine database
   CSVs (Apache-2.0, pinned commit) into `example_data/esri-pedb/` and
   regenerates `crates/xeibe-esri`: Esri's names of EPSG's CRSs and datums

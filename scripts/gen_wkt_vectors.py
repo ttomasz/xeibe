@@ -31,6 +31,11 @@ CRS PROJ has, deprecated ones included, two files:
   (`always_xy`) and operation names from a point in the CRS's area of use
   to WGS 84, Pseudo-Mercator, ETRS89, NAD83, the plain EPSG CRS and another
   Bound CRS.
+* `parts.jsonl`: for the same CRSs, PROJ's WKT2 2019 with
+  `output_axis_rule=False` and WKT1_GDAL with `True` and `False`, and the
+  WKT of the CRS's datum, ellipsoid, prime meridian, coordinate system and
+  conversion on their own (pyproj's `CRS.datum.to_wkt()`, …) in both
+  versions, `null` where PROJ writes nothing. Compound CRSs have no parts.
 * `esri.jsonl`: Esri's own WKT1 for each live EPSG CRS in Esri's projection
   engine database (the CSVs `scripts/gen_esri_tables.py` downloads into
   `example_data/esri-pedb/`; skipped when they are missing), with PROJ's
@@ -266,6 +271,37 @@ def vectors(code: int, deprecated: bool) -> tuple[dict, list[dict]] | None:
         record["errors"] = errors
     record["read"] = read
     return record, ids
+
+
+PARTS = ["datum", "ellipsoid", "prime_meridian", "coordinate_system", "coordinate_operation"]
+
+
+def wkt_or_none(write) -> str | None:
+    try:
+        return write() or None
+    except pyproj.exceptions.CRSError:
+        return None
+
+
+def parts_vector(code: int) -> dict | None:
+    """The `parts.jsonl` record of a CRS."""
+    try:
+        crs = pyproj.CRS.from_epsg(code)
+    except pyproj.exceptions.CRSError:
+        return None
+    out: dict = {"code": code, "axes": {}}
+    for version, rule in [("WKT2_2019", False), ("WKT1_GDAL", True), ("WKT1_GDAL", False)]:
+        out["axes"][f"{version} {str(rule).lower()}"] = wkt_or_none(
+            lambda: crs.to_wkt(version, output_axis_rule=rule)
+        )
+    if crs.is_compound:
+        return out
+    out["parts"] = {}
+    for part in PARTS:
+        obj = getattr(crs, part)
+        if obj is not None:
+            out["parts"][part] = {v: wkt_or_none(lambda: obj.to_wkt(v)) for v in ("WKT2_2019", "WKT1_GDAL")}
+    return out
 
 
 # Esri's WKT committed beyond the CRSs chosen for the PROJ vectors: ESRI's
@@ -596,6 +632,9 @@ def main() -> int:
             epsg,
             "EPSG Dataset (IOGP) as EPSG's own WKT export; see crates/xeibe-crs/EPSG-NOTICE.md",
         )
+    with ProcessPoolExecutor(max_workers=args.jobs, initializer=init_worker) as pool:
+        parts = [p for p in pool.map(parts_vector, [r["code"] for r in records], chunksize=8) if p]
+    write(out / "parts.jsonl", parts)
     with ProcessPoolExecutor(max_workers=args.jobs, initializer=init_worker) as pool:
         bound = [b for b in pool.map(bound_vector, bound_rows(args.all), chunksize=8) if b]
     write(out / "bound.jsonl", bound)

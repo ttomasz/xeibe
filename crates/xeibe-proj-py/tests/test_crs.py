@@ -24,6 +24,7 @@ STABLE = [4326, 4258, 3857, 32633, 4978, 4979, 5773, 9707, 25832, 27700, 3035]
     ("value", "code"),
     [
         (4326, 4326),
+        ("4326", 4326),
         ("EPSG:4326", 4326),
         ("epsg:3857", 3857),
         ("EPSG: 2180", 2180),
@@ -71,11 +72,13 @@ def test_projjson_input() -> None:
     ("value", "error"),
     [
         ("EPSG:1", CRSError),
+        ("0", CRSError),
         ("not a crs", CRSError),
         (None, CRSError),
-        ("ESRI:102100", NotImplementedError),
+        # Mollweide, which only Esri defines.
+        ("ESRI:54009", NotImplementedError),
         ("+proj=longlat +datum=WGS84", NotImplementedError),
-        ('GEOGCS["WGS 84",DATUM["WGS_1984"]]', NotImplementedError),
+        ('GEOGCS["WGS 84",DATUM["WGS_1984"]]', CRSError),
         ({"proj": "longlat"}, NotImplementedError),
     ],
 )
@@ -185,8 +188,8 @@ def test_deprecated() -> None:
 
 
 def test_not_yet() -> None:
-    with pytest.raises(NotImplementedError, match="phase 2"):
-        CRS(4326).to_wkt()
+    with pytest.raises(NotImplementedError, match="not supported"):
+        CRS(4326).to_wkt("WKT1_ESRI")
     with pytest.raises(NotImplementedError, match="phase 3"):
         CRS(4326).to_proj4()
 

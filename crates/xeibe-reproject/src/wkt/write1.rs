@@ -11,28 +11,68 @@
 //!   latitude); always for geocentric, vertical and local CRSs;
 //! - Web Mercator as `Mercator_1SP` with GDAL's `PROJ4` extension.
 //!
-//! What WKT1 can't say is an error: a geographic 3D CRS, a derived
-//! projected CRS, a method PROJ gives no WKT1 name.
+//! What WKT1 can't say is an error: a geographic or projected 3D CRS, a
+//! derived projected CRS, a method PROJ gives no WKT1 name.
 
 use std::f64::consts::PI;
 
 use serde_json::Value;
 
+use super::AxisRule;
 use super::names::METHODS;
 use super::parse::{Arg, Node};
 use crate::error::Error;
 use crate::name;
 
-pub(crate) fn crs(v: &Value) -> Result<Node, Error> {
+/// A CRS as WKT1_GDAL, with the axes `axes` asks for: `Always` writes
+/// those of geographic and projected CRSs whatever they are, and with
+/// `Never` a geographic 3D CRS is written as a 2D one. The caller removes
+/// the axes for `Never`.
+pub(crate) fn crs(v: &Value, axes: AxisRule) -> Result<Node, Error> {
+    let always = axes == AxisRule::Always;
     match str_of(v, "type")? {
-        "GeographicCRS" => geographic(v),
+        "GeographicCRS" => geographic(v, axes),
         "GeodeticCRS" => geocentric(v),
-        "ProjectedCRS" => projected(v),
+        "ProjectedCRS" => projected(v, always),
         "VerticalCRS" | "DerivedVerticalCRS" => vertical(v),
-        "CompoundCRS" => compound(v),
+        "CompoundCRS" => compound(v, axes),
         "EngineeringCRS" => local(v),
-        "BoundCRS" => bound(v),
+        "BoundCRS" => bound(v, axes),
         other => Err(cannot(v, &format!("a {other}"))),
+    }
+}
+
+/// A part of a CRS on its own, as PROJ writes it in WKT1_GDAL: a datum
+/// (without `TOWGS84`), an ellipsoid, a prime meridian, or a conversion's
+/// `PROJECTION` and `PARAMETER` nodes, in degrees and metres.
+pub(crate) fn object(v: &Value) -> Result<Vec<Node>, Error> {
+    match str_of(v, "type")? {
+        "Ellipsoid" => Ok(vec![spheroid(v)?]),
+        "PrimeMeridian" => Ok(vec![prime_meridian(v)?]),
+        "GeodeticReferenceFrame" | "DynamicGeodeticReferenceFrame" | "DatumEnsemble"
+            if v["ellipsoid"].is_object() =>
+        {
+            let mut out = vec![geodetic_datum(v)?];
+            if let Some(pm) = super::write::not_greenwich(v) {
+                out.push(prime_meridian(pm)?);
+            }
+            Ok(out)
+        }
+        "VerticalReferenceFrame" | "DynamicVerticalReferenceFrame" | "DatumEnsemble" => {
+            Ok(vec![vertical_datum(v)])
+        }
+        "EngineeringDatum" => Ok(vec![local_datum(v)?]),
+        "Conversion" => {
+            let (args, _) = projection(v, v, PI / 180.0, 1.0)?;
+            Ok(args
+                .into_iter()
+                .filter_map(|a| match a {
+                    Arg::Node(n) => Some(n),
+                    _ => None,
+                })
+                .collect())
+        }
+        other => Err(cannot(v, &format!("a {other} on its own"))),
     }
 }
 
@@ -102,7 +142,7 @@ fn unit(u: &Value, default: &str) -> Result<(String, f64, Option<u32>), Error> {
         Value::String(s) if s == "unity" => ("unity".to_owned(), 1.0),
         Value::Object(o) => (
             str_of(u, "name")?.to_owned(),
-            num_of(&o["conversion_factor"])?,
+            exact(num_of(&o["conversion_factor"])?),
         ),
         Value::Null => return unit(&Value::String(default.into()), default),
         other => return Err(invalid(&format!("the unit {other}"))),
@@ -118,6 +158,17 @@ fn unit(u: &Value, default: &str) -> Result<(String, f64, Option<u32>), Error> {
             }
         });
     Ok((name, factor, code))
+}
+
+/// An angular unit's exact size for one PROJJSON gives to 15 digits
+/// (degree, grad, arc-minute, arc-second), so that converting between
+/// units gives PROJ's numbers: 52 grads are 46.8°, not 46.7999999999999°.
+fn exact(factor: f64) -> f64 {
+    [180.0, 200.0, 10_800.0, 648_000.0]
+        .iter()
+        .map(|n| PI / n)
+        .find(|e| (factor - e).abs() <= 1e-14 * e)
+        .unwrap_or(factor)
 }
 
 fn unit_node(u: &Value, default: &str) -> Result<(Node, f64), Error> {
@@ -215,23 +266,32 @@ fn datum_and_meridian(v: &Value) -> Result<Vec<Arg>, Error> {
     } else {
         return Err(invalid("a geodetic CRS without a datum"));
     };
-    let mut datum = vec![text(&datum_name(d)?), sub(spheroid(&d["ellipsoid"])?)];
-    id(d, &mut datum);
     let pm = &d["prime_meridian"];
     let meridian = if pm.is_object() {
-        let mut args = vec![
-            text(str_of(pm, "name")?),
-            Arg::Number(si(&pm["longitude"], "degree")?.to_degrees()),
-        ];
-        id(pm, &mut args);
-        node("PRIMEM", args)
+        prime_meridian(pm)?
     } else {
         node(
             "PRIMEM",
             vec![text("Greenwich"), Arg::Number(0.0), authority("EPSG", 8901)],
         )
     };
-    Ok(vec![sub(node("DATUM", datum)), sub(meridian)])
+    Ok(vec![sub(geodetic_datum(d)?), sub(meridian)])
+}
+
+fn geodetic_datum(d: &Value) -> Result<Node, Error> {
+    let mut datum = vec![text(&datum_name(d)?), sub(spheroid(&d["ellipsoid"])?)];
+    id(d, &mut datum);
+    Ok(node("DATUM", datum))
+}
+
+/// `PRIMEM` in degrees.
+fn prime_meridian(pm: &Value) -> Result<Node, Error> {
+    let mut args = vec![
+        text(str_of(pm, "name")?),
+        Arg::Number(si(&pm["longitude"], "degree")?.to_degrees()),
+    ];
+    id(pm, &mut args);
+    Ok(node("PRIMEM", args))
 }
 
 /// A geodetic or projected CRS's name, with " (deprecated)" when EPSG has
@@ -256,7 +316,8 @@ fn axes(v: &Value) -> Result<&Vec<Value>, Error> {
         .ok_or_else(|| invalid("a CRS without axes"))
 }
 
-/// `AXIS[name, DIRECTION]`, WKT1's directions.
+/// `AXIS[name, DIRECTION]`, WKT1's names and directions, as PROJ writes
+/// them: EPSG's "Geodetic latitude" as "Latitude".
 fn axis_nodes(list: &[Value]) -> Result<Vec<Arg>, Error> {
     list.iter()
         .map(|a| {
@@ -269,22 +330,31 @@ fn axis_nodes(list: &[Value]) -> Result<Vec<Arg>, Error> {
                 "down" => "DOWN",
                 _ => "OTHER",
             };
+            let name = match str_of(a, "name")? {
+                "Geodetic latitude" => "Latitude",
+                "Geodetic longitude" => "Longitude",
+                other => other,
+            };
             Ok(sub(node(
                 "AXIS",
-                vec![text(str_of(a, "name")?), Arg::Word(direction.into())],
+                vec![text(name), Arg::Word(direction.into())],
             )))
         })
         .collect()
 }
 
-fn geographic(v: &Value) -> Result<Node, Error> {
+fn geographic(v: &Value, rule: AxisRule) -> Result<Node, Error> {
     let list = axes(v)?;
-    if list.len() != 2 {
+    if list.len() != 2 && rule != AxisRule::Never {
         return Err(cannot(v, "a geographic 3D CRS"));
     }
+    let always = rule == AxisRule::Always;
     let mut args = vec![text(&crs_name(v)?)];
     args.extend(datum_and_meridian(v)?);
     args.push(sub(unit_node(&list[0]["unit"], "degree")?.0));
+    if always {
+        args.extend(axis_nodes(list)?);
+    }
     id(v, &mut args);
     Ok(node("GEOGCS", args))
 }
@@ -325,7 +395,7 @@ fn wkt1_value(p: &Value, angle: f64, length: f64) -> Result<f64, Error> {
                 Some("LinearUnit") => "length",
                 _ => "scale",
             },
-            num_of(&o["conversion_factor"])?,
+            exact(num_of(&o["conversion_factor"])?),
         ),
         _ => ("scale", 1.0),
     };
@@ -337,13 +407,41 @@ fn wkt1_value(p: &Value, angle: f64, length: f64) -> Result<f64, Error> {
     })
 }
 
-fn projected(v: &Value) -> Result<Node, Error> {
+fn projected(v: &Value, always: bool) -> Result<Node, Error> {
     let base = &v["base_crs"];
     let base_axes = axes(base)?;
     let angle = unit(&base_axes[0]["unit"], "degree")?.1;
     let list = axes(v)?;
+    if list.len() != 2 {
+        return Err(cannot(v, "a projected 3D CRS"));
+    }
     let (linear, length) = unit_node(&list[0]["unit"], "metre")?;
-    let conversion = &v["conversion"];
+    let mut args = vec![text(&crs_name(v)?), sub(geographic_base(base)?)];
+    let (projection, extension) = projection(v, &v["conversion"], angle, length)?;
+    args.extend(projection);
+    args.push(sub(linear));
+    if always
+        || (list.len() == 2 && list[0]["direction"] == "east" && list[1]["direction"] == "north")
+    {
+        args.extend(axis_nodes(list)?);
+    }
+    if let Some(e) = extension {
+        args.push(sub(node("EXTENSION", vec![text("PROJ4"), text(&e)])));
+    }
+    id(v, &mut args);
+    Ok(node("PROJCS", args))
+}
+
+/// A conversion's `PROJECTION` and `PARAMETER` nodes, angles in the unit
+/// of `angle` and lengths in that of `length` (radians and metres per
+/// unit), and GDAL's `PROJ4` extension for Web Mercator. `v` is what
+/// errors name.
+fn projection(
+    v: &Value,
+    conversion: &Value,
+    angle: f64,
+    length: f64,
+) -> Result<(Vec<Arg>, Option<String>), Error> {
     let code = param_code(&conversion["method"]);
     let params: Vec<&Value> = conversion["parameters"]
         .as_array()
@@ -356,7 +454,7 @@ fn projected(v: &Value) -> Result<Node, Error> {
             .map(|p| wkt1_value(p, angle, length))
             .transpose()
     };
-    let mut args = vec![text(&crs_name(v)?), sub(geographic_base(base)?)];
+    let mut args = Vec::new();
     let mut extension = None;
     match code {
         Some(1024) => {
@@ -446,15 +544,7 @@ fn projected(v: &Value) -> Result<Node, Error> {
             }
         }
     }
-    args.push(sub(linear));
-    if list.len() == 2 && list[0]["direction"] == "east" && list[1]["direction"] == "north" {
-        args.extend(axis_nodes(list)?);
-    }
-    if let Some(e) = extension {
-        args.push(sub(node("EXTENSION", vec![text("PROJ4"), text(&e)])));
-    }
-    id(v, &mut args);
-    Ok(node("PROJCS", args))
+    Ok((args, extension))
 }
 
 /// The `GEOGCS` of a projected CRS: its base, 2D.
@@ -482,20 +572,27 @@ fn vertical(v: &Value) -> Result<Node, Error> {
     } else {
         &holder["datum_ensemble"]
     };
-    let mut datum = vec![text(str_of(d, "name")?), Arg::Number(2005.0)];
-    id(d, &mut datum);
     let list = axes(v)?;
-    let mut args = vec![text(str_of(v, "name")?), sub(node("VERT_DATUM", datum))];
+    let mut args = vec![text(str_of(v, "name")?), sub(vertical_datum(d))];
     args.push(sub(unit_node(&list[0]["unit"], "metre")?.0));
     args.extend(axis_nodes(list)?);
     id(v, &mut args);
     Ok(node("VERT_CS", args))
 }
 
-fn compound(v: &Value) -> Result<Node, Error> {
+fn vertical_datum(d: &Value) -> Node {
+    let mut datum = vec![
+        text(d["name"].as_str().unwrap_or("unknown")),
+        Arg::Number(2005.0),
+    ];
+    id(d, &mut datum);
+    node("VERT_DATUM", datum)
+}
+
+fn compound(v: &Value, axes: AxisRule) -> Result<Node, Error> {
     let mut args = vec![text(str_of(v, "name")?)];
     for c in v["components"].as_array().into_iter().flatten() {
-        args.push(sub(crs(c)?));
+        args.push(sub(crs(c, axes)?));
     }
     id(v, &mut args);
     Ok(node("COMPD_CS", args))
@@ -503,14 +600,14 @@ fn compound(v: &Value) -> Result<Node, Error> {
 
 /// A Bound CRS as its base with `TOWGS84` in its `DATUM`, after the
 /// `SPHEROID`, as PROJ writes it: always seven Position Vector values.
-fn bound(v: &Value) -> Result<Node, Error> {
+fn bound(v: &Value, axes: AxisRule) -> Result<Node, Error> {
     let values = towgs84(&v["transformation"]).ok_or_else(|| {
         cannot(
             v,
             "a bound CRS whose transformation isn't a Helmert one to WGS 84",
         )
     })?;
-    let mut base = crs(&v["source_crs"])?;
+    let mut base = crs(&v["source_crs"], axes)?;
     let geodetic = if base.keyword == "PROJCS" {
         base.args.iter_mut().find_map(|a| match a {
             Arg::Node(n) if n.keyword == "GEOGCS" => Some(n),
@@ -591,15 +688,18 @@ pub(super) fn towgs84(t: &Value) -> Option<[f64; 7]> {
 
 fn local(v: &Value) -> Result<Node, Error> {
     let list = axes(v)?;
-    let datum = node(
-        "LOCAL_DATUM",
-        vec![text(str_of(&v["datum"], "name")?), Arg::Number(32767.0)],
-    );
-    let mut args = vec![text(str_of(v, "name")?), sub(datum)];
+    let mut args = vec![text(str_of(v, "name")?), sub(local_datum(&v["datum"])?)];
     args.push(sub(unit_node(&list[0]["unit"], "metre")?.0));
     args.extend(axis_nodes(list)?);
     id(v, &mut args);
     Ok(node("LOCAL_CS", args))
+}
+
+fn local_datum(d: &Value) -> Result<Node, Error> {
+    Ok(node(
+        "LOCAL_DATUM",
+        vec![text(str_of(d, "name")?), Arg::Number(32767.0)],
+    ))
 }
 
 #[cfg(test)]

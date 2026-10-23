@@ -1,8 +1,11 @@
 """``CRS``: a coordinate reference system, kept as PROJJSON.
 
 Input is an EPSG code in any of its usual spellings, one of OGC's three
-longitude-first CRSs, or PROJJSON. WKT comes in phase 2 and PROJ strings in
-phase 3 (``docs/pyproj-compat.md``).
+longitude-first CRSs, an old Esri code that EPSG has since defined, WKT
+(WKT1, ESRI's included, and WKT2) or PROJJSON. PROJ strings come in
+phase 3 (``docs/pyproj-compat.md``). WKT is written in WKT2_2019 and
+WKT1_GDAL, and a CRS without an EPSG id is identified by its definition,
+with PROJ's confidence levels (``docs/crs-wkt.md``).
 """
 
 from __future__ import annotations
@@ -13,7 +16,7 @@ from functools import cached_property
 from collections.abc import Sequence
 from typing import Any, NamedTuple, Self, cast
 
-from xeibe_proj import _epsg, _native
+from xeibe_proj import _epsg, _native, _wkt
 from xeibe_proj._json import JsonDict, as_dict, as_list, get_dict, get_dicts, ident
 from xeibe_proj._unsupported import not_yet, out
 from xeibe_proj.aoi import AreaOfUse
@@ -52,10 +55,13 @@ _URL = re.compile(
 )
 _URL_COMPOUND = re.compile(r"https?://www\.opengis\.net/def/crs-compound\?(?P<query>.+)", re.IGNORECASE)
 _GML_SRS = re.compile(r"https?://www\.opengis\.net/gml/srs/epsg\.xml#(?P<code>\d+)", re.IGNORECASE)
+# The CRS keywords of WKT1 (GDAL's and ESRI's) and WKT2: a string that
+# starts with one is read as WKT, and the reader names what it doesn't read.
 _WKT = re.compile(
-    r"\s*(GEOGCS|PROJCS|GEOCCS|VERT_CS|COMPD_CS|LOCAL_CS|GEOGCRS|GEODCRS|PROJCRS|VERTCRS|"
-    r"COMPOUNDCRS|ENGCRS|BOUNDCRS|GEODETICCRS|GEOGRAPHICCRS|PROJECTEDCRS|VERTICALCRS|"
-    r"ENGINEERINGCRS|DERIVEDPROJCRS|BASEGEOGCRS)\s*\[",
+    r"\s*(GEOGCS|PROJCS|GEOCCS|VERT_CS|VERTCS|COMPD_CS|LOCAL_CS|FITTED_CS|GEOGCRS|GEODCRS|"
+    r"PROJCRS|VERTCRS|COMPOUNDCRS|ENGCRS|BOUNDCRS|GEODETICCRS|GEOGRAPHICCRS|PROJECTEDCRS|"
+    r"VERTICALCRS|ENGINEERINGCRS|DERIVEDPROJCRS|DERIVEDPROJECTEDCRS|BASEGEOGCRS|TIMECRS|"
+    r"TEMPORALCRS|PARAMETRICCRS)\s*\[",
     re.IGNORECASE,
 )
 
@@ -103,8 +109,17 @@ def _from_authority(auth: str, code: str) -> JsonDict:
         projjson = _epsg.ogc_projjson(code)
         if projjson is not None:
             return projjson
+    if auth == "ESRI" and code.isdigit():
+        # Esri's old codes of CRSs EPSG has since defined: ESRI:102100 is
+        # EPSG:3857, and reads as it.
+        moved = _native.esri_code(int(code))
+        if moved is not None:
+            return _epsg_json(moved)
     if auth in _OTHER_AUTHORITIES or auth == "OGC":
-        raise out(f"{auth}:{code}", "only EPSG codes and OGC:CRS84, CRS83 and CRS27 are known")
+        raise out(
+            f"{auth}:{code}",
+            "only EPSG codes, OGC:CRS84, CRS83 and CRS27, and Esri's old codes of EPSG CRSs are known",
+        )
     raise CRSError(f"unknown authority {auth!r} in {auth}:{code}")
 
 
@@ -113,6 +128,13 @@ def _epsg_code(text: str) -> int:
         return int(text.strip())
     except ValueError:
         raise CRSError(f"not an EPSG code: {text!r}") from None
+
+
+def _from_wkt(text: str) -> JsonDict:
+    try:
+        return _check_projjson(json.loads(_native.wkt_to_projjson(text)))
+    except CRSError as e:
+        raise CRSError(f"Invalid projection: {text}: {e}") from None
 
 
 def _from_string(text: str) -> JsonDict:
@@ -126,7 +148,7 @@ def _from_string(text: str) -> JsonDict:
     if s.startswith("+") or s.lower().startswith("proj="):
         raise not_yet("CRS from a PROJ string", 3)
     if _WKT.match(s):
-        raise not_yet("CRS from WKT", 2)
+        return _from_wkt(text)
     if m := _GML_SRS.fullmatch(s):
         return _epsg_json(int(m["code"]))
     if m := _URN_COMPOUND.fullmatch(s):
@@ -146,10 +168,13 @@ def _from_string(text: str) -> JsonDict:
         return _from_authority(m["auth"], m["code"])
     if m := _AUTH_CODE.fullmatch(s):
         return _from_authority(m["auth"], m["code"])
+    # A bare number is an EPSG code, as in pyproj.
+    if s.isdigit():
+        return _epsg_json(int(s))
     code = _epsg.code_for_name(s)
     if code is not None:
         return _epsg_json(code)
-    raise CRSError(f"Invalid projection: {text}: not an EPSG code, OGC CRS, PROJJSON or EPSG name")
+    raise CRSError(f"Invalid projection: {text}: not an EPSG code, OGC CRS, WKT, PROJJSON or EPSG name")
 
 
 def _check_projjson(projjson: object) -> JsonDict:
@@ -225,7 +250,10 @@ class CRS:
         """A CRS from a ``CRS``, an EPSG code (``4326``, ``"EPSG:4326"``,
         ``"epsg:4326"``, ``"EPSG:4326+5773"``, an OGC URN or URL), an
         ``(authority, code)`` pair, ``"OGC:CRS84"`` (or CRS83, CRS27), an
-        EPSG name or alias, or PROJJSON as text or a dict."""
+        old Esri code of an EPSG CRS (``"ESRI:102100"``, read as
+        EPSG:3857), an EPSG name or alias, WKT, PROJJSON as text or a dict,
+        or another library's CRS object (its ``to_json_dict()`` or
+        ``to_wkt()``)."""
         if isinstance(value, cls) and not kwargs:
             return value
         return cls(value, **kwargs)
@@ -261,7 +289,13 @@ class CRS:
 
     @classmethod
     def from_wkt(cls, in_wkt_string: str) -> Self:
-        raise not_yet("CRS.from_wkt", 2)
+        """A CRS from WKT: WKT1 as GDAL and Esri write it, or WKT2 (2015 or
+        2019)."""
+        if not isinstance(in_wkt_string, str):  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise TypeError(f"WKT must be a string, not {type(in_wkt_string).__name__}")
+        if not _WKT.match(in_wkt_string):
+            raise CRSError(f"Invalid WKT string: {in_wkt_string}")
+        return cls._from_projjson(_from_wkt(in_wkt_string), in_wkt_string)
 
     @classmethod
     def from_proj4(cls, in_proj_string: str) -> Self:
@@ -284,6 +318,10 @@ class CRS:
 
     @property
     def name(self) -> str:
+        """The CRS's name; a Bound CRS's is its source CRS's."""
+        if self.is_bound:
+            source = self.source_crs
+            return "undefined" if source is None else source.name
         return str(self._projjson.get("name", "undefined"))
 
     @property
@@ -326,45 +364,49 @@ class CRS:
         return None
 
     @cached_property
-    def _identified(self) -> tuple[str, str] | None:
-        """The authority and code: from the PROJJSON's id, else the EPSG CRS
-        of the same name and definition (until identification by
-        definition comes with phase 2)."""
+    def _matches(self) -> list[AuthorityMatchInfo]:
+        """The authority codes the CRS matches, best first, with PROJ's
+        confidence (``Crs::identify`` in ``xeibe-reproject``). A CRS with
+        an id that is its definition matches that id only. Without ids, the
+        OGC CRS it is equivalent to is a match too: 100 with its name, else
+        70, as in PROJ. A Bound CRS matches nothing."""
         ident = self._id()
-        if ident is not None:
-            return ident
-        candidate: int | None = None
-        if self.is_compound:
-            codes = [CRS._from_projjson(c)._identified for c in get_dicts(self._projjson, "components")]
-            if len(codes) == 2 and all(c is not None and c[0] == "EPSG" for c in codes):
-                candidate = _epsg.compounds().get((int(codes[0][1]), int(codes[1][1])))  # type: ignore[index]
-        if candidate is None:
-            candidate = _epsg.code_for_name(self.name)
-        if candidate is None:
-            return None
-        other = _epsg.projjson(candidate)
-        if other is None or not self.equals(CRS._from_projjson(other)):
-            return None
-        return "EPSG", str(candidate)
+        if ident is not None and ident[0] != "EPSG":
+            return [AuthorityMatchInfo(ident[0], ident[1], 100)]
+        parsed = self._parsed
+        if parsed is None:
+            return [] if ident is None else [AuthorityMatchInfo(ident[0], ident[1], 100)]
+        found = [AuthorityMatchInfo("EPSG", str(code), confidence) for code, confidence in parsed.identify()]
+        if ident is None and not self.is_bound:
+            for code, (_, name) in _epsg.OGC_CRS.items():
+                ogc = _epsg.ogc_projjson(code)
+                if ogc is not None and parsed.equivalent(_native.Crs(json.dumps(ogc))):
+                    found.append(AuthorityMatchInfo("OGC", code, 100 if self.name == name else 70))
+        # Stable: EPSG first among equals.
+        return sorted(found, key=lambda m: -m.confidence)
 
     def to_epsg(self, min_confidence: int = 70) -> int | None:
-        """The EPSG code, or ``None``."""
-        ident = self._identified
-        if ident is None or ident[0] != "EPSG":
-            return None
-        return int(ident[1])
+        """The best EPSG match's code at ``min_confidence`` or more, or
+        ``None``."""
+        ident = self.to_authority("EPSG", min_confidence)
+        return None if ident is None else int(ident[1])
 
     def to_authority(self, auth_name: str | None = None, min_confidence: int = 70) -> tuple[str, str] | None:
-        """``(authority, code)``, or ``None``."""
-        ident = self._identified
-        if ident is None or (auth_name is not None and ident[0] != auth_name.upper()):
-            return None
-        return ident
+        """The best match's ``(authority, code)`` at ``min_confidence`` or
+        more, or ``None``."""
+        matches = self.list_authority(auth_name, min_confidence)
+        return (matches[0].auth_name, matches[0].code) if matches else None
 
     def list_authority(self, auth_name: str | None = None, min_confidence: int = 70) -> list[AuthorityMatchInfo]:
-        """The authority codes the CRS matches."""
-        ident = self.to_authority(auth_name, min_confidence)
-        return [] if ident is None else [AuthorityMatchInfo(ident[0], ident[1], 100)]
+        """The authority codes the CRS matches at ``min_confidence`` or
+        more, best first: EPSG's (and OGC's three CRSs), with PROJ's
+        confidence levels (``docs/crs-wkt.md``, Identification)."""
+        wanted = None if auth_name is None else auth_name.upper()
+        return [
+            m
+            for m in self._matches
+            if m.confidence >= min_confidence and (wanted is None or m.auth_name == wanted)
+        ]
 
     def to_string(self) -> str:
         """``"EPSG:<code>"`` (or ``"OGC:CRS84"``) when the CRS has one, else the input."""
@@ -396,26 +438,39 @@ class CRS:
     def _components(self) -> list[CRS]:
         return [CRS._from_projjson(c) for c in get_dicts(self._projjson, "components")]
 
+    def _source(self) -> CRS | None:
+        """A Bound CRS's source CRS, which pyproj answers most questions
+        about a Bound CRS with."""
+        return self.source_crs if self.is_bound else None
+
     @property
     def is_geographic(self) -> bool:
+        if (source := self._source()) is not None:
+            return source.is_geographic
         if self.is_compound:
             return any(c.is_geographic for c in self._components()[:1])
         return self._kind() in ("GeographicCRS", "GeodeticCRS", "DerivedGeographicCRS") and self._cs_subtype() == "ellipsoidal"
 
     @property
     def is_projected(self) -> bool:
+        if (source := self._source()) is not None:
+            return source.is_projected
         if self.is_compound:
             return any(c.is_projected for c in self._components()[:1])
         return self._kind() in ("ProjectedCRS", "DerivedProjectedCRS")
 
     @property
     def is_vertical(self) -> bool:
+        if (source := self._source()) is not None:
+            return source.is_vertical
         if self.is_compound:
             return any(c.is_vertical for c in self._components())
         return self._kind() in ("VerticalCRS", "DerivedVerticalCRS")
 
     @property
     def is_geocentric(self) -> bool:
+        if (source := self._source()) is not None:
+            return source.is_geocentric
         return self._kind() in ("GeodeticCRS", "GeographicCRS") and self._cs_subtype() == "cartesian"
 
     @property
@@ -424,6 +479,8 @@ class CRS:
 
     @property
     def is_engineering(self) -> bool:
+        if (source := self._source()) is not None:
+            return source.is_engineering
         return self._kind() == "EngineeringCRS"
 
     @property
@@ -437,6 +494,8 @@ class CRS:
     @property
     def utm_zone(self) -> str | None:
         """The UTM zone, e.g. ``"33N"``, of a UTM projected CRS."""
+        if (source := self._source()) is not None:
+            return source.utm_zone
         for crs in self._components():
             zone = crs.utm_zone
             if zone:
@@ -450,6 +509,8 @@ class CRS:
 
     def _geodetic_json(self) -> JsonDict | None:
         """The geographic or geocentric CRS underneath."""
+        if (source := self._source()) is not None:
+            return source._geodetic_json()
         kind = self._kind()
         if kind in ("GeographicCRS", "GeodeticCRS"):
             return self._projjson
@@ -462,6 +523,8 @@ class CRS:
         return None
 
     def _datum_json(self) -> JsonDict | None:
+        if (source := self._source()) is not None:
+            return source._datum_json()
         kind = self._kind()
         if kind in ("VerticalCRS", "EngineeringCRS"):
             return as_dict(self._projjson.get("datum") or self._projjson.get("datum_ensemble"))
@@ -495,9 +558,22 @@ class CRS:
 
     @property
     def coordinate_operation(self) -> CoordinateOperation | None:
+        """A projected CRS's conversion, or a Bound CRS's transformation to
+        its target CRS (with both CRSs, as pyproj gives it)."""
         # PROJ models EPSG's derived vertical CRSs as plain vertical ones.
         if self._kind() == "DerivedVerticalCRS":
             return None
+        transformation = as_dict(self._projjson.get("transformation"))
+        if self.is_bound and transformation is not None:
+            return CoordinateOperation(
+                {
+                    "type": "Transformation",
+                    "name": transformation.get("name", "unknown"),
+                    "source_crs": self._projjson.get("source_crs"),
+                    "target_crs": self._projjson.get("target_crs"),
+                    **{k: v for k, v in transformation.items() if k not in ("type", "name")},
+                }
+            )
         conversion = as_dict(self._projjson.get("conversion"))
         if conversion is None:
             return None
@@ -505,6 +581,8 @@ class CRS:
 
     @property
     def axis_info(self) -> list[AxisInfo]:
+        if (source := self._source()) is not None:
+            return source.axis_info
         if self.is_compound:
             return [a for c in self._components() for a in c.axis_info]
         return [axis_from_json(a) for a in self._cs_axes()]
@@ -596,7 +674,21 @@ class CRS:
         return json.dumps(self._projjson, indent=indentation if pretty else None)
 
     def to_wkt(self, version: Any = "WKT2_2019", pretty: bool = False, output_axis_rule: bool | None = None) -> str:
-        raise not_yet("CRS.to_wkt", 2)
+        """The CRS as WKT, written as PROJ writes it: ``WKT2_2019`` (or
+        ``WKT2_2018``, the same) or ``WKT1_GDAL``; other versions raise
+        ``NotImplementedError``. ``pretty`` indents by 4 spaces per level.
+        ``output_axis_rule`` writes every axis (``True``), none
+        (``False``), or PROJ's choice for the version (``None``). A
+        ``CRSError`` when the version can't express the CRS (a geographic
+        3D CRS in WKT1_GDAL)."""
+        name = _wkt.version_name(version)
+        try:
+            return _wkt.write(self._projjson, name, pretty, output_axis_rule)
+        except CRSError as e:
+            raise CRSError(
+                f"CRS cannot be converted to a WKT string of a '{version}' version. "
+                f"Select a different version of a WKT string or edit your CRS. ({e})"
+            ) from None
 
     def to_proj4(self, version: Any = 5) -> str:
         raise not_yet("CRS.to_proj4", 3)
@@ -626,11 +718,18 @@ class CRS:
 
     @cached_property
     def _parsed(self) -> _native.Crs | None:
-        """The CRS as ``xeibe-reproject`` reads it, or ``None`` when it can't."""
+        """The CRS as ``xeibe-reproject`` reads it, or ``None`` when it
+        can't: from the WKT it was made from, which says whether WKT1's
+        axes were stated, else from its PROJJSON."""
         try:
-            return _native.Crs(json.dumps(self._projjson))
+            return _native.Crs(self._native_input())
         except CRSError:
             return None
+
+    def _native_input(self) -> str:
+        """What ``xeibe-reproject`` reads the CRS from: its WKT when it
+        was made from WKT, else its PROJJSON."""
+        return self._srs if _WKT.match(self._srs) else json.dumps(self._projjson)
 
     def equals(self, other: Any, ignore_axis_order: bool = False) -> bool:
         """Whether both CRSs define the same coordinates, as PROJ's
@@ -675,9 +774,13 @@ class CRS:
     def __repr__(self) -> str:
         axes = "".join(f"- {a}\n" for a in self.axis_info) or "- undefined\n"
         cs = self.coordinate_system
+        source = self._source()
         sub_crs = ""
         if cs is not None and cs.axis_list:
             cs_name = cs.name
+        elif source is not None:
+            cs_name = str(source.coordinate_system)
+            sub_crs = f"Source CRS: {source.name}\n"
         else:
             components = self._components()
             cs_name = "|".join(c.coordinate_system.name if c.coordinate_system else "" for c in components)
@@ -722,8 +825,10 @@ def _parse(value: Any) -> tuple[JsonDict, str]:
     to_json_dict = getattr(value, "to_json_dict", None)
     if callable(to_json_dict):
         return _check_projjson(to_json_dict()), str(value)
-    if hasattr(value, "to_wkt"):
-        raise not_yet("CRS from an object with to_wkt()", 2)
+    to_wkt = getattr(value, "to_wkt", None)
+    if callable(to_wkt):
+        text = str(to_wkt())
+        return _from_wkt(text), text
     if isinstance(value, (tuple, list)):
         pair = cast(Sequence[object], value)
         if len(pair) == 2:
