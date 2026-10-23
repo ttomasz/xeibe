@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/xeibe-core",
     "crates/xeibe-crs",
+    "crates/xeibe-esri",
     "crates/xeibe-reproject",
     "crates/xeibe-geom",
     "crates/xeibe-schema",
@@ -23,6 +24,7 @@ members = [
 default-members = [
     "crates/xeibe-core",
     "crates/xeibe-crs",
+    "crates/xeibe-esri",
     "crates/xeibe-reproject",
     "crates/xeibe-geom",
     "crates/xeibe-schema",
@@ -46,7 +48,10 @@ publish = false
 [workspace.dependencies]
 xeibe-core = { path = "crates/xeibe-core" }
 xeibe-crs = { path = "crates/xeibe-crs" }
-xeibe-reproject = { path = "crates/xeibe-reproject" }
+xeibe-esri = { path = "crates/xeibe-esri" }
+# Without its `esri` feature (Esri's Apache-2.0 names, for reading ESRI WKT):
+# crates that take EPSG codes only don't need them. xeibe-proj-py turns it on.
+xeibe-reproject = { path = "crates/xeibe-reproject", default-features = false }
 xeibe-geom = { path = "crates/xeibe-geom" }
 xeibe-schema = { path = "crates/xeibe-schema" }
 xeibe-arrow = { path = "crates/xeibe-arrow" }

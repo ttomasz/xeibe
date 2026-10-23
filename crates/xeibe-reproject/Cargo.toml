@@ -12,8 +12,16 @@ categories = ["science::geo", "mathematics"]
 license = "CC0-1.0 AND MIT"
 publish.workspace = true
 
+[features]
+default = ["esri"]
+# Esri's names of EPSG objects, for reading ESRI WKT (docs/crs-wkt.md).
+# xeibe-esri's data is Apache-2.0; without it, ESRI names are matched to
+# EPSG's by normalising them only.
+esri = ["dep:xeibe-esri"]
+
 [dependencies]
 xeibe-crs.workspace = true
+xeibe-esri = { workspace = true, optional = true }
 flate2.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

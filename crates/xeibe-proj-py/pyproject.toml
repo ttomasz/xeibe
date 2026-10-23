@@ -6,7 +6,7 @@ build-backend = "maturin"
 name = "xeibe-proj"
 description = "A pyproj-compatible API for EPSG coordinate conversion in pure Rust, without PROJ (experimental, AI-generated, unstable API)"
 readme = "README.md"
-license = "CC0-1.0 AND MIT AND LicenseRef-EPSG"
+license = "CC0-1.0 AND MIT AND Apache-2.0 AND LicenseRef-EPSG"
 license-files = ["NOTICE.md"]
 requires-python = ">=3.11"
 classifiers = [

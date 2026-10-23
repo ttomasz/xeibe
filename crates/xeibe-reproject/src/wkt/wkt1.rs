@@ -18,11 +18,17 @@
 //! Web Mercator (`Mercator_1SP` on a sphere with GDAL's `PROJ4` extension)
 //! is EPSG:3857's method. Any other `PROJ4` extension, and `TOWGS84`, are
 //! errors until PROJ strings and bound CRSs are read.
+//!
+//! ESRI's form ([`super::esri`]) is read here too: its names of CRSs and
+//! datums through Esri's tables, which give them EPSG's names and ids; its
+//! projections through PROJ's ESRI table; `VERTCS`; and a `GEOGCS` with a
+//! `LINUNIT`, which is 3D.
 
 use serde_json::{Value, json};
 use xeibe_crs::DatumKind;
 
 use super::datums;
+use super::esri::{self, Dialect, Esri, Table};
 use super::names::{METHODS, Method, Param};
 use super::parse::{Arg, Node};
 use super::wkt2::{Obj, Unit, UnitKind, num, unsupported};
@@ -31,12 +37,17 @@ use crate::name;
 
 /// A WKT1 CRS node to its PROJJSON object.
 pub(crate) fn crs(node: &Node) -> Result<Value, Error> {
+    crs_in(node, &Dialect::guess(node))
+}
+
+fn crs_in(node: &Node, cx: &Dialect) -> Result<Value, Error> {
     match node.keyword.as_str() {
-        "GEOGCS" => geographic(node).map(|(v, _)| v),
-        "GEOCCS" => geocentric(node),
-        "PROJCS" => projected(node),
+        "GEOGCS" => geographic(node, cx).map(|(v, _)| v),
+        "GEOCCS" => geocentric(node, cx),
+        "PROJCS" => projected(node, cx),
         "VERT_CS" => vertical(node),
-        "COMPD_CS" => compound(node),
+        "VERTCS" => esri_vertical(node),
+        "COMPD_CS" => compound(node, cx),
         "LOCAL_CS" => local(node),
         other => Err(unsupported(node, &format!("WKT1 {other}"))),
     }
@@ -75,9 +86,13 @@ fn unit(node: &Node, kind: UnitKind) -> Result<Unit, Error> {
     let name = node.text(0)?;
     let factor = node.number(1)?;
     let close = |want: f64| (factor - want).abs() <= 1e-12 * want;
+    // ESRI writes Meter and Degree.
     let json = match kind {
-        UnitKind::Linear if name == "metre" && factor == 1.0 => json!("metre"),
-        UnitKind::Angular if name == "degree" && close(std::f64::consts::PI / 180.0) => {
+        UnitKind::Linear if name.eq_ignore_ascii_case("metre") && factor == 1.0 => json!("metre"),
+        UnitKind::Linear if name == "Meter" && factor == 1.0 => json!("metre"),
+        UnitKind::Angular
+            if name.eq_ignore_ascii_case("degree") && close(std::f64::consts::PI / 180.0) =>
+        {
             json!("degree")
         }
         _ => {
@@ -251,10 +266,29 @@ fn spheroid(node: &Node) -> Result<(Value, bool), Error> {
 
 /// A datum's name and id: GDAL's `WGS_1984`, ensembles' names written
 /// without "ensemble", and names with underscores matched to EPSG's
-/// datums, as PROJ does; else the EPSG name of its `AUTHORITY`.
-fn datum_identity(node: &Node, kind: DatumKind, out: &mut Obj) -> Result<(), Error> {
+/// datums, as PROJ does; ESRI's names through Esri's table; else the EPSG
+/// name of its `AUTHORITY`. `meridian` is the prime meridian's name, which
+/// tells EPSG's datums of one ESRI name apart (`D_NTF`).
+fn datum_identity(
+    node: &Node,
+    kind: DatumKind,
+    meridian: Option<&str>,
+    cx: &Dialect,
+    out: &mut Obj,
+) -> Result<(), Error> {
     let written = node.text(0)?;
     authority(node, out)?;
+    if (cx.names() || written.starts_with("D_"))
+        && let Some((name, code)) = esri_datum(written, kind, meridian, cx)
+    {
+        if let Some(code) = code
+            && !out.contains_key("id")
+        {
+            out.insert("id".into(), json!({"authority": "EPSG", "code": code}));
+        }
+        out.insert("name".into(), json!(name));
+        return Ok(());
+    }
     let name = match written {
         "WGS_1984" => Some("World Geodetic System 1984".to_owned()),
         "World Geodetic System 1984 ensemble" => Some("World Geodetic System 1984".into()),
@@ -287,9 +321,67 @@ fn datum_identity(node: &Node, kind: DatumKind, out: &mut Obj) -> Result<(), Err
     Ok(())
 }
 
+/// An ESRI datum's EPSG name and code, as PROJ finds them: four names it
+/// knows, then Esri's table (preferring the datum named for a prime
+/// meridian other than Greenwich, then a live one), then for `D_…` the
+/// name without its prefix as an EPSG name.
+fn esri_datum(
+    written: &str,
+    kind: DatumKind,
+    meridian: Option<&str>,
+    cx: &Dialect,
+) -> Option<(String, Option<u32>)> {
+    match written {
+        "D_WGS_1984" => return Some(("World Geodetic System 1984".into(), Some(6326))),
+        "D_ETRS_1989" => {
+            return Some((
+                "European Terrestrial Reference System 1989".into(),
+                Some(6258),
+            ));
+        }
+        "D_unknown" => return Some(("unknown".into(), None)),
+        "D_Unknown_based_on_WGS_84_ellipsoid" => {
+            return Some(("Unknown based on WGS 84 ellipsoid".into(), None));
+        }
+        _ => {}
+    }
+    let table = match kind {
+        DatumKind::Vertical => Table::VerticalDatum,
+        _ => Table::Datum,
+    };
+    let found: Vec<_> = esri::codes(table, written)
+        .into_iter()
+        .filter_map(xeibe_crs::datum)
+        .filter(|d| d.kind == kind)
+        .collect();
+    let with_meridian =
+        |d: &&&xeibe_crs::DatumName| meridian.is_some_and(|m| d.name.ends_with(&format!("({m})")));
+    let chosen = found
+        .iter()
+        .find(with_meridian)
+        .or_else(|| found.iter().find(|d| !d.deprecated))
+        .or(found.first());
+    if let Some(d) = chosen {
+        if datums::by_name(written, kind).is_none() {
+            cx.confirm();
+        }
+        // Esri's name is the Greenwich datum's: EPSG's datum on another
+        // prime meridian is named for it ("Bogota 1975 (Bogota)").
+        if let Some(m) = meridian
+            && !d.name.ends_with(&format!("({m})"))
+            && let Some(on) = datums::by_name(&format!("{} ({m})", d.name), kind)
+        {
+            return Some((on.name.to_owned(), Some(on.code)));
+        }
+        return Some((d.name.to_owned(), Some(d.code)));
+    }
+    let bare = written.strip_prefix("D_")?;
+    datums::by_name(bare, kind).map(|d| (d.name.to_owned(), Some(d.code)))
+}
+
 /// `DATUM` with the `PRIMEM` beside it, and whether its ellipsoid is a
 /// sphere.
-fn datum(node: &Node, pm: Option<Value>) -> Result<(Value, bool), Error> {
+fn datum(node: &Node, pm: Option<Value>, cx: &Dialect) -> Result<(Value, bool), Error> {
     if node.child(&["TOWGS84"]).is_some() {
         return Err(unsupported(node, "TOWGS84 (a bound CRS)"));
     }
@@ -302,7 +394,8 @@ fn datum(node: &Node, pm: Option<Value>) -> Result<(Value, bool), Error> {
     }
     let mut o = Obj::new();
     o.insert("type".into(), json!("GeodeticReferenceFrame"));
-    datum_identity(node, DatumKind::Geodetic, &mut o)?;
+    let meridian = pm.as_ref().and_then(|p| p["name"].as_str());
+    datum_identity(node, DatumKind::Geodetic, meridian, cx, &mut o)?;
     let s = node
         .child(&["SPHEROID"])
         .ok_or_else(|| node.invalid("no SPHEROID"))?;
@@ -334,8 +427,16 @@ fn named(type_name: &str, node: &Node) -> Result<Obj, Error> {
 }
 
 /// A `GEOGCS`, and whether its ellipsoid is a sphere.
-fn geographic(node: &Node) -> Result<(Value, bool), Error> {
-    node.only(&[&["DATUM", "PRIMEM", "UNIT", "AXIS", "AUTHORITY", "EXTENSION"]])?;
+fn geographic(node: &Node, cx: &Dialect) -> Result<(Value, bool), Error> {
+    node.only(&[&[
+        "DATUM",
+        "PRIMEM",
+        "UNIT",
+        "LINUNIT",
+        "AXIS",
+        "AUTHORITY",
+        "EXTENSION",
+    ]])?;
     if let Some(e) = node.child(&["EXTENSION"]) {
         return Err(unsupported(
             e,
@@ -347,8 +448,16 @@ fn geographic(node: &Node) -> Result<(Value, bool), Error> {
     let d = node
         .child(&["DATUM"])
         .ok_or_else(|| node.invalid("no DATUM"))?;
-    let (datum, sphere) = datum(d, pm)?;
+    let (datum, sphere) = datum(d, pm, cx)?;
     let mut o = named("GeographicCRS", node)?;
+    // ESRI's 3D form: a LINUNIT for the ellipsoidal height.
+    let height = node
+        .child(&["LINUNIT"])
+        .map(|u| unit(u, UnitKind::Linear))
+        .transpose()?;
+    if let Some(name) = esri_geographic_name(node.text(0)?, height.is_some(), cx) {
+        o.insert("name".into(), json!(name));
+    }
     o.insert("datum".into(), datum);
     authority(node, &mut o)?;
     let written = axes(node, &angle, false)?;
@@ -373,10 +482,16 @@ fn geographic(node: &Node) -> Result<(Value, bool), Error> {
             }
             altered
         }
-        (true, None) => vec![
-            axis_json("Longitude", "lon", "east", &angle),
-            axis_json("Latitude", "lat", "north", &angle),
-        ],
+        (true, None) => {
+            let mut lon_lat = vec![
+                axis_json("Longitude", "lon", "east", &angle),
+                axis_json("Latitude", "lat", "north", &angle),
+            ];
+            if let Some(h) = &height {
+                lon_lat.push(axis_json("Ellipsoidal height", "h", "up", h));
+            }
+            lon_lat
+        }
         (false, Some(epsg)) => {
             // Axes other than the authority's: PROJ drops the id.
             if !same_directions(&written, &epsg) || !same_units(&written, &epsg) {
@@ -395,6 +510,21 @@ fn geographic(node: &Node) -> Result<(Value, bool), Error> {
         o.insert("id".into(), id);
     }
     Ok((Value::Object(o), sphere))
+}
+
+/// EPSG's name for an ESRI `GEOGCS` name, as PROJ gives it: `GCS_WGS_1984`
+/// and `GCS_unknown` by hand, others through Esri's table.
+fn esri_geographic_name(written: &str, three_d: bool, cx: &Dialect) -> Option<&'static str> {
+    match written {
+        "GCS_WGS_1984" if !three_d => Some("WGS 84"),
+        "GCS_unknown" => Some("unknown"),
+        _ if cx.names() || written.starts_with("GCS_") => esri::crs_name(
+            Table::GeodeticCrs,
+            written,
+            Some(if three_d { 3 } else { 2 }),
+        ),
+        _ => None,
+    }
 }
 
 /// The axes of an EPSG geographic CRS, for a `GEOGCS` that names it.
@@ -424,14 +554,14 @@ fn same_units(a: &[Value], b: &[Value]) -> bool {
     })
 }
 
-fn geocentric(node: &Node) -> Result<Value, Error> {
+fn geocentric(node: &Node, cx: &Dialect) -> Result<Value, Error> {
     node.only(&[&["DATUM", "PRIMEM", "UNIT", "AXIS", "AUTHORITY"]])?;
     let length = unit_of(node, UnitKind::Linear)?.unwrap_or_else(Unit::metre);
     let pm = prime_meridian(node.child(&["PRIMEM"]), &Unit::degree())?;
     let d = node
         .child(&["DATUM"])
         .ok_or_else(|| node.invalid("no DATUM"))?;
-    let (datum, _) = datum(d, pm)?;
+    let (datum, _) = datum(d, pm, cx)?;
     let mut o = named("GeodeticCRS", node)?;
     o.insert("datum".into(), datum);
     let mut axes = axes(node, &length, true)?;
@@ -508,17 +638,45 @@ fn guess_kind(name: &str) -> Option<UnitKind> {
     }
 }
 
-/// The conversion of a `PROJCS`: PROJ's `buildProjectionStandard`.
+/// The conversion of a `PROJCS`: PROJ's `buildProjectionFromESRI` for
+/// ESRI's WKT, else its `buildProjectionStandard`, which falls back to
+/// ESRI's projections too.
 fn conversion(
     node: &Node,
     projection: &Node,
     sphere: bool,
     length: &Unit,
     angle: &Unit,
+    cx: &Dialect,
 ) -> Result<(Value, Option<u32>), Error> {
     projection.only(&[&["AUTHORITY"]])?;
     let mut wkt1_name = projection.text(0)?.trim().to_owned();
     let mut params = parameters(node)?;
+    let crs_name = node.text(0)?;
+    let select = |code: u32, sphere: bool| {
+        find_method(code)
+            .and_then(|m| select_spherical_or_ellipsoidal(m, sphere))
+            .map_or(code, |m| m.epsg)
+    };
+    // As written: the WKT1 path below rewrites names and parameters.
+    let (esri_name, esri_params) = (wkt1_name.clone(), params.clone());
+    let from_esri = |maybe: bool| {
+        esri::conversion(
+            &esri_name,
+            crs_name,
+            &esri_params,
+            sphere,
+            length,
+            angle,
+            maybe,
+            select,
+        )
+    };
+    if cx.get() != Esri::No
+        && let Some(found) = from_esri(cx.get() == Esri::Maybe)?
+    {
+        return Ok(found);
+    }
     let param_value = |params: &[(String, f64)], wanted: &str| {
         params
             .iter()
@@ -592,6 +750,10 @@ fn conversion(
         }
     }
     let Some(method) = method else {
+        // Not a WKT1 name: maybe ESRI's, as PROJ tries, else an EPSG one.
+        if let Some(found) = from_esri(false)? {
+            return Ok(found);
+        }
         return by_epsg_names(&wkt1_name, &params, length, angle, projection);
     };
     let mut out = Vec::new();
@@ -740,7 +902,7 @@ fn select_spherical_or_ellipsoidal(m: &'static Method, sphere: bool) -> Option<&
     find_method(if sphere { pair.1 } else { pair.0 }).or(Some(m))
 }
 
-fn projected(node: &Node) -> Result<Value, Error> {
+fn projected(node: &Node, cx: &Dialect) -> Result<Value, Error> {
     node.only(&[&[
         "GEOGCS",
         "PROJECTION",
@@ -753,7 +915,7 @@ fn projected(node: &Node) -> Result<Value, Error> {
     let g = node
         .child(&["GEOGCS"])
         .ok_or_else(|| node.invalid("no GEOGCS"))?;
-    let (mut base, sphere) = geographic(g)?;
+    let (mut base, sphere) = geographic(g, cx)?;
     let length = unit_of(node, UnitKind::Linear)?.unwrap_or_else(Unit::metre);
     let angle = Unit {
         kind: UnitKind::Angular,
@@ -791,13 +953,18 @@ fn projected(node: &Node) -> Result<Value, Error> {
         let projection = node
             .child(&["PROJECTION"])
             .ok_or_else(|| node.invalid("no PROJECTION"))?;
-        conversion(node, projection, sphere, &length, &angle)?
+        conversion(node, projection, sphere, &length, &angle, cx)?
     };
     let mut axes = axes(node, &length, false)?;
     if axes.is_empty() {
         axes = default_projected_axes(method, &conversion, &length);
     }
     let mut o = named("ProjectedCRS", node)?;
+    if cx.names()
+        && let Some(official) = esri_projected_name(name, &length)
+    {
+        o.insert("name".into(), json!(official));
+    }
     o.insert("base_crs".into(), base);
     o.insert("conversion".into(), conversion);
     o.insert(
@@ -806,6 +973,21 @@ fn projected(node: &Node) -> Result<Value, Error> {
     );
     authority(node, &mut o)?;
     Ok(Value::Object(o))
+}
+
+/// EPSG's name for an ESRI `PROJCS` name, through Esri's table. A State
+/// Plane name in US feet without its `_Feet` is the one with it, as PROJ
+/// reads it (PROJ issue 2086).
+fn esri_projected_name(written: &str, length: &Unit) -> Option<&'static str> {
+    const US_FOOT: f64 = 12.0 / 39.37;
+    if written.contains("_FIPS_")
+        && !written.contains("_Feet")
+        && (factor(length) - US_FOOT).abs() < 1e-10 * US_FOOT
+        && let Some(name) = esri::crs_name(Table::ProjectedCrs, &format!("{written}_Feet"), None)
+    {
+        return Some(name);
+    }
+    esri::crs_name(Table::ProjectedCrs, written, None)
 }
 
 /// A parameter's value in degrees, from the conversion just built.
@@ -895,7 +1077,7 @@ fn vertical(node: &Node) -> Result<Value, Error> {
     }
     let mut datum = Obj::new();
     datum.insert("type".into(), json!("VerticalReferenceFrame"));
-    datum_identity(d, DatumKind::Vertical, &mut datum)?;
+    datum_identity(d, DatumKind::Vertical, None, &Dialect::none(), &mut datum)?;
     if let Some(id) = datum.remove("id") {
         datum.insert("id".into(), id);
     }
@@ -931,20 +1113,80 @@ pub(super) fn implicit_axes(node: &Node) -> bool {
     }
 }
 
-fn compound(node: &Node) -> Result<Value, Error> {
+fn compound(node: &Node, cx: &Dialect) -> Result<Value, Error> {
     let mut o = named("CompoundCRS", node)?;
     let mut components = Vec::new();
     for a in &node.args[1..] {
         if let Arg::Node(n) = a
             && n.keyword != "AUTHORITY"
         {
-            components.push(crs(n)?);
+            components.push(crs_in(n, cx)?);
         }
     }
     if components.len() < 2 {
         return Err(node.invalid("fewer than two CRSs"));
     }
+    // ESRI's PROJCS[…],VERTCS[…]: named from its parts, as PROJ names it.
+    if o["name"] == "" {
+        let names: Vec<&str> = components
+            .iter()
+            .map(|c| c["name"].as_str().unwrap_or("unnamed"))
+            .collect();
+        o.insert("name".into(), json!(names.join(" + ")));
+    }
     o.insert("components".into(), Value::Array(components));
+    authority(node, &mut o)?;
+    Ok(Value::Object(o))
+}
+
+/// ESRI's `VERTCS[name, VDATUM[name], PARAMETER["Vertical_Shift", 0],
+/// PARAMETER["Direction", 1], UNIT[…]]`: a direction of −1 is a depth.
+/// One on a geodetic `DATUM` (an ellipsoidal height) or with a shift isn't
+/// read.
+fn esri_vertical(node: &Node) -> Result<Value, Error> {
+    node.only(&[&["VDATUM", "DATUM", "PARAMETER", "UNIT", "AUTHORITY"]])?;
+    if node.child(&["DATUM"]).is_some() {
+        return Err(unsupported(
+            node,
+            "a VERTCS on a geodetic DATUM (ellipsoidal heights)",
+        ));
+    }
+    let params = parameters(node)?;
+    let param = |name: &str| {
+        params
+            .iter()
+            .find(|(n, _)| n.eq_ignore_ascii_case(name))
+            .map(|(_, v)| *v)
+    };
+    if param("Vertical_Shift").is_some_and(|v| v != 0.0) {
+        return Err(unsupported(node, "a VERTCS with a Vertical_Shift"));
+    }
+    let depth = param("Direction") == Some(-1.0);
+    let length = unit_of(node, UnitKind::Linear)?.unwrap_or_else(Unit::metre);
+    let d = node
+        .child(&["VDATUM"])
+        .ok_or_else(|| node.invalid("no VDATUM"))?;
+    d.only(&[&["AUTHORITY"]])?;
+    let mut datum = Obj::new();
+    datum.insert("type".into(), json!("VerticalReferenceFrame"));
+    datum_identity(d, DatumKind::Vertical, None, &Dialect::esri(), &mut datum)?;
+    if let Some(id) = datum.remove("id") {
+        datum.insert("id".into(), id);
+    }
+    let axis = if depth {
+        axis_json("Depth", "D", "down", &length)
+    } else {
+        axis_json("Gravity-related height", "H", "up", &length)
+    };
+    let mut o = named("VerticalCRS", node)?;
+    if let Some(official) = esri::crs_name(Table::VerticalCrs, node.text(0)?, None) {
+        o.insert("name".into(), json!(official));
+    }
+    o.insert("datum".into(), Value::Object(datum));
+    o.insert(
+        "coordinate_system".into(),
+        json!({"subtype": "vertical", "axis": [axis]}),
+    );
     authority(node, &mut o)?;
     Ok(Value::Object(o))
 }

@@ -1,7 +1,7 @@
 # CRS WKT: reading, writing and identifying
 
-> **Status: design, 2026-10-22. Steps 1 to 4 are implemented:** reading
-> WKT2 and WKT1 (GDAL's form), writing WKT2 2019 and WKT1_GDAL
+> **Status: design, 2026-10-22. Steps 1 to 5 are implemented:** reading
+> WKT2 and WKT1 (GDAL's and ESRI's forms), writing WKT2 2019 and WKT1_GDAL
 > (`xeibe_reproject::wkt`, `Crs::from_wkt`), and identification
 > (`Crs::identify`; see [Implementation](#implementation)).
 > This is the first part of phase 2 in [pyproj-compat.md](pyproj-compat.md#phases).
@@ -125,10 +125,11 @@ Like the transformation vectors, it writes everything to
 [Esri/projection-engine-db-doc](https://github.com/Esri/projection-engine-db-doc)
 (see [ESRI names](#esri-names)). Its live EPSG entries are 5,218 projected,
 878 geographic and 288 vertical CRSs. Each row has Esri's WKT1 for the EPSG
-code. They are read and compared with our CRS for the code, as with EPSG's
-archive. The CSVs are fetched by the `xeibe-esri` generator into
-`example_data/` and recorded in `example_data/SOURCES.md`. A subset is
-committed.
+code. `scripts/gen_esri_tables.py` fetches the CSVs into `example_data/`
+(recorded in `example_data/SOURCES.md`), and `gen_wkt_vectors.py` writes
+each live EPSG entry's WKT with PROJ's reading of it (name, axes,
+`list_authority`, `to_epsg`) to `esri.jsonl`. Our reading is compared with
+PROJ's. A subset is committed.
 
 The **odd cases** come from the files already in the corpus, such as GDAL's
 autotest `.prj` files and WKT strings in
@@ -281,7 +282,7 @@ between, as in a dual licence.
 
 **Old Esri codes.** Esri gave codes to some CRSs before EPSG had them, and
 later moved them to EPSG's codes: `ESRI:102100` is now EPSG:3857. The CSVs
-record 988 of these: 868 projected, 111 geographic and 9 vertical CRSs.
+record 987 of these whose new code is an EPSG one (`xeibe_esri::epsg_code`).
 `xeibe-esri` ships them as an alias table. `CRS("ESRI:102100")` then
 gives EPSG:3857, and identification finds the EPSG code for an old `.prj`
 file that names one of these codes. That is the exception
@@ -295,11 +296,47 @@ authority, which is beyond this design.
 
 `xeibe-reproject` uses `xeibe-esri` through a default feature, `esri`. A
 project that can't take Apache-2.0 (a GPLv2-only one) turns the feature off.
-ESRI input then works only for:
+In the workspace the feature is off for dependents (the workspace
+dependency has `default-features = false`), since the CLI, the web page and
+the Python module `xeibe` take EPSG codes only; `xeibe-proj-py` turns it on.
+Without it, ESRI input works only for:
 
 - datums that normalise, which `xeibe_proj` reports as resolved;
 - the others by ellipsoid and parameters, at lower confidence and with a
   warning naming the datum.
+
+**Reading, as built (step 5).** PROJ's ESRI rules from `io.cpp`, in
+`src/wkt/esri.rs` and the WKT1 reader:
+
+- **Dialect.** As PROJ's `guessDialect`: a `VERTCS`, a `GEOGCS` named
+  `GCS_…`, a `DATUM` named `D_…` or ESRI's `X_Scale`/`Vertical_Shift`
+  make WKT1 ESRI's; no `AXIS` and no `AUTHORITY` anywhere make it maybe
+  ESRI's, which a datum found only in Esri's table confirms.
+- **Names.** Datum, geographic, projected and vertical CRS names go
+  through Esri's tables to EPSG's name and code (`D_WGS_1984`,
+  `D_ETRS_1989`, `GCS_WGS_1984` and `D_unknown` by hand, as PROJ does). A
+  datum on a prime meridian other than Greenwich takes EPSG's datum named
+  for it ("Bogota 1975 (Bogota)"). A State Plane name in US feet without
+  `_Feet` is the one with it.
+- **Projections** through PROJ's ESRI table: the entry whose parameters
+  match best, Krovak's orientation from `_East_North` in the name,
+  Stereographic at a pole as Polar Stereographic (variant A), Plate Carrée's
+  standard parallel at 0, Hotine's skew angle from its azimuth.
+  Parameters are found by ESRI's name, then PROJ's aliases
+  (`Longitude_Of_Origin` for `Central_Meridian`), then EPSG's name, which
+  PROJ's own WKT1_ESRI writes for some methods.
+- **`VERTCS`** with `Direction` −1 is a depth; one on a geodetic `DATUM`
+  (ellipsoidal heights) or with a `Vertical_Shift` isn't read. A `GEOGCS`
+  with a `LINUNIT` is 3D. `PROJCS[…],VERTCS[…]` is a compound CRS named
+  from its parts, as PROJ names it.
+
+Equivalence now follows PROJ's for conversions, which ESRI's definitions
+need (`SingleOperation::_isEquivalentTo`): parameters within 2e-10; a
+parameter only one side has must be neutral (1 for a scale, else 0); an
+azimuth or skew angle 360° apart is the same; Lambert Conic Conformal (2SP)
+may have its standard parallels swapped and is compared as the 1SP it
+equals when its parameters differ (so does a 1SP against a 2SP); Mercator
+(variant A) is compared as variant B.
 
 ### TOWGS84 and BoundCRS
 
@@ -404,9 +441,18 @@ flowchart TD
 - **Methods** match by code or by EPSG name. EPSG reuses two methods'
   names for their deprecated duplicates (9823 and 1029, 9842 and 1028),
   so a method read by name has the live code.
-- **Ranking**: confidence, then live before deprecated, then code.
-  Geographic 2D and 3D are one kind, told apart by their axes, because
-  EPSG classes some 3D CRSs as 2D (NAD83(FBN), EPSG:8449).
+- **Ensembles and their members.** EPSG has moved about 190 CRSs named
+  "ETRS89 / …" from the ETRS89 ensemble to national members of it
+  (EUREF89, ETRF2000-PL), which Esri's and older WKT still put on the
+  ensemble (and EPSG:2180 the other way round). A CRS on the input datum's
+  ensemble or on one of its members is a candidate too, and matches,
+  datum aside, only with the input's name or an alias (100 or 90). PROJ
+  gets there by special cases for those names.
+- **Ranking**: confidence, then live before deprecated, then CRSs whose
+  axes are the input's exactly (of UTM zone 30N and its N-E twin, both
+  equal to a WKT1 without `AXIS`, the E-N one, as PROJ ranks them), then
+  code. Geographic 2D and 3D are one kind, told apart by their axes,
+  because EPSG classes some 3D CRSs as 2D (NAD83(FBN), EPSG:8449).
 
 Where it differs from PROJ on purpose:
 
@@ -577,6 +623,30 @@ every EPSG CRS, with ids and without (52,400 identifications):
   compared trimmed, as the reader trims them: two EPSG names end in a
   space.
 - About 0.7 ms per identification in a release build.
+
+**Step 5 (2026-10-23): ESRI input** with `xeibe-esri`, as described under
+[ESRI names](#esri-names). `xeibe-esri` holds 920 geographic, 5,457
+projected and 286 vertical CRS names, 662 geodetic and 265 vertical datum
+names, and 987 old codes, from Esri's data at ArcGIS Pro 3.7.
+
+- **Esri's own WKT** (6,384 live EPSG CRSs): 6,382 read, with PROJ's axes,
+  and `to_epsg()` is PROJ's or the code Esri wrote it for (PROJ gets 6,016
+  right; we get all but the 5 listed). Listed: a 3D `PROJCS` and
+  `Polar_Stereographic_Variant_B`, which PROJ doesn't read as EPSG's
+  either; 4088, as deprecated as its twin 3786; 22700 and 32662, whose
+  Esri definitions are other EPSG CRSs', which we find.
+- **PROJ's WKT1_ESRI** (8,570 strings): the axes PROJ reads, and
+  equivalent to the EPSG CRS exactly when PROJ finds it equal, apart from
+  those listed: 9 whose names come from PROJ's own, older copy of Esri's
+  names (SIRGAS-Chile's "realization 1 epoch 2002"), 20 Norwegian CRSs on
+  `D_ETRS_1989` that EPSG has on EUREF89 (PROJ equates the ensemble and
+  its member through Esri's names; `Crs::equivalent` keeps them apart),
+  3410 and 9895. Identified as PROJ does, with the same skew in names
+  listed.
+- The changes to equivalence leave the WKT2 and WKT1_GDAL comparisons as
+  they were, apart from three deprecated CRSs: 32662 and 32663, whose
+  deprecated methods read back under the live ones' names, and 4088,
+  which is now equal to its deprecated twin 3786.
 
 ## Order of work
 

@@ -28,6 +28,9 @@ mod labrd;
 mod laea;
 mod lcc;
 mod lcc_variants;
+
+pub(crate) use lcc::two_sp_as_one_sp;
+pub(crate) use merc::variant_a_as_b;
 mod merc;
 mod mlfn;
 mod nzmg;
@@ -63,16 +66,47 @@ impl Params {
     }
 
     /// The same parameters, in any order, with values within PROJ's
-    /// relative tolerance (1e-10).
-    pub(crate) fn same(&self, other: &Params) -> bool {
-        let close = |a: f64, b: f64| a == b || (a - b).abs() <= 1e-10 * a.abs().max(b.abs());
-        self.values.len() == other.values.len()
-            && self.values.iter().all(|(code, value)| {
-                other
-                    .values
-                    .iter()
-                    .any(|(c, v)| c == code && close(*value, *v))
-            })
+    /// relative tolerance for them (2e-10), as PROJ's `SingleOperation` compares
+    /// them: a parameter only one side has must have its neutral value (1
+    /// for a scale factor, else 0), and for Lambert Conic Conformal (2SP)
+    /// the two standard parallels may be swapped.
+    pub(crate) fn same(&self, other: &Params, method: Option<u32>) -> bool {
+        self.covered_by(other, method) && other.covered_by(self, method)
+    }
+
+    fn covered_by(&self, other: &Params, method: Option<u32>) -> bool {
+        let close = |a: f64, b: f64| a == b || (a - b).abs() <= 2e-10 * a.abs().max(b.abs());
+        let swapped = |code: u32| match code {
+            param::LAT_1ST_PARALLEL => Some(param::LAT_2ND_PARALLEL),
+            param::LAT_2ND_PARALLEL => Some(param::LAT_1ST_PARALLEL),
+            _ => None,
+        };
+        // An azimuth or skew angle 360° from another is the same, as in
+        // PROJ (ESRI writes −36.87° where EPSG has 323.13°).
+        let same_turn = |code: u32, a: f64, b: f64| {
+            matches!(code, 8813 | 8814) && {
+                let (a, b) = (
+                    (a.to_degrees() + 360.0) % 360.0,
+                    (b.to_degrees() + 360.0) % 360.0,
+                );
+                (a - b).abs() <= 1e-10 * a.abs()
+            }
+        };
+        self.values.iter().all(|&(code, value)| {
+            match other.values.iter().find(|(c, _)| *c == code) {
+                Some(&(_, v)) if close(value, v) || same_turn(code, value, v) => true,
+                Some(_) => {
+                    method == Some(9802)
+                        && swapped(code).is_some_and(|twin| {
+                            other.get(twin).is_ok_and(|v| close(value, v))
+                                && self
+                                    .get(twin)
+                                    .is_ok_and(|mine| other.get(code).is_ok_and(|v| close(mine, v)))
+                        })
+                }
+                None => value == if is_scale(code) { 1.0 } else { 0.0 },
+            }
+        })
     }
 
     pub(crate) fn get(&self, code: u32) -> Result<f64, BuildError> {
@@ -82,6 +116,11 @@ impl Params {
             .map(|(_, v)| *v)
             .ok_or(BuildError::MissingParameter(code))
     }
+}
+
+/// Scale factors, whose neutral value is 1.
+fn is_scale(code: u32) -> bool {
+    matches!(code, 8805 | 8815 | 8819 | 1038)
 }
 
 /// EPSG parameter codes.

@@ -17,7 +17,7 @@ use those names.
 
 | Path | Contents | In git |
 |---|---|---|
-| `crates/xeibe-*` | Workspace crates: core, crs (generated EPSG tables), reproject (CRS conversion), geom, schema, arrow, export (Parquet and Arrow IPC writers), io, wfs, datafusion, cli (binary `xeibe`), py (Python module `xeibe`), proj-py (Python package `xeibe_proj`, pyproj-compatible; `docs/pyproj-compat.md`), wasm (the web page's bindings), testkit (test support only) | yes |
+| `crates/xeibe-*` | Workspace crates: core, crs (generated EPSG tables), esri (generated Esri names of EPSG objects, Apache-2.0), reproject (CRS conversion), geom, schema, arrow, export (Parquet and Arrow IPC writers), io, wfs, datafusion, cli (binary `xeibe`), py (Python module `xeibe`), proj-py (Python package `xeibe_proj`, pyproj-compatible; `docs/pyproj-compat.md`), wasm (the web page's bindings), testkit (test support only) | yes |
 | `web/` | The web page (`docs/web.md`): Vite + TypeScript over `xeibe-wasm`; `web/scripts/build-wasm.sh` generates `web/src/wasm/` (not in git) | yes |
 | `docs/` | Design docs | yes |
 | `tests/data/` | Small curated samples, `samples.toml`, generated `samples.json`/`BOM.md`; see `tests/data/README.md` | yes |
@@ -148,9 +148,18 @@ sources, but their contents haven't been checked against the local copies:
   `WKT2_2015`, `WKT1_GDAL` and `WKT1_ESRI` with PROJ's reading of each back
   (`wkt.jsonl`), and PROJ's `list_authority`/`to_epsg` for each string with
   and without its ids (`identify.jsonl`), plus EPSG's own WKT2 from the
-  `EPSG-*-WKT.Zip` archive in `example_data/` (`epsg.jsonl`). A committed subset goes to
+  `EPSG-*-WKT.Zip` archive in `example_data/` (`epsg.jsonl`) and Esri's own
+  WKT1 from the CSVs `gen_esri_tables.py` downloads, with PROJ's reading
+  (`esri.jsonl`). A committed subset goes to
   `tests/data/crs-wkt/`; `--all` writes everything to `target/crs-wkt/`
   (~3 min on 12 CPUs). See `docs/crs-wkt.md`.
+- `scripts/gen_esri_tables.py` downloads Esri's projection engine database
+  CSVs (Apache-2.0, pinned commit) into `example_data/esri-pedb/` and
+  regenerates `crates/xeibe-esri`: Esri's names of EPSG's CRSs and datums
+  with their EPSG codes, and Esri's old codes that are EPSG codes now, plus
+  `ESRI-NOTICE.md` and `LICENSE-APACHE`. `xeibe-reproject` uses it through
+  its `esri` feature, on by default for the crate itself but off for the
+  workspace's dependents; only `xeibe-proj-py` turns it on.
 - `scripts/gen_wkt1_names.py` regenerates `crates/xeibe-reproject/src/wkt/names.rs`,
   the WKT1_GDAL and ESRI method and parameter names, from the mapping tables
   in PROJ's source (`parammappings.cpp`, `esriparammappings.cpp`; the

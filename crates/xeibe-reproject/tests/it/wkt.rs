@@ -646,7 +646,10 @@ const KNOWN_WKT1: &[(&[u32], &str)] = &[
         "PROJ ignores the order of polar axes",
     ),
     // Deprecated method 9823 written as Equirectangular reads back as 1029.
-    (&[3786], "a deprecated method under another's WKT1 name"),
+    (
+        &[3786, 32663],
+        "a deprecated method under another's WKT1 name",
+    ),
     // Axes along meridians that amount to east and north (EPSG's) against
     // WKT1's east and north: equal here, not in PROJ.
     (&[3408, 3409, 27702], "polar axes that are east and north"),
@@ -658,6 +661,33 @@ const KNOWN_WKT1: &[(&[u32], &str)] = &[
     (&[5817], "an unspecified axis"),
     // TOWGS84: a bound CRS, step 6 of docs/crs-wkt.md.
     (&[3785], "TOWGS84"),
+];
+
+/// Where our reading of PROJ's WKT1_ESRI knowingly differs from PROJ's,
+/// beyond `KNOWN_WKT1`:
+const KNOWN_WKT1_ESRI: &[(&[u32], &str)] = &[
+    // PROJ writes and reads names from its own copy of Esri's names
+    // (`esri.sql`), which Esri's current data, in xeibe-esri, no longer has
+    // ("SIRGAS-Chile_realization_1_epoch_2002").
+    (
+        &[5361, 5362, 9149, 9150, 9154, 9155, 20042, 20048, 20049],
+        "Esri names only PROJ's copy has",
+    ),
+    // Written on D_ETRS_1989, the ETRS89 ensemble, where EPSG has a member
+    // of it (EUREF89): equal to PROJ through Esri's names, not to
+    // Crs::equivalent, which keeps an ensemble and its members apart.
+    (
+        &[
+            5971, 5972, 5973, 5974, 5975, 5976, 6171, 6172, 6173, 6174, 6175, 6176, 11020, 11021,
+            11022, 11023, 11024, 11025, 11026, 11027,
+        ],
+        "the ETRS89 ensemble for one of its members",
+    ),
+    // Reads as the EPSG CRS in every field; PROJ doesn't find its own ESRI
+    // form of it equal.
+    (&[3410], "equal here, not in PROJ"),
+    // A VERTCS on a geodetic DATUM: ellipsoidal heights, not read.
+    (&[9895], "a VERTCS on a geodetic DATUM"),
 ];
 
 /// Reads PROJ's WKT1 for each EPSG CRS in `wkt.jsonl` and compares with
@@ -673,7 +703,15 @@ fn check_wkt1(path: &Path, version: &str) -> (usize, String) {
         };
         let proj = &r["read"][version];
         read += 1;
-        if KNOWN_WKT1.iter().any(|(codes, _)| codes.contains(&code)) {
+        let known = KNOWN_WKT1
+            .iter()
+            .chain(if version == "WKT1_ESRI" {
+                KNOWN_WKT1_ESRI
+            } else {
+                &[]
+            })
+            .any(|(codes, _)| codes.contains(&code));
+        if known {
             continue;
         }
         let ours: Value = match wkt::to_projjson(text) {
@@ -812,7 +850,9 @@ const KNOWN_IDENTIFY: &[(&[u32], &str)] = &[
     // replacement, where a live CRS has their name too (RRAF 1991,
     // IGD05): the live one, which PROJ finds at 25 only.
     (
-        &[2989, 4640, 4972, 4973, 6978, 6979, 6980, 6985, 6986, 6987],
+        &[
+            2989, 4383, 4640, 4972, 4973, 6978, 6979, 6980, 6985, 6986, 6987, 7804,
+        ],
         "a live CRS of the same name and definition",
     ),
     // Lambert Azimuthal Equal Area (Spherical) on WGS 84, as WKT1 can't
@@ -822,7 +862,23 @@ const KNOWN_IDENTIFY: &[(&[u32], &str)] = &[
     // As read (KNOWN_WKT1): "degree minute second hemisphere" with a
     // degree's factor, and 9842 written as Equirectangular.
     (&[4235], "a unit equal by factor, not by name"),
-    (&[32663], "a deprecated method under another's WKT1 name"),
+    (
+        &[32662, 32663],
+        "a deprecated method under another's WKT1 name",
+    ),
+    // EPSG:3786 and 4088 have one name and definition and are both
+    // deprecated: the lower code comes first.
+    (&[4088], "two deprecated CRSs alike"),
+    // As in KNOWN_WKT1_ESRI: names from PROJ's copy of Esri's, which
+    // xeibe-esri doesn't have, so the datum or CRS isn't found by name.
+    (
+        &[
+            4969, 5359, 5360, 5361, 5362, 9147, 9148, 9149, 9150, 9152, 9153, 9154, 9155, 9183,
+            9184, 20040, 20041, 20042, 20048, 20049,
+        ],
+        "Esri names only PROJ's copy has",
+    ),
+    (&[9895], "a VERTCS on a geodetic DATUM"),
     // Not read yet (KNOWN_WKT1): TOWGS84, step 6 of docs/crs-wkt.md, and
     // an engineering CRS with an unspecified axis.
     (&[3785], "TOWGS84"),
@@ -850,11 +906,11 @@ fn check_identify(dir: &Path) -> (usize, String, usize) {
     for r in records(&dir.join("identify.jsonl")) {
         let code = r["code"].as_u64().unwrap() as u32;
         let version = r["version"].as_str().unwrap();
-        if version == "WKT1_ESRI" {
-            continue; // step 5 of docs/crs-wkt.md
-        }
         if xeibe_crs::get(code).is_none() {
             continue; // EPSG's worked examples, which xeibe-crs leaves out
+        }
+        if version == "WKT1_ESRI" && !cfg!(feature = "esri") {
+            continue; // Esri's names are behind the feature
         }
         let known = KNOWN_IDENTIFY
             .iter()
@@ -1008,4 +1064,189 @@ fn wkt_without_ids_transforms_between_datums() {
         ours.convert(x, y, None).unwrap(),
         epsg.convert(x, y, None).unwrap()
     );
+}
+
+/// Where reading Esri's WKT for an EPSG CRS knowingly differs from PROJ's
+/// reading, other than where it identifies the CRS Esri wrote it for.
+const KNOWN_ESRI: &[(&[u32], &str)] = &[
+    // Not read; PROJ reads them as CRSs it can't identify (25).
+    (&[9895], "a 3D PROJCS (LINUNIT)"),
+    (
+        &[9354],
+        "Polar_Stereographic_Variant_B, which PROJ has no mapping for",
+    ),
+    // EPSG:3786 and 4088 have one name and definition and are both
+    // deprecated since Esri's EPSG 12.049: the lower code comes first.
+    (&[4088], "two deprecated CRSs alike"),
+    // Esri's definition is another EPSG CRS's, which we find and PROJ
+    // doesn't: Deir ez Zor as Oblique Stereographic (EPSG:22780), Plate
+    // Carree on the ellipsoid (EPSG:4087).
+    (&[22700, 32662], "another EPSG CRS's definition"),
+];
+
+/// Reads Esri's WKT for each EPSG CRS in `esri.jsonl`
+/// (`scripts/gen_wkt_vectors.py`) and compares it with PROJ's reading: the
+/// same axes, and the same `to_epsg()` unless ours is the code Esri wrote
+/// it for. Returns the number read, a report of the differences by reason,
+/// and how many have a method `Crs` doesn't build.
+fn check_esri(path: &Path) -> (usize, String, usize) {
+    let mut read = 0;
+    let mut unsupported = 0;
+    let mut differing: BTreeMap<String, Vec<u32>> = BTreeMap::new();
+    for r in records(path) {
+        let code = r["code"].as_u64().unwrap() as u32;
+        if xeibe_crs::get(code).is_none()
+            || KNOWN_ESRI.iter().any(|(codes, _)| codes.contains(&code))
+        {
+            continue;
+        }
+        let kind = r["kind"].as_str().unwrap();
+        let proj = &r["proj"];
+        let text = r["wkt"].as_str().unwrap();
+        let json: Value = match wkt::to_projjson(text) {
+            Ok(j) => serde_json::from_str(&j).unwrap(),
+            Err(e) => {
+                let e = e.to_string();
+                let what = e.split(": ").last().unwrap_or(&e).to_owned();
+                differing
+                    .entry(format!("error: {what}"))
+                    .or_default()
+                    .push(code);
+                continue;
+            }
+        };
+        let theirs: Vec<String> = proj["axes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|a| a.as_str().unwrap().to_owned())
+            .collect();
+        if proj.get("axes").is_some() && directions(&json) != theirs {
+            differing
+                .entry(format!(
+                    "{kind} axes {:?} != PROJ's {theirs:?}",
+                    directions(&json)
+                ))
+                .or_default()
+                .push(code);
+        }
+        let crs = match Crs::from_wkt(text) {
+            Ok(crs) => crs,
+            Err(Error::Unsupported { what, .. }) if what.starts_with("the projection method") => {
+                unsupported += 1;
+                continue;
+            }
+            Err(e) => {
+                differing.entry(format!("Crs: {e}")).or_default().push(code);
+                continue;
+            }
+        };
+        read += 1;
+        let ours = to_epsg(&crs.identify());
+        let theirs = proj["to_epsg"].as_u64().map(|c| c as u32);
+        if ours != theirs && ours != Some(code) {
+            differing
+                .entry(format!(
+                    "{kind}: PROJ {}, ours {}",
+                    outcome(code, theirs),
+                    outcome(code, ours)
+                ))
+                .or_default()
+                .push(code);
+        }
+    }
+    let mut report = String::new();
+    for (what, codes) in &differing {
+        report += &format!(
+            "{} x {what}: {:?}\n",
+            codes.len(),
+            &codes[..codes.len().min(12)]
+        );
+    }
+    (read, report, unsupported)
+}
+
+#[cfg(feature = "esri")]
+#[test]
+fn esri_wkt_reads_as_the_epsg_crs() {
+    let (read, report, _) = check_esri(&xeibe_testkit::data_dir().join("crs-wkt/esri.jsonl"));
+    assert!(read > 60, "{read}");
+    assert!(report.is_empty(), "{report}");
+}
+
+#[cfg(feature = "esri")]
+#[test]
+#[ignore = "needs target/crs-wkt/esri.jsonl (scripts/gen_esri_tables.py --all)"]
+fn every_esri_wkt_reads_as_the_epsg_crs() {
+    let (read, report, unsupported) =
+        check_esri(&xeibe_testkit::data_dir().join("../../target/crs-wkt/esri.jsonl"));
+    println!("{read} ESRI WKT strings, {unsupported} with a method Crs doesn't build\n{report}");
+    assert!(report.is_empty(), "{report}");
+}
+
+#[cfg(feature = "esri")]
+#[test]
+fn proj_wkt1_esri_reads_as_proj_reads_it() {
+    let (read, report) = check_wkt1(
+        &xeibe_testkit::data_dir().join("crs-wkt/wkt.jsonl"),
+        "WKT1_ESRI",
+    );
+    assert!(read > 80, "{read}");
+    assert!(report.is_empty(), "{report}");
+}
+
+#[cfg(feature = "esri")]
+#[test]
+#[ignore = "needs target/crs-wkt/wkt.jsonl (scripts/gen_wkt_vectors.py --all)"]
+fn every_proj_wkt1_esri_reads_as_proj_reads_it() {
+    let (read, report) = check_wkt1(
+        &xeibe_testkit::data_dir().join("../../target/crs-wkt/wkt.jsonl"),
+        "WKT1_ESRI",
+    );
+    println!("{read} WKT1_ESRI strings\n{report}");
+    assert!(report.is_empty(), "{report}");
+}
+
+#[cfg(feature = "esri")]
+#[test]
+fn esri_wkt_reading() {
+    let identify = |text: &str| Crs::from_wkt(text).unwrap().identify();
+    let gcs_wgs84 = r#"GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",
+        SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],
+        UNIT["Degree",0.0174532925199433]]"#;
+    // Web Mercator as ArcGIS writes it: Esri's names give EPSG's.
+    let web = format!(
+        r#"PROJCS["WGS_1984_Web_Mercator_Auxiliary_Sphere",{gcs_wgs84},
+        PROJECTION["Mercator_Auxiliary_Sphere"],PARAMETER["False_Easting",0.0],
+        PARAMETER["False_Northing",0.0],PARAMETER["Central_Meridian",0.0],
+        PARAMETER["Standard_Parallel_1",0.0],PARAMETER["Auxiliary_Sphere_Type",0.0],
+        UNIT["Meter",1.0]]"#
+    );
+    assert_eq!(
+        Crs::from_wkt(&web).unwrap().name(),
+        "WGS 84 / Pseudo-Mercator"
+    );
+    assert_eq!(identify(&web), [(3857, 100)]);
+    // EPSG:2180 as Esri names it, on ETRF2000-PL, a member of the ETRS89
+    // ensemble EPSG has it on.
+    let poland = r#"PROJCS["ETRF2000-PL_CS92",GEOGCS["ETRF2000-PL",DATUM["ETRF2000_Poland",
+        SPHEROID["GRS_1980",6378137.0,298.257222101]],PRIMEM["Greenwich",0.0],
+        UNIT["Degree",0.0174532925199433]],PROJECTION["Transverse_Mercator"],
+        PARAMETER["False_Easting",500000.0],PARAMETER["False_Northing",-5300000.0],
+        PARAMETER["Central_Meridian",19.0],PARAMETER["Scale_Factor",0.9993],
+        PARAMETER["Latitude_Of_Origin",0.0],UNIT["Meter",1.0]]"#;
+    assert_eq!(identify(poland)[0], (2180, 100));
+    // A depth.
+    let depth = r#"VERTCS["MSL_Depth",VDATUM["Mean_Sea_Level"],
+        PARAMETER["Vertical_Shift",0.0],PARAMETER["Direction",-1.0],UNIT["Meter",1.0]]"#;
+    let json: Value = serde_json::from_str(&wkt::to_projjson(depth).unwrap()).unwrap();
+    assert_eq!(directions(&json), ["down"]);
+    assert_eq!(identify(depth), [(5715, 100)]);
+    // PROJCS[…],VERTCS[…]: a compound CRS named from its parts.
+    let height = r#"VERTCS["EVRF_2007_PL_height",
+        VDATUM["European_Vertical_Reference_Frame_2007_Poland"],
+        PARAMETER["Vertical_Shift",0.0],PARAMETER["Direction",1.0],UNIT["Meter",1.0]]"#;
+    let both = Crs::from_wkt(&format!("{poland},{height}")).unwrap();
+    assert_eq!(both.name(), "ETRS89 / PL-1992 + PL-EVRF2007 height");
+    assert_eq!(both.dimension(), 3);
 }

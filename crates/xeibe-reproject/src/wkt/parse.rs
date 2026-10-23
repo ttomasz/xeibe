@@ -29,11 +29,37 @@ pub(crate) enum Arg {
 }
 
 /// Parses one WKT object, which must be all of `text` apart from white space.
+///
+/// ESRI writes a horizontal CRS with heights as two objects,
+/// `PROJCS[…],VERTCS[…]` (or `GEOGCS`): those come back as a `COMPD_CS` of
+/// the two, without a name, which the reader gives it from theirs
+/// ("horizontal + vertical", as PROJ names it).
 pub(crate) fn parse(text: &str) -> Result<Node, Error> {
     let mut p = Parser { text, pos: 0 };
     p.skip_space();
-    let node = p.node(0)?;
+    let mut node = p.node(0)?;
     p.skip_space();
+    if p.peek() == Some(b',') && matches!(node.keyword.as_str(), "GEOGCS" | "PROJCS") {
+        p.pos += 1;
+        p.skip_space();
+        let at = p.pos;
+        let vertical = p.node(0)?;
+        if vertical.keyword != "VERTCS" {
+            p.pos = at;
+            return Err(p.error("a second object that isn't a VERTCS"));
+        }
+        node = Node {
+            keyword: "COMPD_CS".into(),
+            // No name: the reader names it from its parts.
+            args: vec![
+                Arg::Text(String::new()),
+                Arg::Node(node),
+                Arg::Node(vertical),
+            ],
+            offset: 0,
+        };
+        p.skip_space();
+    }
     if p.pos < text.len() {
         return Err(p.error("text after the end of the WKT"));
     }

@@ -568,7 +568,25 @@ impl Crs {
                         (Some(x), Some(y)) => x == y,
                         _ => false,
                     };
-                a.same(b, relax) && same_method && pa.same(pb) && same_axes
+                // PROJ's other formulations of one projection: Lambert
+                // Conic Conformal (2SP) as the 1SP it equals, and Mercator
+                // (variant A) as variant B.
+                let lcc = |p: &Params, d: &Datum| methods::two_sp_as_one_sp(p, &d.ellipsoid);
+                let merc = |p: &Params, d: &Datum| methods::variant_a_as_b(p, &d.ellipsoid);
+                let same_projection = match (*ca, *cb) {
+                    _ if same_method && pa.same(pb, *ca) => true,
+                    (Some(9802), Some(9802)) => lcc(pa, a)
+                        .zip(lcc(pb, b))
+                        .is_some_and(|(x, y)| x.same(&y, Some(9801))),
+                    (Some(9801), Some(9802)) => lcc(pb, b).is_some_and(|y| pa.same(&y, Some(9801))),
+                    (Some(9802), Some(9801)) => lcc(pa, a).is_some_and(|x| x.same(pb, Some(9801))),
+                    (Some(9804), Some(9805)) => merc(pa, a).is_some_and(|x| x.same(pb, Some(9805))),
+                    (Some(9805), Some(9804)) => {
+                        merc(pb, b).is_some_and(|y| pa.same(&y, Some(9805)))
+                    }
+                    _ => false,
+                };
+                a.same(b, relax) && same_projection && same_axes
             }
             (Kind::Vertical { datum: a }, Kind::Vertical { datum: b }) => {
                 same_key(&a.key, &a.name, &b.key, &b.name) && same_axes

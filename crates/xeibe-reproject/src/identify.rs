@@ -87,9 +87,10 @@ impl Crs {
             axis_directions: self.implicit_axes,
             ..Relax::default()
         };
-        // Code to confidence, and whether the CRS is equivalent (not on
-        // another datum with the same ellipsoid, nor merely named alike).
-        let mut found: HashMap<u32, (u8, bool)> = HashMap::new();
+        // Code to confidence, whether the CRS is equivalent (not on another
+        // datum with the same ellipsoid, nor merely named alike), and
+        // whether its axes are the input's exactly, not only by unit.
+        let mut found: HashMap<u32, (u8, bool, bool)> = HashMap::new();
         if let Some(code) = self.code
             && xeibe_crs::get(code).is_some_and(|r| same_kind(r.kind))
         {
@@ -98,9 +99,10 @@ impl Crs {
                     code,
                     confidence: 100,
                     equivalent: true,
+                    exact_axes: true,
                 }];
             }
-            found.insert(code, (25, false));
+            found.insert(code, (25, false, false));
         }
 
         let datums = datum_codes(self);
@@ -108,11 +110,15 @@ impl Crs {
             Kind::Projected { method_code, .. } => *method_code,
             _ => None,
         };
-        // Methods that `Crs::matches` may find the same.
+        // Methods that `Crs::matches` may find the same: deprecated
+        // methods named as their replacements, and other formulations of
+        // one projection.
         let alike = |m: u32| {
             let m = match m {
                 9823 => 1029,
                 9842 => 1028,
+                9802 => 9801,
+                9805 => 9804,
                 m => m,
             };
             if self.implicit_axes {
@@ -123,33 +129,47 @@ impl Crs {
         };
         let same_method = |m: u32| method.is_none_or(|method| alike(method) == alike(m));
         let named = named(&self.name);
+        // The ensembles of those datums and their members: EPSG has moved
+        // CRSs named "ETRS89 / …" from the ETRS89 ensemble to national
+        // members of it, which Esri's and older WKT still have them on.
+        let relatives: Vec<u32> = datums
+            .iter()
+            .flat_map(|&d| crate::datum::relatives(d))
+            .filter(|d| !datums.contains(d))
+            .collect();
         let candidates = xeibe_crs::CRS.iter().filter(|r| {
             same_kind(r.kind)
-                && (datums.is_empty() || r.datum.is_some_and(|d| datums.contains(&d)))
+                && (datums.is_empty()
+                    || r.datum
+                        .is_some_and(|d| datums.contains(&d) || relatives.contains(&d)))
                 && (method.is_none() || r.method.is_some_and(&same_method))
         });
         for record in candidates {
             let Ok(epsg) = Crs::from_epsg(record.code) else {
                 continue;
             };
-            let found_now = if self.matches(&epsg, relax) {
-                let confidence = if record.name.trim() == self.name.trim() {
-                    100
-                } else if named.contains(&record.code) {
-                    90
-                } else {
-                    70
-                };
-                (confidence, true)
-            } else if datums.is_empty()
-                && self.matches(
-                    &epsg,
-                    Relax {
-                        datum_identity: true,
-                        ..relax
-                    },
-                )
-            {
+            let by_name = if record.name.trim() == self.name.trim() {
+                100
+            } else if named.contains(&record.code) {
+                90
+            } else {
+                70
+            };
+            let on_relative = record.datum.is_some_and(|d| relatives.contains(&d));
+            let datum_only = Relax {
+                datum_identity: true,
+                ..relax
+            };
+            let (confidence, equivalent) = if on_relative {
+                // A datum's ensemble or member: only with the CRS's name,
+                // as PROJ takes ETRS89 for its members only then.
+                if by_name < 90 || !self.matches(&epsg, datum_only) {
+                    continue;
+                }
+                (by_name, true)
+            } else if self.matches(&epsg, relax) {
+                (by_name, true)
+            } else if datums.is_empty() && self.matches(&epsg, datum_only) {
                 if self.datum().is_some_and(|d| insignificant(&d.name)) {
                     (70, false)
                 } else {
@@ -158,21 +178,35 @@ impl Crs {
             } else {
                 continue;
             };
+            // WKT1's default axes match by unit; of two CRSs alike but for
+            // their axes (UTM zone 30N and its N-E twin), the one with the
+            // default axes comes first, as in PROJ.
+            let exact_axes = !relax.axis_directions
+                || self.matches(
+                    &epsg,
+                    Relax {
+                        axis_directions: false,
+                        datum_identity: true,
+                        ..relax
+                    },
+                );
+            let found_now = (confidence, equivalent, exact_axes);
             let level = found.entry(record.code).or_default();
             *level = (*level).max(found_now);
         }
         for &code in named {
             if xeibe_crs::get(code).is_some_and(|r| same_kind(r.kind)) {
-                found.entry(code).or_insert((25, false));
+                found.entry(code).or_insert((25, false, false));
             }
         }
 
         let mut out: Vec<Found> = found
             .into_iter()
-            .map(|(code, (confidence, equivalent))| Found {
+            .map(|(code, (confidence, equivalent, exact_axes))| Found {
                 code,
                 confidence,
                 equivalent,
+                exact_axes,
             })
             .collect();
         let deprecated = |code: u32| xeibe_crs::get(code).is_some_and(|r| r.deprecated);
@@ -180,7 +214,14 @@ impl Crs {
         // with another name: EPSG deprecated NAD83 / South Dakota North
         // (ftUS), EPSG:3454, for having South's parameters, so it is
         // equivalent to EPSG:3455, and the name says which was meant.
-        out.sort_by_key(|f| (u8::MAX - f.confidence, deprecated(f.code), f.code));
+        out.sort_by_key(|f| {
+            (
+                u8::MAX - f.confidence,
+                deprecated(f.code),
+                !f.exact_axes,
+                f.code,
+            )
+        });
         out
     }
 }
@@ -190,6 +231,7 @@ struct Found {
     code: u32,
     confidence: u8,
     equivalent: bool,
+    exact_axes: bool,
 }
 
 /// The kind of EPSG CRS this one would be; none for an engineering CRS.

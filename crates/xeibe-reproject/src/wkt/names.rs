@@ -27,7 +27,6 @@ pub(crate) struct Param {
 
 /// One projection method with its WKT1 name and its parameters, in the
 /// order PROJ writes them.
-#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct Method {
     pub(crate) epsg: u32,
@@ -59,7 +58,6 @@ pub(crate) struct Method {
 /// - Popular Visualisation Pseudo Mercator (1024) is listed under its
 ///   own name, but PROJ writes it as `Mercator_1SP` with a `PROJ4`
 ///   extension.
-#[allow(dead_code)]
 #[rustfmt::skip]
 pub(crate) static METHODS: &[Method] = &[
     Method { epsg: 9807, name: "Transverse Mercator", wkt1: "Transverse_Mercator", params: &[
@@ -326,7 +324,6 @@ pub(crate) static METHODS: &[Method] = &[
 ///   value rules this entry out (it tells the variants of one ESRI name
 ///   apart: `Krovak`'s `X_Scale`, `Lambert_Conformal_Conic`'s
 ///   `Scale_Factor`).
-#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct EsriParam {
     pub(crate) esri: &'static str,
@@ -336,7 +333,6 @@ pub(crate) struct EsriParam {
 
 /// One ESRI projection with its EPSG method and its parameters, in the
 /// order PROJ writes them.
-#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct EsriMethod {
     pub(crate) esri: &'static str,
@@ -355,7 +351,6 @@ pub(crate) struct EsriMethod {
 /// spherical or ellipsoidal variant of CEA, LAEA and Equidistant
 /// Cylindrical. Writing takes the first entry with the method's code,
 /// with PROJ's exceptions (see the writer).
-#[allow(dead_code)]
 #[rustfmt::skip]
 pub(crate) static ESRI_METHODS: &[EsriMethod] = &[
     EsriMethod { esri: "Equidistant_Cylindrical", epsg: 1028, params: &[

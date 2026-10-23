@@ -24,9 +24,14 @@ CRS PROJ has, deprecated ones included, two files:
   removed (`ID[...]` in WKT2, `AUTHORITY[...]` in WKT1) and, for it and for
   the string as written (ids kept), PROJ's `list_authority` (EPSG only,
   `[code, confidence]`, best first, at most 5) and `to_epsg()`.
+* `esri.jsonl`: Esri's own WKT1 for each live EPSG CRS in Esri's projection
+  engine database (the CSVs `scripts/gen_esri_tables.py` downloads into
+  `example_data/esri-pedb/`; skipped when they are missing), with PROJ's
+  reading of it: name, axes, `list_authority` and `to_epsg()`.
 
 The WKT is IOGP's EPSG data as PROJ renders it, under the notice in
-`crates/xeibe-crs/EPSG-NOTICE.md`.
+`crates/xeibe-crs/EPSG-NOTICE.md`; `esri.jsonl` is Esri's data, under the
+Apache License 2.0 (`crates/xeibe-esri/ESRI-NOTICE.md`).
 
     scripts/build_proj_oracle.py                 # once per EPSG release
     scripts/gen_wkt_vectors.py                   # committed subset -> tests/data/crs-wkt/
@@ -36,6 +41,7 @@ The WKT is IOGP's EPSG data as PROJ renders it, under the notice in
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import zipfile
 import os
@@ -255,6 +261,47 @@ def vectors(code: int, deprecated: bool) -> tuple[dict, list[dict]] | None:
     return record, ids
 
 
+# Esri's WKT committed beyond the CRSs chosen for the PROJ vectors: ESRI's
+# special cases (Web Mercator, Krovak, polar, Hotine, feet, prime meridians,
+# verticals, 3D).
+ESRI_EXTRA = [
+    2056, 2065, 2154, 2180, 2193, 2224, 2263, 3035, 3031, 3057, 3067, 3395,
+    3413, 3855, 3857, 4258, 4267, 4269, 4277, 4326, 4801, 4802, 4807, 4937,
+    5041, 5514, 5703, 6933, 8058, 21781, 25833, 27561, 27700, 28992, 31370,
+    32633, 32661, 32761,
+]
+
+
+def esri_rows(chosen: list[int] | None) -> list[dict] | None:
+    """Esri's WKT for the live EPSG CRSs in its CSVs, at the commit
+    `xeibe-esri` was generated from: all of them, or `chosen` plus
+    `ESRI_EXTRA`."""
+    tables = ROOT / "crates/xeibe-esri/src/tables.rs"
+    m = re.search(r"at commit ([0-9a-f]{40})", tables.read_text()) if tables.exists() else None
+    directory = ROOT / "example_data/esri-pedb" / (m.group(1) if m else "") / "csv"
+    if m is None or not directory.exists():
+        print("Esri's CSVs are missing (scripts/gen_esri_tables.py): no esri.jsonl", file=sys.stderr)
+        return None
+    wanted = None if chosen is None else set(chosen) | set(ESRI_EXTRA)
+    rows = []
+    for name, kind in (("geogcs", "geographic"), ("projcs", "projected"), ("vertcs", "vertical")):
+        with open(directory / f"pe_list_{name}.csv", encoding="utf-8", newline="") as f:
+            for r in csv.DictReader(f):
+                code = int(r["wkid"])
+                if r["authority"] == "EPSG" and r["deprecated"] == "no" and (wanted is None or code in wanted):
+                    rows.append({"code": code, "kind": kind, "name": r["name"], "wkt": r["wkt"]})
+    return sorted(rows, key=lambda r: r["code"])
+
+
+def esri_vector(row: dict) -> dict:
+    """PROJ's reading and identification of Esri's WKT."""
+    try:
+        crs = pyproj.CRS.from_wkt(row["wkt"])
+    except pyproj.exceptions.CRSError as e:
+        return row | {"proj": {"error": error_text(e)}}
+    return row | {"proj": {"name": crs.name, "axes": directions(crs)} | identify(crs)}
+
+
 def init_worker() -> None:
     pyproj.datadir.set_data_dir(str(ORACLE))
     pyproj.network.set_network_enabled(False)
@@ -319,7 +366,11 @@ def epsg_wkt(version: str, chosen: list[int] | None) -> list[dict] | None:
     return [{"code": c, "wkt": texts[c]} for c in sorted(codes)]
 
 
-def write(path: Path, records: list[dict], notice: str = "rendered by PROJ") -> None:
+def write(
+    path: Path,
+    records: list[dict],
+    notice: str = "EPSG Dataset (IOGP) rendered by PROJ; see crates/xeibe-crs/EPSG-NOTICE.md",
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w") as f:
         header = {
@@ -327,7 +378,7 @@ def write(path: Path, records: list[dict], notice: str = "rendered by PROJ") -> 
             "pyproj": pyproj.__version__,
             "proj": pyproj.proj_version_str,
             "epsg": pyproj.database.get_database_metadata("EPSG.VERSION"),
-            "notice": f"EPSG Dataset (IOGP) {notice}; see crates/xeibe-crs/EPSG-NOTICE.md",
+            "notice": notice,
         }
         f.write(json.dumps(header) + "\n")
         for r in records:
@@ -398,7 +449,23 @@ def main() -> int:
     write(out / "identify.jsonl", ids)
     epsg = epsg_wkt(want, None if args.all else codes)
     if epsg is not None:
-        write(out / "epsg.jsonl", epsg, "as EPSG's own WKT export")
+        write(
+            out / "epsg.jsonl",
+            epsg,
+            "EPSG Dataset (IOGP) as EPSG's own WKT export; see crates/xeibe-crs/EPSG-NOTICE.md",
+        )
+    esri = esri_rows(None if args.all else codes)
+    if esri is not None:
+        with ProcessPoolExecutor(max_workers=args.jobs, initializer=init_worker) as pool:
+            esri = list(pool.map(esri_vector, esri, chunksize=16))
+        write(
+            out / "esri.jsonl",
+            esri,
+            "Esri's projection engine database (Apache-2.0; see crates/xeibe-esri/ESRI-NOTICE.md), "
+            "read by PROJ",
+        )
+        right = sum(r["proj"].get("to_epsg") == r["code"] for r in esri)
+        print(f"ESRI     : {len(esri)} of Esri's strings; PROJ's to_epsg right {right}")
     summary(records, ids)
     print(f"{time.monotonic() - started:.0f} s with {args.jobs} processes")
     return 0

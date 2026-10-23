@@ -7,6 +7,7 @@
 //! and [`Crs::identify`](crate::Crs::identify) finds its EPSG code.
 
 pub(crate) mod datums;
+mod esri;
 mod names;
 mod parse;
 mod wkt1;
@@ -90,9 +91,8 @@ pub(crate) fn to_value(text: &str) -> Result<Value, Error> {
 pub(crate) fn read(text: &str) -> Result<(Value, bool), Error> {
     let node = parse::parse(text)?;
     match node.keyword.as_str() {
-        "GEOGCS" | "PROJCS" | "GEOCCS" | "VERT_CS" | "COMPD_CS" | "LOCAL_CS" | "FITTED_CS" => {
-            Ok((wkt1::crs(&node)?, wkt1::implicit_axes(&node)))
-        }
+        "GEOGCS" | "PROJCS" | "GEOCCS" | "VERT_CS" | "VERTCS" | "COMPD_CS" | "LOCAL_CS"
+        | "FITTED_CS" => Ok((wkt1::crs(&node)?, wkt1::implicit_axes(&node))),
         _ => Ok((wkt2::crs(&node)?, false)),
     }
 }

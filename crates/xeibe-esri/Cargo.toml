@@ -1,0 +1,17 @@
+[package]
+name = "xeibe-esri"
+description = "Esri's names of EPSG CRSs and datums, and its old codes that are EPSG codes now, from Esri's projection engine database. Experimental: AI-generated, not thoroughly tested, unstable API"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+keywords = ["esri", "epsg", "crs", "wkt", "gis"]
+categories = ["science::geo"]
+publish.workspace = true
+
+# NOT the workspace licence. The code is CC0-1.0 like the rest of the
+# workspace, but the tables are derived from Esri's projection engine
+# database documentation, which is Apache-2.0; see ESRI-NOTICE.md and
+# LICENSE-APACHE.
+license = "CC0-1.0 AND Apache-2.0"
+include = ["src/**", "ESRI-NOTICE.md", "LICENSE-APACHE"]

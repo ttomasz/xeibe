@@ -9,9 +9,10 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 repository.workspace = true
-# The embedded EPSG data is IOGP's (xeibe-crs/EPSG-NOTICE.md), and some
-# projection code is ported from PROJ (xeibe-reproject/PROJ-NOTICE.md).
-license = "CC0-1.0 AND MIT AND LicenseRef-EPSG"
+# The embedded EPSG data is IOGP's (xeibe-crs/EPSG-NOTICE.md), some
+# projection code is ported from PROJ (xeibe-reproject/PROJ-NOTICE.md), and
+# Esri's names for reading ESRI WKT are Apache-2.0 (xeibe-esri/ESRI-NOTICE.md).
+license = "CC0-1.0 AND MIT AND Apache-2.0 AND LicenseRef-EPSG"
 # Published to PyPI as a wheel (maturin, pyproject.toml), not to crates.io.
 publish = false
 
@@ -21,5 +22,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 xeibe-crs.workspace = true
-xeibe-reproject.workspace = true
+xeibe-reproject = { workspace = true, features = ["esri"] }
 pyo3.workspace = true

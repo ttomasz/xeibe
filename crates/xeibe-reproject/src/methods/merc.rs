@@ -14,6 +14,38 @@ use super::{BuildError, Params, Projection, param};
 use crate::ellipsoid::Ellipsoid;
 use crate::error::CoordinateError;
 
+/// A Mercator (variant A)'s parameters as those of the variant B that
+/// projects alike, PROJ's `Conversion::convertToOtherMethod`: the standard
+/// parallel where the scale factor is 1. Only for a latitude of origin of
+/// 0 and a scale factor of at most 1.
+pub(crate) fn variant_a_as_b(params: &Params, ellipsoid: &Ellipsoid) -> Option<Params> {
+    if params.get(param::LAT_NATURAL_ORIGIN).unwrap_or(0.0) != 0.0 {
+        return None;
+    }
+    let k0 = params.get(param::SCALE_NATURAL_ORIGIN).ok()?;
+    if !(k0 > 0.0 && k0 <= 1.0 + 1e-10) {
+        return None;
+    }
+    let es = ellipsoid.es;
+    let phi1 = if k0 >= 1.0 {
+        0.0
+    } else {
+        ((1.0 - es) / (1.0 / (k0 * k0) - es)).sqrt().acos()
+    };
+    let mut out = Params::default();
+    out.push(param::LAT_1ST_PARALLEL, phi1);
+    out.push(
+        param::LON_NATURAL_ORIGIN,
+        params.get(param::LON_NATURAL_ORIGIN).ok()?,
+    );
+    out.push(param::FALSE_EASTING, params.get(param::FALSE_EASTING).ok()?);
+    out.push(
+        param::FALSE_NORTHING,
+        params.get(param::FALSE_NORTHING).ok()?,
+    );
+    Some(out)
+}
+
 #[derive(Debug)]
 pub(crate) struct Mercator {
     lon0: f64,

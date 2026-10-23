@@ -14,6 +14,64 @@ use crate::error::CoordinateError;
 
 const EPS10: f64 = 1e-10;
 
+/// A Lambert Conic Conformal (2SP)'s parameters as those of the 1SP that
+/// projects alike, PROJ's `Conversion::convertToOtherMethod`: two 2SP
+/// definitions whose parameters differ (rounded false origins, swapped
+/// standard parallels) are equivalent in PROJ when their 1SP forms are.
+pub(crate) fn two_sp_as_one_sp(params: &Params, ellipsoid: &Ellipsoid) -> Option<Params> {
+    let phi_f = params.get(param::LAT_FALSE_ORIGIN).ok()?;
+    let phi1 = params.get(param::LAT_1ST_PARALLEL).ok()?;
+    let phi2_ = params.get(param::LAT_2ND_PARALLEL).ok()?;
+    if [phi_f, phi1, phi2_].iter().any(|p| p.abs() >= FRAC_PI_2) {
+        return None;
+    }
+    let (es, e) = (ellipsoid.es, ellipsoid.e);
+    let m = |phi: f64| msfn(phi.sin(), phi.cos(), es);
+    let t = |phi: f64| tsfn(phi, phi.sin(), e);
+    let (m1, t1) = (m(phi1), t(phi1));
+    let n_denom = t1.ln() - t(phi2_).ln();
+    let n = if n_denom.abs() < EPS10 {
+        phi1.sin()
+    } else {
+        (m1.ln() - m(phi2_).ln()) / n_denom
+    };
+    if n.abs() < EPS10 {
+        return None;
+    }
+    let f = m1 / (n * t1.powf(n));
+    let phi0 = n.asin();
+    let k0 = f / (m(phi0) / (n * t(phi0).powf(n)));
+    let correction = ellipsoid.a * f * (t(phi_f).powf(n) - t(phi0).powf(n));
+    // PROJ rounds the latitude to a thousandth of a degree when that close.
+    let mut phi0_deg = phi0.to_degrees();
+    let thousandths = (phi0_deg * 1000.0 + 0.5).floor();
+    if (phi0_deg * 1000.0 - thousandths).abs() < 1e-8 {
+        phi0_deg = thousandths / 1000.0;
+    }
+    let mut out = Params::default();
+    out.push(param::LAT_NATURAL_ORIGIN, phi0_deg.to_radians());
+    out.push(
+        param::LON_NATURAL_ORIGIN,
+        params.get(param::LON_FALSE_ORIGIN).ok()?,
+    );
+    out.push(param::SCALE_NATURAL_ORIGIN, k0);
+    out.push(
+        param::FALSE_EASTING,
+        params.get(param::EASTING_FALSE_ORIGIN).ok()?,
+    );
+    let northing = params.get(param::NORTHING_FALSE_ORIGIN).ok()?;
+    out.push(
+        param::FALSE_NORTHING,
+        northing
+            + if correction.abs() > 1e-8 {
+                correction
+            } else {
+                0.0
+            },
+    );
+    Some(out)
+}
+
 #[derive(Debug)]
 pub(crate) struct LambertConic {
     lon0: f64,

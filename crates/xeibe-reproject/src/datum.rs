@@ -29,6 +29,22 @@ pub(crate) fn ensemble_member(a: u32, b: u32) -> Option<f64> {
     member_of(a, b).or_else(|| member_of(b, a))
 }
 
+/// The members of an ensemble, and the ensembles a datum is a member of.
+pub(crate) fn relatives(code: u32) -> Vec<u32> {
+    let datums = &registry().datums;
+    let mut out: Vec<u32> = datums
+        .get(&code)
+        .and_then(|d| d.members.clone())
+        .unwrap_or_default();
+    out.extend(
+        datums
+            .iter()
+            .filter(|(_, d)| d.members.as_ref().is_some_and(|m| m.contains(&code)))
+            .map(|(&c, _)| c),
+    );
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
