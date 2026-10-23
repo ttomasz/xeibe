@@ -340,3 +340,33 @@ fn usages_give_area_scope_and_box() {
     assert_eq!(doc["area"], "Poland - onshore and offshore.");
     assert_eq!(doc["bbox"]["south_latitude"], 49.0);
 }
+
+#[test]
+fn deprecated_crss_name_their_replacements() {
+    // EPSG:4140 NAD83(CSRS98) was replaced by NAD83(CSRS), 4617.
+    assert_eq!(xeibe_crs::replacements(4140).collect::<Vec<_>>(), [4617]);
+    assert_eq!(xeibe_crs::replacements(4326).count(), 0);
+    // A CRS replaced by several.
+    assert!(xeibe_crs::replacements(26591).count() >= 1);
+}
+
+#[test]
+#[allow(clippy::approx_constant)] // EPSG's pi
+fn units_carry_their_factors() {
+    let ftus = xeibe_crs::unit(9003).unwrap();
+    assert_eq!(ftus.name, "US survey foot");
+    assert_eq!(ftus.kind, xeibe_crs::UnitKind::Length);
+    assert_eq!(ftus.factor, Some(12.0 / 39.37));
+    // EPSG's degree is its 15-digit pi over 180, as in PROJ's database.
+    assert_eq!(
+        xeibe_crs::unit(9102).unwrap().factor,
+        Some(3.14159265358979 / 180.0)
+    );
+    // Sexagesimal DMS has no factor.
+    assert_eq!(xeibe_crs::unit(9110).unwrap().factor, None);
+    assert!(
+        xeibe_crs::UNITS_OF_MEASURE
+            .windows(2)
+            .all(|w| w[0].code < w[1].code)
+    );
+}

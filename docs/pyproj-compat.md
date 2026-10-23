@@ -32,7 +32,8 @@ As of 2026-10-21, phase 0 and phase 1 are implemented, apart from
 2026-10-23, so is phase 2's WKT part ([crs-wkt.md](crs-wkt.md)): WKT in and
 out, identification by definition, Bound CRSs and Esri's old codes. The
 rest of phase 2 is designed in [pyproj-phase2.md](pyproj-phase2.md), and
-its first three steps are done: the geodesic port, `Geod` and `Proj`.
+its first four steps are done: the geodesic port, `Geod`, `Proj`, and
+`to_2d`, `to_3d` and `get_non_deprecated`.
 
 - **Done.**
   - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
@@ -56,6 +57,8 @@ its first three steps are done: the geodesic port, `Geod` and `Proj`.
   - `Geod`, complete, with `CRS.get_geod`, `pyproj.geod` and
     `pyproj.list` ([pyproj-phase2.md](pyproj-phase2.md#geod-in-xeibe_proj)).
   - `Proj` for EPSG and WKT input ([pyproj-phase2.md](pyproj-phase2.md#proj)).
+  - `CRS.to_2d`, `to_3d` and `get_non_deprecated`
+    ([pyproj-phase2.md](pyproj-phase2.md#to_2d-to_3d-get_non_deprecated)).
 - **The Rust changes phase 1 needed are made**:
   - `Transform::operation_info`, `operation_index_for` and
     `with_operation_index` for the metadata and the group;
@@ -67,9 +70,9 @@ its first three steps are done: the geodesic port, `Geod` and `Proj`.
     EPSG's remarks on CRSs and operations in a file of their own, read on
     first use. The wheel grew from 2.0 to 2.2 MB.
 - **Measured** (see [Testing](#testing)):
-  - pyproj's own suite: 324 of its 960 tests pass: 120 before phase 1's
+  - pyproj's own suite: 335 of its 963 tests pass: 120 before phase 1's
     Rust changes, 129 after, 149 with the WKT part of phase 2, 318 with
-    `Geod`, 324 with `Proj`.
+    `Geod`, 324 with `Proj`, 335 with `to_2d`/`to_3d`.
   - Against the oracle `proj.db`, every EPSG CRS reports what PROJ does,
     scopes, area descriptions and remarks included, except four documented
     differences:
@@ -328,10 +331,10 @@ becomes the package's status tracker.
 | `name`, `type_name`, `is_geographic` / `is_projected` / `is_geocentric` / `is_vertical` / `is_compound` / `is_engineering` / `is_derived` / `is_bound`, `is_deprecated`, `utm_zone`, `remarks`, `scope` | 1 | From PROJJSON and `CrsRecord`. |
 | `axis_info`, `area_of_use`, `datum`, `ellipsoid`, `prime_meridian`, `coordinate_system`, `coordinate_operation`, `geodetic_crs`, `sub_crs_list`, `source_crs`, `target_crs` | 1 | Sub-objects built from PROJJSON with pyproj's attribute names (`AxisInfo.unit_conversion_factor`, `Ellipsoid.semi_major_metre`, …). |
 | `to_json`, `to_json_dict` | 1 | Our PROJJSON. GeoPandas writes this into GeoParquet. |
-| `to_epsg`, `to_authority`, `list_authority`, `get_non_deprecated` | 1 / 2 | Phase 1: CRSs that carry an EPSG id. Phase 2: identifying a CRS read from WKT against the EPSG table, with PROJ's confidence levels ([crs-wkt.md](crs-wkt.md#identification)). **Done**, but `get_non_deprecated`. |
+| `to_epsg`, `to_authority`, `list_authority`, `get_non_deprecated` | 1 / 2 | Phase 1: CRSs that carry an EPSG id. Phase 2: identifying a CRS read from WKT against the EPSG table, with PROJ's confidence levels ([crs-wkt.md](crs-wkt.md#identification)), and EPSG's replacements of deprecated CRSs ([pyproj-phase2.md](pyproj-phase2.md#to_2d-to_3d-get_non_deprecated)). **Done.** |
 | `equals(ignore_axis_order=)`, `__eq__`, `is_exact_same`, `__hash__` | 1 | Equivalence on the parsed definition (datum, ellipsoid, method, parameters, axes), not on names, as PROJ's `proj_is_equivalent_to` does. Hash on the normalised definition. |
 | `repr`, `str`, `srs`, pickling | 1 | pyproj's multi-line summary. Pickles as PROJJSON, which dask and multiprocessing need. |
-| `to_2d`, `to_3d`, `get_geod` | 2 | |
+| `to_2d`, `to_3d`, `get_geod` | 2 | PROJ's `demoteTo2D` and `promoteTo3D`, with EPSG's 2D–3D twins ([pyproj-phase2.md](pyproj-phase2.md#to_2d-to_3d-get_non_deprecated)), and the `Geod` of the CRS's ellipsoid. **Done.** |
 | `from_wkt`, objects with `to_wkt()` (rasterio, fiona) | 2 | WKT1 (GDAL and ESRI flavours) and WKT2 2015/2019 → PROJJSON, in Rust ([crs-wkt.md](crs-wkt.md)). **Done.** |
 | `to_wkt(version, pretty, output_axis_rule)`, also on the parts (`Datum`, `Ellipsoid`, …) | 2 | WKT2_2019 and WKT1_GDAL from PROJJSON, what GeoPandas, pyogrio and rioxarray ask for; other versions raise ([crs-wkt.md](crs-wkt.md#writing)). Equivalent to PROJ's output, not byte-identical. **Done**: PROJ's token for token for every EPSG CRS but listed differences. |
 | `from_proj4`, `from_dict`, `+proj=…` strings | 3 | A translator to PROJJSON for the projections we have (`longlat`, `utm`, `tmerc`, `lcc`, `merc`, `stere`, `sterea`, `laea`, `aea`, `eqc`, `cea`, `omerc`, `krovak`, …) with `+ellps`, `+datum`, `+towgs84`, `+units`, `+axis`, `+pm`. Anything else is an error. |

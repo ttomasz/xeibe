@@ -15,7 +15,7 @@ Since 0.3.0 also each CRS's areas of use and scopes, and EPSG's remarks.
 > stable and will change in the near future, in breaking ways. Do not use it in
 > production.
 
-Everything in `src/table.rs`, `src/aliases.rs`, `src/names.rs`, `src/datums.rs` and `data/` is **generated** by
+Everything in `src/table.rs`, `src/aliases.rs`, `src/names.rs`, `src/datums.rs`, `src/deprecations.rs`, `src/units.rs` and `data/` is **generated** by
 `scripts/gen_crs_tables.py`; do not edit any of it by hand. `src/lib.rs` and the
 tests are hand-written.
 
@@ -41,6 +41,8 @@ flowchart TD
     B --> J["aliases naming<br/>one CRS"] --> K["src/aliases.rs"]
     B --> R["method and parameter<br/>names and aliases"] --> S["src/names.rs"]
     B --> T["datum names<br/>and aliases"] --> U["src/datums.rs"]
+    B --> V["replacements of<br/>deprecated CRSs"] --> W["src/deprecations.rs"]
+    B --> X["units of measure<br/>and their factors"] --> Y["src/units.rs"]
     B --> L["coordinate operations,<br/>datums, areas of use"] --> M["data/operations.bin"]
     B --> N["each CRS's areas of use<br/>and scopes, by reference"] --> O["data/usages.bin"]
     B --> P["remarks on CRSs<br/>and operations"] --> Q["data/remarks.bin"]
@@ -229,6 +231,13 @@ releases embedded in each.
 
 ### 0.4.0
 
+- `replacements(code)`: the CRSs EPSG names as replacements of a
+  deprecated one (`src/deprecations.rs`, from `epsg_deprecation`, 766
+  pairs), as PROJ's `getNonDeprecated` gives them; for pyproj's
+  `CRS.get_non_deprecated` (`docs/pyproj-phase2.md`).
+- `UNITS_OF_MEASURE` and `unit(code)`: EPSG's units of measure with their
+  kind and factor to SI, `factor_b / factor_c` as PROJ's database has it
+  (`src/units.rs`); for pyproj's `get_units_map`.
 - `method_code(name)` and `parameter_code(name)`: EPSG's operation methods
   and parameters by name or alias, case-insensitively (`src/names.rs`, 317
   method and 264 parameter names). They are for definitions that name

@@ -35,13 +35,16 @@ use std::sync::{Mutex, OnceLock};
 // Generated data: bbox longitudes such as 3.14 are not π.
 mod aliases;
 mod datums;
+mod deprecations;
 mod names;
 #[allow(clippy::approx_constant)]
 mod table;
+mod units;
 
 pub use aliases::ALIASES;
 pub use datums::{DATUM_ALIASES, DATUMS};
 pub use table::{CRS, EPSG_DATE, EPSG_VERSION, PROJJSON_COUNT};
+pub use units::UNITS_OF_MEASURE;
 
 /// Direction of a CRS's first axis, in the authority's own axis order.
 ///
@@ -156,6 +159,48 @@ pub fn alias(name: &str) -> Option<u32> {
         .binary_search_by(|(alias, _)| (*alias).cmp(name.as_str()))
         .ok()
         .map(|index| aliases[index].1)
+}
+
+/// The CRSs EPSG gives as replacements of a deprecated one, in EPSG's
+/// order; none for a CRS that isn't deprecated or has no replacement. As
+/// PROJ's `getNonDeprecated` (pyproj's `CRS.get_non_deprecated`).
+pub fn replacements(code: u32) -> impl Iterator<Item = u32> {
+    let table = deprecations::REPLACEMENTS;
+    let start = table.partition_point(|(c, _)| *c < code);
+    table[start..]
+        .iter()
+        .take_while(move |(c, _)| *c == code)
+        .map(|(_, replacement)| *replacement)
+}
+
+/// What a unit of measure measures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UnitKind {
+    Length,
+    Angle,
+    Scale,
+    Time,
+}
+
+/// One of EPSG's units of measure: [`UNITS_OF_MEASURE`] lists them by code.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct UnitOfMeasure {
+    pub code: u32,
+    pub name: &'static str,
+    pub kind: UnitKind,
+    /// The unit in its kind's SI unit (metre, radian, unity, second),
+    /// EPSG's `factor_b / factor_c`; `None` where EPSG gives no factor
+    /// (sexagesimal units, and the time units EPSG leaves open).
+    pub factor: Option<f64>,
+    pub deprecated: bool,
+}
+
+/// An EPSG unit of measure's record, by code.
+pub fn unit(code: u32) -> Option<&'static UnitOfMeasure> {
+    UNITS_OF_MEASURE
+        .binary_search_by_key(&code, |u| u.code)
+        .ok()
+        .map(|i| &UNITS_OF_MEASURE[i])
 }
 
 /// What a datum (or a datum ensemble's members) is for.

@@ -41,6 +41,10 @@ release and emits:
   only those that name a single one.
 - `src/datums.rs` -- EPSG's datums and datum ensembles (code, name, kind,
   deprecation) and EPSG's aliases for them.
+- `src/deprecations.rs` -- EPSG's replacements of deprecated CRSs (table
+  `epsg_deprecation`).
+- `src/units.rs` -- EPSG's units of measure: code, name, kind, the factor
+  to SI (`factor_b / factor_c`) and deprecation.
 
 Values are reproduced as EPSG publishes them, with two representation changes
 that the Terms permit because they preserve numeric equivalence:

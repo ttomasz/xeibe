@@ -21,6 +21,8 @@ class Record(NamedTuple):
     dimension: int
     deprecated: bool
     area: tuple[float, float, float, float] | None
+    # The datum or datum ensemble, through the base or horizontal CRS.
+    datum: int | None
 
 
 @cache
@@ -40,6 +42,21 @@ def _names() -> dict[str, int]:
     for r in sorted(records().values(), key=lambda r: (r.deprecated, r.code)):
         out.setdefault(r.name.lower(), r.code)
     return out
+
+
+@cache
+def _by_name_and_kind() -> dict[tuple[str, str], list[Record]]:
+    """CRSs by lowercased name and kind, the current ones first."""
+    out: dict[tuple[str, str], list[Record]] = {}
+    for r in sorted(records().values(), key=lambda r: (r.deprecated, r.code)):
+        out.setdefault((r.name.lower(), r.kind), []).append(r)
+    return out
+
+
+def named(name: str, kind: str) -> list[Record]:
+    """The CRSs of this kind with this name, ignoring case, the current
+    ones first."""
+    return _by_name_and_kind().get((name.lower(), kind), [])
 
 
 def code_for_name(name: str) -> int | None:

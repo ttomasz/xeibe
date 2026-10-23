@@ -66,6 +66,12 @@ fn alias(name: &str) -> Option<u32> {
 }
 
 /// The EPSG code an old Esri code (`ESRI:102100`) moved to, or `None`.
+/// The CRSs EPSG gives as replacements of a deprecated one, in EPSG's order.
+#[pyfunction]
+fn replacements(code: u32) -> Vec<u32> {
+    xeibe_crs::replacements(code).collect()
+}
+
 #[pyfunction]
 fn esri_code(code: u32) -> Option<u32> {
     xeibe_esri::epsg_code(code)
@@ -118,6 +124,7 @@ type Record = (
     u8,
     bool,
     Option<(f64, f64, f64, f64)>,
+    Option<u32>,
 );
 
 /// The f64 of an f32's shortest decimal form: EPSG's `14.14`, not
@@ -159,7 +166,15 @@ fn crs_records() -> Vec<Record> {
             let area = r
                 .area_wgs84
                 .map(|[south, west, north, east]| (f(west), f(south), f(east), f(north)));
-            (r.code, r.name, kind, r.dimension, r.deprecated, area)
+            (
+                r.code,
+                r.name,
+                kind,
+                r.dimension,
+                r.deprecated,
+                area,
+                r.datum,
+            )
         })
         .collect()
 }
@@ -496,6 +511,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(operation_remarks, m)?)?;
     m.add_function(wrap_pyfunction!(clear_grids, m)?)?;
     m.add_function(wrap_pyfunction!(esri_code, m)?)?;
+    m.add_function(wrap_pyfunction!(replacements, m)?)?;
     m.add_function(wrap_pyfunction!(wkt_to_projjson, m)?)?;
     m.add_function(wrap_pyfunction!(to_wkt, m)?)?;
     m.add_function(wrap_pyfunction!(extent, m)?)?;

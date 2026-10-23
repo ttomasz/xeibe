@@ -263,3 +263,61 @@ def test_proj_matches_pyproj() -> None:
 def _proj_close(a: tuple[float, float], b: tuple[float, float], geographic: bool) -> bool:
     tolerance = 1e-8 if geographic else 1e-3
     return all(math.isclose(x, y, rel_tol=0, abs_tol=tolerance) for x, y in zip(a, b, strict=True))
+
+
+def _dimension_facts(crs: Any) -> dict[str, object]:
+    """What to_2d and to_3d give, as both packages report it. Remarks are
+    left out: PROJ's database has few, and ours are EPSG's (see _known)."""
+    area = crs.area_of_use
+    geodetic = crs.geodetic_crs
+    return {
+        "type_name": crs.type_name,
+        "name": crs.name,
+        "id": (crs.to_json_dict().get("id") or {}).get("code"),
+        "axes": [(a.name, a.abbrev, a.direction, a.unit_name) for a in crs.axis_info],
+        "datum": crs.datum and crs.datum.name,
+        "scope": crs.scope,
+        "area": None if area is None else (area.name, tuple(round(v, 6) for v in area.bounds)),
+        "geodetic": geodetic and (geodetic.name, (geodetic.to_json_dict().get("id") or {}).get("code")),
+    }
+
+
+def _known_dimension(code: int, key: str, ours: object, theirs: object) -> bool:
+    """pyproj rebuilds the result of to_2d and to_3d from its WKT, which
+    names the components of a compound CRS without their ids, and PROJ's
+    Pseudo-Mercator keeps its 2D base when promoted
+    (docs/pyproj-phase2.md, to_2d)."""
+    record = _epsg.record(code)
+    if key == "geodetic" and record is not None and record.kind == "compound":
+        return isinstance(ours, tuple) and isinstance(theirs, tuple) and ours[0] == theirs[0] and theirs[1] is None
+    if code == 3857 and key in ("geodetic", "datum"):
+        return True
+    return _known(key, code, ours, theirs)
+
+
+def test_dimensions_match_pyproj() -> None:
+    """to_2d and to_3d of every current EPSG CRS, and get_non_deprecated of
+    every deprecated one, as pyproj's."""
+    mismatches: list[str] = []
+    for code, record in _epsg.records().items():
+        try:
+            theirs = pyproj.CRS.from_epsg(code)
+        except pyproj.exceptions.CRSError:
+            continue
+        ours = CRS.from_epsg(code)
+        if record.deprecated:
+            # pyproj may give a deprecated CRS's replacement's definition
+            # under its own id; only the replacements are compared.
+            mine = [c.to_epsg() for c in ours.get_non_deprecated()]
+            pyprojs = [c.to_epsg() for c in theirs.get_non_deprecated()]
+            if mine != pyprojs:
+                mismatches.append(f"EPSG:{code} get_non_deprecated: {mine} != {pyprojs}")
+            continue
+        assert ours.get_non_deprecated() == []
+        for method in ("to_2d", "to_3d"):
+            a = _dimension_facts(getattr(ours, method)())
+            b = _dimension_facts(getattr(theirs, method)())
+            for key, value in a.items():
+                if value != b[key] and not _known_dimension(code, key, value, b[key]):
+                    mismatches.append(f"EPSG:{code} {method} {key}: {value!r} != {b[key]!r}")
+    assert not mismatches, (len(mismatches), mismatches[:10])

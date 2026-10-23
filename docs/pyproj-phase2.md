@@ -1,7 +1,8 @@
 # pyproj compatibility, phase 2: geodesics, `Proj` and the rest
 
-> **Status: designed, 2026-10-23; steps 1 to 3 of 8 implemented (the
-> geodesic port in Rust, `Geod` and `Proj`, see [Order of work](#order-of-work)).**
+> **Status: designed, 2026-10-23; steps 1 to 4 of 8 implemented (the
+> geodesic port in Rust, `Geod`, `Proj`, `to_2d`/`to_3d`/`get_non_deprecated`,
+> see [Order of work](#order-of-work)).**
 > This is the rest
 > of phase 2 in [pyproj-compat.md](pyproj-compat.md#phases), after the WKT
 > part ([crs-wkt.md](crs-wkt.md)). Facts about PROJ and pyproj were checked
@@ -207,29 +208,48 @@ as PROJ's own conversion of the CRS does:
 
 ## `to_2d`, `to_3d`, `get_non_deprecated`
 
-PROJ's rules, checked with pyproj:
+PROJ's rules (`promoteTo3D`, `demoteTo2D` in `crs.cpp`), checked with
+pyproj:
 
 | Input | `to_3d()` | `to_2d()` |
 |---|---|---|
-| Geographic 2D | Geographic 3D with an ellipsoidal height (`h`, up, metre): EPSG's own when one has the same datum and name (4326 → 4979, 4258 → 4937), else without an id (4807) | Itself |
-| Geographic 3D | Itself | Geographic 2D, EPSG's own when there is one (4979 → 4326) |
-| Projected | Projected 3D on the promoted base, with `h` added, without an id | Itself, or the 2D CRS for a projected 3D CRS |
-| Compound | Itself | Its horizontal part, demoted (9707 → 4326) |
-| Bound | The Bound CRS of the promoted or demoted source | |
+| Geographic 2D | Geographic 3D with an ellipsoidal height (`h`, up, metre): EPSG's own when the first EPSG geographic 3D CRS of the same name is on the same datum with the same two axes (4326 → 4979, 4258 → 4937), else a new one (4807) | Itself |
+| Geographic 3D | Itself | Geographic 2D, EPSG's own on the same rule (4979 → 4326), else a new one |
+| Projected | Projected 3D on the promoted base (2180's on 4937), with `h` added, without an id | Itself, or for a projected 3D CRS the 2D CRS on the demoted base |
+| Compound | Itself | Its first component, as EPSG defines it (9707 → 4326) |
+| Bound | The Bound CRS of the promoted source; with a TOWGS84 transformation, of the promoted hub too | The same, demoted |
 | Geocentric, vertical, engineering | Itself | Itself |
 
-`name=` names a new CRS only when there is no EPSG one. PROJ ignores it
-otherwise: `CRS(4326).to_3d(name="X")` is named "WGS 84". The 2D–3D
-lookup uses the `CrsRecord` table: same datum, same name, the other
-dimension.
+The twin is looked up only for a CRS with one EPSG id. A new 3D CRS keeps
+the CRS's areas of use, each with the scope "unknown", and gets the remark
+"Promoted to 3D from EPSG:<code>", followed by EPSG's remarks; it has no
+id. A new 2D CRS keeps only its name, datum and axes. `name=` names a new
+CRS only: `CRS(4326).to_3d(name="X")` is EPSG:4979, named "WGS 84".
 
 `get_non_deprecated()` lists the replacements EPSG gives for a deprecated
-CRS (`epsg_deprecation`, as PROJ's `build_db.py` fills its `deprecation`
-table), as `CRS` objects. It gives `[]` for a CRS that isn't deprecated or
-has no replacement. `gen_crs_tables.py` writes the table into `xeibe-crs`.
+CRS, as `CRS` objects. They come from `epsg_deprecation`, as PROJ's
+`build_db.py` fills its `deprecation` table, through
+`xeibe_crs::replacements`. It gives `[]` for a CRS that isn't deprecated or
+has no replacement. The table also has EPSG's 295 old 8-digit codes, which
+PROJ doesn't import (61206405 → 4120).
 
-Both are tested over every EPSG CRS against pyproj on the oracle
-database. The comparison covers type, name, id and axes.
+### Validation
+
+`test_oracle.py` compares `to_2d()` and `to_3d()` of every current EPSG CRS
+with pyproj's on the oracle database. The comparison covers type, name, id,
+axes, datum, scope, area and geodetic CRS. It also compares
+`get_non_deprecated()` of every deprecated one. Everything matches but
+these pyproj artifacts:
+
+- **Remarks.** PROJ's database has few CRS remarks, so pyproj's promoted
+  remark stops at "Promoted to 3D from EPSG:…". Ours goes on with EPSG's,
+  as for the CRSs themselves.
+- **WKT round trips.** pyproj rebuilds the result from its WKT, which
+  drops the ids of a compound CRS's components. EPSG:3857's promoted
+  base stays the 2D EPSG:4326 in pyproj.
+- **Deprecated CRSs.** pyproj's results for them can carry the
+  replacement's definition under the old id (EPSG:4855's `to_2d` is named
+  like EPSG:5105), so only their replacements are compared.
 
 ## `get_units_map`
 
@@ -322,7 +342,9 @@ The tests use the local HTTP server the grid tests already use.
    pyproj's `test_proj.py` mostly needs PROJ strings (phase 3); the suite
    went from 318 to 324 of 960.
 4. **`to_2d`, `to_3d`, `get_non_deprecated`**, gated on pyproj over every
-   EPSG CRS.
+   EPSG CRS. **Done:** `xeibe_proj.crs._dimension` and
+   `xeibe_crs::replacements` (with `xeibe_crs::UNITS_OF_MEASURE` for step 5);
+   the suite went from 324 to 335 of 963.
 5. **`get_units_map`**, gated on pyproj.
 6. **`area_of_interest`, `accuracy`, `only_best`**, gated on PROJ's
    candidate lists.

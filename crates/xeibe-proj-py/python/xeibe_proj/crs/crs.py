@@ -20,6 +20,7 @@ from xeibe_proj import _epsg, _native, _wkt
 from xeibe_proj._json import JsonDict, as_dict, as_list, get_dict, get_dicts, ident
 from xeibe_proj._unsupported import not_yet, out
 from xeibe_proj.aoi import AreaOfUse
+from xeibe_proj.crs import _dimension
 from xeibe_proj.crs._objects import (
     AxisInfo,
     CoordinateOperation,
@@ -704,10 +705,24 @@ class CRS:
         raise not_yet("CRS.cs_to_cf", 3)
 
     def to_2d(self, name: str | None = None) -> CRS:
-        raise not_yet("CRS.to_2d", 2)
+        """The CRS without a height, as PROJ's ``demoteTo2D``: EPSG's 2D
+        twin of a geographic 3D CRS (4979 gives 4326), a projected CRS on
+        its demoted base, a compound CRS's horizontal part. ``name`` names a
+        new CRS, not an EPSG one."""
+        json2d, code = _dimension.demote(self._projjson, name)
+        if code is not None:
+            return CRS.from_epsg(code)
+        return CRS._from_projjson(self._projjson if json2d is None else json2d)
 
     def to_3d(self, name: str | None = None) -> CRS:
-        raise not_yet("CRS.to_3d", 2)
+        """The CRS with an ellipsoidal height, as PROJ's ``promoteTo3D``:
+        EPSG's 3D twin of a geographic 2D CRS (4326 gives 4979), else the CRS
+        with a height axis in metres, without an id. ``name`` names a new
+        CRS, not an EPSG one."""
+        json3d, code = _dimension.promote(self._projjson, name, self.remarks)
+        if code is not None:
+            return CRS.from_epsg(code)
+        return CRS._from_projjson(self._projjson if json3d is None else json3d)
 
     def get_geod(self) -> Geod | None:
         """The ``Geod`` of the CRS's ellipsoid, or ``None`` without one."""
@@ -720,7 +735,12 @@ class CRS:
         )
 
     def get_non_deprecated(self) -> list[CRS]:
-        raise not_yet("CRS.get_non_deprecated", 2)
+        """The CRSs EPSG gives as replacements of this one, when it is a
+        deprecated EPSG CRS; else none."""
+        code = self._epsg_code()
+        if code is None:
+            return []
+        return [CRS.from_epsg(c) for c in _native.replacements(code)]
 
     # Comparison ---------------------------------------------------------------
 
