@@ -21,7 +21,9 @@
 //!   error ([`CoordinateError::GridNotLoaded`]);
 //! * vertical and compound CRSs ([`Crs::compound`]): geoid models, vertical
 //!   offsets and offset grids;
-//! * engineering CRSs, on their own datum and through EPSG's operations.
+//! * engineering CRSs, on their own datum and through EPSG's operations;
+//! * Bound CRSs (WKT1's `TOWGS84`): their own transformation to WGS 84,
+//!   and EPSG's operations on from there, as PROJ routes them.
 //!
 //! When no EPSG transformation applies, setting up the transform fails; a
 //! ballpark approximation is never used. Operations that need a coordinate

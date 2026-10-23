@@ -16,8 +16,9 @@
 //!   some meridians in sexagesimal.
 //!
 //! Web Mercator (`Mercator_1SP` on a sphere with GDAL's `PROJ4` extension)
-//! is EPSG:3857's method. Any other `PROJ4` extension, and `TOWGS84`, are
-//! errors until PROJ strings and bound CRSs are read.
+//! is EPSG:3857's method; any other `PROJ4` extension is an error until
+//! PROJ strings are read. `TOWGS84` makes the CRS a Bound CRS to WGS 84,
+//! as in PROJ.
 //!
 //! ESRI's form ([`super::esri`]) is read here too: its names of CRSs and
 //! datums through Esri's tables, which give them EPSG's names and ids; its
@@ -42,9 +43,17 @@ pub(crate) fn crs(node: &Node) -> Result<Value, Error> {
 
 fn crs_in(node: &Node, cx: &Dialect) -> Result<Value, Error> {
     match node.keyword.as_str() {
-        "GEOGCS" => geographic(node, cx).map(|(v, _)| v),
-        "GEOCCS" => geocentric(node, cx),
-        "PROJCS" => projected(node, cx),
+        "GEOGCS" => bound(node, geographic(node, cx)?.0, false),
+        "GEOCCS" => bound(node, geocentric(node, cx)?, true),
+        "PROJCS" => {
+            let crs = projected(node, cx)?;
+            // PROJ's Web Mercator drops the TOWGS84 its GEOGCS may carry.
+            if crs["conversion"]["method"]["id"]["code"] == 1024 {
+                Ok(crs)
+            } else {
+                bound(node, crs, false)
+            }
+        }
         "VERT_CS" => vertical(node),
         "VERTCS" => esri_vertical(node),
         "COMPD_CS" => compound(node, cx),
@@ -382,10 +391,7 @@ fn esri_datum(
 /// `DATUM` with the `PRIMEM` beside it, and whether its ellipsoid is a
 /// sphere.
 fn datum(node: &Node, pm: Option<Value>, cx: &Dialect) -> Result<(Value, bool), Error> {
-    if node.child(&["TOWGS84"]).is_some() {
-        return Err(unsupported(node, "TOWGS84 (a bound CRS)"));
-    }
-    node.only(&[&["SPHEROID", "AUTHORITY", "EXTENSION"]])?;
+    node.only(&[&["SPHEROID", "TOWGS84", "AUTHORITY", "EXTENSION"]])?;
     if let Some(e) = node.child(&["EXTENSION"]) {
         return Err(unsupported(
             e,
@@ -409,6 +415,143 @@ fn datum(node: &Node, pm: Option<Value>, cx: &Dialect) -> Result<(Value, bool), 
         o.insert("id".into(), id);
     }
     Ok((Value::Object(o), sphere))
+}
+
+// --- TOWGS84 ---------------------------------------------------------------
+
+/// The `TOWGS84` of a `GEOGCS`, `GEOCCS` or a `PROJCS`'s `GEOGCS`: 3 or 7
+/// values, padded to 7 (translations in metres, rotations in arc-seconds,
+/// scale difference in parts per million).
+fn towgs84(crs: &Node) -> Result<Option<[f64; 7]>, Error> {
+    let geodetic = if crs.keyword == "PROJCS" {
+        crs.child(&["GEOGCS"])
+    } else {
+        Some(crs)
+    };
+    let Some(t) = geodetic
+        .and_then(|g| g.child(&["DATUM"]))
+        .and_then(|d| d.child(&["TOWGS84"]))
+    else {
+        return Ok(None);
+    };
+    let values: Vec<f64> = (0..t.args.len())
+        .map(|i| t.number(i))
+        .collect::<Result<_, _>>()?;
+    if values.len() != 3 && values.len() != 7 {
+        return Err(t.invalid("expected 3 or 7 values"));
+    }
+    let mut out = [0.0; 7];
+    out[..values.len()].copy_from_slice(&values);
+    autocorrect(&mut out);
+    Ok(Some(out))
+}
+
+/// PROJ's `toWGS84AutocorrectWrongValues`: TOWGS84 is Position Vector, but
+/// some files carry an EPSG transformation's Coordinate Frame values. When
+/// the values are a Coordinate Frame transformation's and not a Position
+/// Vector one's, and the rotations turned round aren't another Coordinate
+/// Frame one's, they are turned round.
+fn autocorrect(v: &mut [f64; 7]) {
+    if v[3] == 0.0 && v[4] == 0.0 && v[5] == 0.0 {
+        return;
+    }
+    const ARC_SECOND: f64 = std::f64::consts::PI / 648_000.0;
+    let close = |a: f64, b: f64| (a - b).abs() <= 1e-8 * a.abs();
+    let found = |method: u32, sign: f64| {
+        crate::registry::registry().ops.values().any(|op| {
+            op.method == method
+                && !op.deprecated
+                && [8605, 8606, 8607, 8608, 8609, 8610, 8611]
+                    .iter()
+                    .zip(v.iter())
+                    .enumerate()
+                    .all(|(i, (&code, &value))| {
+                        let wanted = match i {
+                            0..=2 => value,
+                            3..=5 => sign * value * ARC_SECOND,
+                            _ => value * 1e-6,
+                        };
+                        op.param(code).is_some_and(|p| close(wanted, p))
+                    })
+        })
+    };
+    if found(9607, 1.0) && !found(9606, 1.0) && !found(9607, -1.0) {
+        for r in &mut v[3..6] {
+            *r = -*r;
+        }
+    }
+}
+
+/// The CRS as a Bound CRS when its datum has a `TOWGS84`, as PROJ's
+/// `BoundCRS::createFromTOWGS84` makes it: a Position Vector transformation
+/// to WGS 84, geographic (EPSG:4326) or, for a geocentric CRS, geocentric
+/// (EPSG:4978).
+fn bound(node: &Node, crs: Value, geocentric: bool) -> Result<Value, Error> {
+    let Some(v) = towgs84(node)? else {
+        return Ok(crs);
+    };
+    let geodetic_name = if crs["type"] == "ProjectedCRS" {
+        &crs["base_crs"]["name"]
+    } else {
+        &crs["name"]
+    };
+    let wgs84_datum = json!({"type": "GeodeticReferenceFrame", "name": "World Geodetic System 1984",
+        "ellipsoid": {"name": "WGS 84", "semi_major_axis": 6378137, "inverse_flattening": 298.257223563}});
+    let (hub, method) = if geocentric {
+        (
+            json!({"type": "GeodeticCRS", "name": "WGS 84", "datum": wgs84_datum,
+                "coordinate_system": {"subtype": "Cartesian", "axis": [
+                    {"name": "Geocentric X", "abbreviation": "X", "direction": "geocentricX", "unit": "metre"},
+                    {"name": "Geocentric Y", "abbreviation": "Y", "direction": "geocentricY", "unit": "metre"},
+                    {"name": "Geocentric Z", "abbreviation": "Z", "direction": "geocentricZ", "unit": "metre"}]},
+                "id": {"authority": "EPSG", "code": 4978}}),
+            json!({"name": "Position Vector transformation (geocentric domain)",
+                "id": {"authority": "EPSG", "code": 1033}}),
+        )
+    } else {
+        (
+            json!({"type": "GeographicCRS", "name": "WGS 84", "datum": wgs84_datum,
+                "coordinate_system": {"subtype": "ellipsoidal", "axis": [
+                    {"name": "Latitude", "abbreviation": "lat", "direction": "north", "unit": "degree"},
+                    {"name": "Longitude", "abbreviation": "lon", "direction": "east", "unit": "degree"}]},
+                "id": {"authority": "EPSG", "code": 4326}}),
+            json!({"name": "Position Vector transformation (geog2D domain)",
+                "id": {"authority": "EPSG", "code": 9606}}),
+        )
+    };
+    let arc_second = json!({"type": "AngularUnit", "name": "arc-second",
+        "conversion_factor": 4.84813681109536e-06});
+    let ppm = json!({"type": "ScaleUnit", "name": "parts per million", "conversion_factor": 1e-06});
+    let names = [
+        "X-axis translation",
+        "Y-axis translation",
+        "Z-axis translation",
+        "X-axis rotation",
+        "Y-axis rotation",
+        "Z-axis rotation",
+        "Scale difference",
+    ];
+    let parameters: Vec<Value> = (0..7)
+        .map(|i| {
+            let unit = match i {
+                0..=2 => json!("metre"),
+                3..=5 => arc_second.clone(),
+                _ => ppm.clone(),
+            };
+            json!({"name": names[i], "value": num(v[i]), "unit": unit,
+                "id": {"authority": "EPSG", "code": 8605 + i as u32}})
+        })
+        .collect();
+    Ok(json!({
+        "type": "BoundCRS",
+        "source_crs": crs,
+        "target_crs": hub,
+        "transformation": {
+            "name": format!("Transformation from {} to WGS84", geodetic_name.as_str().unwrap_or("unnamed")),
+            "method": method,
+            "parameters": parameters,
+        },
+    }))
 }
 
 // --- CRSs ------------------------------------------------------------------

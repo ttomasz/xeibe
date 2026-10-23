@@ -150,7 +150,9 @@ sources, but their contents haven't been checked against the local copies:
   and without its ids (`identify.jsonl`), plus EPSG's own WKT2 from the
   `EPSG-*-WKT.Zip` archive in `example_data/` (`epsg.jsonl`) and Esri's own
   WKT1 from the CSVs `gen_esri_tables.py` downloads, with PROJ's reading
-  (`esri.jsonl`). A committed subset goes to
+  (`esri.jsonl`), and Bound CRSs made from EPSG's Helmert transformations
+  to WGS 84 with PROJ's results to several targets (`bound.jsonl`). A
+  committed subset goes to
   `tests/data/crs-wkt/`; `--all` writes everything to `target/crs-wkt/`
   (~3 min on 12 CPUs). See `docs/crs-wkt.md`.
 - `scripts/gen_esri_tables.py` downloads Esri's projection engine database

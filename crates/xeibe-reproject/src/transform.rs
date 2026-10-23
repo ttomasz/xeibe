@@ -2,11 +2,12 @@
 
 use std::sync::Arc;
 
-use crate::crs::{Axes, Crs, Kind};
+use crate::crs::{Axes, Bound, Crs, Kind};
 use crate::error::{CoordinateError, Error};
 use crate::geocentric::{cartesian, geodetic};
 use crate::grid::Grids;
 use crate::methods::{LAT_LIMIT, adjlon};
+use crate::operation::Method;
 use crate::select::crs::CrsRef;
 use crate::select::{Candidates, OperationInfo};
 
@@ -45,6 +46,131 @@ enum Plan {
     /// One candidate of the selection, forced with
     /// [`Transform::with_operation_index`].
     Only(Arc<Candidates>),
+    /// From or to a Bound CRS (WKT1's `TOWGS84`): its own transformation
+    /// to the hub, and on from there, as PROJ does.
+    Bound(Arc<BoundPlan>),
+}
+
+/// The route through a Bound CRS's hub: the source's transformation to its
+/// hub, a transform between the hubs (or a hub and the other CRS), and the
+/// target's transformation back from its hub.
+#[derive(Debug)]
+struct BoundPlan {
+    first: Option<Leg>,
+    middle: Transform,
+    last: Option<Leg>,
+    /// The operations' names: the legs' and each of the middle's, joined
+    /// as PROJ names a concatenated operation.
+    names: Vec<String>,
+}
+
+/// A Bound CRS's transformation, between its base CRS's internal
+/// coordinates and the hub's.
+#[derive(Debug, Clone)]
+struct Leg {
+    base: Crs,
+    method: Arc<dyn Method>,
+    name: String,
+    /// A transformation of zeros between GRS 1980 and WGS 84, which PROJ's
+    /// pipeline leaves out when nothing geocentric is next to it
+    /// (`operation::helmert::no_step_alone`).
+    no_step_alone: bool,
+}
+
+impl Leg {
+    fn new(base: &Crs, bound: &Bound) -> Result<Leg, Error> {
+        Leg::to(base, bound, &bound.hub, bound.operation.name.clone())
+    }
+
+    /// The bound transformation, landing on `hub` instead of the bound
+    /// CRS's own, under `name`.
+    fn to(base: &Crs, bound: &Bound, hub: &Crs, name: String) -> Result<Leg, Error> {
+        // The transformation runs between geodetic CRSs: the base's own if
+        // it is geocentric, else the geographic CRS on its datum.
+        let via = match base.kind {
+            Kind::Geocentric { .. } => base.clone(),
+            _ => base.geographic_of().ok_or_else(|| Error::Unsupported {
+                crs: base.label(),
+                what: "a bound CRS without a geodetic datum".into(),
+            })?,
+        };
+        let method = crate::operation::build(&bound.operation, &via, hub).map_err(|e| {
+            Error::Unsupported {
+                crs: base.label(),
+                what: format!("its bound transformation: {e:?}"),
+            }
+        })?;
+        Ok(Leg {
+            base: base.clone(),
+            method,
+            name,
+            no_step_alone: crate::operation::helmert::no_step_alone(&bound.operation, &via, hub),
+        })
+    }
+
+    fn geocentric(&self) -> bool {
+        matches!(self.base.kind, Kind::Geocentric { .. })
+    }
+
+    /// With `flow`, the height the transformation produces goes on (see
+    /// [`BoundPlan::run`]).
+    fn to_hub(&self, internal: [f64; 3], flow: bool) -> Result<[f64; 3], CoordinateError> {
+        let via = if self.geocentric() {
+            internal
+        } else {
+            to_geographic(&self.base, internal)?
+        };
+        if flow {
+            self.method.forward_3d(via)
+        } else {
+            self.method.forward(via)
+        }
+    }
+
+    fn back_from_hub(&self, hub: [f64; 3], flow: bool) -> Result<[f64; 3], CoordinateError> {
+        let via = if flow {
+            self.method.inverse_3d(hub)?
+        } else {
+            self.method.inverse(hub)?
+        };
+        if self.geocentric() {
+            Ok(via)
+        } else {
+            from_geographic(&self.base, via)
+        }
+    }
+}
+
+impl BoundPlan {
+    /// Between two Bound CRSs on one hub, two geog2D-domain
+    /// transformations meet with nothing between them; PROJ's pipeline
+    /// then drops the `pop`/`push` of the height between them, and the
+    /// height the first produces flows into the second (as between EPSG's
+    /// operations in the selection).
+    fn run(&self, internal: [f64; 3]) -> Result<[f64; 3], CoordinateError> {
+        let flow = matches!(self.middle.plan, Plan::Conversion)
+            && self
+                .first
+                .as_ref()
+                .zip(self.last.as_ref())
+                .is_some_and(|(a, b)| a.method.keeps_height() && b.method.keeps_height());
+        // A leg PROJ leaves out when it stands alone: between a
+        // conversion on the hub's datum and the other end.
+        let alone = |leg: &Leg, other: &Option<Leg>| {
+            leg.no_step_alone && other.is_none() && matches!(self.middle.plan, Plan::Conversion)
+        };
+        let hub = match &self.first {
+            Some(leg) if alone(leg, &self.last) => to_geographic(&leg.base, internal)?,
+            Some(leg) => leg.to_hub(internal, flow)?,
+            None => internal,
+        };
+        let other = self.middle.run(hub)?;
+        match &self.last {
+            Some(leg) if alone(leg, &self.first) => from_geographic(&leg.base, other),
+            Some(leg) => leg.back_from_hub(other, flow),
+            None => Ok(other),
+        }
+    }
 }
 
 impl Transform {
@@ -52,6 +178,8 @@ impl Transform {
     /// conversion; between datums the transformation is chosen per
     /// coordinate as PROJ chooses it, among EPSG's operations, the
     /// grid-based ones included (`docs/reprojection.md`, levels 2 and 3).
+    /// A Bound CRS (WKT1's `TOWGS84`) goes through its own transformation
+    /// to WGS 84 instead, as in PROJ (`docs/crs-wkt.md`).
     /// Grids must be loaded before converting coordinates that need them:
     /// see [`Transform::grid_requests`].
     pub fn new(src: &Crs, dst: &Crs, order: AxisOrder) -> Result<Self, Error> {
@@ -61,6 +189,17 @@ impl Transform {
     /// [`Transform::new`] with a choice of which grids the selection may
     /// use: [`Grids::None`] keeps to operations without grids.
     pub fn with_grids(src: &Crs, dst: &Crs, order: AxisOrder, grids: Grids) -> Result<Self, Error> {
+        if src.bound.is_some() || dst.bound.is_some() {
+            return Self::through_hubs(src, dst, order, grids);
+        }
+        for crs in [src, dst] {
+            if crs.horizontal().bound.is_some() {
+                return Err(Error::Unsupported {
+                    crs: crs.label(),
+                    what: "a compound CRS whose horizontal part is a bound CRS".into(),
+                });
+            }
+        }
         for crs in [src, dst] {
             if matches!(crs.kind, Kind::Vertical { .. }) {
                 return Err(Error::Unsupported {
@@ -90,10 +229,83 @@ impl Transform {
         })
     }
 
+    /// From or to a Bound CRS, as PROJ's `createOperationsBoundToGeog` and
+    /// `createOperationsBoundToBound` route it. A bound transformation
+    /// isn't used between CRSs on one datum (unless both are bound, with
+    /// different transformations); otherwise coordinates go to the hub
+    /// with it, and from there on as between any CRSs: a conversion on the
+    /// hub's datum, else EPSG's operations from it, chosen per coordinate
+    /// on the hub's coordinates.
+    fn through_hubs(src: &Crs, dst: &Crs, order: AxisOrder, grids: Grids) -> Result<Self, Error> {
+        let (src_base, dst_base) = (src.without_bound(), dst.without_bound());
+        let ignore = same_datums(&src_base, &dst_base)
+            && match (&src.bound, &dst.bound) {
+                (Some(a), Some(b)) => a.same(b),
+                _ => true,
+            };
+        let plan = if ignore {
+            Plan::Conversion
+        } else if let Some(plan) = nad27_to_nad83(src, dst)? {
+            plan
+        } else {
+            let first = src
+                .bound
+                .as_deref()
+                .map(|b| Leg::new(&src_base, b))
+                .transpose()?;
+            let last = dst
+                .bound
+                .as_deref()
+                .map(|b| Leg::new(&dst_base, b))
+                .transpose()?;
+            let from = src.bound.as_ref().map_or(src_base, |b| b.hub.clone());
+            let to = dst.bound.as_ref().map_or(dst_base, |b| b.hub.clone());
+            let middle = Transform::with_grids(&from, &to, order, grids.clone())?;
+            let join = |middle: Option<&str>| {
+                let first = first.as_ref().map(|l| l.name.clone());
+                let last = last.as_ref().map(|l| format!("Inverse of {}", l.name));
+                [first, middle.map(str::to_owned), last]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+                    .join(" + ")
+            };
+            let mut names: Vec<String> = middle
+                .operations()
+                .into_iter()
+                .map(|m| join(Some(m)))
+                .collect();
+            if names.is_empty() {
+                names.push(join(None));
+            }
+            Plan::Bound(Arc::new(BoundPlan {
+                first,
+                middle,
+                last,
+                names,
+            }))
+        };
+        Ok(Transform {
+            src: src.clone(),
+            dst: dst.clone(),
+            order,
+            grids,
+            plan,
+        })
+    }
+
     /// The transformation through one EPSG coordinate operation, instead of
     /// the automatic choice: the operation must join the two CRSs' datums
     /// (in either direction) and is used for every coordinate.
     pub fn via(src: &Crs, dst: &Crs, operation: u32, order: AxisOrder) -> Result<Self, Error> {
+        for crs in [src, dst] {
+            if crs.horizontal().bound.is_some() {
+                return Err(Error::Unsupported {
+                    crs: crs.label(),
+                    what: "a forced operation from or to a bound CRS".into(),
+                });
+            }
+        }
         let (Some(sc), Some(dc)) = (crs_ref(src), crs_ref(dst)) else {
             return Err(Error::NoTransformation {
                 src: src.label(),
@@ -117,6 +329,8 @@ impl Transform {
         match &self.plan {
             Plan::Conversion => None,
             Plan::Operations(c) | Plan::Via(_, c) | Plan::Only(c) => Some(c),
+            // Those after the hub: the bound transformation is fixed.
+            Plan::Bound(b) => b.middle.candidates(),
         }
     }
 
@@ -126,17 +340,28 @@ impl Transform {
         match &self.plan {
             Plan::Conversion => Vec::new(),
             Plan::Operations(c) | Plan::Via(_, c) | Plan::Only(c) => c.names(),
+            Plan::Bound(b) => b.names.iter().map(String::as_str).collect(),
         }
     }
 
     /// The name of the operation one coordinate goes through, or `None` for
     /// a conversion on one datum or a coordinate that can't be converted.
     pub fn operation_for(&self, x: f64, y: f64, z: Option<f64>) -> Option<&str> {
-        let (Plan::Operations(c) | Plan::Via(_, c) | Plan::Only(c)) = &self.plan else {
-            return None;
-        };
         let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)]).ok()?;
-        c.used(&self.src, &self.dst, internal)
+        match &self.plan {
+            Plan::Conversion => None,
+            Plan::Operations(c) | Plan::Via(_, c) | Plan::Only(c) => {
+                c.used(&self.src, &self.dst, internal)
+            }
+            Plan::Bound(b) => {
+                let index = if b.middle.candidates().is_some() {
+                    self.index_for(internal)?
+                } else {
+                    0
+                };
+                b.names.get(index).map(String::as_str)
+            }
+        }
     }
 
     /// The operations this transform chooses among, best first, with their
@@ -152,9 +377,23 @@ impl Transform {
     /// coordinate goes through, or `None` for a conversion on one datum or
     /// a coordinate that can't be converted.
     pub fn operation_index_for(&self, x: f64, y: f64, z: Option<f64>) -> Option<usize> {
-        let c = self.candidates()?;
         let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)]).ok()?;
-        c.used_index(&self.src, &self.dst, internal)
+        self.index_for(internal)
+    }
+
+    fn index_for(&self, internal: [f64; 3]) -> Option<usize> {
+        match &self.plan {
+            Plan::Bound(b) => {
+                let hub = match &b.first {
+                    Some(leg) => leg.to_hub(internal, false).ok()?,
+                    None => internal,
+                };
+                b.middle.index_for(hub)
+            }
+            _ => self
+                .candidates()?
+                .used_index(&self.src, &self.dst, internal),
+        }
     }
 
     /// The transformation through operation `index` of
@@ -163,6 +402,25 @@ impl Transform {
     /// there is no such operation. Its inverse runs the same operation the
     /// other way.
     pub fn with_operation_index(&self, index: usize) -> Option<Result<Transform, Error>> {
+        if let Plan::Bound(b) = &self.plan {
+            let middle = match b.middle.with_operation_index(index)? {
+                Ok(m) => m,
+                Err(e) => return Some(Err(e)),
+            };
+            let names = vec![b.names.get(index)?.clone()];
+            return Some(Ok(Transform {
+                src: self.src.clone(),
+                dst: self.dst.clone(),
+                order: self.order,
+                grids: self.grids.clone(),
+                plan: Plan::Bound(Arc::new(BoundPlan {
+                    first: b.first.clone(),
+                    middle,
+                    last: b.last.clone(),
+                    names,
+                })),
+            }));
+        }
         let only = self.candidates()?.only(index, &self.src)?;
         Some(only.map(|c| Transform {
             src: self.src.clone(),
@@ -202,7 +460,7 @@ impl Transform {
                 grids: self.grids.clone(),
                 plan: Plan::Conversion,
             }),
-            Plan::Operations(_) => {
+            Plan::Operations(_) | Plan::Bound(_) => {
                 Transform::with_grids(&self.dst, &self.src, self.order, self.grids.clone())
             }
             Plan::Via(code, _) => Transform::via(&self.dst, &self.src, code, self.order),
@@ -231,16 +489,22 @@ impl Transform {
             return Ok((x, y, z));
         }
         let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)])?;
-        let out = match &self.plan {
-            Plan::Conversion => on_one_datum(&self.src, &self.dst, internal)?,
-            Plan::Operations(candidates) | Plan::Via(_, candidates) | Plan::Only(candidates) => {
-                candidates.run(&self.src, &self.dst, internal)?
-            }
-        };
+        let out = self.run(internal)?;
         let [x, y, h] = from_internal(&self.dst.axes, self.order, out);
         // A 2D target has no height of its own: hand back what came in.
         let z = z.map(|z| if self.dst.axes.dimension() == 3 { h } else { z });
         Ok((x, y, z))
+    }
+
+    /// Internal coordinates of the source CRS to the target's.
+    fn run(&self, internal: [f64; 3]) -> Result<[f64; 3], CoordinateError> {
+        match &self.plan {
+            Plan::Conversion => on_one_datum(&self.src, &self.dst, internal),
+            Plan::Operations(candidates) | Plan::Via(_, candidates) | Plan::Only(candidates) => {
+                candidates.run(&self.src, &self.dst, internal)
+            }
+            Plan::Bound(b) => b.run(internal),
+        }
     }
 
     /// Convert coordinates held as separate x and y buffers, in place. Stops
@@ -323,6 +587,76 @@ fn crs_ref(crs: &Crs) -> Option<CrsRef> {
     }
 }
 
+/// PROJ's special case (`createOperationsBoundToGeog`) for a Bound CRS on
+/// the Clarke 1866 ellipsoid (NAD27 and its kin) to a CRS on NAD83: WGS 84
+/// and NAD83 count as one there, so the bound transformation lands on NAD83
+/// directly, named "Transformation from … to NAD83".
+fn nad27_to_nad83(src: &Crs, dst: &Crs) -> Result<Option<Plan>, Error> {
+    let (bound, base, other, forward) = match (&src.bound, &dst.bound) {
+        (Some(b), None) => (b, src.without_bound(), dst, true),
+        (None, Some(b)) => (b, dst.without_bound(), src, false),
+        _ => return Ok(None),
+    };
+    let clarke_1866 = base.datum().is_some_and(|d| {
+        d.ellipsoid.a == 6_378_206.4 && (d.ellipsoid.b - 6_356_583.8).abs() < 1e-4
+    });
+    let hub_wgs84 = bound.hub.datum().is_some_and(|d| d.key == "EPSG:6326");
+    let nad83 = other.datum().is_some_and(|d| d.key == "EPSG:6269");
+    if !(clarke_1866 && hub_wgs84 && nad83) {
+        return Ok(None);
+    }
+    let Some(landing) = other.geographic_of() else {
+        return Ok(None);
+    };
+    // The other CRS's geographic CRS names the target, as in PROJ.
+    let target_name = match &other.kind {
+        Kind::Geographic { .. } => other.name.clone(),
+        _ => other
+            .code()
+            .and_then(xeibe_crs::projjson)
+            .and_then(|j| serde_json::from_str::<serde_json::Value>(j).ok())
+            .and_then(|v| v["base_crs"]["name"].as_str().map(str::to_owned))
+            .unwrap_or_else(|| "NAD83".to_owned()),
+    };
+    // "Transformation from X to WGS84" names the base's geographic CRS.
+    let base_name = bound
+        .operation
+        .name
+        .strip_prefix("Transformation from ")
+        .and_then(|n| n.strip_suffix(" to WGS84"))
+        .map_or_else(|| base.name.clone(), str::to_owned);
+    let name = format!("Transformation from {base_name} to {target_name}");
+    let leg = Leg::to(&base, bound, &landing, name.clone())?;
+    let (from, to) = if forward {
+        (landing.clone(), other.clone())
+    } else {
+        (other.clone(), landing.clone())
+    };
+    let middle = Transform {
+        src: from,
+        dst: to,
+        order: AxisOrder::EastFirst,
+        grids: Grids::None,
+        plan: Plan::Conversion,
+    };
+    let (first, last) = if forward {
+        (Some(leg), None)
+    } else {
+        (None, Some(leg))
+    };
+    let names = vec![if forward {
+        name
+    } else {
+        format!("Inverse of {name}")
+    }];
+    Ok(Some(Plan::Bound(Arc::new(BoundPlan {
+        first,
+        middle,
+        last,
+        names,
+    }))))
+}
+
 /// Whether two CRSs differ only by a conversion: the same geodetic datum,
 /// and heights that need no transformation. A gravity-related height
 /// converts to one on the same vertical datum (another unit, or depth), and
@@ -349,7 +683,11 @@ fn same_datums(src: &Crs, dst: &Crs) -> bool {
         (Some(x), Some(y)) => crate::datum::same(x, y),
         _ => a.key == b.key,
     };
-    if !(same && a.ellipsoid == b.ellipsoid && a.prime_meridian == b.prime_meridian) {
+    // The ellipsoid within PROJ's 1e-10, as WKT may give it by inverse
+    // flattening where EPSG has the semi-minor axis.
+    let close = |x: f64, y: f64| x == y || (x - y).abs() <= 1e-10 * x.abs().max(y.abs());
+    let same_ellipsoid = close(a.ellipsoid.a, b.ellipsoid.a) && close(a.ellipsoid.b, b.ellipsoid.b);
+    if !(same && same_ellipsoid && close(a.prime_meridian, b.prime_meridian)) {
         return false;
     }
     let heightless = |c: &Crs| c.dimension() == 2;

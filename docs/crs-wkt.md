@@ -1,9 +1,10 @@
 # CRS WKT: reading, writing and identifying
 
-> **Status: design, 2026-10-22. Steps 1 to 5 are implemented:** reading
+> **Status: design, 2026-10-22. Steps 1 to 6 are implemented:** reading
 > WKT2 and WKT1 (GDAL's and ESRI's forms), writing WKT2 2019 and WKT1_GDAL
-> (`xeibe_reproject::wkt`, `Crs::from_wkt`), and identification
-> (`Crs::identify`; see [Implementation](#implementation)).
+> (`xeibe_reproject::wkt`, `Crs::from_wkt`), identification
+> (`Crs::identify`) and Bound CRSs (`TOWGS84`; see
+> [Implementation](#implementation)).
 > This is the first part of phase 2 in [pyproj-compat.md](pyproj-compat.md#phases).
 > Facts about PROJ were checked against PROJ 9.8.1 through pyproj 3.8.0, and
 > facts about EPSG against EPSG 13.106.
@@ -358,6 +359,45 @@ in PROJ, and the choice between it and EPSG's operations is compared with
 PROJ's on Bound CRSs made from EPSG CRSs and their EPSG transformations to
 WGS 84.
 
+**As built (step 6).** A `Crs` read from a Bound CRS is its base CRS
+carrying the transformation (`Crs::bound`): the hub, and the
+transformation as an operation without a code. Only the Helmert family is
+read; a Bound CRS with another transformation (a grid) is an error, and so
+is a compound CRS whose horizontal part is bound, unless no transformation
+is needed.
+
+```mermaid
+flowchart LR
+    A[Bound CRS] -->|"its transformation<br/>(Helmert)"| H[WGS 84 hub]
+    H -->|"conversion, on WGS 84's datum<br/>or EPSG's operations, chosen per<br/>coordinate on the hub's coordinates"| B[target CRS]
+    A -.->|"same datum as the target:<br/>conversion, transformation unused"| B
+```
+
+PROJ's rules (`createOperationsBoundToGeog`, `createOperationsBoundToBound`):
+
+- Between a Bound CRS and a CRS on its base's datum, the transformation
+  isn't used. Between two Bound CRSs it is, through the hub, unless they
+  carry the same transformation.
+- To a CRS on the hub's datum (WGS 84, Pseudo-Mercator): the
+  transformation, then a conversion. Otherwise EPSG's operations from the
+  hub, named "Transformation from X to WGS84 + Inverse of ETRS89 to WGS 84
+  (1)" as PROJ names them.
+- A base on the Clarke 1866 ellipsoid to a CRS on NAD83: WGS 84 counts as
+  NAD83 there, and the transformation lands on NAD83 ("Transformation from
+  Old Hawaiian to NAD83").
+- Reading `TOWGS84`: 3 values are padded to 7; Position Vector to EPSG:4326
+  (EPSG:4978 for a `GEOCCS`); the rotations turned round when they are an
+  EPSG Coordinate Frame transformation's (PROJ's
+  `toWGS84AutocorrectWrongValues`); Web Mercator drops it.
+- WKT2's abridged transformation has fixed units: metres, arc-seconds and
+  the scale difference as a factor (1 + ppm × 10⁻⁶).
+
+Two of PROJ's pipeline optimisations change results, and are followed:
+between two geog2D-domain Helmert steps (two Bound CRSs on one hub) the
+height the first produces flows into the second; and a Helmert of zeros
+between GRS 1980 and WGS 84 standing alone (a zero `TOWGS84` on ETRS89 to
+WGS 84) is no step at all, where next to another geocentric step it isn't.
+
 ## Writing
 
 From a PROJJSON value:
@@ -647,6 +687,32 @@ names, and 987 old codes, from Esri's data at ArcGIS Pro 3.7.
   they were, apart from three deprecated CRSs: 32662 and 32663, whose
   deprecated methods read back under the live ones' names, and 4088,
   which is now equal to its deprecated twin 3786.
+
+**Step 6 (2026-10-23): Bound CRSs**, as described under
+[TOWGS84 and BoundCRS](#towgs84-and-boundcrs). `gen_wkt_vectors.py` makes
+1,695 Bound CRSs from EPSG's Helmert transformations to WGS 84 (methods
+9603, 9606, 9607, Coordinate Frame ones also as written, uncorrected), on
+each source CRS and a projected CRS on it, and records PROJ's PROJJSON,
+WKT2 2019, WKT1_GDAL and results from a point in the area of use to WGS 84,
+Pseudo-Mercator, ETRS89, NAD83, the plain EPSG CRS and another Bound CRS
+(`bound.jsonl`).
+
+- 10,047 conversions agree with PROJ's to 2e-9° or 0.2 mm (2e-11 relative
+  far outside a projection's area), without grids, as PROJ had none.
+  Listed: M'poraloko (as in reading), and CGRS93, where PROJ keeps the
+  signs of Coordinate Frame values because ESRI's copy of the
+  transformation, which xeibe doesn't have, has them turned. CRSs with
+  south-west axes (Krovak) are left out: `AxisOrder::EastFirst` keeps them
+  as they are, where pyproj's `always_xy` turns them round.
+- Our TOWGS84, and PROJ's WKT2 2019 (`BOUNDCRS`) and WKT1_GDAL of each,
+  read back to PROJ's PROJJSON for the target CRS and the transformation
+  (the scale to 1e-8 ppm: PROJ writes the abridged factor to 15 digits).
+- Written as WKT2 2019 and WKT1_GDAL, the target CRS and transformation, and
+  `TOWGS84`, are PROJ's token for token. The WKT2 writer now writes a
+  geodetic CS's "Latitude" and "Longitude" without abbreviation, and the
+  reader names WKT2 axes as PROJ's `buildAxis` does.
+- A Bound CRS identifies as nothing, and isn't equivalent to its base, as
+  in PROJ.
 
 ## Order of work
 

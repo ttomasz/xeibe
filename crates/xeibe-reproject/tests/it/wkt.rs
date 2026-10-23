@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde_json::{Map, Value, json};
-use xeibe_reproject::{AxisOrder, Crs, Error, Transform, wkt};
+use xeibe_reproject::{AxisOrder, Crs, Error, Grids, Transform, wkt};
 
 /// The records of a JSONL file whose first line is a header.
 fn records(path: &Path) -> Vec<Value> {
@@ -327,12 +327,11 @@ fn what_is_not_read_is_named() {
         ANGLEUNIT["degree",0.0174532925199433],FROBNICATE[1]]"#;
     let e = wkt::to_projjson(unknown).unwrap_err();
     assert!(e.to_string().contains("FROBNICATE in GEOGCRS"), "{e}");
+    // TOWGS84 takes 3 or 7 values.
     let towgs84 = r#"GEOGCS["x",DATUM["y",SPHEROID["GRS 1980",6378137,298.257222101],
-        TOWGS84[0,0,0,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]"#;
-    assert!(matches!(
-        wkt::to_projjson(towgs84),
-        Err(Error::Unsupported { what, .. }) if what.contains("TOWGS84")
-    ));
+        TOWGS84[0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]"#;
+    let e = wkt::to_projjson(towgs84).unwrap_err();
+    assert!(e.to_string().contains("3 or 7 values"), "{e}");
     let missing = r#"GEOGCRS["x",CS[ellipsoidal,2],AXIS["lat",north],AXIS["lon",east]]"#;
     assert!(matches!(wkt::to_projjson(missing), Err(Error::Wkt { .. })));
 }
@@ -659,8 +658,10 @@ const KNOWN_WKT1: &[(&[u32], &str)] = &[
     (&[4266, 26632, 26692], "a datum equal by id, not by name"),
     // An unspecified axis direction, which `Crs` doesn't take.
     (&[5817], "an unspecified axis"),
-    // TOWGS84: a bound CRS, step 6 of docs/crs-wkt.md.
-    (&[3785], "TOWGS84"),
+    // Popular Visualisation CRS / Mercator, which PROJ writes through a
+    // path of its own (KNOWN_WKT1_WRITING) and finds its ESRI form equal
+    // to; we read Web Mercator by GDAL's extension, as PROJ does.
+    (&[3785], "Popular Visualisation CRS / Mercator"),
 ];
 
 /// Where our reading of PROJ's WKT1_ESRI knowingly differs from PROJ's,
@@ -879,10 +880,12 @@ const KNOWN_IDENTIFY: &[(&[u32], &str)] = &[
         "Esri names only PROJ's copy has",
     ),
     (&[9895], "a VERTCS on a geodetic DATUM"),
-    // Not read yet (KNOWN_WKT1): TOWGS84, step 6 of docs/crs-wkt.md, and
-    // an engineering CRS with an unspecified axis.
-    (&[3785], "TOWGS84"),
+    // Not read (KNOWN_WKT1): an engineering CRS with an unspecified axis.
     (&[5817], "an unspecified axis"),
+    // Popular Visualisation CRS / Mercator, deprecated: its WKT1 is Web
+    // Mercator by its PROJ4 extension, which is EPSG:3857's definition,
+    // and that is what we find. PROJ finds nothing (itself, from ESRI's).
+    (&[3785], "Web Mercator, which is EPSG:3857"),
 ];
 
 /// Identifies PROJ's WKT for each EPSG CRS in `identify.jsonl`, with its
@@ -1068,6 +1071,7 @@ fn wkt_without_ids_transforms_between_datums() {
 
 /// Where reading Esri's WKT for an EPSG CRS knowingly differs from PROJ's
 /// reading, other than where it identifies the CRS Esri wrote it for.
+#[cfg(feature = "esri")]
 const KNOWN_ESRI: &[(&[u32], &str)] = &[
     // Not read; PROJ reads them as CRSs it can't identify (25).
     (&[9895], "a 3D PROJCS (LINUNIT)"),
@@ -1089,6 +1093,7 @@ const KNOWN_ESRI: &[(&[u32], &str)] = &[
 /// same axes, and the same `to_epsg()` unless ours is the code Esri wrote
 /// it for. Returns the number read, a report of the differences by reason,
 /// and how many have a method `Crs` doesn't build.
+#[cfg(feature = "esri")]
 fn check_esri(path: &Path) -> (usize, String, usize) {
     let mut read = 0;
     let mut unsupported = 0;
@@ -1249,4 +1254,287 @@ fn esri_wkt_reading() {
     let both = Crs::from_wkt(&format!("{poland},{height}")).unwrap();
     assert_eq!(both.name(), "ETRS89 / PL-1992 + PL-EVRF2007 height");
     assert_eq!(both.dimension(), 3);
+}
+
+#[test]
+fn towgs84_transforms_as_proj_does() {
+    let pulkovo = r#"GEOGCS["Pulkovo 1942",DATUM["Pulkovo_1942",
+        SPHEROID["Krassowsky 1940",6378245,298.3],
+        TOWGS84[33.4,-146.6,-76.3,-0.359,-0.053,0.844,-0.84]],
+        PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],
+        AUTHORITY["EPSG","4284"]]"#;
+    let crs = Crs::from_wkt(pulkovo).unwrap();
+    // A Bound CRS is no EPSG CRS, as in PROJ.
+    assert_eq!(crs.identify(), []);
+    assert!(!crs.equivalent(&Crs::from_epsg(4284).unwrap(), false));
+    // PROJ 9.8.1's results, longitude first.
+    for (target, x, y, name) in [
+        (
+            4326,
+            29.998122530511566,
+            54.99991936682272,
+            "Transformation from Pulkovo 1942 to WGS84",
+        ),
+        (
+            4258,
+            29.998122530511566,
+            54.999919367708564,
+            "Transformation from Pulkovo 1942 to WGS84 + Inverse of ETRS89 to WGS 84 (1)",
+        ),
+        (
+            3857,
+            3339375.7248507747,
+            7361850.463811354,
+            "Transformation from Pulkovo 1942 to WGS84",
+        ),
+        // On its own datum the transformation isn't used.
+        (4284, 30.0, 55.0, ""),
+    ] {
+        let t =
+            Transform::new(&crs, &Crs::from_epsg(target).unwrap(), AxisOrder::EastFirst).unwrap();
+        let (cx, cy, _) = t.convert(30.0, 55.0, None).unwrap();
+        let tolerance = if target == 3857 { 1e-6 } else { 1e-11 };
+        assert!(
+            (cx - x).abs() < tolerance && (cy - y).abs() < tolerance,
+            "EPSG:{target}: {cx} {cy}"
+        );
+        assert_eq!(t.operation_for(30.0, 55.0, None).unwrap_or(""), name);
+        // And back, to the millimetre: the inverse of PROJ's small-angle
+        // Helmert is approximate.
+        let (bx, by, _) = t.inverse().unwrap().convert(cx, cy, None).unwrap();
+        assert!(
+            (bx - 30.0).abs() < 1e-7 && (by - 55.0).abs() < 1e-7,
+            "{bx} {by}"
+        );
+    }
+}
+
+/// Where a Bound CRS on these EPSG CRSs knowingly converts otherwise than
+/// in PROJ.
+const KNOWN_BOUND: &[(&[u32], &str)] = &[
+    // As in KNOWN_WKT1: GDAL writes M'poraloko as M_poraloko, which PROJ
+    // doesn't take for the same datum, so it goes through WGS 84 to the
+    // plain EPSG CRS where we convert.
+    (&[4266, 26632, 26692], "a datum equal by id, not by name"),
+    // PROJ keeps the signs of TOWGS84 values that are a Coordinate Frame
+    // transformation's when the turned values are any Helmert's, ESRI's
+    // included; xeibe has EPSG's only, and turns them (CGRS93, EPSG:7721).
+    (&[6311, 6312], "ESRI's Helmert transformations"),
+];
+
+/// Reads each Bound CRS in `bound.jsonl` (`scripts/gen_wkt_vectors.py`):
+/// its PROJJSON as PROJ's, and its point converted to each target as PROJ
+/// converts it (2e-9°, or 0.2 mm or 2e-11 relative: PROJ's projections
+/// on Bessel Namibia, an ellipsoid in German legal metres, differ by that).
+/// Returns the number of conversions
+/// compared and a report of the differences.
+fn check_bound(path: &Path) -> (usize, String) {
+    let mut compared = 0;
+    let mut differing: BTreeMap<String, Vec<u32>> = BTreeMap::new();
+    for r in records(path) {
+        let code = r["code"].as_u64().unwrap() as u32;
+        let op = r["op"].as_u64().unwrap() as u32;
+        // `AxisOrder::EastFirst` keeps south-west axes (Krovak) as they are;
+        // pyproj's always_xy turns them round.
+        let other_axes =
+            |c: u32| xeibe_crs::get(c).is_some_and(|r| r.first_axis == xeibe_crs::FirstAxis::Other);
+        if KNOWN_BOUND.iter().any(|(codes, _)| codes.contains(&code)) || other_axes(code) {
+            continue;
+        }
+        let text = r["wkt"].as_str().unwrap();
+        // Our WKT1 with TOWGS84, and PROJ's WKT2 (BOUNDCRS) and WKT1_GDAL
+        // of it, read back.
+        for (version, text) in [
+            ("TOWGS84", Some(text)),
+            ("WKT2_2019", r["WKT2_2019"].as_str()),
+            ("WKT1_GDAL", r["WKT1_GDAL"].as_str()),
+        ] {
+            let Some(text) = text else { continue };
+            let mut ours: Value = match wkt::to_projjson(text) {
+                Ok(j) => serde_json::from_str(&j).unwrap(),
+                Err(e) => {
+                    differing
+                        .entry(format!("{version}: {e}"))
+                        .or_default()
+                        .push(op);
+                    continue;
+                }
+            };
+            let mut theirs = r["projjson"].clone();
+            // Names as the reader trims them: EPSG's "ETRS89-ALB [2008] " ends
+            // in a space, which PROJ keeps. The scale difference to 1e-8 ppm:
+            // WKT2's abridged form gives it as a factor, 1 + ppm × 1e-6, to
+            // 15 digits.
+            for v in [&mut ours, &mut theirs] {
+                for p in v["transformation"]["parameters"]
+                    .as_array_mut()
+                    .into_iter()
+                    .flatten()
+                {
+                    if p["id"]["code"] == 8611
+                        && let Some(x) = p["value"].as_f64()
+                    {
+                        p["value"] = json!((x * 1e8).round() / 1e8);
+                    }
+                }
+                if let Some(name) = v["transformation"]["name"].as_str() {
+                    v["transformation"]["name"] =
+                        json!(name.split_whitespace().collect::<Vec<_>>().join(" "));
+                }
+            }
+            // What the bound CRS adds; its base is read as without TOWGS84.
+            let mut d = Vec::new();
+            for key in ["type", "target_crs", "transformation"] {
+                diff(
+                    &normalise(&ours[key], ""),
+                    &normalise(&theirs[key], ""),
+                    &format!(".{key}"),
+                    &mut d,
+                );
+            }
+            for line in d {
+                let key = line.split(':').next().unwrap_or("").to_owned();
+                differing
+                    .entry(format!("{version} PROJJSON {key}"))
+                    .or_default()
+                    .push(op);
+            }
+        }
+        let unbuilt = |e: &Error| matches!(e, Error::Unsupported { what, .. } if what.starts_with("the projection method"));
+        let src = match Crs::from_wkt(text) {
+            Ok(crs) => crs,
+            Err(e) if unbuilt(&e) => continue,
+            Err(e) => {
+                differing.entry(format!("Crs: {e}")).or_default().push(op);
+                continue;
+            }
+        };
+        // Written as PROJ writes it, from our reading, which keeps the ids
+        // PROJ's PROJJSON leaves out of nested objects.
+        let json = wkt::to_projjson(text).unwrap();
+        for (version, name) in [
+            (wkt::Version::Wkt2_2019, "WKT2_2019"),
+            (wkt::Version::Wkt1Gdal, "WKT1_GDAL"),
+        ] {
+            let Some(theirs) = r[name].as_str() else {
+                continue;
+            };
+            // What the bound CRS adds: TOWGS84, or the target CRS and the
+            // abridged transformation. The base is written as without it,
+            // from our reading, whose names can differ from PROJ's (and are
+            // trimmed: "ETRS89-ALB [2008] " ends in a space).
+            let added = |w: &str| -> String {
+                let w = w.replace(" ]", "]").replace("  ", " ");
+                match version {
+                    wkt::Version::Wkt1Gdal => w
+                        .find("TOWGS84[")
+                        .map(|i| w[i..i + w[i..].find(']').unwrap() + 1].to_owned())
+                        .unwrap_or_default(),
+                    _ => w
+                        .find(",TARGETCRS[")
+                        .map(|i| w[i + 1..].to_owned())
+                        .unwrap_or_default(),
+                }
+            };
+            match wkt::from_projjson(&json, version, false) {
+                Ok(ours) => {
+                    if let Some((a, b)) = first_difference(&added(&ours), &added(theirs)) {
+                        differing
+                            .entry(format!("writing {name}: {a} != PROJ's {b}"))
+                            .or_default()
+                            .push(op);
+                    }
+                }
+                Err(e) => differing
+                    .entry(format!("writing {name}: {e}"))
+                    .or_default()
+                    .push(op),
+            }
+        }
+        let [x, y] = [
+            r["point"][0].as_f64().unwrap(),
+            r["point"][1].as_f64().unwrap(),
+        ];
+        for t in r["to"].as_array().unwrap() {
+            let (target, label) = match &t["target"] {
+                Value::Number(n) => (
+                    Crs::from_epsg(n.as_u64().unwrap() as u32),
+                    format!("EPSG:{n}"),
+                ),
+                Value::String(w) => (Crs::from_wkt(w), "another bound CRS".into()),
+                _ => unreachable!(),
+            };
+            let target = match target {
+                Ok(crs) => crs,
+                Err(e) if unbuilt(&e) => continue,
+                Err(e) => panic!("{e}"),
+            };
+            if target.code().is_some_and(other_axes) {
+                continue;
+            }
+            let label = if matches!(&t["target"], Value::Number(n) if n.as_u64() == Some(code.into()))
+            {
+                "its own EPSG CRS".to_owned()
+            } else {
+                label
+            };
+            // Without grids: PROJ had none either.
+            let ours = Transform::with_grids(&src, &target, AxisOrder::EastFirst, Grids::None)
+                .and_then(|t| {
+                    t.convert(x, y, None).map_err(|e| Error::Coordinate {
+                        index: 0,
+                        x,
+                        y,
+                        reason: e,
+                    })
+                });
+            let theirs = t["result"]
+                .as_array()
+                .map(|v| [v[0].as_f64().unwrap(), v[1].as_f64().unwrap()]);
+            compared += 1;
+            let what = match (ours, theirs) {
+                (Ok((cx, cy, _)), Some([px, py])) => {
+                    // Far outside a projection's area (another bound CRS's
+                    // projection), metres agree to 2e-11 relative.
+                    let tolerance = if px.abs() <= 360.0 && py.abs() <= 90.0 {
+                        2e-9
+                    } else {
+                        (2e-11 * px.abs().max(py.abs())).max(2e-4)
+                    };
+                    if (cx - px).abs() <= tolerance && (cy - py).abs() <= tolerance {
+                        continue;
+                    }
+                    format!(
+                        "to {label}: off by {:.1e}",
+                        (cx - px).abs().max((cy - py).abs())
+                    )
+                }
+                (Err(_), None) => continue,
+                (Err(e), Some(_)) => format!("to {label}: error {e}"),
+                (Ok(_), None) => format!("to {label}: PROJ fails"),
+            };
+            differing.entry(what).or_default().push(op);
+        }
+    }
+    let mut report = String::new();
+    for (what, ops) in &differing {
+        report += &format!("{} x {what}: {:?}\n", ops.len(), &ops[..ops.len().min(10)]);
+    }
+    (compared, report)
+}
+
+#[test]
+fn bound_crss_convert_as_proj_converts_them() {
+    let (compared, report) = check_bound(&xeibe_testkit::data_dir().join("crs-wkt/bound.jsonl"));
+    assert!(compared > 100, "{compared}");
+    assert!(report.is_empty(), "{report}");
+}
+
+#[test]
+#[ignore = "needs target/crs-wkt/bound.jsonl (scripts/gen_wkt_vectors.py --all)"]
+fn every_bound_crs_converts_as_proj_converts_it() {
+    let (compared, report) =
+        check_bound(&xeibe_testkit::data_dir().join("../../target/crs-wkt/bound.jsonl"));
+    println!("{compared} conversions\n{report}");
+    assert!(report.is_empty(), "{report}");
 }

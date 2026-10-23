@@ -2,7 +2,9 @@
 //!
 //! Only the subset of PROJJSON that `xeibe-crs` produces from the EPSG dataset
 //! is read: geographic, geocentric, projected, vertical (plain or derived by
-//! a change of unit or of direction), compound and engineering CRSs. Units can
+//! a change of unit or of direction), compound and engineering CRSs, and a
+//! Bound CRS with a Helmert transformation to WGS 84 (WKT1's `TOWGS84`),
+//! which is its base CRS carrying the transformation. Units can
 //! be given as a
 //! name (`"metre"`, `"degree"`, `"unity"`) or as an object with a
 //! `conversion_factor`, and values as a number or as `{value, unit}`.
@@ -15,6 +17,7 @@ use serde_json::Value;
 use crate::ellipsoid::Ellipsoid;
 use crate::error::Error;
 use crate::methods::{self, Params, Projection};
+use crate::registry::{Operation, ParamValue, Table};
 
 /// A coordinate reference system that conversions can start or end in.
 #[derive(Debug, Clone)]
@@ -26,6 +29,36 @@ pub struct Crs {
     /// The horizontal axes are WKT1's defaults, not stated (a `GEOGCS` or
     /// `PROJCS` without `AXIS`): identification compares them by unit only.
     pub(crate) implicit_axes: bool,
+    /// A Bound CRS's transformation to its hub (WKT1's `TOWGS84`, WKT2's
+    /// `BOUNDCRS`): the CRS itself is the bound CRS's base.
+    pub(crate) bound: Option<Arc<Bound>>,
+}
+
+/// The transformation a Bound CRS carries from its base CRS to a hub,
+/// which PROJ uses instead of EPSG's operations for that leg
+/// (`docs/crs-wkt.md`, "TOWGS84 and BoundCRS").
+#[derive(Debug, Clone)]
+pub(crate) struct Bound {
+    /// The hub: WGS 84, geographic (EPSG:4326) for a geographic or
+    /// projected base, geocentric (EPSG:4978) for a geocentric one.
+    pub(crate) hub: Crs,
+    /// The transformation from the base's geodetic CRS to the hub, as an
+    /// operation without a code, parameters in SI units. A Helmert one.
+    pub(crate) operation: Operation,
+}
+
+impl Bound {
+    pub(crate) fn same(&self, other: &Bound) -> bool {
+        let close = |a: f64, b: f64| a == b || (a - b).abs() <= 2e-10 * a.abs().max(b.abs());
+        let (a, b) = (&self.operation, &other.operation);
+        self.hub.equivalent(&other.hub, false)
+            && a.method == b.method
+            && a.params.len() == b.params.len()
+            && a.params.iter().all(|(code, value)| match value {
+                ParamValue::Number(x) => b.param(*code).is_some_and(|y| close(*x, y)),
+                _ => false,
+            })
+    }
 }
 
 /// What [`Crs::matches`] leaves out of equivalence, for identification.
@@ -422,6 +455,23 @@ impl Crs {
                 let axes = ctx.axes(cs, CsKind::Engineering, None)?;
                 (Kind::Engineering { datum }, axes)
             }
+            "BoundCRS" => {
+                let mut base = Crs::from_value(&value["source_crs"])?;
+                let hub = Crs::from_value(&value["target_crs"])?;
+                // PROJ writes WGS 84 without its datum's id: the EPSG CRS
+                // its id names, when equivalent, so its datum is EPSG's.
+                let hub = hub
+                    .code
+                    .and_then(|c| Crs::from_epsg(c).ok())
+                    .filter(|epsg| epsg.equivalent(&hub, false))
+                    .unwrap_or(hub);
+                if !matches!(hub.kind, Kind::Geographic { .. } | Kind::Geocentric { .. }) {
+                    return Err(ctx.unsupported("a bound CRS whose hub isn't geodetic"));
+                }
+                let operation = ctx.bound_operation(&value["transformation"])?;
+                base.bound = Some(Arc::new(Bound { hub, operation }));
+                return Ok(base);
+            }
             "CompoundCRS" => {
                 let components = value["components"].as_array().map(Vec::as_slice);
                 let Some([h, v]) = components else {
@@ -446,6 +496,7 @@ impl Crs {
             kind,
             axes,
             implicit_axes: false,
+            bound: None,
         })
     }
 
@@ -485,6 +536,7 @@ impl Crs {
             },
             axes,
             implicit_axes: horizontal.implicit_axes,
+            bound: None,
         })
     }
 
@@ -535,6 +587,14 @@ impl Crs {
     /// part, and a vertical or engineering datum, are always compared in
     /// full.
     pub(crate) fn matches(&self, other: &Crs, relax: Relax) -> bool {
+        let same_bound = match (&self.bound, &other.bound) {
+            (None, None) => true,
+            (Some(a), Some(b)) => a.same(b),
+            _ => false,
+        };
+        if !same_bound {
+            return false;
+        }
         let same_axes = self.axes.same(&other.axes, relax);
         match (&self.kind, &other.kind) {
             (Kind::Geographic { datum: a }, Kind::Geographic { datum: b })
@@ -606,6 +666,35 @@ impl Crs {
             ) => ha.matches(hb, relax) && va.equivalent(vb, false),
             _ => false,
         }
+    }
+
+    /// The CRS without its bound transformation: a Bound CRS's base.
+    pub(crate) fn without_bound(&self) -> Crs {
+        let mut crs = self.clone();
+        crs.bound = None;
+        crs
+    }
+
+    /// The geographic 3D CRS (longitude, latitude, ellipsoidal height) on
+    /// this CRS's geodetic datum, without a code.
+    pub(crate) fn geographic_of(&self) -> Option<Crs> {
+        let datum = self.datum()?.clone();
+        let label = format!("{} (geographic)", self.name);
+        let ctx = Ctx { crs: &label };
+        let cs = serde_json::json!({"subtype": "ellipsoidal", "axis": [
+            {"name": "Longitude", "abbreviation": "lon", "direction": "east", "unit": "degree"},
+            {"name": "Latitude", "abbreviation": "lat", "direction": "north", "unit": "degree"},
+            {"name": "Ellipsoidal height", "abbreviation": "h", "direction": "up", "unit": "metre"},
+        ]});
+        let axes = ctx.axes(&cs, CsKind::Ellipsoidal, None).ok()?;
+        Some(Crs {
+            name: label,
+            code: None,
+            kind: Kind::Geographic { datum },
+            axes,
+            implicit_axes: false,
+            bound: None,
+        })
     }
 
     /// PROJ's synthetic 3D twin of a geographic 2D CRS: the same CRS with an
@@ -851,6 +940,46 @@ impl Ctx<'_> {
             }),
             _ => Err(self.invalid("a malformed unit")),
         }
+    }
+
+    /// A Bound CRS's transformation, as an operation without a code. Only
+    /// the Helmert family is read.
+    fn bound_operation(&self, transformation: &Value) -> Result<Operation, Error> {
+        let method = method_id(&transformation["method"])
+            .filter(|&m| crate::operation::helmert::is_helmert(m))
+            .ok_or_else(|| {
+                let name = transformation["method"]["name"]
+                    .as_str()
+                    .unwrap_or("unnamed");
+                self.unsupported(&format!("a bound CRS's transformation by {name}"))
+            })?;
+        let params = self.params(transformation)?;
+        Ok(Operation {
+            code: 0,
+            name: transformation["name"]
+                .as_str()
+                .unwrap_or("unnamed")
+                .to_owned(),
+            table: Table::Helmert,
+            method,
+            src: None,
+            dst: None,
+            accuracy: None,
+            scope: None,
+            variant: 0,
+            deprecated: false,
+            replaced: false,
+            emulates: Vec::new(),
+            extents: Vec::new(),
+            area: None,
+            params: params
+                .values()
+                .iter()
+                .map(|&(code, v)| (code, ParamValue::Number(v)))
+                .collect(),
+            steps: Vec::new(),
+            superseded_by: Vec::new(),
+        })
     }
 
     fn params(&self, conversion: &Value) -> Result<Params, Error> {

@@ -31,6 +31,7 @@ pub(crate) fn crs(v: &Value) -> Result<Node, Error> {
         "VerticalCRS" | "DerivedVerticalCRS" => vertical(v),
         "CompoundCRS" => compound(v),
         "EngineeringCRS" => local(v),
+        "BoundCRS" => bound(v),
         other => Err(cannot(v, &format!("a {other}"))),
     }
 }
@@ -498,6 +499,94 @@ fn compound(v: &Value) -> Result<Node, Error> {
     }
     id(v, &mut args);
     Ok(node("COMPD_CS", args))
+}
+
+/// A Bound CRS as its base with `TOWGS84` in its `DATUM`, after the
+/// `SPHEROID`, as PROJ writes it: always seven Position Vector values.
+fn bound(v: &Value) -> Result<Node, Error> {
+    let values = towgs84(&v["transformation"]).ok_or_else(|| {
+        cannot(
+            v,
+            "a bound CRS whose transformation isn't a Helmert one to WGS 84",
+        )
+    })?;
+    let mut base = crs(&v["source_crs"])?;
+    let geodetic = if base.keyword == "PROJCS" {
+        base.args.iter_mut().find_map(|a| match a {
+            Arg::Node(n) if n.keyword == "GEOGCS" => Some(n),
+            _ => None,
+        })
+    } else {
+        Some(&mut base)
+    };
+    let datum = geodetic.and_then(|g| {
+        g.args.iter_mut().find_map(|a| match a {
+            Arg::Node(n) if n.keyword == "DATUM" => Some(n),
+            _ => None,
+        })
+    });
+    let Some(datum) = datum else {
+        return Err(cannot(v, "a bound CRS on a CRS without a geodetic datum"));
+    };
+    let at = datum
+        .args
+        .iter()
+        .position(|a| matches!(a, Arg::Node(n) if n.keyword == "SPHEROID"))
+        .map_or(datum.args.len(), |i| i + 1);
+    datum.args.insert(
+        at,
+        sub(node(
+            "TOWGS84",
+            values.iter().map(|&x| Arg::Number(x)).collect(),
+        )),
+    );
+    Ok(base)
+}
+
+/// The value of a transformation's parameter in the unit of `factor`.
+fn in_unit(p: &Value, factor: f64) -> Option<f64> {
+    let raw = p["value"].as_f64()?;
+    let f = match &p["unit"] {
+        Value::Object(o) => o.get("conversion_factor")?.as_f64()?,
+        _ => 1.0,
+    };
+    Some(if (f - factor).abs() <= 1e-12 * factor {
+        raw
+    } else {
+        raw * f / factor
+    })
+}
+
+/// A Helmert transformation's seven parameters as `TOWGS84` takes them:
+/// Position Vector, metres, arc-seconds and parts per million (PROJ's
+/// `getTOWGS84Parameters`). `None` for any other transformation.
+pub(super) fn towgs84(t: &Value) -> Option<[f64; 7]> {
+    let method = t["method"]["id"]["code"].as_u64()?;
+    let sign = match method {
+        9603 | 9606 | 1031 | 1033 | 1035 | 1037 => 1.0,
+        9607 | 1032 | 1038 => -1.0,
+        _ => return None,
+    };
+    let param = |code: u32, factor: f64| {
+        t["parameters"]
+            .as_array()?
+            .iter()
+            .find(|p| p["id"]["code"] == code)
+            .and_then(|p| in_unit(p, factor))
+    };
+    const ARC_SECOND: f64 = 4.848_136_811_095_36e-6;
+    let mut out = [0.0; 7];
+    for (i, code) in (8605..=8607).enumerate() {
+        out[i] = param(code, 1.0)?;
+    }
+    for (i, code) in (8608..=8611).enumerate() {
+        let factor = if code == 8611 { 1e-6 } else { ARC_SECOND };
+        out[3 + i] = param(code, factor).unwrap_or(0.0);
+    }
+    for r in &mut out[3..6] {
+        *r *= sign;
+    }
+    Some(out)
 }
 
 fn local(v: &Value) -> Result<Node, Error> {

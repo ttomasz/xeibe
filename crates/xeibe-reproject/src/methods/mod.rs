@@ -65,6 +65,11 @@ impl Params {
         self.values.push((code, value));
     }
 
+    /// Every parameter, by EPSG code, in SI units.
+    pub(crate) fn values(&self) -> &[(u32, f64)] {
+        &self.values
+    }
+
     /// The same parameters, in any order, with values within PROJ's
     /// relative tolerance for them (2e-10), as PROJ's `SingleOperation` compares
     /// them: a parameter only one side has must have its neutral value (1

@@ -17,7 +17,7 @@ use crate::crs::{Crs, Kind};
 use crate::ellipsoid::Ellipsoid;
 use crate::error::CoordinateError;
 use crate::geocentric::{cartesian, geodetic};
-use crate::registry::Operation;
+use crate::registry::{Operation, ParamValue};
 
 /// EPSG method codes handled here.
 pub(super) const METHODS: &[u32] = &[
@@ -207,6 +207,29 @@ struct HelmertOperation {
     /// domains.
     src: Option<(Ellipsoid, f64)>,
     dst: Option<(Ellipsoid, f64)>,
+}
+
+/// Whether PROJ's pipeline has no step for this operation when nothing
+/// geocentric is next to it: its optimiser drops a Helmert step of zeros,
+/// and then a geocentric round trip between GRS 1980 and WGS 84, which it
+/// takes as one ellipsoid ("differences of the order of 1e-14 deg"). Next
+/// to another geocentric step the round trip cancels against that step's
+/// instead, which running it reproduces.
+pub(crate) fn no_step_alone(op: &Operation, src: &Crs, dst: &Crs) -> bool {
+    let grs80_or_wgs84 = |e: &Ellipsoid| {
+        e.a == 6_378_137.0
+            && [298.257_222_101, 298.257_223_563]
+                .iter()
+                .any(|rf| ((1.0 / e.f) - rf).abs() < 1e-9)
+    };
+    let zero = op.params.iter().all(|(_, v)| *v == ParamValue::Number(0.0));
+    zero && is_helmert(op.method)
+        && match (geographic(src), geographic(dst)) {
+            (Ok((a, pa)), Ok((b, pb))) => {
+                pa == pb && (a == b || (grs80_or_wgs84(&a) && grs80_or_wgs84(&b)))
+            }
+            _ => true,
+        }
 }
 
 pub(super) fn build(op: &Operation, src: &Crs, dst: &Crs) -> Result<Arc<dyn Method>, MethodError> {

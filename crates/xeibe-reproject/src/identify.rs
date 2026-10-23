@@ -37,6 +37,7 @@ impl Crs {
     /// - 25: not equivalent, but given as this CRS's code, or with its name.
     ///
     /// The CRS's own EPSG code, when it is equivalent, is the only result.
+    /// A Bound CRS (WKT1 with `TOWGS84`) has none, as in PROJ.
     /// A WKT1 `GEOGCS` or `PROJCS` without `AXIS` has default axes, which
     /// are compared by unit only. Engineering CRSs are never identified, as
     /// in PROJ. pyproj's `to_epsg()` is the first result at 70 or more.
@@ -77,6 +78,10 @@ impl Crs {
     }
 
     fn found(&self) -> Vec<Found> {
+        // A Bound CRS is no EPSG CRS, as in PROJ.
+        if self.bound.is_some() || self.horizontal().bound.is_some() {
+            return Vec::new();
+        }
         let Some(kind) = epsg_kind(self) else {
             return Vec::new();
         };

@@ -27,6 +27,7 @@ pub(crate) fn crs(node: &Node) -> Result<Value, Error> {
         "ENGCRS" | "ENGINEERINGCRS" => engineering(node),
         "COMPOUNDCRS" => compound(node),
         "DERIVEDPROJCRS" | "DERIVEDPROJECTEDCRS" => derived_projected(node),
+        "BOUNDCRS" => bound(node),
         other => Err(unsupported(node, &format!("WKT2 {other}"))),
     }
 }
@@ -641,13 +642,12 @@ fn axis(node: &Node, cs: &str, shared: Option<&Unit>) -> Result<(Option<f64>, Va
     // which may be missing. The abbreviation can hold brackets of its own:
     // "Easting (E(X))".
     let label = node.text(0)?.trim();
-    let (name, abbreviation) = split_label(label);
-    let name = if name.is_empty() { abbreviation } else { name };
     let word = node.word(1)?;
     let direction = DIRECTIONS
         .iter()
         .find(|d| d.eq_ignore_ascii_case(word))
         .ok_or_else(|| node.invalid(&format!("unknown axis direction {word}")))?;
+    let (name, abbreviation) = axis_name(label, direction);
     let mut o = Obj::new();
     o.insert("name".into(), json!(name));
     o.insert("abbreviation".into(), json!(abbreviation));
@@ -691,6 +691,44 @@ fn axis(node: &Node, cs: &str, shared: Option<&Unit>) -> Result<(Option<f64>, Va
 }
 
 /// An axis label's name and the abbreviation in the brackets that close it.
+/// An axis's name and abbreviation from its label, as PROJ's `buildAxis`
+/// gives them: the name capitalised ("latitude" is "Latitude"); without an
+/// abbreviation, latitude, longitude and ellipsoidal height take theirs;
+/// without a name, a few abbreviations give one ("(E)" is "Easting"), and
+/// geocentric axes theirs.
+fn axis_name(label: &str, direction: &str) -> (String, String) {
+    let capitalised = |n: &str| {
+        let mut c = n.chars();
+        c.next()
+            .map_or_else(String::new, |f| f.to_uppercase().chain(c).collect())
+    };
+    let (name, abbreviation) = split_label(label);
+    if name.is_empty() {
+        let name = match (abbreviation, direction) {
+            ("E", _) => "Easting",
+            ("N", _) => "Northing",
+            ("lat", _) => "Latitude",
+            ("lon", _) => "Longitude",
+            ("X", "geocentricX") => "Geocentric X",
+            ("Y", "geocentricY") => "Geocentric Y",
+            ("Z", "geocentricZ") => "Geocentric Z",
+            (other, _) => other,
+        };
+        return (name.to_owned(), abbreviation.to_owned());
+    }
+    let name = capitalised(name);
+    if !abbreviation.is_empty() || label.ends_with(')') {
+        return (name, abbreviation.to_owned());
+    }
+    let abbreviation = match name.as_str() {
+        "Latitude" => "lat",
+        "Longitude" => "lon",
+        "Ellipsoidal height" => "h",
+        _ => "",
+    };
+    (name, abbreviation.to_owned())
+}
+
 fn split_label(label: &str) -> (&str, &str) {
     if !label.ends_with(')') {
         return (label, "");
@@ -893,6 +931,112 @@ fn conversion(node: &Node, length: &Unit, angle: &Unit) -> Result<Value, Error> 
         o.insert("parameters".into(), Value::Array(parameters));
     }
     ids(node, &mut o)?;
+    Ok(Value::Object(o))
+}
+
+/// `BOUNDCRS[SOURCECRS[…], TARGETCRS[…], ABRIDGEDTRANSFORMATION[…]]`.
+/// The abridged transformation's Helmert parameters have fixed units,
+/// whatever is written, as PROJ reads them (`convertFromAbridged`):
+/// translations in metres, rotations in arc-seconds, and the scale
+/// difference given as a scale factor, which becomes parts per million.
+fn bound(node: &Node) -> Result<Value, Error> {
+    node.only(&[&["SOURCECRS", "TARGETCRS", "ABRIDGEDTRANSFORMATION"], USAGE])?;
+    let inner = |keyword: &str| -> Result<Value, Error> {
+        let n = node
+            .child(&[keyword])
+            .ok_or_else(|| node.invalid(&format!("no {keyword}")))?;
+        let found = n.args.iter().find_map(|a| match a {
+            Arg::Node(c) => Some(c),
+            _ => None,
+        });
+        crs(found.ok_or_else(|| n.invalid("no CRS"))?)
+    };
+    let source = inner("SOURCECRS")?;
+    let target = inner("TARGETCRS")?;
+    let t = node
+        .child(&["ABRIDGEDTRANSFORMATION"])
+        .ok_or_else(|| node.invalid("no ABRIDGEDTRANSFORMATION"))?;
+    t.only(&[&[
+        "METHOD",
+        "PARAMETER",
+        "PARAMETERFILE",
+        "ID",
+        "VERSION",
+        "REMARK",
+        "OPERATIONACCURACY",
+    ]])?;
+    let m = t.child(&["METHOD"]).ok_or_else(|| t.invalid("no METHOD"))?;
+    m.only(&[&["ID"]])?;
+    let mut method = Obj::new();
+    method.insert("name".into(), json!(m.text(0)?));
+    ids(m, &mut method)?;
+    let arc_second = json!({"type": "AngularUnit", "name": "arc-second",
+        "conversion_factor": 4.84813681109536e-06});
+    let ppm = json!({"type": "ScaleUnit", "name": "parts per million",
+        "conversion_factor": 1e-06});
+    let helmert: [(u32, &str); 7] = [
+        (8605, "X-axis translation"),
+        (8606, "Y-axis translation"),
+        (8607, "Z-axis translation"),
+        (8608, "X-axis rotation"),
+        (8609, "Y-axis rotation"),
+        (8610, "Z-axis rotation"),
+        (8611, "Scale difference"),
+    ];
+    let mut parameters = Vec::new();
+    for p in t.children(&["PARAMETER", "PARAMETERFILE"]) {
+        p.only(&[UNITS, &["ID"]])?;
+        let name = p.text(0)?;
+        let mut po = Obj::new();
+        po.insert("name".into(), json!(name));
+        if p.keyword == "PARAMETERFILE" {
+            po.insert("value".into(), json!(p.text(1)?));
+            ids(p, &mut po)?;
+            parameters.push(Value::Object(po));
+            continue;
+        }
+        ids(p, &mut po)?;
+        let value = p.number(1)?;
+        let code = po["id"]["code"].as_u64().map(|c| c as u32);
+        let abridged = helmert
+            .iter()
+            .find(|(c, n)| code == Some(*c) || crate::name::equivalent(name, n));
+        match abridged {
+            Some(&(c, n)) => {
+                po.insert("name".into(), json!(n));
+                let (value, unit) = match c {
+                    8605..=8607 => (value, json!("metre")),
+                    8608..=8610 => (value, arc_second.clone()),
+                    _ => ((value - 1.0) * 1e6, ppm.clone()),
+                };
+                po.insert("value".into(), num(value));
+                po.insert("unit".into(), unit);
+                po.insert("id".into(), json!({"authority": "EPSG", "code": c}));
+            }
+            None => {
+                po.insert("value".into(), num(value));
+                if let Some(u) = own_unit(p)? {
+                    po.insert("unit".into(), u.json);
+                }
+            }
+        }
+        // The id goes last, as elsewhere.
+        if let Some(id) = po.remove("id") {
+            po.insert("id".into(), id);
+        }
+        parameters.push(Value::Object(po));
+    }
+    let mut transformation = Obj::new();
+    transformation.insert("name".into(), json!(t.text(0)?));
+    transformation.insert("method".into(), Value::Object(method));
+    transformation.insert("parameters".into(), Value::Array(parameters));
+    ids(t, &mut transformation)?;
+    let mut o = Obj::new();
+    o.insert("type".into(), json!("BoundCRS"));
+    o.insert("source_crs".into(), source);
+    o.insert("target_crs".into(), target);
+    o.insert("transformation".into(), Value::Object(transformation));
+    finish(node, &mut o)?;
     Ok(Value::Object(o))
 }
 

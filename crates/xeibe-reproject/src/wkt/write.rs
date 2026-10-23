@@ -285,6 +285,7 @@ impl Writer {
             "CompoundCRS" => self.compound(v),
             "EngineeringCRS" => self.engineering(v),
             "DerivedProjectedCRS" => self.derived_projected(v),
+            "BoundCRS" => bound(v),
             other => Err(Error::Unsupported {
                 crs: v["name"].as_str().unwrap_or("PROJJSON").into(),
                 what: format!("writing a {other} as WKT"),
@@ -541,6 +542,66 @@ fn parameter_kind(p: &Value) -> Kind {
     }
 }
 
+/// `BOUNDCRS[SOURCECRS[…], TARGETCRS[…], ABRIDGEDTRANSFORMATION[…]]`,
+/// each CRS written whole. A Helmert transformation's parameters go in the
+/// abridged form's fixed units, without a unit: metres, arc-seconds, and
+/// the scale difference as a scale factor (PROJ's `convertToAbridged`).
+fn bound(v: &Value) -> Result<Node, Error> {
+    let source = Writer { root: true }.crs(&v["source_crs"])?;
+    let target = Writer { root: true }.crs(&v["target_crs"])?;
+    let t = &v["transformation"];
+    let m = &t["method"];
+    let mut method = vec![text(str_of(m, "name")?)];
+    ids(m, &mut method)?;
+    let mut args = vec![text(str_of(t, "name")?), sub(node("METHOD", method))];
+    const ARC_SECOND: f64 = 4.848_136_811_095_36e-6;
+    for p in t["parameters"].as_array().into_iter().flatten() {
+        let code = p["id"]["code"].as_u64().unwrap_or(0);
+        let mut a = vec![text(str_of(p, "name")?)];
+        if let Some(file) = p["value"].as_str() {
+            a.push(text(file));
+            ids(p, &mut a)?;
+            args.push(sub(node("PARAMETERFILE", a)));
+            continue;
+        }
+        let raw = num_of(&p["value"])?;
+        let factor = match &p["unit"] {
+            Value::Object(o) => o
+                .get("conversion_factor")
+                .and_then(Value::as_f64)
+                .unwrap_or(1.0),
+            _ => 1.0,
+        };
+        let in_unit = |wanted: f64| {
+            if (factor - wanted).abs() <= 1e-12 * wanted {
+                raw
+            } else {
+                raw * factor / wanted
+            }
+        };
+        match code {
+            8605..=8607 => a.push(Arg::Number(in_unit(1.0))),
+            8608..=8610 => a.push(Arg::Number(in_unit(ARC_SECOND))),
+            8611 => a.push(Arg::Number(1.0 + in_unit(1e-6) * 1e-6)),
+            _ => {
+                a.push(Arg::Number(raw));
+                a.push(sub(unit(&p["unit"], parameter_kind(p))?));
+            }
+        }
+        ids(p, &mut a)?;
+        args.push(sub(node("PARAMETER", a)));
+    }
+    ids(t, &mut args)?;
+    Ok(node(
+        "BOUNDCRS",
+        vec![
+            sub(node("SOURCECRS", vec![sub(source)])),
+            sub(node("TARGETCRS", vec![sub(target)])),
+            sub(node("ABRIDGEDTRANSFORMATION", args)),
+        ],
+    ))
+}
+
 fn conversion(keyword: &str, c: &Value) -> Result<Node, Error> {
     let m = &c["method"];
     let mut method = vec![text(str_of(m, "name")?)];
@@ -586,7 +647,13 @@ fn cs_args(cs: &Value) -> Result<Vec<Arg>, Error> {
         if let Some(first) = lower.get(..1) {
             lower.replace_range(..1, &first.to_lowercase());
         }
-        let label = match (bare_axis(i, name, abbreviation), abbreviation.is_empty()) {
+        // PROJ writes a geodetic CS's "Latitude" and "Longitude" without
+        // their abbreviations.
+        let plain = matches!(name, "Latitude" | "Longitude");
+        let label = match (
+            bare_axis(i, name, abbreviation),
+            abbreviation.is_empty() || plain,
+        ) {
             (true, _) => format!("({abbreviation})"),
             (false, true) => lower,
             (false, false) => format!("{lower} ({abbreviation})"),

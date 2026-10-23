@@ -24,7 +24,8 @@ use crate::error::Error;
 /// Everything WKT2 says that PROJJSON has a place for is kept: ids,
 /// usages, remarks, anchor epochs, geoid models. A keyword this reader
 /// doesn't know is an error naming it, as is a CRS type it doesn't read
-/// (a derived geographic CRS, a parametric or temporal CRS, `BOUNDCRS`).
+/// (a derived geographic CRS, a parametric or temporal CRS). WKT1's
+/// `TOWGS84` and WKT2's `BOUNDCRS` give a `BoundCRS`, as in PROJ.
 ///
 /// ```
 /// let json = xeibe_reproject::wkt::to_projjson(

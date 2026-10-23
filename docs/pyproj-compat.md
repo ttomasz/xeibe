@@ -427,7 +427,7 @@ use are dropped. Seeing them takes one line, for example
 | Selection restricted to an area of interest and a minimum accuracy | reproject (`select/`) | `area_of_interest`, `accuracy`, `only_best` (2) |
 | WKT1/WKT2 reader and WKT2 2019/WKT1_GDAL writer, to and from PROJJSON ([crs-wkt.md](crs-wkt.md)). **Done:** the WKT2 and WKT1 readers (`wkt::to_projjson`, `Crs::from_wkt`, ESRI's WKT1 included, with Esri's names from the new `xeibe-esri` crate) and the WKT2 2019 and WKT1_GDAL writers (`wkt::from_projjson`) | reproject, new `wkt` module | `from_wkt`, `to_wkt` (2) |
 | CRS identification: best EPSG match for a definition, with a confidence. **Done:** `Crs::identify` ([crs-wkt.md](crs-wkt.md#identification)); `Transform` uses it for a CRS without a code | reproject | `to_epsg` on WKT input (2) |
-| `BoundCRS` (a CRS with its transformation to a hub such as WGS 84) in `Crs` and the selection ([crs-wkt.md](crs-wkt.md#towgs84-and-boundcrs)) | reproject | WKT1 `TOWGS84` (2), `+towgs84` (3) |
+| `BoundCRS` (a CRS with its transformation to a hub such as WGS 84) in `Crs` and the selection ([crs-wkt.md](crs-wkt.md#towgs84-and-boundcrs)). **Done** for Helmert transformations: read (WKT1 `TOWGS84`, WKT2 `BOUNDCRS`), written, and converted as PROJ routes them | reproject | WKT1 `TOWGS84` (2), `+towgs84` (3) |
 | The rest of `geodesic.c`: lines, polygon area and perimeter | reproject | `Geod` (2) |
 | PROJ's ellipsoid name table | reproject | `Geod(ellps=)`, `+ellps` (2) |
 | PROJ string ↔ PROJJSON translator for the supported methods | reproject | `from_proj4`, `to_proj4`, `Proj(**kwargs)` (3) |

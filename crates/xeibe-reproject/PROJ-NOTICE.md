@@ -10,7 +10,10 @@ parameter name tables in `src/wkt/names.rs` from PROJ's
 Reading ESRI WKT (`src/wkt/esri.rs`) follows PROJ's `io.cpp`, and the
 equivalence of conversions PROJ's `singleoperation.cpp` and
 `conversion.cpp` (`convertToOtherMethod`, in `src/methods/lcc.rs` and
-`merc.rs`). PROJ's licence applies to those parts:
+`merc.rs`). The routes from and to Bound CRSs in `src/transform.rs` follow
+`coordinateoperationfactory.cpp` (`createOperationsBoundToGeog`,
+`createOperationsBoundToBound`) and the pipeline optimiser in `io.cpp`.
+PROJ's licence applies to those parts:
 
 ```text
 All source, data files and other contents of the PROJ package are

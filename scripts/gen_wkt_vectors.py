@@ -24,6 +24,13 @@ CRS PROJ has, deprecated ones included, two files:
   removed (`ID[...]` in WKT2, `AUTHORITY[...]` in WKT1) and, for it and for
   the string as written (ids kept), PROJ's `list_authority` (EPSG only,
   `[code, confidence]`, best first, at most 5) and `to_epsg()`.
+* `bound.jsonl`: Bound CRSs, made from EPSG's Helmert transformations to
+  WGS 84 (methods 9603, 9606, 9607; rotations in arc-seconds) as WKT1
+  `TOWGS84` on the source CRS and on a projected CRS based on it, with
+  PROJ's PROJJSON, WKT2 2019 and WKT1_GDAL for each, and PROJ's results
+  (`always_xy`) and operation names from a point in the CRS's area of use
+  to WGS 84, Pseudo-Mercator, ETRS89, NAD83, the plain EPSG CRS and another
+  Bound CRS.
 * `esri.jsonl`: Esri's own WKT1 for each live EPSG CRS in Esri's projection
   engine database (the CSVs `scripts/gen_esri_tables.py` downloads into
   `example_data/esri-pedb/`; skipped when they are missing), with PROJ's
@@ -302,6 +309,141 @@ def esri_vector(row: dict) -> dict:
     return row | {"proj": {"name": crs.name, "axes": directions(crs)} | identify(crs)}
 
 
+# Bound CRSs committed: these EPSG transformations to WGS 84, and a sample.
+BOUND_PINNED = [1240, 1188, 1173, 1311, 15865, 1149, 5826, 1618, 1179, 15787]
+BOUND_SAMPLE = 20
+BOUND_TARGETS = [4326, 3857, 4258, 4269]
+
+
+def bound_rows(everything: bool) -> list[dict]:
+    """EPSG's Helmert transformations from a geographic 2D CRS to WGS 84
+    that `TOWGS84` can carry, with the CRS and a projected CRS on it."""
+    db = sqlite3.connect(f"file:{ORACLE / 'proj.db'}?mode=ro", uri=True)
+    rows = db.execute(
+        """SELECT h.code, h.method_code, h.source_crs_code, h.tx, h.ty, h.tz,
+                  h.rx, h.ry, h.rz, h.scale_difference
+             FROM helmert_transformation_table h
+             JOIN geodetic_crs g ON g.auth_name = h.source_crs_auth_name
+                               AND g.code = h.source_crs_code
+            WHERE h.auth_name = 'EPSG' AND h.target_crs_auth_name = 'EPSG'
+              AND h.target_crs_code = '4326' AND h.deprecated = 0
+              AND g.type = 'geographic 2D' AND g.deprecated = 0
+              AND h.translation_uom_code = '9001'
+              AND (h.method_code = '9603'
+                   OR (h.method_code IN ('9606', '9607') AND h.rotation_uom_code = '9104'
+                       AND h.scale_difference_uom_code = '9202'))
+            ORDER BY CAST(h.code AS INTEGER)"""
+    ).fetchall()
+    projected = dict(
+        db.execute(
+            """SELECT geodetic_crs_code, MIN(CAST(code AS INTEGER)) FROM projected_crs
+                WHERE auth_name = 'EPSG' AND geodetic_crs_auth_name = 'EPSG' AND deprecated = 0
+                GROUP BY geodetic_crs_code"""
+        ).fetchall()
+    )
+    db.close()
+    out = []
+    for code, method, source, tx, ty, tz, rx, ry, rz, ds in rows:
+        method = int(method)
+        variants = [[tx, ty, tz]]
+        if method != 9603:
+            rotations = [rx or 0.0, ry or 0.0, rz or 0.0]
+            # TOWGS84 is Position Vector; a Coordinate Frame transformation
+            # turned round, and also as written, which files carry and PROJ
+            # corrects.
+            sign = -1.0 if method == 9607 else 1.0
+            variants = [[tx, ty, tz, *(sign * r for r in rotations), ds or 0.0]]
+            if method == 9607:
+                variants.append([tx, ty, tz, *rotations, ds or 0.0])
+        for values in variants:
+            for crs in (int(source), projected.get(source)):
+                if crs is not None:
+                    out.append({"op": int(code), "code": int(crs), "towgs84": values})
+    if not everything:
+        rng = random.Random(SEED)
+        pinned = [r for r in out if r["op"] in BOUND_PINNED]
+        rest = [r for r in out if r["op"] not in BOUND_PINNED]
+        out = pinned + rng.sample(rest, min(BOUND_SAMPLE, len(rest)))
+        out.sort(key=lambda r: (r["op"], r["code"]))
+    # Each record's other Bound CRS: the next one's.
+    for i, r in enumerate(out):
+        r["other"] = out[(i + 1) % len(out)]["code"], out[(i + 1) % len(out)]["towgs84"]
+    return out
+
+
+def with_towgs84(code: int, values: list[float]) -> str | None:
+    """PROJ's WKT1_GDAL of an EPSG CRS with a TOWGS84 in its datum."""
+    try:
+        wkt = pyproj.CRS.from_epsg(code).to_wkt("WKT1_GDAL")
+    except pyproj.exceptions.CRSError:
+        return None
+    if wkt is None:
+        return None
+    i = wkt.find("SPHEROID[")
+    depth, j = 0, i
+    while j < len(wkt):
+        depth += {"[": 1, "]": -1}.get(wkt[j], 0)
+        j += 1
+        if depth == 0 and wkt[j - 1] == "]":
+            break
+    numbers = ",".join(repr(float(v)) for v in values)
+    return wkt[:j] + f",TOWGS84[{numbers}]" + wkt[j:]
+
+
+def area_point(crs: pyproj.CRS) -> tuple[float, float] | None:
+    """The middle of the CRS's area of use, in its own coordinates, x first."""
+    area = crs.area_of_use
+    if area is None:
+        return None
+    west, south, east, north = area.bounds
+    if east < west:
+        east += 360
+    lon = (west + east) / 2
+    lon = lon - 360 if lon > 180 else lon
+    try:
+        t = pyproj.Transformer.from_crs(4326, crs, always_xy=True)
+        x, y = t.transform(lon, (south + north) / 2)
+    except pyproj.exceptions.ProjError:
+        return None
+    return (x, y) if all(map(lambda v: v == v and abs(v) != float("inf"), (x, y))) else None
+
+
+def bound_vector(row: dict) -> dict | None:
+    """PROJ's reading of a Bound CRS and its results to the targets."""
+    wkt = with_towgs84(row["code"], row["towgs84"])
+    other = with_towgs84(*row.pop("other"))
+    if wkt is None:
+        return None
+    try:
+        crs = pyproj.CRS.from_wkt(wkt)
+        plain = pyproj.CRS.from_epsg(row["code"])
+    except pyproj.exceptions.CRSError:
+        return None
+    point = area_point(plain)
+    if point is None:
+        return None
+    out = row | {"wkt": wkt, "projjson": crs.to_json_dict(), "point": list(point)}
+    for version in ("WKT2_2019", "WKT1_GDAL"):
+        try:
+            out[version] = crs.to_wkt(version)
+        except pyproj.exceptions.CRSError as e:
+            out[version] = None
+    to = []
+    targets: list = [*BOUND_TARGETS, row["code"]] + ([other] if other else [])
+    for target in targets:
+        entry: dict = {"target": target}
+        try:
+            t = pyproj.Transformer.from_crs(crs, pyproj.CRS.from_user_input(target), always_xy=True)
+            x, y = t.transform(*point, errcheck=True)
+            entry |= {"result": [x, y], "description": t.description}
+        except Exception as e:  # noqa: BLE001 - recorded
+            entry["error"] = error_text(e)
+        to.append(entry)
+    out["to"] = to
+    del out["towgs84"]
+    return out
+
+
 def init_worker() -> None:
     pyproj.datadir.set_data_dir(str(ORACLE))
     pyproj.network.set_network_enabled(False)
@@ -454,6 +596,9 @@ def main() -> int:
             epsg,
             "EPSG Dataset (IOGP) as EPSG's own WKT export; see crates/xeibe-crs/EPSG-NOTICE.md",
         )
+    with ProcessPoolExecutor(max_workers=args.jobs, initializer=init_worker) as pool:
+        bound = [b for b in pool.map(bound_vector, bound_rows(args.all), chunksize=8) if b]
+    write(out / "bound.jsonl", bound)
     esri = esri_rows(None if args.all else codes)
     if esri is not None:
         with ProcessPoolExecutor(max_workers=args.jobs, initializer=init_worker) as pool:
