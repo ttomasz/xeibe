@@ -73,7 +73,11 @@ geoarrow-array = "0.9"
 geoarrow-schema = "0.9"
 geo-traits = "0.3"
 wkb = "0.9"
-datafusion = "55"
+# Without `compression` (liblzma-sys, C xz), `crypto_expressions` (blake3, C
+# and assembly) and `recursive_protection` (psm, assembly): xeibe uses none of
+# them, and features unify, so an application that wants them turns them on
+# in its own datafusion dependency.
+datafusion = { version = "55", default-features = false, features = ["parquet", "sql", "nested_expressions", "datetime_expressions", "string_expressions", "unicode_expressions", "regex_expressions", "encoding_expressions"] }
 
 quick-xml = "0.42"
 memchr = "2"
