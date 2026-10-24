@@ -1,9 +1,9 @@
 """Directories with local copies of PROJ-data's grid files.
 
 There is no ``proj.db``: a directory counts when it exists. Grids found in
-one are read from disk instead of fetched. Until ``xeibe-reproject`` can
-choose operations by which grids are local, a local grid is only used with
-the network on (see ``docs/pyproj-compat.md``, Grids).
+one, or in the user data directory where ``download_grids`` puts them, are
+read from disk instead of fetched, and with the network off their
+operations are the ones available (see ``docs/pyproj-compat.md``, Grids).
 """
 
 from __future__ import annotations
@@ -43,7 +43,8 @@ def get_data_dir() -> str:
 
 
 def get_user_data_dir(create: bool = False) -> str:
-    """Where fetched grid ranges are cached: ``$XDG_CACHE_HOME/xeibe-proj``,
+    """Where fetched grid ranges are cached and ``download_grids`` puts
+    whole files: ``$XDG_CACHE_HOME/xeibe-proj``,
     ``~/Library/Caches/xeibe-proj`` or ``%LOCALAPPDATA%\\xeibe-proj``."""
     path = _cache_dir()
     if create:

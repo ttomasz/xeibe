@@ -28,14 +28,15 @@ What it offers over pyproj:
 ## Implementation status
 
 As of 2026-10-21, phase 0 and phase 1 are implemented, apart from
-`TransformerGroup.download_grids` and `get_units_map` (both phase 2;
-`get_units_map` is done since). As of
+`TransformerGroup.download_grids` and `get_units_map` (both phase 2, and
+done since). As of
 2026-10-23, so is phase 2's WKT part ([crs-wkt.md](crs-wkt.md)): WKT in and
 out, identification by definition, Bound CRSs and Esri's old codes. The
 rest of phase 2 is designed in [pyproj-phase2.md](pyproj-phase2.md), and
-its first six steps are done: the geodesic port, `Geod`, `Proj`,
-`to_2d`, `to_3d` and `get_non_deprecated`, `get_units_map`, and
-`area_of_interest`, `accuracy` and `only_best`.
+as of 2026-10-24 all of it is done: the geodesic port, `Geod`, `Proj`,
+`to_2d`, `to_3d` and `get_non_deprecated`, `get_units_map`,
+`area_of_interest`, `accuracy` and `only_best`, `Transformer.to_json` and
+`to_wkt`, and `download_grids`.
 
 - **Done.**
   - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
@@ -367,7 +368,7 @@ becomes the package's status tracker.
 | `definition`, `to_proj4` | Out | These are PROJ pipeline strings. `definition` raises with a pointer to `description`. |
 | `from_pipeline`, `from_proj`, the module-level `pyproj.transform` / `itransform` | Out | PROJ pipelines, or APIs pyproj deprecated. |
 | `TransformerGroup(…)`: `transformers`, `unavailable_operations`, `best_available` | 1 | One `Transform::via` per candidate from `operations()`. Operations whose grids aren't on the CDN are `unavailable_operations`. `area_of_interest` and `accuracy` (2) as for `from_crs`. The candidates are those `from_crs` chooses from, where pyproj's group ignores grid availability while searching: the lists can differ where grids are involved ([pyproj-phase2.md](pyproj-phase2.md#validation-2)). |
-| `TransformerGroup.download_grids` | 2 | Fills the grid cache. |
+| `TransformerGroup.download_grids` | 2 | Whole files from `cdn.proj.org` into the user data directory (or `directory`), where grids are looked for next ([pyproj-phase2.md](pyproj-phase2.md#download_grids)). **Done.** |
 | `TransformerGroup(crs_extent_use=, pivot_crs=, grid_check=, allow_superseded=)` | Out | Defaults accepted. Other values raise an error. |
 
 ### Geodesics, legacy and module-level API
@@ -411,7 +412,10 @@ use of a grid is logged:
   pyproj on a default install, and the differential tests check that it does.
 - **Local grids** (`PROJ_DATA`, `set_data_dir`, `append_data_dir`):
   operations whose grids are present locally are available, with or without
-  the network, and are read from disk instead of fetched.
+  the network, and are read from disk instead of fetched. As in PROJ, the
+  directories set with `set_data_dir` are searched alone; otherwise the
+  user data directory (`get_user_data_dir()`, where `download_grids` puts
+  files) comes first, then `PROJ_DATA`.
 - In Pyodide `urllib` has no sockets, so phase 3 adds a fetch path through
   `pyodide.http`.
 

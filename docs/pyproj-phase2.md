@@ -1,9 +1,9 @@
 # pyproj compatibility, phase 2: geodesics, `Proj` and the rest
 
-> **Status: designed, 2026-10-23; steps 1 to 7 of 8 implemented (the
-> geodesic port in Rust, `Geod`, `Proj`, `to_2d`/`to_3d`/`get_non_deprecated`,
-> `get_units_map`, the selection's options, and `Transformer.to_json` and
-> `to_wkt`, see [Order of work](#order-of-work)).**
+> **Status: designed, 2026-10-23; implemented, 2026-10-24 (the geodesic
+> port in Rust, `Geod`, `Proj`, `to_2d`/`to_3d`/`get_non_deprecated`,
+> `get_units_map`, the selection's options, `Transformer.to_json` and
+> `to_wkt`, and `download_grids`, see [Order of work](#order-of-work)).**
 > This is the rest
 > of phase 2 in [pyproj-compat.md](pyproj-compat.md#phases), after the WKT
 > part ([crs-wkt.md](crs-wkt.md)). Facts about PROJ and pyproj were checked
@@ -38,7 +38,7 @@ the [compatibility table](pyproj-compat.md#compatibility-table):
 | 10 | **`get_units_map` lists EPSG's units and PROJ's own five, not Esri's.** | As for CRSs, other authorities are out ([pyproj-compat.md](pyproj-compat.md#crs)). PROJ's five (`PROJ:DM`, `IN`, `IND_CH`, `US_IN`, `US_YD`) and PROJ's short names (`us-ft`) are needed for phase 3's `+units` anyway. |
 | 11 | **`area_of_interest`, `accuracy` and `only_best` are applied in `xeibe-reproject`'s selection**, as PROJ applies them in `proj_create_crs_to_crs`. When nothing is left, construction fails as it does today; PROJ would fall back to a ballpark operation. | Selection is already PROJ's, in Rust ([reprojection.md](reprojection.md)). There is no ballpark ([pyproj-compat.md](pyproj-compat.md#transformer-and-transformergroup), `allow_ballpark`). |
 | 12 | **`Transformer.to_json` and `to_wkt` describe the operation in PROJJSON and WKT2 2019, built from EPSG's data**, and return `None` when the transformer has several candidates. | PROJ returns `None` until `proj_trans` has chosen one ("unavailable until proj_trans is called"). Equivalent to PROJ's output, not identical, as for CRSs ([crs-wkt.md](crs-wkt.md#decisions), decision 7). |
-| 13 | **`download_grids` downloads whole grid files from the CDN** into the given directory or the first data directory, skipping those already present. | That is what pyproj does. Range requests are for the default network mode ([pyproj-compat.md](pyproj-compat.md#grids)). |
+| 13 | **`download_grids` downloads whole grid files from the CDN** into the given directory or the user data directory, skipping those already present. | That is what pyproj does. Range requests are for the default network mode ([pyproj-compat.md](pyproj-compat.md#grids)). |
 
 ## Geodesics
 
@@ -405,17 +405,31 @@ inverse method, as both write in PROJJSON.
 `TransformerGroup.download_grids(directory=None, open_license=True,
 verbose=False)` behaves as in pyproj:
 
-- It fetches every grid of every operation in the group, as a whole
-  file from `cdn.proj.org`.
-- The files go into `directory`, or into the first directory of
-  `get_data_dir()` (the user data directory when none is set).
-- Files already present are skipped.
-- `open_license=True` skips the grids without an open licence. That
-  needs PROJ's `open_license` column in the generated grid catalog.
-- `verbose` prints each file.
+- It fetches the missing grids of the group's `unavailable_operations`,
+  each once, as a whole file from `cdn.proj.org`, through a `.part` file
+  renamed when complete.
+- The files go into `directory`, or into the user data directory
+  (`get_user_data_dir(True)`), as pyproj's.
+- Files already in the directory are kept, where pyproj downloads them
+  again.
+- `open_license=True` skips the grids without an open licence. Every grid
+  an operation here can use is on the CDN, and PROJ's catalog has every
+  CDN grid openly licensed (`gen_grid_catalog.py` checks it); the three
+  grids it has elsewhere (RDNAP 2008, not open) can't be loaded, so no
+  candidate uses them. The flag therefore changes nothing yet.
+- `verbose` prints `Downloading: <url>` for each file and warns of each
+  grid skipped.
 
-Downloads are logged as in [pyproj-compat.md](pyproj-compat.md#grids).
-The tests use the local HTTP server the grid tests already use.
+For the files to be found next time, grids are looked for as PROJ looks
+for resource files: in the directories `set_data_dir` set, alone, or
+else in the user data directory and then `PROJ_DATA`. The transformer
+module has pyproj's names `get_user_data_dir` and
+`_download_resource_file`, which pyproj's tests patch.
+
+Downloads are logged as in [pyproj-compat.md](pyproj-compat.md#grids)
+(`INFO` for each file with its size, `DEBUG` for one kept, `ERROR` before
+the `ProjError` of a failure). The tests run against the local HTTP server
+the grid tests use, which now also serves whole files.
 
 ## Order of work
 
@@ -454,4 +468,6 @@ The tests use the local HTTP server the grid tests already use.
    national realization that no coordinate could take are no longer
    candidates, so WGS 84 to Poland CS92 has PROJ's one operation. The suite
    went from 351 to 356 of 963.
-8. **`download_grids`**, gated on the local grid server.
+8. **`download_grids`**, gated on the local grid server. **Done:**
+   `xeibe_proj._grids.download`, with grids looked for in the user data
+   directory too.

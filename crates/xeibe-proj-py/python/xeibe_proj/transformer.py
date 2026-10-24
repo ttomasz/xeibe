@@ -23,11 +23,13 @@ from itertools import chain, islice
 from typing import TYPE_CHECKING, Any, overload
 
 from xeibe_proj import _containers, _grids, _native, _operation_json, _wkt
+from xeibe_proj._grids import download as _download_resource_file
 from xeibe_proj._epsg import OGC_CRS
 from xeibe_proj._json import as_dict, get_dict, get_dicts, ident
-from xeibe_proj._unsupported import not_yet, out
+from xeibe_proj._unsupported import out
 from xeibe_proj.aoi import AreaOfInterest, AreaOfUse
 from xeibe_proj.crs import CRS, CoordinateOperation, Grid
+from xeibe_proj.datadir import get_user_data_dir
 from xeibe_proj.enums import TransformDirection
 from xeibe_proj.exceptions import CRSError, ProjError
 from xeibe_proj.network import is_network_enabled
@@ -818,7 +820,30 @@ class TransformerGroup:
         return self._best_available
 
     def download_grids(self, directory: Any = None, open_license: bool = True, verbose: bool = False) -> None:
-        raise not_yet("TransformerGroup.download_grids", 2)
+        """Download the missing grids of ``unavailable_operations``, whole,
+        into ``directory``, else the user data directory (created). Without
+        ``open_license``, grids under other licences too; every grid
+        PROJ-data serves is openly licensed. ``verbose`` prints each
+        download and warns of each grid skipped. Files already in the
+        directory are kept."""
+        if directory is None:
+            directory = get_user_data_dir(True)
+        done: set[str] = set()
+        for operation in self._unavailable:
+            for grid in operation.grids:
+                if grid.available or grid.short_name in done:
+                    continue
+                if (
+                    grid.url.endswith(grid.short_name)
+                    and grid.direct_download
+                    and (grid.open_license or not open_license)
+                ):
+                    done.add(grid.short_name)
+                    _download_resource_file(
+                        file_url=grid.url, short_name=grid.short_name, directory=directory, verbose=verbose
+                    )
+                elif verbose:
+                    warnings.warn(f"Skipped: {grid}", stacklevel=2)
 
     def __repr__(self) -> str:
         return (

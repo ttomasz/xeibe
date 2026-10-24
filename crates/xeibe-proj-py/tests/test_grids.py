@@ -37,7 +37,8 @@ def _vectors() -> tuple[list[float], list[float], list[list[float] | None]]:
 
 
 class _Handler(http.server.SimpleHTTPRequestHandler):
-    """Serves the committed grids with range requests, and counts them."""
+    """Serves the committed grids, by range or whole, and counts the
+    requests."""
 
     requests: list[str] = []
 
@@ -48,6 +49,12 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
             self.send_error(404)
             return
         data = path.read_bytes()
+        if self.headers["Range"] is None:
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         start, _, end = self.headers["Range"].removeprefix("bytes=").partition("-")
         body = data[int(start) : int(end) + 1 if end else len(data)]
         self.send_response(206)
@@ -175,3 +182,64 @@ def test_local_grids_with_the_network_off(monkeypatch: pytest.MonkeyPatch, caplo
     assert group.best_available and not group.unavailable_operations
     _native.clear_grids()
 
+
+
+ST_GEORGE = ["us_noaa_nadcon5_sg1952_nad83_1986_stgeorge.tif", "us_noaa_stgeorge.tif"]
+
+
+def test_download_grids(
+    cdn: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The missing grids of a group's unavailable operations come whole,
+    once each, into the user data directory, where they are found next
+    time."""
+    from xeibe_proj import transformer
+    from xeibe_proj.transformer import TransformerGroup
+
+    network.set_network_enabled(False)
+    group = TransformerGroup(4138, 4269)
+    assert not group.best_available
+    assert [g.short_name for op in group.unavailable_operations for g in op.grids] == ST_GEORGE
+    calls: list[bool] = []
+    user_dir = transformer.get_user_data_dir
+    monkeypatch.setattr(transformer, "get_user_data_dir", lambda create=False: calls.append(create) or user_dir(create))
+    group.download_grids(verbose=True)
+    assert calls == [True]
+    user = Path(datadir.get_user_data_dir())
+    assert sorted(p.name for p in user.iterdir() if p.is_file()) == ST_GEORGE
+    for name in ST_GEORGE:
+        assert (user / name).read_bytes() == (GRIDS / name).read_bytes()
+    assert capsys.readouterr().out == "".join(f"Downloading: {_grids.CDN}{n}\n" for n in ST_GEORGE)
+    assert cdn == [f"/{n}" for n in ST_GEORGE]
+    # Found in the user data directory: available now, nothing to fetch.
+    _native.clear_grids()
+    again = TransformerGroup(4138, 4269)
+    assert again.best_available and not again.unavailable_operations
+    _check(again.transformers[0])
+    again.download_grids()
+    assert cdn == [f"/{n}" for n in ST_GEORGE]
+
+
+def test_download_grids_into_a_directory(cdn: list[str], tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    from xeibe_proj.transformer import TransformerGroup
+
+    caplog.set_level(logging.DEBUG, logger="xeibe_proj.grids")
+    network.set_network_enabled(False)
+    group = TransformerGroup(4138, 4269)
+    target = tmp_path / "grids"
+    # A file already there is kept.
+    target.mkdir()
+    (target / ST_GEORGE[1]).write_bytes(b"mine")
+    group.download_grids(directory=target, open_license=False)
+    assert cdn == [f"/{ST_GEORGE[0]}"]
+    assert (target / ST_GEORGE[1]).read_bytes() == b"mine"
+    assert sorted(p.name for p in target.iterdir()) == ST_GEORGE
+    assert any("downloaded grid" in r.getMessage() and r.levelno == logging.INFO for r in caplog.records)
+    assert any("already in" in r.getMessage() for r in caplog.records)
+
+
+def test_download_grids_failure(cdn: list[str], tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    with pytest.raises(ProjError, match="downloading"):
+        _grids.download(f"{_grids.CDN}missing.tif", "missing.tif", tmp_path)
+    assert list(tmp_path.iterdir()) == []
+    assert any(r.levelno == logging.ERROR for r in caplog.records)

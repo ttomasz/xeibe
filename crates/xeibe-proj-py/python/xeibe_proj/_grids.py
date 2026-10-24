@@ -10,6 +10,8 @@ reaches stderr through Python's last-resort handler.
 | A transformer that may read grids first converts | INFO |
 | Ranges downloaded | INFO |
 | Ranges read from the cache or a data directory | DEBUG |
+| A whole file downloaded (``TransformerGroup.download_grids``) | INFO |
+| A whole file kept, already in the directory | DEBUG |
 | A download fails | ERROR, then ``ProjError`` |
 
 Which operation a coordinate went through, and so whether it needed a grid,
@@ -21,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import ssl
 import tempfile
 import urllib.error
@@ -31,7 +34,7 @@ from typing import Protocol
 from xeibe_proj import datadir, network
 from xeibe_proj.exceptions import ProjError
 
-__all__ = ["CDN", "LOGGER", "load", "local_files"]
+__all__ = ["CDN", "LOGGER", "download", "load", "local_files"]
 
 LOGGER = logging.getLogger("xeibe_proj.grids")
 
@@ -46,11 +49,22 @@ class _Transform(Protocol):
     def add_grid_data(self, file: str, offset: int, data: bytes) -> None: ...
 
 
+def _dirs() -> list[str]:
+    """Where grid files are looked for, as PROJ looks for resource files:
+    the directories set with ``set_data_dir`` alone, else the user data
+    directory and then ``PROJ_DATA``."""
+    dirs = datadir._data_dirs()  # pyright: ignore[reportPrivateUsage]
+    if datadir._user_dirs is not None:  # pyright: ignore[reportPrivateUsage]
+        return dirs
+    return [datadir.get_user_data_dir(), *dirs]
+
+
 def local_files() -> list[str]:
-    """The files in the data directories: PROJ-data's grids, by name, that
-    the choice of operation may use with the network off."""
+    """The files in the data directories and the user data directory:
+    PROJ-data's grids, by name, that the choice of operation may use with
+    the network off."""
     files: set[str] = set()
-    for d in datadir._data_dirs():  # pyright: ignore[reportPrivateUsage]
+    for d in _dirs():
         try:
             files.update(p.name for p in Path(d).iterdir() if p.is_file())
         except OSError:
@@ -59,7 +73,7 @@ def local_files() -> list[str]:
 
 
 def _local(file: str) -> Path | None:
-    for d in datadir._data_dirs():  # pyright: ignore[reportPrivateUsage]
+    for d in _dirs():
         path = Path(d) / file
         if path.is_file():
             return path
@@ -115,6 +129,41 @@ def _fetch(file: str, offset: int, length: int | None) -> bytes:
         extra={"grid": file, "url": url, "offset": offset, "bytes": len(data)},
     )
     return data
+
+
+def download(file_url: str, short_name: str, directory: str | Path, verbose: bool = False) -> None:
+    """Download a whole grid file into ``directory``, as pyproj's
+    ``_download_resource_file``: through ``<name>.part``, renamed when
+    complete. A file of that name already there is kept; ``verbose``
+    prints the URL of each download."""
+    target = Path(directory, short_name)
+    if target.is_file():
+        LOGGER.debug("grid %s is already in %s", short_name, directory, extra={"grid": short_name, "path": str(target)})
+        return
+    if verbose:
+        print(f"Downloading: {file_url}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    part = Path(directory, f"{short_name}.part")
+    request = urllib.request.Request(file_url, headers={"User-Agent": f"xeibe-proj/{_version()}"})
+    context = ssl.create_default_context(cafile=network.ca_bundle_path())
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT, context=context) as response, part.open("wb") as f:
+            shutil.copyfileobj(response, f)
+        size = part.stat().st_size
+        part.replace(target)
+    except (urllib.error.URLError, OSError) as e:
+        LOGGER.error("downloading grid %s failed: %s", file_url, e, extra={"grid": short_name, "url": file_url})
+        raise ProjError(f"grid {short_name}: downloading {file_url} failed: {e}") from e
+    finally:
+        part.unlink(missing_ok=True)
+    LOGGER.info(
+        "downloaded grid %s from %s to %s (%d bytes)",
+        short_name,
+        file_url,
+        target,
+        size,
+        extra={"grid": short_name, "url": file_url, "path": str(target), "bytes": size},
+    )
 
 
 class _Missing(ProjError):
