@@ -30,8 +30,8 @@ with it:
 
 ```sh
 uvx maturin build --release -m crates/xeibe-py/Cargo.toml -o target/py-wheels
-uv run --with target/py-wheels/xeibe_py-*.whl crates/xeibe-py/tests/smoke.py
-uv run --with target/py-wheels/xeibe_py-*.whl crates/xeibe-py/tests/sedona.py
+uv run --with target/py-wheels/xeibe-*.whl crates/xeibe-py/tests/smoke.py
+uv run --with target/py-wheels/xeibe-*.whl crates/xeibe-py/tests/sedona.py
 ```
 
 `xeibe-proj-py`'s tests run with pytest. pyproj 3.8.0, which they compare

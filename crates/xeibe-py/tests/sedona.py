@@ -8,7 +8,7 @@
 Build the wheel, then run this script with it:
 
     uvx maturin build --release -m crates/xeibe-py/Cargo.toml -o target/py-wheels
-    uv run --with target/py-wheels/xeibe_py-*.whl crates/xeibe-py/tests/sedona.py
+    uv run --with target/py-wheels/xeibe-*.whl crates/xeibe-py/tests/sedona.py
 """
 
 import shutil

@@ -52,6 +52,7 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 | [web.md](web.md) | Browser page on WebAssembly: layout, map views, inputs, network limits, building it (first version built) |
 | [support-matrix.md](support-matrix.md) | Supported, planned and out-of-scope GML/WFS features (progress tracker) |
 | [testing.md](testing.md) | How the test suites are organized: synthetic tests, the samples, the GDAL reference |
+| [releasing.md](releasing.md) | Versions, tags and the release workflow: crates.io, CLI binaries, PyPI, licences in the artifacts |
 | [links.md](links.md) | External resources for testing, including GDAL's GML autotests |
 
 ## Key decisions

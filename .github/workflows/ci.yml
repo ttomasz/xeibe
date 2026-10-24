@@ -1,0 +1,109 @@
+# The workspace on every pull request and push to main: formatting, clippy and
+# the test suites (docs/testing.md), the MSRV, the wasm32 build of the web
+# page's bindings, and the `xeibe` Python package against a built wheel.
+# xeibe-proj has its own workflow (proj-py.yml), on three platforms.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      # rust-toolchain.toml picks stable; the runner's rustup may install it
+      # with the minimal profile, which has neither of these.
+      - name: Rust
+        run: |
+          rustup component add rustfmt clippy
+          cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      # Every suite is expected to pass (docs/testing.md). The default members
+      # leave out xeibe-datafusion, xeibe-py, xeibe-proj-py and xeibe-wasm.
+      - name: Test
+        run: cargo test --workspace --locked
+
+  # `rust-version` in Cargo.toml is a promise to the crates' users, and
+  # rust-toolchain.toml builds everything else with the latest stable, which
+  # wouldn't notice it being broken. `+1.95` overrides the file for one command.
+  # Libraries and binaries only: the tests may use newer Rust.
+  msrv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Rust, at the MSRV
+        run: |
+          msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)
+          rustup toolchain install "$msrv" --profile minimal --no-self-update
+          echo "MSRV=$msrv" >> "$GITHUB_ENV"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check
+        run: cargo "+$MSRV" check --workspace --locked
+
+  # The web page's bindings, as pages.yml builds them on main; rustup adds the
+  # target from rust-toolchain.toml.
+  wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check
+        run: cargo check -p xeibe-wasm --target wasm32-unknown-unknown --locked
+
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.3"
+
+      - name: Build the wheel
+        run: uvx maturin build --release -m crates/xeibe-py/Cargo.toml -o target/py-wheels
+
+      - name: Tests
+        run: |
+          uv run --with target/py-wheels/xeibe-*.whl crates/xeibe-py/tests/smoke.py
+          uv run --with target/py-wheels/xeibe-*.whl crates/xeibe-py/tests/sedona.py

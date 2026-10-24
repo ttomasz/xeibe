@@ -43,22 +43,30 @@ edition = "2024"
 rust-version = "1.95"
 license = "CC0-1.0"
 repository = "https://github.com/ttomasz/xeibe"
-publish = false
+# The libraries and the CLI go to crates.io. The Python modules, the wasm
+# bindings and xeibe-testkit set `publish = false` themselves
+# (docs/releasing.md).
+publish = true
 
 [workspace.dependencies]
-xeibe-core = { path = "crates/xeibe-core" }
-xeibe-crs = { path = "crates/xeibe-crs" }
-xeibe-esri = { path = "crates/xeibe-esri" }
+# The versions are what crates.io gets: a published crate depends on its
+# siblings' releases, not their paths. The crates share the workspace version,
+# except xeibe-crs and xeibe-esri, which have their own (docs/releasing.md).
+xeibe-core = { path = "crates/xeibe-core", version = "0.1.0" }
+xeibe-crs = { path = "crates/xeibe-crs", version = "0.4.0" }
+xeibe-esri = { path = "crates/xeibe-esri", version = "0.1.0" }
 # Without its `esri` feature (Esri's Apache-2.0 names, for reading ESRI WKT):
 # crates that take EPSG codes only don't need them. xeibe-proj-py turns it on.
-xeibe-reproject = { path = "crates/xeibe-reproject", default-features = false }
-xeibe-geom = { path = "crates/xeibe-geom" }
-xeibe-schema = { path = "crates/xeibe-schema" }
-xeibe-arrow = { path = "crates/xeibe-arrow" }
-xeibe-export = { path = "crates/xeibe-export" }
-xeibe-io = { path = "crates/xeibe-io", default-features = false }
-xeibe-wfs = { path = "crates/xeibe-wfs" }
-xeibe-datafusion = { path = "crates/xeibe-datafusion" }
+xeibe-reproject = { path = "crates/xeibe-reproject", version = "0.1.0", default-features = false }
+xeibe-geom = { path = "crates/xeibe-geom", version = "0.1.0" }
+xeibe-schema = { path = "crates/xeibe-schema", version = "0.1.0" }
+xeibe-arrow = { path = "crates/xeibe-arrow", version = "0.1.0" }
+xeibe-export = { path = "crates/xeibe-export", version = "0.1.0" }
+xeibe-io = { path = "crates/xeibe-io", version = "0.1.0", default-features = false }
+xeibe-wfs = { path = "crates/xeibe-wfs", version = "0.1.0" }
+xeibe-datafusion = { path = "crates/xeibe-datafusion", version = "0.1.0" }
+# Unpublished and used only as a dev-dependency, so no version: cargo drops
+# it from the published manifests.
 xeibe-testkit = { path = "crates/xeibe-testkit" }
 
 # Arrow is pinned to 59: geoarrow-array 0.9 and datafusion 55 both depend on arrow ^59.

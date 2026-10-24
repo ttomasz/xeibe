@@ -2,7 +2,8 @@
 # wheel built on Linux, macOS and Windows, installed bare and tested on each,
 # plus the strict type checks and pyproj's own suite on Linux. The wheels
 # are for testing, not release: the Linux one is tagged for the runner's
-# glibc, not built in a manylinux container. test_oracle.py skips, because
+# glibc, not built in a manylinux container. release.yml builds the release
+# wheels (docs/releasing.md). test_oracle.py skips, because
 # target/proj-oracle is built from an EPSG archive that isn't in git
 # (docs/testing.md).
 name: xeibe-proj

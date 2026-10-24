@@ -41,8 +41,9 @@ as of 2026-10-24 all of it is done: the geodesic port, `Geod`, `Proj`,
 - **Done.**
   - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
     type checks. CI (`.github/workflows/proj-py.yml`) builds and tests the
-    wheel on Linux, macOS and Windows. Its wheels aren't release builds:
-    a manylinux build and publishing come with the first release.
+    wheel on Linux, macOS and Windows. Its wheels aren't release builds;
+    `.github/workflows/release.yml` builds and publishes those
+    ([releasing.md](releasing.md)).
   - `CRS` from every input form in the table below except PROJ strings,
     with its properties, parts, `repr`, equality, hashing and pickling.
   - WKT: `from_wkt` and WKT wherever a CRS is taken, `to_wkt` in

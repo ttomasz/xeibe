@@ -31,7 +31,17 @@ use those names.
 Each crate has one integration-test binary (`crates/*/tests/it/`) plus
 `crates/xeibe-testkit`, which loads `tests/data` and provides independent
 WKT/WKB readers. The suites describe the design docs, and all of them are
-expected to pass. See `docs/testing.md`.
+expected to pass. See `docs/testing.md`. `.github/workflows/ci.yml` runs
+rustfmt, clippy with `-D warnings`, the suites, the MSRV check
+(`cargo +1.95 check`) and the Python tests on every pull request.
+
+## Releases
+
+`v*` tags release the workspace crates (crates.io), the CLI binaries and the
+`xeibe` wheels (PyPI). `xeibe-proj-v*` tags release `xeibe-proj`.
+`.github/workflows/release.yml` does it all; see `docs/releasing.md`.
+`scripts/release.py` is its helper, and `scripts/licenses/` configures
+cargo-about for the `THIRD-PARTY-LICENSES.md` the artifacts ship.
 
 ## Setting up a new environment
 

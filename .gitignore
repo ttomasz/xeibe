@@ -41,6 +41,9 @@ __pycache__/
 /web/node_modules
 /web/dist
 /web/src/wasm
+# Licences of the Rust dependencies, written for the wheels by the release
+# workflow (docs/releasing.md)
+/crates/*/THIRD-PARTY-LICENSES.md
 # Native modules `maturin develop` builds into the Python sources
 /crates/*/python/**/*.so
 /crates/*/python/**/*.pyd

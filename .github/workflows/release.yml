@@ -1,0 +1,542 @@
+# Releases (docs/releasing.md). A tag starts one:
+#
+# - `v0.2.0`: the workspace crates to crates.io, the `xeibe` CLI binaries to
+#   a GitHub release, the `xeibe` wheels and sdist to PyPI;
+# - `xeibe-proj-v0.2.0`: the `xeibe-proj` wheels and sdist to PyPI, and a
+#   GitHub release with them.
+#
+# Everything is built and tested before anything is published, because
+# neither registry takes a release back: crates.io only yanks, and PyPI never
+# reuses a version. The publishing jobs run in the `crates-io` and `pypi`
+# environments, which need an approval. Dispatched by hand, the workflow is a
+# dry run: it builds and tests the series at the chosen ref and publishes
+# nothing, except to TestPyPI if asked.
+name: Release
+
+on:
+  push:
+    tags: ["v*", "xeibe-proj-v*"]
+  workflow_dispatch:
+    inputs:
+      series:
+        description: "Dry run: build and test this series at the chosen ref"
+        type: choice
+        options: [workspace, xeibe-proj]
+        default: workspace
+      testpypi:
+        description: "Also upload the wheels and sdist to TestPyPI"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    # Git Bash on Windows, so the scripts and globs work everywhere.
+    shell: bash
+
+jobs:
+  # What the tag releases, from scripts/release.py: the series, its version
+  # (which must match the tag) and its Python package.
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      series: ${{ steps.plan.outputs.series }}
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      manifest: ${{ steps.plan.outputs.manifest }}
+      wheel: ${{ steps.plan.outputs.wheel }}
+      publish: ${{ steps.plan.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # For the check that the tag is on main.
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.3"
+
+      - name: Plan
+        id: plan
+        env:
+          TAG: ${{ github.ref_name }}
+          SERIES: ${{ inputs.series }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            # Fails if the tag doesn't match the version, or the changelog
+            # has no section for it.
+            scripts/release.py plan --tag "$TAG" --github
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+              || { echo "::error::$TAG is not on main" >&2; exit 1; }
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            scripts/release.py plan --series "$SERIES" --github
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SERIES: ${{ needs.plan.outputs.series }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.3"
+
+      - name: Test
+        run: |
+          if [ "$SERIES" = workspace ]; then
+            cargo test --workspace --locked
+          else
+            cargo test -p xeibe-crs -p xeibe-esri -p xeibe-reproject --locked
+          fi
+
+      # The crates on crates.io promise `rust-version`; see ci.yml.
+      - name: MSRV
+        if: needs.plan.outputs.series == 'workspace'
+        run: |
+          msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)
+          rustup toolchain install "$msrv" --profile minimal --no-self-update
+          cargo "+$msrv" check --workspace --locked
+
+      # Builds each crate from its package alone, as crates.io will have it,
+      # which catches files missing from `include`. publish-crates relies on
+      # this and publishes with --no-verify.
+      - name: Package the crates
+        if: needs.plan.outputs.series == 'workspace'
+        run: cargo package --locked $(scripts/release.py crates | awk '{ print "-p", $1 }')
+
+  # THIRD-PARTY-LICENSES.md, the licences of the Rust crates compiled into the
+  # binaries and the native modules, for the archives and the wheels.
+  licenses:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: taiki-e/install-action@v2.87.31
+        with:
+          tool: cargo-about@0.9.2
+
+      - name: Generate
+        env:
+          SERIES: ${{ needs.plan.outputs.series }}
+          MANIFEST: ${{ needs.plan.outputs.manifest }}
+        run: |
+          set -euo pipefail
+          about() {
+            cargo about generate --locked -c scripts/licenses/about.toml scripts/licenses/about.hbs "$@"
+          }
+          mkdir -p licenses
+          if [ "$SERIES" = workspace ]; then
+            about -m crates/xeibe-cli/Cargo.toml --features object-store -o licenses/cli.md
+          fi
+          about -m "$MANIFEST" -o licenses/wheel.md
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: licenses
+          path: licenses/
+          if-no-files-found: error
+
+  # No build cache in the jobs that make what gets shipped: they build from
+  # scratch, at the cost of a few minutes.
+  cli:
+    needs: [plan, licenses]
+    if: needs.plan.outputs.series == 'workspace'
+    name: cli (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # glibc 2.28 and newer (RHEL 8, Debian 10, Ubuntu 18.10), linked
+          # by cargo-zigbuild against that version, not the runner's.
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          # The MSVC runtime linked in, so the binary needs no VC++
+          # redistributable.
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            rustflags: -C target-feature=+crt-static
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      RUSTFLAGS: ${{ matrix.rustflags }}
+      TARGET: ${{ matrix.target }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      GLIBC: "2.28"
+      # macOS 11 is the first on Apple silicon.
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        if: runner.os == 'Linux'
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.3"
+
+      # From PyPI, which brings Zig along as the `ziglang` package.
+      - name: cargo-zigbuild
+        if: runner.os == 'Linux'
+        run: uv tool install cargo-zigbuild==0.24.0
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          args=(--profile dist --locked -p xeibe-cli --features object-store)
+          if [ "$RUNNER_OS" = Linux ]; then
+            # The suffix picks the glibc; the output still goes to target/$TARGET.
+            cargo zigbuild "${args[@]}" --target "$TARGET.$GLIBC"
+          else
+            cargo build "${args[@]}" --target "$TARGET"
+          fi
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          bin=target/$TARGET/dist/xeibe
+          [ "$RUNNER_OS" = Windows ] && bin=$bin.exe
+          "$bin" --version | tee version.txt
+          [ "$(head -n1 version.txt)" = "xeibe $VERSION" ] \
+            || { echo "::error::the binary isn't version $VERSION" >&2; exit 1; }
+          grep -q '^features: .*object-store' version.txt \
+            || { echo "::error::the binary was built without object-store" >&2; exit 1; }
+          "$bin" gml convert tests/data/samples/wfs/at-wien-geoserver-gml2-wfs100.xml \
+            --layer SCOOTERABSTELLOGD -o smoke.parquet
+          if [ "$RUNNER_OS" = Linux ]; then
+            newest=$(objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -uV | tail -n1)
+            echo "needs glibc $newest"
+            [ "$(printf '%s\n' "$newest" "$GLIBC" | sort -V | tail -n1)" = "$GLIBC" ] \
+              || { echo "::error::the binary needs glibc $newest, more than $GLIBC" >&2; exit 1; }
+          fi
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: licenses
+          path: licenses
+
+      # The EPSG Dataset's terms ask for its notice to go wherever the data
+      # goes, and the PROJ code's MIT licence for its notice too.
+      - name: Archive
+        run: |
+          set -euo pipefail
+          name=xeibe-$VERSION-$TARGET
+          mkdir -p "dist/$name"
+          cp target/$TARGET/dist/xeibe$([ "$RUNNER_OS" = Windows ] && echo .exe || true) "dist/$name/"
+          cp LICENSE crates/xeibe-crs/EPSG-NOTICE.md crates/xeibe-reproject/PROJ-NOTICE.md "dist/$name/"
+          cp crates/xeibe-cli/README.md "dist/$name/README.md"
+          cp licenses/cli.md "dist/$name/THIRD-PARTY-LICENSES.md"
+          cd dist
+          if [ "$RUNNER_OS" = Windows ]; then
+            7z a -tzip "$name.zip" "$name" > /dev/null
+          else
+            tar czf "$name.tar.gz" "$name"
+          fi
+          rm -r "$name"
+          ls -l
+
+      - name: Attest
+        if: needs.plan.outputs.publish == 'true'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/xeibe-*
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cli-${{ matrix.target }}
+          path: dist/xeibe-*
+          if-no-files-found: error
+
+  # abi3 wheels (Python 3.11 and newer), one per platform: manylinux_2_28 in
+  # its container on Linux.
+  wheels:
+    needs: [plan, licenses]
+    name: wheel (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      SERIES: ${{ needs.plan.outputs.series }}
+      MANIFEST: ${{ needs.plan.outputs.manifest }}
+      WHEEL: ${{ needs.plan.outputs.wheel }}
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: licenses
+          path: licenses
+
+      # pyproject.toml lists it in license-files; it isn't in git.
+      - name: Licences into the package
+        run: cp licenses/wheel.md "$(dirname "$MANIFEST")/THIRD-PARTY-LICENSES.md"
+
+      - uses: PyO3/maturin-action@v1.51.0
+        with:
+          maturin-version: v1.15.0
+          target: ${{ matrix.target }}
+          manylinux: "2_28"
+          args: --profile dist --locked -m ${{ needs.plan.outputs.manifest }} -o dist
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.3"
+
+      - name: Check the wheel's licence files
+        run: |
+          uv run --no-project --isolated python - dist/"$WHEEL"-*.whl <<'EOF'
+          import sys
+          import zipfile
+
+          names = zipfile.ZipFile(sys.argv[1]).namelist()
+          for want in ("NOTICE.md", "THIRD-PARTY-LICENSES.md"):
+              if not any(n.endswith(f".dist-info/licenses/{want}") for n in names):
+                  sys.exit(f"{sys.argv[1]} has no {want}")
+          EOF
+
+      # Python 3.11 is the abi3 floor.
+      - name: Smoke test (xeibe)
+        if: needs.plan.outputs.series == 'workspace'
+        run: uv run --python 3.11 --with dist/xeibe-*.whl crates/xeibe-py/tests/smoke.py
+
+      # As proj-py.yml: a bare install without numpy, then the tests, which
+      # compare with pyproj 3.8.0 and so need Python 3.12.
+      - name: Smoke test (xeibe-proj)
+        if: needs.plan.outputs.series == 'xeibe-proj'
+        env:
+          PROJ_NETWORK: "OFF"
+        run: |
+          set -euo pipefail
+          uv run --no-project --isolated --python 3.11 --with dist/xeibe_proj-*.whl python - <<'EOF'
+          import importlib.util
+
+          from xeibe_proj import CRS, Transformer
+
+          assert importlib.util.find_spec("numpy") is None, "numpy is installed"
+          assert CRS("EPSG:2180").name == "ETRS89 / PL-1992"
+          x, y = Transformer.from_crs(4326, 2180).transform([52.0], [21.0])
+          assert abs(x[0] - 461_197.24) < 1 and abs(y[0] - 637_253.16) < 1, (x, y)
+          EOF
+          uv run --no-project --isolated --python 3.12 --with dist/xeibe_proj-*.whl \
+            --with pytest --with numpy --with pyproj==3.8.0 pytest crates/xeibe-proj-py/tests
+
+      - name: Attest
+        if: needs.plan.outputs.publish == 'true'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/*.whl
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheel-${{ matrix.target }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  sdist:
+    needs: [plan, licenses]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: licenses
+          path: licenses
+
+      - name: Licences into the package
+        env:
+          MANIFEST: ${{ needs.plan.outputs.manifest }}
+        run: cp licenses/wheel.md "$(dirname "$MANIFEST")/THIRD-PARTY-LICENSES.md"
+
+      - uses: PyO3/maturin-action@v1.51.0
+        with:
+          maturin-version: v1.15.0
+          command: sdist
+          args: -m ${{ needs.plan.outputs.manifest }} -o dist
+
+      - name: Attest
+        if: needs.plan.outputs.publish == 'true'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/*.tar.gz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  publish-crates:
+    needs: [plan, test, cli, wheels, sdist]
+    if: needs.plan.outputs.publish == 'true' && needs.plan.outputs.series == 'workspace'
+    runs-on: ubuntu-latest
+    # A first release of every crate waits out crates.io's limit on new
+    # crates, about one every 10 minutes after the first few.
+    timeout-minutes: 240
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # Only for the first release: trusted publishing can only be set up for
+      # crates that exist. Delete the secret once it is (docs/releasing.md).
+      TOKEN_SECRET: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.3"
+
+      - name: Authenticate (trusted publishing)
+        id: auth
+        if: env.TOKEN_SECRET == ''
+        uses: rust-lang/crates-io-auth-action@v1.0.6
+
+      # Each crate whose version isn't on crates.io yet, in dependency order:
+      # xeibe-crs and xeibe-esri only when their own versions changed.
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}
+        run: scripts/release.py publish-crates
+
+  publish-pypi:
+    needs: [plan, test, wheels, sdist, publish-crates]
+    # After the crates for a `v*` tag, so that a failure there stops the
+    # release; a `xeibe-proj-v*` tag has no crates to wait for.
+    if: >-
+      !cancelled()
+      && needs.plan.outputs.publish == 'true'
+      && needs.test.result == 'success'
+      && needs.wheels.result == 'success'
+      && needs.sdist.result == 'success'
+      && (needs.publish-crates.result == 'success'
+          || (needs.plan.outputs.series == 'xeibe-proj' && needs.publish-crates.result == 'skipped'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: pypi
+      url: https://pypi.org/project/${{ needs.plan.outputs.series == 'workspace' && 'xeibe' || 'xeibe-proj' }}/${{ needs.plan.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: "{wheel-*,sdist}"
+          path: dist
+          merge-multiple: true
+
+      # Trusted publishing: PyPI knows this workflow and environment.
+      - uses: pypa/gh-action-pypi-publish@v1.14.3
+
+  publish-testpypi:
+    needs: [plan, test, wheels, sdist]
+    if: github.event_name == 'workflow_dispatch' && inputs.testpypi
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: "{wheel-*,sdist}"
+          path: dist
+          merge-multiple: true
+
+      - uses: pypa/gh-action-pypi-publish@v1.14.3
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # Dry runs repeat versions.
+          skip-existing: true
+
+  github-release:
+    needs: [plan, publish-pypi]
+    # Without `!cancelled()`, the skipped publish-crates of a `xeibe-proj-v*`
+    # tag would skip this job too.
+    if: ${{ !cancelled() && needs.publish-pypi.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SERIES: ${{ needs.plan.outputs.series }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      TAG: ${{ needs.plan.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.3"
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: "{cli-*,wheel-*,sdist}"
+          path: dist
+          merge-multiple: true
+
+      - name: Create the release
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum -- * > SHA256SUMS)
+          scripts/release.py notes --series "$SERIES" > notes.md
+          title=$([ "$SERIES" = workspace ] && echo "xeibe $VERSION" || echo "xeibe-proj $VERSION")
+          # A semver pre-release (0.3.0-rc.1) is a GitHub pre-release.
+          gh release create "$TAG" --verify-tag --title "$title" --notes-file notes.md \
+            $(case "$VERSION" in *-*) echo --prerelease ;; esac) \
+            dist/*
