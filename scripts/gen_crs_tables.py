@@ -1162,6 +1162,44 @@ def export_operations(e: Epsg, version: str) -> dict:
                 None if members is not None else epsg_publication_date(r),
             ]
         )
+    # Names, for describing operations (`Transformer.to_json`): each method's,
+    # and each parameter's with the kind of unit EPSG gives it (the values
+    # above are in that kind's SI unit), "file" for a grid or file name.
+    methods = [
+        [r["coord_op_method_code"], r["coord_op_method_name"]]
+        for r in e.all("select coord_op_method_code, coord_op_method_name from epsg_coordoperationmethod order by 1")
+    ]
+    kinds: dict[int, Counter] = defaultdict(Counter)
+    for r in e.all(
+        """select v.parameter_code, v.param_value_file_ref, u.unit_of_meas_type, u.unit_of_meas_name
+             from epsg_coordoperationparamvalue v
+             left join epsg_unitofmeasure u on u.uom_code = v.uom_code"""
+    ):
+        kind = "file" if r["param_value_file_ref"] else r["unit_of_meas_type"]
+        name = r["unit_of_meas_name"] or ""
+        # Rates, per second once in SI; PROJ's rule (`getUnitList`), which
+        # keeps "parts per million" a scale.
+        per_time = " per year" in name or " per second" in name
+        if kind in ("length", "angle") and " per " in name or kind == "scale" and per_time:
+            kind += "_per_time"
+        if kind:
+            kinds[r["parameter_code"]][kind] += 1
+    parameters = [
+        [code, name, kinds[code].most_common(1)[0][0] if kinds[code] else None]
+        for code, name in (
+            (r["parameter_code"], r["parameter_name"])
+            for r in e.all("select parameter_code, parameter_name from epsg_coordoperationparam order by 1")
+        )
+    ]
+    # Each projected CRS's conversion, whose code PROJJSON leaves out inside
+    # the CRS but gives the conversion as a step of an operation.
+    projections = [
+        [r["coord_ref_sys_code"], r["projection_conv_code"]]
+        for r in e.all(
+            """select coord_ref_sys_code, projection_conv_code from epsg_coordinatereferencesystem
+                where projection_conv_code is not null order by 1"""
+        )
+    ]
     return {
         "epsg_version": version,
         "geodetic_crs": geodetic,
@@ -1170,6 +1208,9 @@ def export_operations(e: Epsg, version: str) -> dict:
         "extents": extents,
         "crs_extent": [[code, crs_extent[code]] for code in sorted(crs_extent)],
         "operations": [ops[c] for c in sorted(ops)],
+        "methods": methods,
+        "parameters": parameters,
+        "projections": projections,
     }
 
 

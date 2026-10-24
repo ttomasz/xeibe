@@ -313,3 +313,59 @@ def test_group_options() -> None:
     assert none.transformers == [] and none.unavailable_operations == [] and none.best_available
     with pytest.raises(ProjError):
         Transformer.from_crs(4230, 4326, accuracy=0.001)
+
+
+def test_operation_as_json_and_wkt() -> None:
+    import json
+
+    # A projection and its inverse: the conversion, with its EPSG id.
+    mercator = Transformer.from_crs(4326, 3857).to_json_dict()
+    assert mercator is not None and mercator["type"] == "Conversion"
+    assert mercator["id"] == {"authority": "EPSG", "code": 3856}
+    back = Transformer.from_crs(3857, 4326).to_json_dict()
+    assert back is not None and back["name"] == "Inverse of Popular Visualisation Pseudo-Mercator"
+    assert back["method"]["id"]["authority"] == back["id"]["authority"] == "INVERSE(EPSG)"
+    # On one datum: PROJ's own operations.
+    geocentric = Transformer.from_crs(4326, 4978).to_json_dict()
+    assert geocentric is not None and geocentric["method"]["id"]["code"] == 9602
+    height = Transformer.from_crs(4326, 4979).to_json_dict()
+    assert height is not None and height["type"] == "Transformation" and height["accuracy"] == "0"
+    # A transformation and a projection; geocentric translations inverted
+    # by their parameters, as PROJ inverts them.
+    t = Transformer.from_crs(4326, 2180)
+    poland = t.to_json_dict()
+    assert poland is not None and poland["type"] == "ConcatenatedOperation"
+    assert poland["name"] == t.description and poland["accuracy"] == "1"
+    first, second = poland["steps"]
+    assert first["name"] == "Inverse of ETRS89 to WGS 84 (1)"
+    assert first["id"] == {"authority": "INVERSE(EPSG)", "code": 1149}
+    assert first["method"]["id"] == {"authority": "EPSG", "code": 9603}
+    assert first["source_crs"]["id"]["code"] == 4326 and "area" not in first
+    assert second["id"] == {"authority": "EPSG", "code": 18300}
+    assert json.loads(t.to_json() or "") == poland
+    assert (t.to_json(pretty=True, indentation=4) or "").startswith('{\n    "$schema"')
+    wkt = t.to_wkt() or ""
+    assert wkt.startswith('CONCATENATEDOPERATION["Inverse of ETRS89 to WGS 84 (1) + Poland CS92",SOURCECRS[GEOGCRS[')
+    assert 'STEP[COORDINATEOPERATION["Inverse of ETRS89 to WGS 84 (1)"' in wkt and wkt.endswith("]")
+    # Chosen per coordinate among several: nothing yet, as in pyproj.
+    several = Transformer.from_crs(4277, 4326)
+    assert several.to_json_dict() is None and several.to_json() is None and several.to_wkt() is None
+
+
+def test_operation_json_with_ensemble_and_geocentric_steps() -> None:
+    from xeibe_proj.transformer import TransformerGroup
+
+    # PROJ's null operation from ETRS89 to a national realization of it.
+    group = TransformerGroup(3046, 3131)
+    [finland] = [t for t in group.transformers if t.description.startswith("Inverse of UTM zone 34N + ETRS89 to ")]
+    d = finland.to_json_dict()
+    assert d is not None
+    step = d["steps"][1]
+    assert step["id"] == {"authority": "PROJ", "code": "ETRS89_TO_ETRS89-FIN[EUREF-FIN]"}
+    assert step["remarks"] == "Accuracy 0.1 m, from datum ensemble definition"
+    # A transformation between geocentric CRSs, with the conversions to
+    # and from them.
+    t = Transformer.from_crs(6318, 9000)
+    steps = (t.to_json_dict() or {})["steps"]
+    assert steps[0]["name"].startswith("Conversion from NAD83(2011) (geog2D) to NAD83(2011) (geocentric)")
+    assert steps[-1]["method"]["id"]["code"] == 9602

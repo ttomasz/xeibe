@@ -106,6 +106,97 @@ pub struct OperationInfo {
     /// EPSG's scope of the operation, when it is one EPSG operation (see
     /// `code`). Its remarks: `xeibe_crs::operation_remarks`.
     pub scope: Option<String>,
+    /// Every step it runs, in order, as PROJ lists them: what `steps`
+    /// leaves out too. A step PROJ builds from others (a horizontal and a
+    /// vertical operation) comes as its parts.
+    pub chain: Vec<OperationStep>,
+}
+
+/// One step of an operation ([`OperationInfo::chain`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct OperationStep {
+    /// PROJ's name for it.
+    pub name: String,
+    pub kind: StepKind,
+    pub source: StepCrs,
+    pub target: StepCrs,
+    /// In metres; `None` when unknown.
+    pub accuracy: Option<f64>,
+}
+
+/// What a step of an operation is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepKind {
+    /// An EPSG operation, run inverted or not.
+    Epsg { code: u32, inverse: bool },
+    /// One of the null operations PROJ's database adds from a datum
+    /// ensemble's CRS to a member's: EPSG's method `method` (geocentric
+    /// translations or a vertical offset) with zero parameters.
+    EnsembleIdentity { method: u32, inverse: bool },
+    /// The map projection of the projected CRS `crs`, or its inverse.
+    Projection { crs: u32, inverse: bool },
+    /// Between geodetic CRSs on one datum: a null geographic offset (2D ↔
+    /// 3D), a geographic ↔ geocentric conversion or a null geocentric
+    /// translation, by the CRSs' kinds.
+    SameDatum,
+    /// Between a datum ensemble's CRS and a member's, where PROJ's database
+    /// has no operation: coordinates pass unchanged.
+    EnsembleMember,
+    /// Between vertical CRSs on one datum: another unit, height to depth.
+    VerticalConversion,
+    /// A height passed unchanged between two vertical datums.
+    BallparkVertical,
+}
+
+/// A CRS a step starts or ends in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepCrs {
+    /// An EPSG CRS.
+    Epsg(u32),
+    /// The geographic 2D EPSG CRS promoted to 3D, where EPSG has no twin.
+    Promoted(u32),
+    /// The compound CRS of a horizontal and a vertical EPSG CRS.
+    Compound(u32, u32),
+}
+
+impl From<CrsRef> for StepCrs {
+    fn from(r: CrsRef) -> Self {
+        match r {
+            CrsRef::Epsg(c) => StepCrs::Epsg(c),
+            CrsRef::Promoted(c) => StepCrs::Promoted(c),
+            CrsRef::Compound(h, v) => StepCrs::Compound(h, v),
+        }
+    }
+}
+
+fn chain(steps: &[candidate::Single], out: &mut Vec<OperationStep>) {
+    for s in steps {
+        let kind = match &s.kind {
+            SingleKind::Composite { parts, .. } => {
+                chain(parts, out);
+                continue;
+            }
+            &SingleKind::Registry { code, inverse } if code >= PROJ_CODES => {
+                StepKind::EnsembleIdentity {
+                    method: registry().ops[&code].method,
+                    inverse,
+                }
+            }
+            &SingleKind::Registry { code, inverse } => StepKind::Epsg { code, inverse },
+            &SingleKind::Projection { crs, inverse } => StepKind::Projection { crs, inverse },
+            SingleKind::SameDatum => StepKind::SameDatum,
+            SingleKind::EnsembleMember => StepKind::EnsembleMember,
+            SingleKind::VerticalConversion => StepKind::VerticalConversion,
+            SingleKind::BallparkVertical => StepKind::BallparkVertical,
+        };
+        out.push(OperationStep {
+            name: s.name.clone(),
+            kind,
+            source: s.src.into(),
+            target: s.dst.into(),
+            accuracy: (s.accuracy >= 0.0).then_some(s.accuracy),
+        });
+    }
 }
 
 impl OperationInfo {
@@ -149,6 +240,11 @@ impl OperationInfo {
                 .registry
                 .and_then(|(code, _)| registry().ops.get(&code))
                 .and_then(|op| op.scope.clone()),
+            chain: {
+                let mut out = Vec::new();
+                chain(&c.steps, &mut out);
+                out
+            },
         }
     }
 }

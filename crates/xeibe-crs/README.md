@@ -253,6 +253,10 @@ releases embedded in each.
   datum (or ensemble) and projection method, through its base CRS or
   horizontal part, which narrow identification's candidates
   (`docs/crs-wkt.md`). Breaking for code that builds `CrsRecord` values.
+- `operations_json()` adds `methods` (EPSG's operation methods by code and
+  name), `parameters` (its parameters, each with the kind of unit its values
+  are in) and `projections` (each projected CRS's conversion code), for
+  describing operations in PROJJSON.
 
 ### 0.3.1
 

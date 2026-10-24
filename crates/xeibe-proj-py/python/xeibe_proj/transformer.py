@@ -22,7 +22,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from itertools import chain, islice
 from typing import TYPE_CHECKING, Any, overload
 
-from xeibe_proj import _containers, _grids, _native
+from xeibe_proj import _containers, _grids, _native, _operation_json, _wkt
 from xeibe_proj._epsg import OGC_CRS
 from xeibe_proj._json import as_dict, get_dict, get_dicts, ident
 from xeibe_proj._unsupported import not_yet, out
@@ -418,14 +418,34 @@ class Transformer:
     def to_proj4(self, version: Any = 5, pretty: bool = False) -> str:
         raise out("Transformer.to_proj4", "it is a PROJ pipeline string")
 
-    def to_wkt(self, version: Any = "WKT2_2019", pretty: bool = False) -> str:
-        raise not_yet("Transformer.to_wkt", 2)
+    def _operation_json(self) -> dict[str, Any] | None:
+        return _operation_json.transformer_json(
+            self._source.to_json_dict(), self._target.to_json_dict(), self._forward.operation_info()
+        )
 
-    def to_json(self, pretty: bool = False, indentation: int = 2) -> str:
-        raise not_yet("Transformer.to_json", 2)
+    def to_json_dict(self) -> dict[str, Any] | None:
+        """The operation as PROJJSON, in PROJ's shapes (``Conversion``,
+        ``Transformation``, ``ConcatenatedOperation``), or ``None`` while
+        it is chosen per coordinate among several, as pyproj says."""
+        return self._operation_json()
 
-    def to_json_dict(self) -> dict[str, Any]:
-        raise not_yet("Transformer.to_json_dict", 2)
+    def to_json(self, pretty: bool = False, indentation: int = 2) -> str | None:
+        """``to_json_dict`` as text."""
+        d = self._operation_json()
+        if d is None:
+            return None
+        return json.dumps(d, indent=indentation if pretty else None)
+
+    def to_wkt(self, version: Any = "WKT2_2019", pretty: bool = False) -> str | None:
+        """The operation as WKT2 2019, or ``None`` while it is chosen per
+        coordinate, or in WKT1_GDAL, which can't write operations."""
+        d = self._operation_json()
+        if d is None:
+            return None
+        try:
+            return _wkt.write(d, version, pretty, None)
+        except CRSError:
+            return None
 
     # Conversion ---------------------------------------------------------------
 

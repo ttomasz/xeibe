@@ -401,7 +401,11 @@ static OPERATIONS_BLOB: &[u8] = include_bytes!("../data/operations.bin");
 /// datum, deprecated), `datums` (code, name, publication date, ellipsoid,
 /// prime meridian, ensemble members, deprecated, dynamic, ensemble
 /// accuracy), `extents` (code, description, south, west, north, east) and
-/// `crs_extent` (each CRS's areas of use). `xeibe-reproject` reads it.
+/// `crs_extent` (each CRS's areas of use). `xeibe-reproject` reads it. For
+/// describing operations, `methods` (code, name), `parameters` (code, name,
+/// the kind of unit of its values: "length", "angle", "scale", "time",
+/// "file", or one of the first three with "_per_time") and `projections`
+/// (each projected CRS's code with its conversion's).
 pub fn operations_json() -> &'static str {
     static JSON: OnceLock<String> = OnceLock::new();
     JSON.get_or_init(|| {

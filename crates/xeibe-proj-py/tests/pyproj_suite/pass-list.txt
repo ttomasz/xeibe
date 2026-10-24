@@ -316,6 +316,11 @@ test.test_transformer::test_network__default[transformer1]
 test.test_transformer::test_network__disable[transformer1]
 test.test_transformer::test_network__enable[transformer1]
 test.test_transformer::test_pickle_transformer_from_crs
+test.test_transformer::test_to_json
+test.test_transformer::test_to_json__pretty
+test.test_transformer::test_to_json__pretty__indenation
+test.test_transformer::test_to_json_dict
+test.test_transformer::test_to_wkt
 test.test_transformer::test_transform_bounds__antimeridian
 test.test_transformer::test_transform_bounds__antimeridian__xy
 test.test_transformer::test_transform_bounds__beyond_global_bounds

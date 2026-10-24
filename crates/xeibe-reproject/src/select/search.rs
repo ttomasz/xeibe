@@ -190,7 +190,20 @@ impl Search {
         {
             res.push(Candidate::single(step));
         }
-        res.extend(self.via_realizations(s, t));
+        // Not a route no point can take: the most accurate candidate whose
+        // area contains a point wins, and one found here is at least as
+        // accurate over the route's whole area, without a grid to miss.
+        let routes = self.via_realizations(s, t);
+        let dominated = |route: &Candidate| {
+            res.iter().any(|op| {
+                op.accuracy >= 0.0
+                    && (route.accuracy < 0.0 || op.accuracy <= route.accuracy)
+                    && !op.has_grids()
+                    && matches!((&op.extent, &route.extent), (Some(a), Some(b)) if a.contains(b))
+            })
+        };
+        let routes: Vec<Candidate> = routes.into_iter().filter(|r| !dominated(r)).collect();
+        res.extend(routes);
         done
     }
 

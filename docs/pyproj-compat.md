@@ -73,10 +73,11 @@ its first six steps are done: the geodesic port, `Geod`, `Proj`,
     EPSG's remarks on CRSs and operations in a file of their own, read on
     first use. The wheel grew from 2.0 to 2.2 MB.
 - **Measured** (see [Testing](#testing)):
-  - pyproj's own suite: 351 of its 963 tests pass: 120 before phase 1's
+  - pyproj's own suite: 356 of its 963 tests pass: 120 before phase 1's
     Rust changes, 129 after, 149 with the WKT part of phase 2, 318 with
     `Geod`, 324 with `Proj`, 335 with `to_2d`/`to_3d`, 348 with
-    `get_units_map`, 351 with the selection's options.
+    `get_units_map`, 351 with the selection's options, 356 with
+    `Transformer.to_json` and `to_wkt`.
   - Against the oracle `proj.db`, every EPSG CRS reports what PROJ does,
     scopes, area descriptions and remarks included, except four documented
     differences:
@@ -362,10 +363,10 @@ becomes the package's status tracker.
 | `transform_bounds(left, bottom, right, top, densify_pts=21, radians, direction)` | 1 | `Transform::convert_bounds`. |
 | `source_crs`, `target_crs`, `name`, `description`, `has_inverse`, `accuracy`, `area_of_use`, `remarks`, `scope`, `operations`, `get_last_used_operation`, `is_network_enabled` | 1 | Needs operation metadata exposed from Rust (see below). `get_last_used_operation` uses `operation_for` on the last coordinate, per thread. |
 | `__eq__`, `is_exact_same`, pickling | 1 | Pickles as (source, target, options). |
-| `to_json`, `to_json_dict`, `to_wkt` | 2 | PROJJSON / WKT of the EPSG operation(s). |
+| `to_json`, `to_json_dict`, `to_wkt` | 2 | PROJJSON / WKT2 2019 of the operation in PROJ's shapes, built from EPSG's data; `None` while chosen per coordinate, as pyproj's ([pyproj-phase2.md](pyproj-phase2.md#transformerto_json-to_json_dict-to_wkt)). **Done.** |
 | `definition`, `to_proj4` | Out | These are PROJ pipeline strings. `definition` raises with a pointer to `description`. |
 | `from_pipeline`, `from_proj`, the module-level `pyproj.transform` / `itransform` | Out | PROJ pipelines, or APIs pyproj deprecated. |
-| `TransformerGroup(…)`: `transformers`, `unavailable_operations`, `best_available` | 1 | One `Transform::via` per candidate from `operations()`. Operations whose grids aren't on the CDN are `unavailable_operations`. `area_of_interest` and `accuracy` (2) as for `from_crs`. The candidates are those `from_crs` chooses from, where pyproj's group ignores grid availability while searching: the lists can differ where grids are involved ([pyproj-phase2.md](pyproj-phase2.md#validation-3)). |
+| `TransformerGroup(…)`: `transformers`, `unavailable_operations`, `best_available` | 1 | One `Transform::via` per candidate from `operations()`. Operations whose grids aren't on the CDN are `unavailable_operations`. `area_of_interest` and `accuracy` (2) as for `from_crs`. The candidates are those `from_crs` chooses from, where pyproj's group ignores grid availability while searching: the lists can differ where grids are involved ([pyproj-phase2.md](pyproj-phase2.md#validation-2)). |
 | `TransformerGroup.download_grids` | 2 | Fills the grid cache. |
 | `TransformerGroup(crs_extent_use=, pivot_crs=, grid_check=, allow_superseded=)` | Out | Defaults accepted. Other values raise an error. |
 

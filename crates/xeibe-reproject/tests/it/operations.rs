@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use xeibe_reproject::{AxisOrder, Crs, Error, Grids, Transform};
+use xeibe_reproject::{AxisOrder, Crs, Error, Grids, StepCrs, StepKind, Transform};
 
 fn grids_dir() -> PathBuf {
     xeibe_testkit::data_dir().join("reprojection/grids")
@@ -58,6 +58,45 @@ fn operations_are_described_best_first() {
         "{:?}",
         best.area
     );
+}
+
+#[test]
+fn chains_list_every_step() {
+    let t = transform(4326, 2180, Grids::ProjData).unwrap();
+    let chain = &t.operation_info()[0].chain;
+    let kinds: Vec<StepKind> = chain.iter().map(|s| s.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            StepKind::Epsg {
+                code: 1149,
+                inverse: true
+            },
+            StepKind::Projection {
+                crs: 2180,
+                inverse: false
+            },
+        ]
+    );
+    assert_eq!(chain[0].name, "Inverse of ETRS89 to WGS 84 (1)");
+    assert_eq!(
+        (chain[0].source, chain[0].target),
+        (StepCrs::Epsg(4326), StepCrs::Epsg(4258))
+    );
+    assert_eq!(chain[1].target, StepCrs::Epsg(2180));
+    // A transformation between geocentric CRSs comes with the conversions
+    // to and from them; PROJ's null operation into a member of the ETRS89
+    // ensemble is a step of its own.
+    let geocentric = transform(6318, 9000, Grids::None).unwrap();
+    let chain = &geocentric.operation_info()[0].chain;
+    assert_eq!(chain.first().map(|s| s.kind), Some(StepKind::SameDatum));
+    assert_eq!(chain.last().map(|s| s.kind), Some(StepKind::SameDatum));
+    let finland = transform(3046, 3131, Grids::None).unwrap();
+    assert!(finland.operation_info().iter().any(|o| {
+        o.chain
+            .iter()
+            .any(|s| matches!(s.kind, StepKind::EnsembleIdentity { method: 9603, .. }))
+    }));
 }
 
 #[test]

@@ -15,7 +15,7 @@ use crate::error::Error;
 
 /// A CRS's PROJJSON as one WKT2 2019 node.
 pub(crate) fn crs(v: &Value) -> Result<Node, Error> {
-    let mut w = Writer { root: true };
+    let mut w = Writer::outermost();
     w.crs(v)
 }
 
@@ -104,6 +104,9 @@ fn sub(n: Node) -> Arg {
 struct Writer {
     /// Whether the CRS being written is the outermost, which keeps its id.
     root: bool,
+    /// The outermost CRS keeps its id only, without usages or remarks: a
+    /// CRS of an operation.
+    ids_only: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -245,15 +248,37 @@ fn usage(v: &Value) -> Result<Vec<Arg>, Error> {
             vec![text(str_of(t, "start")?), text(str_of(t, "end")?)],
         )));
     }
+    // WKT2 2019 always has a scope: PROJ's "unknown" without one.
+    if !args.is_empty() && v["scope"].as_str().is_none() {
+        args.insert(0, sub(node("SCOPE", vec![text("unknown")])));
+    }
     Ok(args)
 }
 
 impl Writer {
+    fn outermost() -> Writer {
+        Writer {
+            root: true,
+            ids_only: false,
+        }
+    }
+
+    /// For the source or target CRS of an operation.
+    fn of_operation() -> Writer {
+        Writer {
+            root: true,
+            ids_only: true,
+        }
+    }
+
     /// The usages, id and remarks that close a CRS. Only the outermost CRS
     /// writes them, as PROJ does.
     fn finish(&self, v: &Value, args: &mut Vec<Arg>) -> Result<(), Error> {
         if !self.root {
             return Ok(());
+        }
+        if self.ids_only {
+            return ids(v, args);
         }
         match v["usages"].as_array() {
             Some(list) => {
@@ -411,7 +436,8 @@ pub(crate) fn object(v: &Value) -> Result<Vec<Node>, Error> {
             })
             .collect()),
         "Conversion" => with_ids(conversion("CONVERSION", v)?),
-        "Transformation" => Ok(vec![transformation(v)?]),
+        "Transformation" => Ok(vec![transformation(v, true)?]),
+        "ConcatenatedOperation" => Ok(vec![concatenated(v)?]),
         other => Err(Error::Unsupported {
             crs: v["name"].as_str().unwrap_or("PROJJSON").into(),
             what: format!("writing a {other} as WKT"),
@@ -438,15 +464,61 @@ fn engineering_datum(d: &Value) -> Result<Node, Error> {
     Ok(node("EDATUM", datum))
 }
 
+/// An operation's usages, id and remarks, as an outermost one ends; a step
+/// of a concatenated operation has its id only.
+fn finish_operation(t: &Value, root: bool, args: &mut Vec<Arg>) -> Result<(), Error> {
+    if !root {
+        return ids(t, args);
+    }
+    Writer::outermost().finish(t, args)
+}
+
+/// `CONCATENATEDOPERATION`: its CRSs, as a transformation's, then each
+/// step.
+fn concatenated(t: &Value) -> Result<Node, Error> {
+    let mut args = vec![text(str_of(t, "name")?)];
+    for (keyword, key) in [("SOURCECRS", "source_crs"), ("TARGETCRS", "target_crs")] {
+        let crs = Writer::of_operation().crs(&t[key])?;
+        args.push(sub(node(keyword, vec![sub(crs)])));
+    }
+    for step in t["steps"].as_array().into_iter().flatten() {
+        let inner = match str_of(step, "type")? {
+            "Conversion" => {
+                let mut n = conversion("CONVERSION", step)?;
+                ids(step, &mut n.args)?;
+                n
+            }
+            "Transformation" => transformation(step, false)?,
+            "ConcatenatedOperation" => concatenated(step)?,
+            other => {
+                return Err(Error::Unsupported {
+                    crs: t["name"].as_str().unwrap_or("PROJJSON").into(),
+                    what: format!("writing a {other} step as WKT"),
+                });
+            }
+        };
+        args.push(sub(node("STEP", vec![sub(inner)])));
+    }
+    if let Some(accuracy) = t["accuracy"].as_str() {
+        args.push(sub(node(
+            "OPERATIONACCURACY",
+            vec![Arg::Word(accuracy.into())],
+        )));
+    }
+    finish_operation(t, true, &mut args)?;
+    Ok(node("CONCATENATEDOPERATION", args))
+}
+
 /// `COORDINATEOPERATION`: a transformation with its source and target
-/// CRSs, each written whole, and its parameters in their own units.
-fn transformation(t: &Value) -> Result<Node, Error> {
+/// CRSs, each with its id but no usage, and its parameters in their own
+/// units.
+fn transformation(t: &Value, root: bool) -> Result<Node, Error> {
     let mut args = vec![text(str_of(t, "name")?)];
     if let Some(v) = t["version"].as_str() {
         args.push(sub(node("VERSION", vec![text(v)])));
     }
     for (keyword, key) in [("SOURCECRS", "source_crs"), ("TARGETCRS", "target_crs")] {
-        let crs = Writer { root: true }.crs(&t[key])?;
+        let crs = Writer::of_operation().crs(&t[key])?;
         args.push(sub(node(keyword, vec![sub(crs)])));
     }
     let m = &t["method"];
@@ -472,7 +544,7 @@ fn transformation(t: &Value) -> Result<Node, Error> {
             vec![Arg::Word(accuracy.into())],
         )));
     }
-    ids(t, &mut args)?;
+    finish_operation(t, root, &mut args)?;
     Ok(node("COORDINATEOPERATION", args))
 }
 
@@ -666,8 +738,8 @@ fn parameter_kind(p: &Value) -> Kind {
 /// abridged form's fixed units, without a unit: metres, arc-seconds, and
 /// the scale difference as a scale factor (PROJ's `convertToAbridged`).
 fn bound(v: &Value) -> Result<Node, Error> {
-    let source = Writer { root: true }.crs(&v["source_crs"])?;
-    let target = Writer { root: true }.crs(&v["target_crs"])?;
+    let source = Writer::outermost().crs(&v["source_crs"])?;
+    let target = Writer::outermost().crs(&v["target_crs"])?;
     let t = &v["transformation"];
     let m = &t["method"];
     let mut method = vec![text(str_of(m, "name")?)];

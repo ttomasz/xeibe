@@ -25,7 +25,7 @@ from __future__ import annotations
 import threading
 from typing import Any
 
-from xeibe_proj import _native
+from xeibe_proj import _native, _operation_json
 from xeibe_proj._unsupported import not_yet, out
 from xeibe_proj.aoi import AreaOfUse
 from xeibe_proj.crs import CRS
@@ -119,6 +119,11 @@ class Proj(Transformer):
 
     def get_last_used_operation(self) -> Transformer:
         return self
+
+    def _operation_json(self) -> dict[str, Any] | None:
+        # The CRS's projection; nothing for a geographic or geocentric CRS.
+        conversion = _operation_json.projection(self.crs.to_json_dict(), False)
+        return None if conversion is None else {"$schema": _operation_json.SCHEMA, **conversion}
 
     def definition_string(self) -> str:
         raise not_yet("Proj.definition_string", 3)

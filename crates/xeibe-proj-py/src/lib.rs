@@ -65,13 +65,20 @@ fn alias(name: &str) -> Option<u32> {
     xeibe_crs::alias(name)
 }
 
-/// The EPSG code an old Esri code (`ESRI:102100`) moved to, or `None`.
+/// EPSG's coordinate operations as `xeibe-crs` exports them: one JSON
+/// document (`xeibe_crs::operations_json`), for describing operations.
+#[pyfunction]
+fn operations_json() -> &'static str {
+    xeibe_crs::operations_json()
+}
+
 /// The CRSs EPSG gives as replacements of a deprecated one, in EPSG's order.
 #[pyfunction]
 fn replacements(code: u32) -> Vec<u32> {
     xeibe_crs::replacements(code).collect()
 }
 
+/// The EPSG code an old Esri code (`ESRI:102100`) moved to, or `None`.
 #[pyfunction]
 fn esri_code(code: u32) -> Option<u32> {
     xeibe_esri::epsg_code(code)
@@ -314,6 +321,55 @@ struct OperationInfo {
     time_dependent: bool,
     /// EPSG's scope, when it is one EPSG operation.
     scope: Option<String>,
+    /// Every step, as (name, kind, code, inverse, source, target,
+    /// accuracy); see [`step`].
+    chain: Vec<Step>,
+}
+
+/// A CRS of a step: ("epsg" or "promoted", code, `None`) or ("compound",
+/// horizontal code, vertical code).
+type StepCrs = (&'static str, u32, Option<u32>);
+
+type Step = (
+    String,
+    &'static str,
+    Option<u32>,
+    bool,
+    StepCrs,
+    StepCrs,
+    Option<f64>,
+);
+
+/// A step of `xeibe_reproject::OperationInfo::chain` for Python. The kind
+/// is "epsg" (the code an EPSG operation's), "ensemble_identity" (the code
+/// EPSG's method), "projection" (the code the projected CRS's),
+/// "same_datum", "ensemble_member", "vertical_conversion" or
+/// "ballpark_vertical".
+fn step(s: xeibe_reproject::OperationStep) -> Step {
+    use xeibe_reproject::{StepCrs as C, StepKind as K};
+    let crs = |c: C| match c {
+        C::Epsg(code) => ("epsg", code, None),
+        C::Promoted(code) => ("promoted", code, None),
+        C::Compound(h, v) => ("compound", h, Some(v)),
+    };
+    let (kind, code, inverse) = match s.kind {
+        K::Epsg { code, inverse } => ("epsg", Some(code), inverse),
+        K::EnsembleIdentity { method, inverse } => ("ensemble_identity", Some(method), inverse),
+        K::Projection { crs, inverse } => ("projection", Some(crs), inverse),
+        K::SameDatum => ("same_datum", None, false),
+        K::EnsembleMember => ("ensemble_member", None, false),
+        K::VerticalConversion => ("vertical_conversion", None, false),
+        K::BallparkVertical => ("ballpark_vertical", None, false),
+    };
+    (
+        s.name,
+        kind,
+        code,
+        inverse,
+        crs(s.source),
+        crs(s.target),
+        s.accuracy,
+    )
 }
 
 impl From<xeibe_reproject::OperationInfo> for OperationInfo {
@@ -328,6 +384,7 @@ impl From<xeibe_reproject::OperationInfo> for OperationInfo {
             grids: o.grids,
             time_dependent: o.time_dependent,
             scope: o.scope,
+            chain: o.chain.into_iter().map(step).collect(),
         }
     }
 }
@@ -570,6 +627,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(clear_grids, m)?)?;
     m.add_function(wrap_pyfunction!(esri_code, m)?)?;
     m.add_function(wrap_pyfunction!(replacements, m)?)?;
+    m.add_function(wrap_pyfunction!(operations_json, m)?)?;
     m.add_function(wrap_pyfunction!(wkt_to_projjson, m)?)?;
     m.add_function(wrap_pyfunction!(to_wkt, m)?)?;
     m.add_function(wrap_pyfunction!(extent, m)?)?;

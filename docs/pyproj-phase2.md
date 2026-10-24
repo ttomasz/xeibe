@@ -1,8 +1,9 @@
 # pyproj compatibility, phase 2: geodesics, `Proj` and the rest
 
-> **Status: designed, 2026-10-23; steps 1 to 6 of 8 implemented (the
+> **Status: designed, 2026-10-23; steps 1 to 7 of 8 implemented (the
 > geodesic port in Rust, `Geod`, `Proj`, `to_2d`/`to_3d`/`get_non_deprecated`,
-> `get_units_map`, and the selection's options, see [Order of work](#order-of-work)).**
+> `get_units_map`, the selection's options, and `Transformer.to_json` and
+> `to_wkt`, see [Order of work](#order-of-work)).**
 > This is the rest
 > of phase 2 in [pyproj-compat.md](pyproj-compat.md#phases), after the WKT
 > part ([crs-wkt.md](crs-wkt.md)). Facts about PROJ and pyproj were checked
@@ -328,22 +329,76 @@ through a pivot that ours lists, and the reverse.
 
 ## `Transformer.to_json`, `to_json_dict`, `to_wkt`
 
-When the transformer has one operation, these describe it in PROJ's
-shapes:
+When the transformer has one operation, these describe it as PROJ does.
+With several candidates, all three return `None`, as pyproj's do ("unavailable
+until proj_trans is called"); a `Proj` gives its CRS's projection.
 
-- a `Conversion` between a projected CRS and its base;
-- a `Transformation` for one EPSG transformation;
-- a `ConcatenatedOperation` with `steps` for a route
-  (`Inverse of ETRF2000-PL to WGS 84 (1) + Poland CS92`);
-- each with `source_crs`, `target_crs`, the method, the parameters,
-  accuracy, area of use and EPSG id.
+Each step of the operation becomes PROJ's object for it:
 
-They come from `xeibe_crs::operations_json` and the CRSs' PROJJSON.
-`to_wkt` writes the same through the WKT2 writer. That needs
-`CONVERSION` and `CONCATENATEDOPERATION` beside the `COORDINATEOPERATION`
-it already writes. With several candidates, all three return `None`, as
-pyproj's do. The tests compare with pyproj without ids, as for Bound CRSs
-in [crs-wkt.md](crs-wkt.md).
+- a map projection is a `Conversion` with the conversion's EPSG id, its
+  inverse "Inverse of …" with the method "Inverse of …" and the authority
+  `INVERSE(EPSG)`;
+- an EPSG transformation is a `Transformation` with its source and target
+  CRSs, method, parameters, accuracy, usage, id and remarks. Inverted, it
+  follows PROJ's `inverseAsTransformation`: the methods whose inverse is
+  the same method with negated parameters (geocentric translations,
+  Molodensky, the offsets, longitude rotation) are written that way, the
+  others with "Inverse of" the method;
+- one of PROJ's null operations from a datum ensemble's CRS to a member's
+  carries PROJ's id (`PROJ:ETRS89_TO_ETRS89-FIN[EUREF-FIN]`), remarks and
+  scope, as its database has them;
+- between CRSs on one datum, PROJ's own: a null geographic offset (2D ↔ 3D),
+  a geographic/geocentric conversion, a null geocentric translation.
+
+Several steps make a `ConcatenatedOperation` with `steps`, whose steps carry
+no usage, and whose accuracy is PROJ's sum written with 15 significant
+digits. As PROJ does, its first and last steps start and end in the
+transformer's CRSs, and an EPSG operation run between other CRSs than its
+own (their 3D forms) gets them, with a `DERIVED_FROM(EPSG)` id.
+
+### Implementation
+
+- **Rust:** `OperationInfo::chain` lists every step of a candidate: its
+  name, its kind (`StepKind`: an EPSG operation, PROJ's ensemble null
+  operation, a projection, a change on one datum…) and the CRSs it runs
+  between (`StepCrs`, with the promoted and code-less compound CRSs of the
+  search). `steps` still lists only the EPSG transformations.
+- **`xeibe-crs`:** `operations_json` adds EPSG's method and parameter
+  names, each parameter with the kind of unit its values have, and each
+  projected CRS's conversion code (PROJJSON leaves that id out inside a
+  CRS but gives it to the conversion as a step).
+- **Python:** `_operation_json.py` builds the PROJJSON from the chain;
+  `to_wkt` writes it through the WKT2 writer, which gained
+  `CONCATENATEDOPERATION`, usages and remarks on an outermost operation,
+  the CRSs of an operation with their ids only, and PROJ's
+  `SCOPE["unknown"]` for a usage without a scope.
+
+### Validation
+
+`test_operation_json_matches_pyproj` (oracle) compares every operation of
+`TransformerGroup` between 300 random pairs of geographic, geocentric,
+projected and compound EPSG CRSs with pyproj's operation of the same name:
+type, name, accuracy, id, area and keys of the whole, and of each step its
+method, parameters in SI units, CRS codes, id, accuracy, remarks and area.
+All match, with what PROJ does differently left out:
+
+- PROJ marks an operation `DERIVED_FROM` where its search took a pivot
+  datum and merged a null step into it, which depends on its search's
+  order; ids are compared without the wrapper.
+- In compound and 3D routes PROJ may run a step between the 3D form of a
+  2D CRS, without an id, where ours names the 2D CRS.
+- PROJ writes a horizontal and a vertical operation run together as one
+  `Transformation` whose method is a PROJ pipeline string, which
+  [pyproj-compat.md](pyproj-compat.md) leaves out; ours is the
+  concatenation of the two.
+- A projection's parameters are the CRS's, compared by the CRS tests
+  (PROJ drops Modified Krovak's polynomial coefficients there).
+
+Parameters are in SI units where PROJ keeps EPSG's (arc-seconds, parts
+per million), and the WKT has no `VERSION` (PROJJSON has no key for it).
+PROJ's WKT writes an inverted Helmert transformation as its approximate
+inverse with negated parameters ("… (approx. inversion)"); ours keeps the
+inverse method, as both write in PROJJSON.
 
 ## `download_grids`
 
@@ -393,5 +448,10 @@ The tests use the local HTTP server the grid tests already use.
    optimiser turns into a no-op across GRS 1980 and WGS 84 (0.3 mm). The
    suite went from 348 to 351 of 963.
 7. **`Transformer.to_json`, `to_json_dict` and `to_wkt`**, gated on
-   pyproj's output without ids.
+   pyproj's output. **Done:** `OperationInfo::chain` and
+   `xeibe_proj._operation_json`, matching pyproj's operations but for
+   PROJ's own artifacts ([Validation](#validation-3)). Routes through a
+   national realization that no coordinate could take are no longer
+   candidates, so WGS 84 to Poland CS92 has PROJ's one operation. The suite
+   went from 351 to 356 of 963.
 8. **`download_grids`**, gated on the local grid server.

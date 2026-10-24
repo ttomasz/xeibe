@@ -74,7 +74,9 @@ is `NoTransformation`. `operations()` lists the candidates and
 `operation_for(x, y, z)` names the one a coordinate goes through.
 `operation_info()` describes each candidate, best first: its name, the EPSG
 operation it is (if one) and the transformations it runs, accuracy, area of
-use and grid files. `operation_index_for(x, y, z)` gives a coordinate's
+use and grid files, and its `chain`: every step with PROJ's name, what it is
+(an EPSG operation, a map projection, one of PROJ's null operations to an
+ensemble member, a change on one datum) and the CRSs it runs between. `operation_index_for(x, y, z)` gives a coordinate's
 candidate by its index there, and `with_operation_index(i)` makes the
 transform through that candidate alone, for every coordinate (PROJ's
 `TransformerGroup` members; its inverse runs the same operation back).
@@ -424,7 +426,10 @@ Details that turned out to matter, each found by the differential:
   GDA2020 by grid on to WGS 84 (2.25 m against 3 m) as well. RT90, KKJ,
   GGRS87, SWEREF 99, D96, STRS00, BH_ETRS89 and KOSOVAREF01, which went
   their own way here before, now match PROJ, which reaches the same routes
-  through its null operations.
+  through its null operations. A route no coordinate could take is left
+  out: one where an operation found directly, without a grid, is at least
+  as accurate over the route's whole area (WGS 84 to Poland CS92 through
+  each national ETRS89 in reach), so the candidates stay PROJ's there.
 
 - **No ballpark fallback.** When no EPSG operation applies, `Transform::new`
   fails with `NoTransformation`; PROJ would offer a "ballpark" approximation.

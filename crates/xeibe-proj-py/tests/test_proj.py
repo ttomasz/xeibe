@@ -58,6 +58,10 @@ def test_containers_and_transformer_api() -> None:
     assert p.source_crs is None and p.target_crs is None
     assert p.crs == xeibe_proj.CRS(2180) and p.srs == "EPSG:2180"
     assert p.to_latlong()(19.0, 52.0) == pytest.approx((19.0, 52.0))
+    # Its operation is the CRS's projection, where pyproj's is the PROJ
+    # string it was made from.
+    ours = p.to_json_dict()
+    assert ours is not None and (ours["name"], ours["id"]["code"]) == ("Poland CS92", 18300)
 
 
 def test_units_and_meridians() -> None:

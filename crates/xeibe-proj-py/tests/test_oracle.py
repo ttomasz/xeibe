@@ -321,3 +321,110 @@ def test_dimensions_match_pyproj() -> None:
                 if value != b[key] and not _known_dimension(code, key, value, b[key]):
                     mismatches.append(f"EPSG:{code} {method} {key}: {value!r} != {b[key]!r}")
     assert not mismatches, (len(mismatches), mismatches[:10])
+
+
+def _without_derived(i: object) -> object:
+    """An id without PROJ's DERIVED_FROM(…), which PROJ gives an operation
+    run between other CRSs than its own only where its search took a pivot
+    datum (docs/pyproj-phase2.md, Transformer.to_json)."""
+    if not isinstance(i, dict):
+        return i
+    authority = str(i.get("authority"))
+    for wrapper in ("DERIVED_FROM(", "INVERSE(DERIVED_FROM("):
+        if authority.startswith(wrapper):
+            authority = authority[len(wrapper) :].removesuffix("))" if wrapper.startswith("INVERSE") else ")")
+            if wrapper.startswith("INVERSE"):
+                authority = f"INVERSE({authority})"
+    return {**i, "authority": authority}
+
+
+def _si(p: dict[str, Any]) -> object:
+    value, unit = p.get("value"), p.get("unit")
+    if not isinstance(value, (int, float)):
+        return value
+    factor = {"metre": 1.0, "degree": math.pi / 180, "unity": 1.0}.get(unit, 1.0) if isinstance(unit, str) else 1.0
+    if isinstance(unit, dict):
+        factor = unit.get("conversion_factor", 1.0)
+    return float(f"{value * factor:.9g}")
+
+
+def _step_facts(s: dict[str, Any], theirs: dict[str, Any] | None = None) -> tuple[object, ...]:
+    """A step as both packages write it, in SI units. A projection's
+    parameters are the CRS's, compared by the CRS tests; a CRS PROJ uses
+    without an id (a 2D one it promoted to 3D on the way) counts as ours."""
+    method = s.get("method") or {}
+    params = None if s["type"] == "Conversion" else [(p["id"]["code"], _si(p)) for p in s.get("parameters", [])]
+
+    def crs(key: str) -> object:
+        code = (s.get(key) or {}).get("id", {}).get("code")
+        if theirs is not None and key in s and not (theirs.get(key) or {}).get("id"):
+            return None
+        return code
+
+    return (
+        s["type"], s["name"], (method.get("id") or {}).get("authority"), (method.get("id") or {}).get("code"),
+        params, crs("source_crs"), crs("target_crs"), _without_derived(s.get("id")), s.get("accuracy"),
+        sorted(s), (s.get("remarks") or "")[:60], s.get("area"),
+    )  # fmt: skip
+
+
+def _operation_facts(d: dict[str, Any] | None, theirs: dict[str, Any] | None = None) -> object:
+    if d is None:
+        return None
+    steps = d.get("steps") or [d]
+    their_steps = (theirs.get("steps") or [theirs]) if theirs is not None else [None] * len(steps)
+    return (
+        d["type"], d["name"], d.get("accuracy"), _without_derived(d.get("id")), d.get("area"), d.get("bbox"),
+        sorted(d), [_step_facts(s, t) for s, t in zip(steps, their_steps)], len(steps),
+    )  # fmt: skip
+
+
+def _operation_pairs(n: int, seed: int) -> list[tuple[int, int]]:
+    rng = random.Random(seed)
+    kinds = ("geographic_2d", "geographic_3d", "geocentric", "projected", "compound")
+    areas = [
+        (r.code, r.area)
+        for r in _epsg.records().values()
+        if r.kind in kinds and not r.deprecated and r.area is not None and r.area[0] <= r.area[2]
+    ]
+    out: list[tuple[int, int]] = []
+    while len(out) < n:
+        (a, aa), (b, ba) = rng.sample(areas, 2)
+        if max(aa[0], ba[0]) < min(aa[2], ba[2]) and max(aa[1], ba[1]) < min(aa[3], ba[3]):
+            out.append((a, b))
+    return out
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_operation_json_matches_pyproj(seed: int) -> None:
+    """Transformer.to_json_dict of every operation between random EPSG
+    pairs, as pyproj's for the same operation, and to_wkt where pyproj
+    writes one. PROJ writes a horizontal and a vertical operation run
+    together as a PROJ pipeline, which isn't compared."""
+    mismatches: list[str] = []
+    compared = 0
+    for a, b in _operation_pairs(100, seed):
+        try:
+            theirs = pyproj.transformer.TransformerGroup(a, b, allow_ballpark=False).transformers
+        except (pyproj.exceptions.ProjError, IndexError):
+            continue  # pyproj 3.8.0 indexes past PROJ's list for some pairs
+        try:
+            ours = xeibe_proj.transformer.TransformerGroup(a, b).transformers
+        except ProjError:
+            continue
+        by_name = {t.description: t for t in theirs}
+        for t in ours:
+            u = by_name.get(t.description)
+            if u is None:
+                continue
+            p = u.to_json_dict()
+            if p is not None and str(p.get("method", {}).get("name", "")).startswith("PROJ-based operation"):
+                continue
+            compared += 1
+            o = t.to_json_dict()
+            if _operation_facts(o, p) != _operation_facts(p):
+                mismatches.append(f"{a}->{b} {t.description}: {_operation_facts(o, p)} != {_operation_facts(p)}")
+            if (t.to_wkt() is None) != (u.to_wkt() is None):
+                mismatches.append(f"{a}->{b} {t.description}: to_wkt {t.to_wkt() is None} != {u.to_wkt() is None}")
+    assert compared > 50, f"only {compared} operations could be compared"
+    assert not mismatches, (len(mismatches), mismatches[:5])
