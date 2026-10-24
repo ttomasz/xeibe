@@ -399,12 +399,14 @@ None of this applies to the CLI or Python.
 
 ```sh
 cargo install wasm-bindgen-cli --version 0.2.129 --locked   # the version Cargo.toml pins
-rustup target add wasm32-unknown-unknown
 cd web
 npm ci
 npm run wasm      # crates/xeibe-wasm → web/src/wasm (dist profile, wasm-bindgen, wasm-opt)
 npm run dev       # or: npm run build, then npm run preview
 ```
+
+rustup adds the `wasm32-unknown-unknown` target itself: `rust-toolchain.toml`
+lists it. Building zstd's C code for it also needs clang.
 
 `npm run wasm` again after changing a crate. The deployed page is built the
 same way by `.github/workflows/pages.yml`, which needs GitHub Pages set to

@@ -38,6 +38,8 @@ expected to pass. See `docs/testing.md`.
 System tools:
 
 - Rust stable with edition 2024 (MSRV 1.95, set by geoarrow 0.9). Developed on 1.97.
+  `rust-toolchain.toml` selects stable and has rustup add the
+  `wasm32-unknown-unknown` target.
 - `uv`. All Python scripts are PEP 723 scripts with the shebang
   `#!/usr/bin/env -S uv run --script`, so you run them directly
   (`scripts/foo.py`) and uv installs their dependencies. There is no venv or

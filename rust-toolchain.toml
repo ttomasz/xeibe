@@ -1,0 +1,6 @@
+# Stable, as CI builds with; the MSRV (1.95) is `rust-version` in Cargo.toml.
+# rustup adds the wasm32 target, for crates/xeibe-wasm and the web page
+# (docs/web.md), when it's missing.
+[toolchain]
+channel = "stable"
+targets = ["wasm32-unknown-unknown"]

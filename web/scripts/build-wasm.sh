@@ -2,8 +2,9 @@
 # Build crates/xeibe-wasm into web/src/wasm (generated, not in git): the
 # module, wasm-bindgen's JavaScript glue, then wasm-opt.
 #
-# Needs the wasm32-unknown-unknown target, clang (zstd's C code) and
-# wasm-bindgen-cli at the version Cargo.toml pins wasm-bindgen to.
+# Needs the wasm32-unknown-unknown target (rust-toolchain.toml has rustup add
+# it), clang (zstd's C code) and wasm-bindgen-cli at the version Cargo.toml
+# pins wasm-bindgen to.
 set -eu
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
