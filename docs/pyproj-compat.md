@@ -33,8 +33,9 @@ As of 2026-10-21, phase 0 and phase 1 are implemented, apart from
 2026-10-23, so is phase 2's WKT part ([crs-wkt.md](crs-wkt.md)): WKT in and
 out, identification by definition, Bound CRSs and Esri's old codes. The
 rest of phase 2 is designed in [pyproj-phase2.md](pyproj-phase2.md), and
-its first five steps are done: the geodesic port, `Geod`, `Proj`,
-`to_2d`, `to_3d` and `get_non_deprecated`, and `get_units_map`.
+its first six steps are done: the geodesic port, `Geod`, `Proj`,
+`to_2d`, `to_3d` and `get_non_deprecated`, `get_units_map`, and
+`area_of_interest`, `accuracy` and `only_best`.
 
 - **Done.**
   - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
@@ -72,10 +73,10 @@ its first five steps are done: the geodesic port, `Geod`, `Proj`,
     EPSG's remarks on CRSs and operations in a file of their own, read on
     first use. The wheel grew from 2.0 to 2.2 MB.
 - **Measured** (see [Testing](#testing)):
-  - pyproj's own suite: 348 of its 963 tests pass: 120 before phase 1's
+  - pyproj's own suite: 351 of its 963 tests pass: 120 before phase 1's
     Rust changes, 129 after, 149 with the WKT part of phase 2, 318 with
     `Geod`, 324 with `Proj`, 335 with `to_2d`/`to_3d`, 348 with
-    `get_units_map`.
+    `get_units_map`, 351 with the selection's options.
   - Against the oracle `proj.db`, every EPSG CRS reports what PROJ does,
     scopes, area descriptions and remarks included, except four documented
     differences:
@@ -352,7 +353,7 @@ becomes the package's status tracker.
 |---|---|---|
 | `Transformer.from_crs(a, b, always_xy=)` | 1 | `always_xy=True` → `AxisOrder::EastFirst`, `False` → `Authority`. |
 | `from_crs(…, allow_ballpark=)` | 1 | We never ballpark. When EPSG has no operation, construction raises `ProjError`, as pyproj does with `allow_ballpark=False`. This is a deliberate divergence from pyproj's default. |
-| `from_crs(…, area_of_interest=, accuracy=, only_best=)` | 2 | Needs the selection to take an area of interest and a minimum accuracy. |
+| `from_crs(…, area_of_interest=, accuracy=, only_best=)` | 2 | `xeibe_reproject::Selection`, as PROJ's operation factory context applies them ([pyproj-phase2.md](pyproj-phase2.md#selection-area_of_interest-accuracy-only_best)). **Done.** |
 | `from_crs(…, authority=, force_over=)` | Out | Only EPSG operations exist. `force_over` is a PROJ pipeline detail. |
 | `transform(xx, yy, zz, tt, radians, direction)` | 1 | A coordinate that fails to convert always raises `ProjError`, which names its index and the reason (`CoordinateError`). pyproj instead writes `inf` unless `errcheck=True`. `tt` passes through unchanged. A transformation that would need it beyond its reference epoch raises an error. Output is always a new object. |
 | `errcheck=` (`transform`, `itransform`, `transform_bounds`, `Proj.__call__`), `inplace=` (`transform`, `Geod.fwd`, `Geod.inv`) | Out | Not in the signatures, so type checkers flag them. Passing either at runtime raises `NotImplementedError` explaining that failed coordinates always raise and that output is always a new object. Any value raises, `errcheck=True` and `inplace=False` included, so one rule covers both. The parameters that followed `errcheck` or `inplace` in pyproj (`direction`, `radians` in `Proj.__call__`, and `Geod`'s `return_back_azimuth`) are keyword-only, so a positional call fails instead of binding its `errcheck` value to the next parameter. |
@@ -364,7 +365,7 @@ becomes the package's status tracker.
 | `to_json`, `to_json_dict`, `to_wkt` | 2 | PROJJSON / WKT of the EPSG operation(s). |
 | `definition`, `to_proj4` | Out | These are PROJ pipeline strings. `definition` raises with a pointer to `description`. |
 | `from_pipeline`, `from_proj`, the module-level `pyproj.transform` / `itransform` | Out | PROJ pipelines, or APIs pyproj deprecated. |
-| `TransformerGroup(…)`: `transformers`, `unavailable_operations`, `best_available` | 1 | One `Transform::via` per candidate from `operations()`. Operations whose grids aren't on the CDN are `unavailable_operations`. |
+| `TransformerGroup(…)`: `transformers`, `unavailable_operations`, `best_available` | 1 | One `Transform::via` per candidate from `operations()`. Operations whose grids aren't on the CDN are `unavailable_operations`. `area_of_interest` and `accuracy` (2) as for `from_crs`. The candidates are those `from_crs` chooses from, where pyproj's group ignores grid availability while searching: the lists can differ where grids are involved ([pyproj-phase2.md](pyproj-phase2.md#validation-3)). |
 | `TransformerGroup.download_grids` | 2 | Fills the grid cache. |
 | `TransformerGroup(crs_extent_use=, pivot_crs=, grid_check=, allow_superseded=)` | Out | Defaults accepted. Other values raise an error. |
 
@@ -445,7 +446,7 @@ use are dropped. Seeing them takes one line, for example
 | **Done:** operation metadata for each candidate (`Transform::operation_info`: name, EPSG code and steps, accuracy, area of use, grids), `operation_index_for`, `with_operation_index`. Each operation's scope is in `operations_json`, and its remarks are in `xeibe_crs::operation_remarks` | reproject | `Transformer.accuracy`, `TransformerGroup`, `operations`, `get_last_used_operation` (1) |
 | **Done:** `Crs::equivalent(&other, ignore_axis_order)` on the parsed definition | reproject | `CRS.equals`, `__eq__` (1) |
 | **Done:** `Grids::Local(files)` next to `ProjData` and `None` (`Grids` is no longer `Copy`) | reproject | local grid directories (1) |
-| Selection restricted to an area of interest and a minimum accuracy | reproject (`select/`) | `area_of_interest`, `accuracy`, `only_best` (2) |
+| Selection restricted to an area of interest and a minimum accuracy. **Done:** `Selection`, `Transform::with_selection` | reproject (`select/`) | `area_of_interest`, `accuracy`, `only_best` (2) |
 | WKT1/WKT2 reader and WKT2 2019/WKT1_GDAL writer, to and from PROJJSON ([crs-wkt.md](crs-wkt.md)). **Done:** the WKT2 and WKT1 readers (`wkt::to_projjson`, `Crs::from_wkt`, ESRI's WKT1 included, with Esri's names from the new `xeibe-esri` crate) and the WKT2 2019 and WKT1_GDAL writers (`wkt::from_projjson`) | reproject, new `wkt` module | `from_wkt`, `to_wkt` (2) |
 | CRS identification: best EPSG match for a definition, with a confidence. **Done:** `Crs::identify` ([crs-wkt.md](crs-wkt.md#identification)); `Transform` uses it for a CRS without a code | reproject | `to_epsg` on WKT input (2) |
 | `BoundCRS` (a CRS with its transformation to a hub such as WGS 84) in `Crs` and the selection ([crs-wkt.md](crs-wkt.md#towgs84-and-boundcrs)). **Done** for Helmert transformations: read (WKT1 `TOWGS84`, WKT2 `BOUNDCRS`), written, and converted as PROJ routes them | reproject | WKT1 `TOWGS84` (2), `+towgs84` (3) |

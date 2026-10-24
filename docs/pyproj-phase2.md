@@ -1,8 +1,8 @@
 # pyproj compatibility, phase 2: geodesics, `Proj` and the rest
 
-> **Status: designed, 2026-10-23; steps 1 to 5 of 8 implemented (the
-> geodesic port in Rust, `Geod`, `Proj`, `to_2d`/`to_3d`/`get_non_deprecated`
-> and `get_units_map`, see [Order of work](#order-of-work)).**
+> **Status: designed, 2026-10-23; steps 1 to 6 of 8 implemented (the
+> geodesic port in Rust, `Geod`, `Proj`, `to_2d`/`to_3d`/`get_non_deprecated`,
+> `get_units_map`, and the selection's options, see [Order of work](#order-of-work)).**
 > This is the rest
 > of phase 2 in [pyproj-compat.md](pyproj-compat.md#phases), after the WKT
 > part ([crs-wkt.md](crs-wkt.md)). Facts about PROJ and pyproj were checked
@@ -276,21 +276,55 @@ value and in order: equal, without Esri's units.
 ## Selection: `area_of_interest`, `accuracy`, `only_best`
 
 PROJ applies these while it builds the candidates in
-`proj_create_crs_to_crs`:
+`proj_create_crs_to_crs` (`crs_to_crs.cpp`), through its operation factory
+context (`FilterResults` in `coordinateoperationfactory.cpp`):
 
-- **`area_of_interest`** keeps the candidates whose area of use
-  intersects the given box. A box across the antimeridian has west > east.
+- **`area_of_interest`** replaces the smaller of the two CRSs' areas as the
+  area of interest. Candidates must intersect it, are ranked by how much of
+  it they cover, and `hasTooSmallAreas` measures against it. A box across
+  the antimeridian has west > east. PROJ still keeps several candidates and
+  chooses one per coordinate.
 - **`accuracy`** keeps the candidates whose accuracy is known and no worse
-  than the value, in metres.
-- **`only_best`** makes a coordinate that the best candidate can't convert,
-  because a grid is missing, an error, instead of trying the next one.
+  than the value, in metres. That applies also to the fallback that takes
+  back every candidate when none has an area matching; 0 sets no limit.
+- **`only_best`** keeps the candidates whose grids are missing (PROJ's
+  `KNOWN_AVAILABLE` instead of discarding them with the network off). A
+  coordinate whose best candidate can't run is then an error instead of
+  falling back to the next one.
 
-`xeibe-reproject`'s selection gains an options struct with the three. As
-everywhere in this package, a selection with nothing left fails where PROJ
-would ballpark. `TransformerGroup(area_of_interest=, accuracy=)` filters
-its list in the same way. The tests extend
-`gen_transformation_vectors.py` with each option on a sample of CRS pairs.
-They compare the candidate lists and the converted points with PROJ's.
+### Implementation
+
+- **Rust:** `xeibe_reproject::Selection` (`area_of_interest`,
+  `accuracy`) goes to `Transform::with_selection`. The search's `Areas`
+  takes the user's area and the accuracy (`select/filter.rs`,
+  `select/search.rs`), and the transform keeps the selection for its
+  inverse and for the routes through a Bound CRS's hub.
+- **`only_best`** needs no Rust change. `Grids::ProjData` is PROJ's
+  `KNOWN_AVAILABLE`, and a grid that isn't loaded already stops a
+  coordinate instead of trying the next candidate. With the network off,
+  `from_crs(only_best=True)` builds the candidates that way and loads the
+  grids it has, skipping the missing ones. A coordinate whose best
+  operation needs one of those fails when it is converted. PROJ fails at
+  construction instead when there is a single candidate.
+- **Python:** `from_crs` and `TransformerGroup` pass the options on. A
+  group with no candidate left is empty, as pyproj's, instead of an error.
+  Transformers keep their options through pickling and
+  `get_last_used_operation`.
+
+### Validation
+
+`gen_transformation_vectors.py --options` writes
+`selection-options.jsonl`: for a sample of the selection pairs, PROJ's
+candidates and per-point results with an area of interest inside the
+pair's areas, a small one, an accuracy, and both. The Rust test compares
+them as it compares `selection.jsonl`, and a Python test runs the same
+records through `from_crs`. Both match PROJ.
+
+One difference in `TransformerGroup` is older than this step and
+remains. pyproj's group searches with grid availability `IGNORED`, while
+ours lists what `from_crs` would choose from (`KNOWN_AVAILABLE`). Where
+an operation needs a grid, pyproj's group can therefore have no route
+through a pivot that ours lists, and the reverse.
 
 ## `Transformer.to_json`, `to_json_dict`, `to_wkt`
 
@@ -352,7 +386,12 @@ The tests use the local HTTP server the grid tests already use.
 5. **`get_units_map`**, gated on pyproj. **Done**, equal to pyproj's
    without Esri's units; the suite went from 335 to 348 of 963.
 6. **`area_of_interest`, `accuracy`, `only_best`**, gated on PROJ's
-   candidate lists.
+   candidate lists. **Done:** `xeibe_reproject::Selection` and
+   `selection-options.jsonl`. On the full set (`--all --options`, 71,796
+   points) every point matches PROJ but for one tie of EPSG variants,
+   broken by EPSG's data as elsewhere, and one route PROJ's pipeline
+   optimiser turns into a no-op across GRS 1980 and WGS 84 (0.3 mm). The
+   suite went from 348 to 351 of 963.
 7. **`Transformer.to_json`, `to_json_dict` and `to_wkt`**, gated on
    pyproj's output without ids.
 8. **`download_grids`**, gated on the local grid server.

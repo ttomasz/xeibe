@@ -20,6 +20,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use super::Selection;
 use super::candidate::{
     Candidate, Single, SingleKind, concatenate, ensemble_member, projection, registry_candidate,
     same_datum,
@@ -81,12 +82,18 @@ pub(crate) struct Search {
 }
 
 impl Search {
-    pub(crate) fn new(mut crs: CrsCache, src: CrsRef, dst: CrsRef, grids: Grids) -> Search {
+    pub(crate) fn new(
+        mut crs: CrsCache,
+        src: CrsRef,
+        dst: CrsRef,
+        grids: Grids,
+        selection: &Selection,
+    ) -> Search {
         let extent1 = crs.extent(src);
         let extent2 = crs.extent(dst);
         Search {
             crs,
-            areas: Areas::new(extent1, extent2),
+            areas: Areas::new(extent1, extent2, selection),
             recursion: 0,
             in_datum_pivot: false,
             grids,
@@ -332,12 +339,27 @@ impl Search {
             .any(|op| op.accuracy == 0.0)
     }
 
-    /// `hasTooSmallAreas`, with no user area of interest.
+    /// `hasTooSmallAreas`.
     fn has_too_small_areas(&self, ops: &[Candidate]) -> bool {
         if ops.is_empty() || ops.len() >= 10 {
             return false;
         }
         let pa = |e: Option<Extent>| e.map_or(0.0, |e| e.pseudo_area());
+        if self.areas.user_interest
+            && let Some(interest) = &self.areas.interest
+        {
+            let target = interest.pseudo_area();
+            if target <= 0.0 {
+                return false;
+            }
+            return ops.iter().all(|op| {
+                let area = op
+                    .extent
+                    .as_ref()
+                    .map_or(0.0, |x| pa(x.intersection(interest)));
+                area <= 0.5 * target
+            });
+        }
         let (e1, e2) = (&self.areas.extent1, &self.areas.extent2);
         let target = match (e1, e2) {
             (Some(a), Some(b)) => pa(a.intersection(b)),
@@ -1150,8 +1172,9 @@ pub(crate) fn create_operations(
     src: CrsRef,
     dst: CrsRef,
     grids: Grids,
+    selection: &Selection,
 ) -> (Vec<Candidate>, CrsCache) {
-    let mut search = Search::new(CrsCache::default(), src, dst, grids);
+    let mut search = Search::new(CrsCache::default(), src, dst, grids, selection);
     let res = search.create_operations(src, dst);
     let areas = search.areas.clone();
     let mut crs = search.crs;

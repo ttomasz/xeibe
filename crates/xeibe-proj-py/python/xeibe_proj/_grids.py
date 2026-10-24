@@ -117,6 +117,10 @@ def _fetch(file: str, offset: int, length: int | None) -> bytes:
     return data
 
 
+class _Missing(ProjError):
+    """A grid that isn't local, nor cached, with the network off."""
+
+
 def _read(file: str, offset: int, length: int | None) -> bytes:
     local = _local(file)
     if local is not None:
@@ -127,18 +131,21 @@ def _read(file: str, offset: int, length: int | None) -> bytes:
         LOGGER.debug("reading grid %s from the cache (offset %d)", file, offset, extra={"grid": file, "offset": offset})
         return cached.read_bytes()
     if not network.is_network_enabled():
-        raise ProjError(f"grid {file} is needed but not local, not cached, and the network is off")
+        raise _Missing(f"grid {file} is needed but not local, not cached, and the network is off")
     data = _fetch(file, offset, length)
     _write_cache(cached, data)
     return data
 
 
-def load(transform: _Transform, bounds: tuple[float, float, float, float] | None) -> None:
+def load(transform: _Transform, bounds: tuple[float, float, float, float] | None, missing_ok: bool = False) -> None:
     """Load what ``transform`` needs for coordinates within ``bounds``:
-    ask for requests and fill them until none are left."""
+    ask for requests and fill them until none are left. With
+    ``missing_ok``, grids that can't be had are left out: a coordinate
+    whose operation needs one then fails when it is converted."""
     seen: set[tuple[str, int, int | None]] = set()
+    skipped: set[str] = set()
     while True:
-        requests = transform.grid_requests(bounds)
+        requests = [r for r in transform.grid_requests(bounds) if r[0] not in skipped]
         if not requests:
             return
         for request in requests:
@@ -147,7 +154,14 @@ def load(transform: _Transform, bounds: tuple[float, float, float, float] | None
                 raise ProjError(f"grid {file}: bytes from {offset} are missing")
             seen.add(request)
             file, offset, length = request
-            transform.add_grid_data(file, offset, _read(file, offset, length))
+            try:
+                data = _read(file, offset, length)
+            except _Missing:
+                if not missing_ok:
+                    raise
+                skipped.add(file)
+                continue
+            transform.add_grid_data(file, offset, data)
 
 
 def _version() -> str:

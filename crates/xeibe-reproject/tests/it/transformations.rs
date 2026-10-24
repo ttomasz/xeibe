@@ -18,6 +18,8 @@
 //!   xeibe may pick another one ([`TIE_BREAK_DEVIATIONS`]).
 //! * `selection-vertical*.jsonl`: the same between CRSs with heights:
 //!   compound CRSs to geographic 3D CRSs and to each other.
+//! * `selection-options.jsonl`: the same with an area of interest, an
+//!   accuracy, or both ([`Selection`]).
 
 // `!(err <= tolerance)` also fails on NaN.
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
@@ -26,7 +28,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
-use xeibe_reproject::{AxisOrder, Crs, Error, Grids, Transform};
+use xeibe_reproject::{AxisOrder, Crs, Error, Grids, Selection, Transform};
 
 /// Linear tolerance in metres, and the angular one in degrees (about 1 mm).
 const LINEAR_M: f64 = 1e-3;
@@ -109,6 +111,11 @@ const TIE_BREAK_DEVIATIONS: &[(&str, &str)] = &[
         "Bogota 1975 to MAGNA-SIRGAS (16)",
         "Bogota 1975 to MAGNA-SIRGAS (8)",
     ),
+    // The same, met with an area of interest that both cover whole.
+    (
+        "Bogota 1975 to MAGNA-SIRGAS (15)",
+        "Bogota 1975 to MAGNA-SIRGAS (7)",
+    ),
     // Equivalent by EPSG (two methods, the same parameters); 1 mm apart.
     (
         "LUREF to ETRS89-LUX [2025] (10)",
@@ -119,6 +126,18 @@ const TIE_BREAK_DEVIATIONS: &[(&str, &str)] = &[
     (
         "ETRS89-SVK [SKTRF09] to S-JTSK [JTSK03] (1) + Inverse of ETRS89 to S-JTSK [JTSK03] (1)",
         "Inverse of S-JTSK [JTSK03] to ETRS89-SVK [SKTRF09] (1) + S-JTSK [JTSK03] to ETRS89 (1)",
+    ),
+];
+
+/// Routes whose coordinates differ from PROJ's by up to the given
+/// number of degrees, why given: (operation, degrees).
+const ROUTE_DEVIATIONS: &[(&str, f64)] = &[
+    // Two Helmerts with one set of parameters, across GRS 1980 and WGS 84:
+    // PROJ's pipeline is a no-op; xeibe cancels the pair but keeps the
+    // change of ellipsoid, 0.3 mm. Only `accuracy=1` leaves this route.
+    (
+        "ITRF2008 to IG05/12 Intermediate CRS + Inverse of WGS 84 to IG05/12 Intermediate CRS",
+        1e-7,
     ),
 ];
 
@@ -172,6 +191,13 @@ const VERTICAL_PAIR_DEVIATIONS: &[(u32, u32)] = &[
     (9883, 4937),
     (4937, 9883),
     (9883, 4979),
+    // ETRS89-NOR [EUREF89] / UTM 33N + NN2000:2018 height at 13°E 68.28°N,
+    // a node of the HREF2018B grid beside its no-data coast: xeibe's
+    // inverse UTM gives 13.000000000000016°, PROJ's 13.000000000000002°,
+    // and the 7 ulps put xeibe in the cell with no value (since exact
+    // decimal parsing changed the last bits).
+    (5973, 10874),
+    (5973, 4979),
     // BES2020 Saba and Sint Eustatius with their heights: EPSG's
     // concatenation of a Helmert and a zero geoid height, which PROJ fails
     // to build ("Mismatched units between step 1 and 2"); xeibe's result is
@@ -433,6 +459,8 @@ struct SelectionStats {
     ensemble_only_ours: usize,
     /// Ties broken otherwise than PROJ (`TIE_BREAK_DEVIATIONS`).
     tie_break_deviations: usize,
+    /// Points of `ROUTE_DEVIATIONS` routes beyond the tolerance.
+    route_deviations: usize,
     /// Points of `GRID_PAIR_DEVIATIONS` pairs where xeibe and PROJ differ.
     pair_deviations: usize,
     /// Listed pairs PROJ has no transformation for at all.
@@ -458,8 +486,15 @@ fn check_selection(records: &[Value], world: World) -> (SelectionStats, Vec<Stri
         s.pairs += 1;
         let points = r["points"].as_array().unwrap();
         let proj_has_any = points.iter().any(|p| !p["out"].is_null());
+        // pyproj's area_of_interest and accuracy, in the options' vectors.
+        let selection = Selection {
+            area_of_interest: floats(&r["area_of_interest"]).map(|v| [v[0], v[1], v[2], v[3]]),
+            accuracy: r["accuracy"].as_f64(),
+        };
         let t = match (crs_of(src_v), crs_of(dst_v)) {
-            (Ok(a), Ok(b)) => Transform::with_grids(&a, &b, AxisOrder::Authority, world.grids()),
+            (Ok(a), Ok(b)) => {
+                Transform::with_selection(&a, &b, AxisOrder::Authority, world.grids(), selection)
+            }
             (Err(e), _) | (_, Err(e)) => Err(e),
         };
         let t = match t {
@@ -569,7 +604,12 @@ fn check_selection(records: &[Value], world: World) -> (SelectionStats, Vec<Stri
             }
             if let (Ok(got), Some(want)) = (convert(&t, &input), floats(&p["out"])) {
                 let (ok, err) = within(horizontal_code(dst_v), got, &want);
-                if !ok && reverses_better(src_v, dst_v, world, &input, got, &want) {
+                let listed = ROUTE_DEVIATIONS
+                    .iter()
+                    .any(|(op, apart)| ours.as_deref() == Some(*op) && err <= *apart);
+                if !ok && listed {
+                    s.route_deviations += 1;
+                } else if !ok && reverses_better(src_v, dst_v, world, &input, got, &want) {
                     s.approximate_inverses += 1;
                 } else if !ok {
                     s.coordinate_failures += 1;
@@ -645,7 +685,7 @@ fn report_selection(s: &SelectionStats) {
         "pairs {}, points {}: same operation {} (of which on one datum {}), different {}, coordinate failures {}, \
          no transformation either side {}; ensemble-member identity {}, through an ensemble knowingly unlike PROJ {}, \
          PROJ's datum alias {}, pairs only xeibe transforms {}; \
-         ties broken otherwise {} (by variant in a route {}); listed pair deviations {} (and {} pairs PROJ can't transform); PROJ's inverse approximate {}",
+         ties broken otherwise {} (by variant in a route {}); listed pair deviations {} (and {} pairs PROJ can't transform); listed routes {}; PROJ's inverse approximate {}",
         s.pairs,
         s.points,
         s.same_operation,
@@ -661,6 +701,7 @@ fn report_selection(s: &SelectionStats) {
         s.variant_ties,
         s.pair_deviations,
         s.listed_pairs_proj_none,
+        s.route_deviations,
         s.approximate_inverses
     );
 }
@@ -727,6 +768,17 @@ fn grid_selection_matches_proj() {
     fail_on(&failures);
 }
 
+/// The same with pyproj's `area_of_interest` and `accuracy`
+/// (`scripts/gen_transformation_vectors.py --options`).
+#[test]
+fn selection_with_options_matches_proj() {
+    let (stats, failures) =
+        check_selection(&load(&data("selection-options.jsonl")), World::NoGrids);
+    report_selection(&stats);
+    assert!(stats.points > 500, "{} points", stats.points);
+    fail_on(&failures);
+}
+
 #[test]
 fn vertical_selection_matches_proj() {
     let (stats, failures) =
@@ -752,6 +804,15 @@ fn vertical_grid_selection_matches_proj() {
 fn every_operation_matches_proj() {
     let (stats, failures) = check_operations(&load(&all("operations.jsonl")), World::NoGrids);
     report_operations(&stats);
+    fail_on(&failures);
+}
+
+/// `scripts/gen_transformation_vectors.py --all --options` first.
+#[test]
+#[ignore = "needs target/reprojection/selection-options.jsonl"]
+fn every_selection_with_options_matches_proj() {
+    let (stats, failures) = check_selection(&load(&all("selection-options.jsonl")), World::NoGrids);
+    report_selection(&stats);
     fail_on(&failures);
 }
 

@@ -340,12 +340,15 @@ struct Transform {
 
 #[pymethods]
 impl Transform {
-    /// `Transform(source, target, always_xy, grids, local=None)`: the CRSs
-    /// as PROJJSON or WKT text. `grids=True` may use PROJ-data's grids on the CDN;
-    /// with `False`, only those in `local` (PROJ-data's file names), or
-    /// none.
+    /// `Transform(source, target, always_xy, grids, local=None,
+    /// area_of_interest=None, accuracy=None)`: the CRSs as PROJJSON or WKT
+    /// text. `grids=True` may use PROJ-data's grids on the CDN; with
+    /// `False`, only those in `local` (PROJ-data's file names), or none.
+    /// `area_of_interest` (west, south, east, north in degrees) and
+    /// `accuracy` (metres) limit the operations, as PROJ's do.
     #[new]
-    #[pyo3(signature = (source, target, always_xy, grids, local = None))]
+    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (source, target, always_xy, grids, local = None, area_of_interest = None, accuracy = None))]
     fn new(
         py: Python<'_>,
         source: &str,
@@ -353,6 +356,8 @@ impl Transform {
         always_xy: bool,
         grids: bool,
         local: Option<Vec<String>>,
+        area_of_interest: Option<[f64; 4]>,
+        accuracy: Option<f64>,
     ) -> PyResult<Self> {
         let order = if always_xy {
             AxisOrder::EastFirst
@@ -368,7 +373,11 @@ impl Transform {
             .detach(|| {
                 let src = read_crs(source)?;
                 let dst = read_crs(target)?;
-                xeibe_reproject::Transform::with_grids(&src, &dst, order, grids)
+                let selection = xeibe_reproject::Selection {
+                    area_of_interest,
+                    accuracy,
+                };
+                xeibe_reproject::Transform::with_selection(&src, &dst, order, grids, selection)
             })
             .map_err(|e| error(py, e))?;
         Ok(Transform { inner })

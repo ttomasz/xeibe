@@ -9,7 +9,7 @@ use crate::grid::Grids;
 use crate::methods::{LAT_LIMIT, adjlon};
 use crate::operation::Method;
 use crate::select::crs::CrsRef;
-use crate::select::{Candidates, OperationInfo};
+use crate::select::{Candidates, OperationInfo, Selection};
 
 /// The order coordinates are given and returned in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -32,6 +32,7 @@ pub struct Transform {
     dst: Crs,
     order: AxisOrder,
     grids: Grids,
+    selection: Selection,
     plan: Plan,
 }
 
@@ -189,8 +190,21 @@ impl Transform {
     /// [`Transform::new`] with a choice of which grids the selection may
     /// use: [`Grids::None`] keeps to operations without grids.
     pub fn with_grids(src: &Crs, dst: &Crs, order: AxisOrder, grids: Grids) -> Result<Self, Error> {
+        Self::with_selection(src, dst, order, grids, Selection::default())
+    }
+
+    /// [`Transform::with_grids`] with the search for operations limited as
+    /// `selection` says: to an area of interest, which also ranks them, and
+    /// to a minimum accuracy (pyproj's `area_of_interest` and `accuracy`).
+    pub fn with_selection(
+        src: &Crs,
+        dst: &Crs,
+        order: AxisOrder,
+        grids: Grids,
+        selection: Selection,
+    ) -> Result<Self, Error> {
         if src.bound.is_some() || dst.bound.is_some() {
-            return Self::through_hubs(src, dst, order, grids);
+            return Self::through_hubs(src, dst, order, grids, selection);
         }
         for crs in [src, dst] {
             if crs.horizontal().bound.is_some() {
@@ -218,13 +232,16 @@ impl Transform {
                     dst: dst.label(),
                 });
             };
-            Plan::Operations(Arc::new(Candidates::new(src, dst, sc, dc, &grids)?))
+            Plan::Operations(Arc::new(Candidates::new(
+                src, dst, sc, dc, &grids, &selection,
+            )?))
         };
         Ok(Transform {
             src: src.clone(),
             dst: dst.clone(),
             order,
             grids,
+            selection,
             plan,
         })
     }
@@ -236,7 +253,13 @@ impl Transform {
     /// with it, and from there on as between any CRSs: a conversion on the
     /// hub's datum, else EPSG's operations from it, chosen per coordinate
     /// on the hub's coordinates.
-    fn through_hubs(src: &Crs, dst: &Crs, order: AxisOrder, grids: Grids) -> Result<Self, Error> {
+    fn through_hubs(
+        src: &Crs,
+        dst: &Crs,
+        order: AxisOrder,
+        grids: Grids,
+        selection: Selection,
+    ) -> Result<Self, Error> {
         let (src_base, dst_base) = (src.without_bound(), dst.without_bound());
         let ignore = same_datums(&src_base, &dst_base)
             && match (&src.bound, &dst.bound) {
@@ -260,7 +283,8 @@ impl Transform {
                 .transpose()?;
             let from = src.bound.as_ref().map_or(src_base, |b| b.hub.clone());
             let to = dst.bound.as_ref().map_or(dst_base, |b| b.hub.clone());
-            let middle = Transform::with_grids(&from, &to, order, grids.clone())?;
+            let middle =
+                Transform::with_selection(&from, &to, order, grids.clone(), selection.clone())?;
             let join = |middle: Option<&str>| {
                 let first = first.as_ref().map(|l| l.name.clone());
                 let last = last.as_ref().map(|l| format!("Inverse of {}", l.name));
@@ -290,6 +314,7 @@ impl Transform {
             dst: dst.clone(),
             order,
             grids,
+            selection,
             plan,
         })
     }
@@ -317,6 +342,7 @@ impl Transform {
             dst: dst.clone(),
             order,
             grids: Grids::ProjData,
+            selection: Selection::default(),
             plan: Plan::Via(
                 operation,
                 Arc::new(Candidates::with_operation(src, dst, sc, dc, operation)?),
@@ -413,6 +439,7 @@ impl Transform {
                 dst: self.dst.clone(),
                 order: self.order,
                 grids: self.grids.clone(),
+                selection: self.selection.clone(),
                 plan: Plan::Bound(Arc::new(BoundPlan {
                     first: b.first.clone(),
                     middle,
@@ -427,6 +454,7 @@ impl Transform {
             dst: self.dst.clone(),
             order: self.order,
             grids: self.grids.clone(),
+            selection: self.selection.clone(),
             plan: Plan::Only(Arc::new(c)),
         }))
     }
@@ -458,17 +486,23 @@ impl Transform {
                 dst: self.src.clone(),
                 order: self.order,
                 grids: self.grids.clone(),
+                selection: self.selection.clone(),
                 plan: Plan::Conversion,
             }),
-            Plan::Operations(_) | Plan::Bound(_) => {
-                Transform::with_grids(&self.dst, &self.src, self.order, self.grids.clone())
-            }
+            Plan::Operations(_) | Plan::Bound(_) => Transform::with_selection(
+                &self.dst,
+                &self.src,
+                self.order,
+                self.grids.clone(),
+                self.selection.clone(),
+            ),
             Plan::Via(code, _) => Transform::via(&self.dst, &self.src, code, self.order),
             Plan::Only(ref c) => Ok(Transform {
                 src: self.dst.clone(),
                 dst: self.src.clone(),
                 order: self.order,
                 grids: self.grids.clone(),
+                selection: self.selection.clone(),
                 plan: Plan::Only(Arc::new(c.inverse_of_first(&self.dst)?)),
             }),
         }
@@ -637,6 +671,7 @@ fn nad27_to_nad83(src: &Crs, dst: &Crs) -> Result<Option<Plan>, Error> {
         dst: to,
         order: AxisOrder::EastFirst,
         grids: Grids::None,
+        selection: Selection::default(),
         plan: Plan::Conversion,
     };
     let (first, last) = if forward {

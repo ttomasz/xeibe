@@ -315,6 +315,7 @@ test.test_transformer::test_always_xy__transformer[float]
 test.test_transformer::test_network__default[transformer1]
 test.test_transformer::test_network__disable[transformer1]
 test.test_transformer::test_network__enable[transformer1]
+test.test_transformer::test_pickle_transformer_from_crs
 test.test_transformer::test_transform_bounds__antimeridian
 test.test_transformer::test_transform_bounds__antimeridian__xy
 test.test_transformer::test_transform_bounds__beyond_global_bounds
@@ -342,7 +343,9 @@ test.test_transformer::test_transform_direction__string_lowercase[float]
 test.test_transformer::test_transform_empty_array_xy[empty_array2]
 test.test_transformer::test_transformer__get_last_used_operation
 test.test_transformer::test_transformer__operations_missing
+test.test_transformer::test_transformer_accuracy_filter
 test.test_transformer::test_transformer_equals
 test.test_transformer::test_transformer_group__get_transform_crs
+test.test_transformer::test_transformer_group_accuracy_filter
 test.test_transformer::test_transformer_multithread__crs
 test.test_transformer::test_transformer_source_target_crs

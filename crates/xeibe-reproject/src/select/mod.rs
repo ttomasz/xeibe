@@ -178,6 +178,20 @@ pub(crate) struct Prepared {
     has_grids: bool,
 }
 
+/// Options of the search for operations between datums, as PROJ's
+/// operation factory context takes them from `proj_create_crs_to_crs`
+/// (pyproj's `area_of_interest` and `accuracy`). The default is none.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Selection {
+    /// West, south, east, north in degrees (west > east across the
+    /// antimeridian): it replaces the CRSs' areas of use as the area
+    /// operations must intersect and are ranked by.
+    pub area_of_interest: Option<[f64; 4]>,
+    /// In metres: only operations whose accuracy is known and no worse.
+    /// 0 sets no limit, as in PROJ.
+    pub accuracy: Option<f64>,
+}
+
 /// The candidates for one source and target CRS.
 #[derive(Debug, Clone)]
 pub(crate) struct Candidates {
@@ -236,8 +250,9 @@ impl Candidates {
         src_ref: CrsRef,
         dst_ref: CrsRef,
         grids: &Grids,
+        selection: &Selection,
     ) -> Result<Candidates, Error> {
-        let (sorted, _) = search::create_operations(src_ref, dst_ref, grids.clone());
+        let (sorted, _) = search::create_operations(src_ref, dst_ref, grids.clone(), selection);
         let mut builder = CrsBuilder::default();
         let src_geographic = matches!(src.kind, Kind::Geographic { .. });
         let src_geocentric = matches!(src.kind, Kind::Geocentric { .. });

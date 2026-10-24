@@ -26,12 +26,17 @@ Two kinds of vectors:
   sorted list of operations, and for points in the area of interest the
   output and the name of the operation PROJ used for each. With
   `--vertical`, between CRSs with heights (`selection-vertical*.jsonl`):
-  compound CRSs to geographic 3D ones and to each other.
+  compound CRSs to geographic 3D ones and to each other. With `--options`,
+  the same with pyproj's `area_of_interest` or `accuracy` (and both)
+  on a sample of pairs (`selection-options.jsonl`, fields
+  `area_of_interest` and `accuracy`); the points lie in the area of
+  interest.
 
     scripts/build_proj_oracle.py                    # once per EPSG release
     scripts/gen_transformation_vectors.py           # committed subsets -> tests/data/reprojection/
     scripts/gen_transformation_vectors.py --grids tests/data/reprojection/grids
     scripts/gen_transformation_vectors.py --vertical [--grids tests/data/reprojection/grids]
+    scripts/gen_transformation_vectors.py --options
     scripts/gen_transformation_vectors.py --all     # everything -> target/reprojection/
     scripts/gen_transformation_vectors.py --all --grids target/proj-grids [--vertical]
 """
@@ -302,8 +307,10 @@ def pseudo_area(a) -> float:
     return (e - w) * (math.sin(math.radians(n)) - math.sin(math.radians(s)))
 
 
-def selection_record(src_code, dst_code) -> dict | None:
-    """The record for two CRSs: EPSG codes, or `[horizontal, vertical]`."""
+def selection_record(src_code, dst_code, aoi=None, accuracy=None) -> dict | None:
+    """The record for two CRSs: EPSG codes, or `[horizontal, vertical]`,
+    with pyproj's `area_of_interest` (west, south, east, north) and
+    `accuracy` when given."""
     try:
         src = crs_of(src_code)
         dst = crs_of(dst_code)
@@ -316,18 +323,25 @@ def selection_record(src_code, dst_code) -> dict | None:
     areas = [a for a in map(crs_area, parts) if a]
     if not areas:
         return None
-    interest = min(areas, key=pseudo_area)
+    interest = aoi or min(areas, key=pseudo_area)
     record: dict = {"src": src_code, "dst": dst_code}
+    options: dict = {}
+    if aoi is not None:
+        record["area_of_interest"] = list(aoi)
+        options["area_of_interest"] = pyproj.aoi.AreaOfInterest(*aoi)
+    if accuracy is not None:
+        record["accuracy"] = accuracy
+        options["accuracy"] = accuracy
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         try:
             # Informational only: pyproj's TransformerGroup fails on a few pairs.
-            group = TransformerGroup(src, dst, allow_ballpark=False)
+            group = TransformerGroup(src, dst, allow_ballpark=False, **options)
             record["operations"] = [t.description for t in group.transformers]
         except (pyproj.exceptions.ProjError, pyproj.exceptions.CRSError, IndexError):
             record["operations"] = None
         try:
-            transformer = pyproj.Transformer.from_crs(src, dst, allow_ballpark=False, only_best=False)
+            transformer = pyproj.Transformer.from_crs(src, dst, allow_ballpark=False, only_best=False, **options)
         except (pyproj.exceptions.ProjError, pyproj.exceptions.CRSError):
             record["points"] = []
             return record
@@ -431,6 +445,40 @@ def selection_pairs(registry: dict, everything: bool, grids: bool) -> list[tuple
     return pairs
 
 
+def option_records(registry: dict, everything: bool) -> list[dict]:
+    """Selection with options: for every other selection pair (all of them
+    with --all), an area of interest inside the pair's interest, a small
+    one, an accuracy that keeps some candidates out, and both."""
+    pairs = selection_pairs(registry, everything, False)
+    pairs = [p for p in pairs if not isinstance(p[0], list)][:: (1 if everything else 2)]
+    records = []
+    for i, (a, b) in enumerate(pairs):
+        try:
+            src, dst = crs_of(a), crs_of(b)
+        except pyproj.exceptions.CRSError:
+            continue
+        areas = [x for x in (crs_area(src), crs_area(dst)) if x]
+        if len(areas) < 2:
+            continue
+        w, s = max(areas[0][0], areas[1][0]), max(areas[0][1], areas[1][1])
+        e, n = min(areas[0][2], areas[1][2]), min(areas[0][3], areas[1][3])
+        if w >= e or s >= n:
+            continue
+        rng = random.Random(seed_code(a) * 7919 + seed_code(b))
+        x0, x1 = sorted(rng.uniform(w, e) for _ in range(2))
+        y0, y1 = sorted(rng.uniform(s, n) for _ in range(2))
+        x, y = rng.uniform(w, e), rng.uniform(s, n)
+        small = (x, y, min(x + 0.1, e), min(y + 0.1, n))
+        accuracy = rng.choice([0.5, 1.0, 2.0, 5.0, 20.0])
+        for aoi, acc in (((x0, y0, x1, y1), None), (small, None), (None, accuracy), ((x0, y0, x1, y1), accuracy)):
+            record = selection_record(a, b, aoi, acc)
+            if record is not None and (everything or record["points"]):
+                records.append(record)
+        if not everything and len(records) >= 400:
+            break
+    return records
+
+
 def vertical_pairs(registry: dict, everything: bool) -> list[tuple[int, int]]:
     """Pairs with heights: compound CRSs to geographic 3D CRSs (through a
     geoid model, or nothing without one), back, to other compound CRSs
@@ -508,6 +556,7 @@ def main() -> int:
     parser.add_argument("--only", choices=("operations", "selection"), help="one kind of vectors")
     parser.add_argument("--grids", type=Path, help="directory of PROJ-data grids: level 3 vectors")
     parser.add_argument("--vertical", action="store_true", help="selection between CRSs with heights")
+    parser.add_argument("--options", action="store_true", help="selection with area_of_interest and accuracy")
     args = parser.parse_args()
     if not (ORACLE / "proj.db").exists():
         sys.exit("target/proj-oracle-epsg/proj.db is missing; run scripts/build_proj_oracle.py")
@@ -521,6 +570,9 @@ def main() -> int:
     if have != f"v{want}":
         sys.exit(f"the oracle has EPSG {have}, xeibe-crs {want}: rerun scripts/build_proj_oracle.py")
     out = ALL if args.all else COMMITTED
+    if args.options:
+        write(out / "selection-options.jsonl", option_records(registry, args.all))
+        return 0
     suffix = "-grids" if args.grids else ""
     if args.vertical:
         pairs = VERTICAL_GRID_PINNED_PAIRS if args.grids and not args.all else vertical_pairs(registry, args.all)

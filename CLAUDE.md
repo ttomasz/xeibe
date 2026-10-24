@@ -133,8 +133,9 @@ sources, but their contents haven't been checked against the local copies:
   a copy with only EPSG's operations and PROJ's null operations between
   datum ensembles and their members in `target/proj-oracle-epsg/`, and
   `scripts/gen_transformation_vectors.py` writes level-2 vectors with that (and
-  level-3 vectors with `--grids DIR`, and between CRSs with heights with
-  `--vertical`). Both write committed subsets to
+  level-3 vectors with `--grids DIR`, between CRSs with heights with
+  `--vertical`, and with pyproj's `area_of_interest` and `accuracy` with
+  `--options`). Both write committed subsets to
   `tests/data/reprojection/`; `--all` writes everything to
   `target/reprojection/` for the `--ignored` tests. Level 3 (grids):
   `scripts/fetch_proj_grids.py` copies PROJ-data's grids out of the GDAL image

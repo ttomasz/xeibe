@@ -163,8 +163,6 @@ def test_no_transformation_raises() -> None:
 
 
 def test_options() -> None:
-    with pytest.raises(NotImplementedError, match="phase 2"):
-        Transformer.from_crs(4326, 3857, accuracy=1.0)
     with pytest.raises(NotImplementedError, match="not supported"):
         Transformer.from_crs(4326, 3857, authority="ESRI")
     Transformer.from_crs(4326, 3857, authority="EPSG", allow_ballpark=False)
@@ -245,3 +243,73 @@ def test_transformer_group() -> None:
     assert online.transformers[0].description == "OSGB36 to WGS 84 (9)"
     # One datum: the conversion itself.
     assert len(TransformerGroup(4326, 3857).transformers) == 1
+
+
+def _option_records() -> list[dict[str, object]]:
+    import json
+
+    from .conftest import ROOT
+
+    lines = (ROOT / "tests/data/reprojection/selection-options.jsonl").read_text().splitlines()
+    return [json.loads(line) for line in lines[1:]]
+
+
+def test_area_of_interest_and_accuracy_match_proj() -> None:
+    """from_crs with pyproj's area_of_interest and accuracy against PROJ's
+    results (scripts/gen_transformation_vectors.py --options): the Python
+    side passes the options as xeibe-reproject's tests check them."""
+    from xeibe_proj.aoi import AreaOfInterest
+
+    compared = 0
+    for r in _option_records():
+        aoi = r.get("area_of_interest")
+        area = AreaOfInterest(*aoi) if isinstance(aoi, list) else None
+        accuracy = r.get("accuracy")
+        points = r["points"]
+        assert isinstance(points, list)
+        try:
+            t = Transformer.from_crs(r["src"], r["dst"], area_of_interest=area, accuracy=accuracy)  # type: ignore[arg-type]
+        except ProjError:
+            assert all(p["out"] is None for p in points), r
+            continue
+        for p in points:
+            if p["out"] is None:
+                continue
+            out = t.transform(*p["in"])
+            assert all(math.isclose(a, b, abs_tol=1e-6) for a, b in zip(out, p["out"], strict=False)), (r["src"], r["dst"], p)
+            compared += 1
+    assert compared > 500
+
+
+def test_only_best_without_grids() -> None:
+    """With the network off, a coordinate whose best operation needs a grid
+    that isn't to hand is an error with only_best, a fallback without."""
+    lenient = Transformer.from_crs(4267, 4269, always_xy=True, only_best=False)
+    assert math.isfinite(lenient.transform(-100.0, 40.0)[0])
+    strict = Transformer.from_crs(4267, 4269, always_xy=True, only_best=True)
+    with pytest.raises(ProjError, match="grid"):
+        strict.transform(-100.0, 40.0)
+    # Pickling keeps the options.
+    copy = pickle.loads(pickle.dumps(strict))
+    with pytest.raises(ProjError, match="grid"):
+        copy.transform(-100.0, 40.0)
+
+
+def test_group_options() -> None:
+    from xeibe_proj.aoi import AreaOfInterest
+    from xeibe_proj.transformer import TransformerGroup
+
+    everything = TransformerGroup(4230, 4326)
+    precise = TransformerGroup(4230, 4326, accuracy=2.0)
+    assert 0 < len(precise.transformers) < len(everything.transformers)
+    assert all(0 <= t.accuracy <= 2.0 for t in precise.transformers)
+    spain = AreaOfInterest(-4.0, 40.0, -3.0, 41.0)
+    local = TransformerGroup(4230, 4326, area_of_interest=spain)
+    for t in local.transformers:
+        area = t.area_of_use
+        assert area is not None and area.west <= -3.0 and area.east >= -4.0 and area.south <= 41.0
+    # Nothing that accurate: an empty group, as pyproj's.
+    none = TransformerGroup(4230, 4326, accuracy=0.001)
+    assert none.transformers == [] and none.unavailable_operations == [] and none.best_available
+    with pytest.raises(ProjError):
+        Transformer.from_crs(4230, 4326, accuracy=0.001)

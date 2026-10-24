@@ -29,7 +29,7 @@ from xeibe_proj._unsupported import not_yet, out
 from xeibe_proj.aoi import AreaOfInterest, AreaOfUse
 from xeibe_proj.crs import CRS, CoordinateOperation, Grid
 from xeibe_proj.enums import TransformDirection
-from xeibe_proj.exceptions import ProjError
+from xeibe_proj.exceptions import CRSError, ProjError
 from xeibe_proj.network import is_network_enabled
 
 if TYPE_CHECKING:
@@ -38,6 +38,23 @@ if TYPE_CHECKING:
 __all__ = ["AreaOfInterest", "Transformer", "TransformerGroup", "itransform", "transform"]
 
 _FORWARD = TransformDirection.FORWARD
+
+# The options of the search for operations: the area of interest (west,
+# south, east, north in degrees), the accuracy in metres, and only_best.
+_Options = tuple[tuple[float, float, float, float] | None, float | None, bool]
+_NO_OPTIONS: _Options = (None, None, False)
+
+
+def _options(area_of_interest: Any, accuracy: float | None, only_best: bool | None) -> _Options:
+    area = None
+    if area_of_interest is not None:
+        area = (
+            float(area_of_interest.west_lon_degree),
+            float(area_of_interest.south_lat_degree),
+            float(area_of_interest.east_lon_degree),
+            float(area_of_interest.north_lat_degree),
+        )
+    return area, None if accuracy is None else float(accuracy), bool(only_best)
 
 
 def _reject(method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> None:
@@ -178,27 +195,43 @@ class Transformer:
     _member: str | None
     # Per thread: the last coordinate converted, for get_last_used_operation.
     _last: threading.local
+    # The search's options (from_crs's area_of_interest, accuracy, only_best).
+    _options: _Options
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         raise ProjError("use Transformer.from_crs() to make a Transformer")
 
     @classmethod
-    def _make(cls, source: CRS, target: CRS, always_xy: bool, member: str | None = None) -> Transformer:
+    def _make(
+        cls,
+        source: CRS,
+        target: CRS,
+        always_xy: bool,
+        member: str | None = None,
+        options: _Options = _NO_OPTIONS,
+    ) -> Transformer:
         """The transformer between two CRSs: choosing among every candidate,
         or with ``member`` through the candidate of that name only."""
         network = is_network_enabled()
+        area, accuracy, only_best = options
+        src, dst = _native_json(source), _native_json(target)
         if member is None:
-            # With the network off, the grids in the data directories.
+            # With the network off, the grids in the data directories. With
+            # only_best, every candidate PROJ-data has grids for, as PROJ
+            # keeps them: a coordinate whose best one has its grid missing
+            # is then an error, not a fallback.
             local = None if network else _grids.local_files()
-            native = _native.Transform(_native_json(source), _native_json(target), False, network, local)
+            native = _native.Transform(src, dst, False, network or only_best, local, area, accuracy)
         else:
-            everything = _native.Transform(_native_json(source), _native_json(target), False, True)
+            everything = _native.Transform(src, dst, False, True, None, area, accuracy)
             names = [o.name for o in everything.operation_info()]
             only = everything.with_operation_index(names.index(member)) if member in names else None
             if only is None:
                 raise ProjError(f"no operation {member!r} from {source.to_string()} to {target.to_string()}")
             native = only
-        return cls._from_native(source, target, always_xy, native, member, network)
+        made = cls._from_native(source, target, always_xy, native, member, network)
+        made._options = options
+        return made
 
     @classmethod
     def _from_native(
@@ -221,6 +254,7 @@ class Transformer:
         self._backward = None
         self._logged = set()
         self._last = threading.local()
+        self._options = _NO_OPTIONS
         return self
 
     @staticmethod
@@ -240,17 +274,25 @@ class Transformer:
 
         ``always_xy=True`` takes and returns longitude or easting first.
         Between datums, EPSG's operations are chosen per coordinate as PROJ
-        chooses them. ``allow_ballpark`` is accepted, but no ballpark
-        transformation is ever used: without a usable EPSG operation this
-        raises ``ProjError``.
+        chooses them. ``area_of_interest`` keeps the operations whose area of
+        use intersects it and ranks them by how much of it they cover;
+        ``accuracy`` keeps those whose accuracy is known and no worse, in
+        metres. ``only_best=True`` makes a coordinate whose best operation's
+        grid can't be had an error, also with the network off, instead of
+        falling back to the next. ``allow_ballpark`` is accepted, but no
+        ballpark transformation is ever used: without a usable EPSG
+        operation this raises ``ProjError``.
         """
-        if area_of_interest is not None or accuracy is not None or only_best is not None:
-            raise not_yet("from_crs(area_of_interest=, accuracy=, only_best=)", 2)
         if authority is not None and authority.upper() not in ("EPSG", "ANY"):
             raise out(f"from_crs(authority={authority!r})", "only EPSG's operations are known")
         if force_over:
             raise out("from_crs(force_over=True)", "it is a PROJ pipeline option")
-        return Transformer._make(CRS.from_user_input(crs_from), CRS.from_user_input(crs_to), always_xy)
+        return Transformer._make(
+            CRS.from_user_input(crs_from),
+            CRS.from_user_input(crs_to),
+            always_xy,
+            options=_options(area_of_interest, accuracy, only_best),
+        )
 
     @staticmethod
     def from_proj(proj_from: Any, proj_to: Any, always_xy: bool = False, area_of_interest: AreaOfInterest | None = None) -> Transformer:
@@ -359,13 +401,15 @@ class Transformer:
         native, forward, x, y, z = last
         source, target = (self._source, self._target) if forward else (self._target, self._source)
         if not native.operation_info():
-            return self if forward else Transformer._make(source, target, self._always_xy)
+            return self if forward else Transformer._make(source, target, self._always_xy, options=self._options)
         index = native.operation_index_for(x, y, z)
         only = None if index is None else native.with_operation_index(index)
         if index is None or only is None:
             raise ProjError("the last coordinate went through no operation")
         name = native.operation_info()[index].name
-        return Transformer._from_native(source, target, self._always_xy, only, name, self._network)
+        used = Transformer._from_native(source, target, self._always_xy, only, name, self._network)
+        used._options = self._options
+        return used
 
     @property
     def definition(self) -> str:
@@ -425,7 +469,9 @@ class Transformer:
                 ", ".join(files),
                 extra={"grids": files, "source": source.to_string(), "target": target.to_string()},
             )
-        _grids.load(native, bounds)
+        # only_best with the network off: the grids to hand, and an error for
+        # a coordinate whose best operation needs another (PROJ's ONLY_BEST).
+        _grids.load(native, bounds, missing_ok=self._options[2] and not self._network)
 
     def _convert(
         self,
@@ -652,8 +698,8 @@ class Transformer:
             and self._always_xy == other._always_xy
         )
 
-    def __reduce__(self) -> tuple[Any, tuple[CRS, CRS, bool, str | None]]:
-        return Transformer._make, (self._source, self._target, self._always_xy, self._member)
+    def __reduce__(self) -> tuple[Any, tuple[CRS, CRS, bool, str | None, _Options]]:
+        return Transformer._make, (self._source, self._target, self._always_xy, self._member, self._options)
 
     def __str__(self) -> str:
         return self.description
@@ -672,9 +718,10 @@ class TransformerGroup:
     """Every operation between two CRSs, best first: a transformer for each
     whose grids can be had, and the others as unavailable operations.
 
-    The options PROJ uses to widen or narrow the search
-    (``area_of_interest``, ``accuracy``, ``crs_extent_use``, ``pivot_crs``,
-    ``grid_check``) are accepted at their defaults only.
+    ``area_of_interest`` and ``accuracy`` narrow the search as in
+    ``Transformer.from_crs``. The other options PROJ uses to widen or narrow
+    it (``crs_extent_use``, ``pivot_crs``, ``grid_check``) are accepted at
+    their defaults only.
     """
 
     def __init__(
@@ -691,8 +738,6 @@ class TransformerGroup:
         pivot_crs: Any = None,
         grid_check: Any = None,
     ) -> None:
-        if area_of_interest is not None or accuracy is not None:
-            raise not_yet("TransformerGroup(area_of_interest=, accuracy=)", 2)
         if authority is not None and authority.upper() not in ("EPSG", "ANY"):
             raise out(f"TransformerGroup(authority={authority!r})", "only EPSG's operations are known")
         if allow_superseded or crs_extent_use is not None or pivot_crs is not None or grid_check is not None:
@@ -704,21 +749,31 @@ class TransformerGroup:
         network = is_network_enabled()
         local = set(_grids.local_files())
         # Every candidate PROJ-data has grids for; availability is decided here.
-        everything = _native.Transform(_native_json(source), _native_json(target), False, True)
-        infos = everything.operation_info()
+        options = _options(area_of_interest, accuracy, None)
+        area, desired, _ = options
         self._transformers: list[Transformer] = []
         self._unavailable: list[CoordinateOperation] = []
+        try:
+            everything = _native.Transform(_native_json(source), _native_json(target), False, True, None, area, desired)
+        except CRSError:
+            raise
+        except ProjError:
+            # No operation at all, or none left by area_of_interest and
+            # accuracy: an empty group, as pyproj's.
+            self._best_available = True
+            return
+        infos = everything.operation_info()
         if not infos:
             # Same module: TransformerGroup makes Transformers as from_crs does.
-            self._transformers.append(Transformer._make(source, target, always_xy))  # pyright: ignore[reportPrivateUsage]
+            self._transformers.append(Transformer._make(source, target, always_xy, options=options))  # pyright: ignore[reportPrivateUsage]
         for index, info in enumerate(infos):
             only = everything.with_operation_index(index)
             if only is not None and _available(info, network, local):
-                self._transformers.append(
-                    Transformer._from_native(  # pyright: ignore[reportPrivateUsage]
-                        source, target, always_xy, only, info.name, network
-                    )
+                member = Transformer._from_native(  # pyright: ignore[reportPrivateUsage]
+                    source, target, always_xy, only, info.name, network
                 )
+                member._options = options  # pyright: ignore[reportPrivateUsage]
+                self._transformers.append(member)
             else:
                 self._unavailable.append(_operation(info, False))
         self._best_available = not infos or _available(infos[0], network, local)

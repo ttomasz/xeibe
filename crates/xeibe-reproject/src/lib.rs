@@ -67,5 +67,5 @@ pub use crs::Crs;
 pub use error::{CoordinateError, Error};
 pub use grid::{CDN, GridRequest, Grids, clear_grids};
 pub use projection::Projection;
-pub use select::OperationInfo;
+pub use select::{OperationInfo, Selection};
 pub use transform::{AxisOrder, Transform};

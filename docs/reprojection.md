@@ -183,7 +183,12 @@ chooses the transformation per coordinate as PROJ does, among EPSG's operations;
   reference epoch), longitude rotation, geographic offsets, and the plane
   similarity, affine and grid-offset transformations between projected CRSs.
 - Selection (`src/select/`): a port of PROJ's search, filter, sort and per-point
-  choice; see [Implementation](#implementation).
+  choice; see [Implementation](#implementation). `Transform::with_selection`
+  takes the options of PROJ's operation factory context that pyproj passes
+  on: an area of interest, which replaces the CRSs' areas as the one
+  operations must intersect and are ranked by, and a minimum accuracy
+  (`Selection`; [pyproj-phase2.md](pyproj-phase2.md#selection-area_of_interest-accuracy-only_best)).
+  Their vectors are `selection-options.jsonl` (`--options`).
 - Not in level 2: grid-based operations and vertical and compound CRSs (both
   level 3), and operations needing a coordinate epoch beyond their reference
   one.

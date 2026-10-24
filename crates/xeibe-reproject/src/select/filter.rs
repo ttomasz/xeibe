@@ -14,6 +14,7 @@
 
 use std::cmp::Ordering;
 
+use super::Selection;
 use super::candidate::{
     BALLPARK_GEOCENTRIC_TRANSLATION, BALLPARK_GEOGRAPHIC_OFFSET, Candidate,
     NULL_GEOCENTRIC_TRANSLATION, NULL_GEOGRAPHIC_OFFSET, SingleKind,
@@ -24,17 +25,37 @@ use crate::operation::param::LONGITUDE_OFFSET;
 use crate::registry::{ParamValue, registry};
 
 /// The areas the filter works with: the two CRSs' areas of use and the area
-/// of interest derived from them.
+/// of interest, the user's or derived from them, and the accuracy asked for.
 #[derive(Debug, Clone)]
 pub(crate) struct Areas {
     pub(crate) extent1: Option<Extent>,
     pub(crate) extent2: Option<Extent>,
     pub(crate) interest: Option<Extent>,
+    /// The area of interest is the user's (PROJ's
+    /// `areaOfInterestUserSpecified`).
+    pub(crate) user_interest: bool,
+    /// PROJ's `desiredAccuracy`: 0 for none.
+    pub(crate) accuracy: f64,
 }
 
 impl Areas {
+    /// The user's area of interest, else
     /// `SourceTargetCRSExtentUse::SMALLEST`, PROJ's default.
-    pub(crate) fn new(extent1: Option<Extent>, extent2: Option<Extent>) -> Areas {
+    pub(crate) fn new(
+        extent1: Option<Extent>,
+        extent2: Option<Extent>,
+        selection: &Selection,
+    ) -> Areas {
+        let accuracy = selection.accuracy.unwrap_or(0.0);
+        if let Some([west, south, east, north]) = selection.area_of_interest {
+            return Areas {
+                extent1,
+                extent2,
+                interest: Some(Extent::new(None, west, south, east, north)),
+                user_interest: true,
+                accuracy,
+            };
+        }
         let interest = match (&extent1, &extent2) {
             (Some(a), Some(b)) => Some(if a.pseudo_area() < b.pseudo_area() {
                 a.clone()
@@ -48,6 +69,8 @@ impl Areas {
             extent1,
             extent2,
             interest,
+            user_interest: false,
+            accuracy,
         }
     }
 }
@@ -77,14 +100,17 @@ pub(crate) fn is_exportable(c: &Candidate) -> bool {
     })
 }
 
-/// `FilterResults::filterOut` with no desired accuracy and ballparks
-/// disallowed. `strict` is PROJ's `forceStrictContainmentTest`.
+/// `FilterResults::filterOut` with ballparks disallowed. `strict` is
+/// PROJ's `forceStrictContainmentTest`.
 pub(crate) fn filter_out(list: &[Candidate], areas: &Areas, strict: bool) -> Vec<Candidate> {
     let mut res = Vec::new();
     let mut has_non_ballpark_op_with_extent = false;
     let mut has_non_ballpark_without_extent = false;
+    let accurate = |op: &Candidate| {
+        areas.accuracy == 0.0 || (op.accuracy >= 0.0 && op.accuracy <= areas.accuracy)
+    };
     for op in list {
-        if op.has_ballpark() {
+        if !accurate(op) || op.has_ballpark() {
             continue;
         }
         if let Some(interest) = &areas.interest {
@@ -106,7 +132,7 @@ pub(crate) fn filter_out(list: &[Candidate], areas: &Areas, strict: bool) -> Vec
     if res.is_empty() && (!has_non_ballpark_op_with_extent || has_non_ballpark_without_extent) {
         res = list
             .iter()
-            .filter(|op| !op.has_ballpark())
+            .filter(|op| accurate(op) && !op.has_ballpark())
             .cloned()
             .collect();
     }
