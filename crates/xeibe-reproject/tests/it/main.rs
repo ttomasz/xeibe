@@ -2,6 +2,7 @@
 
 mod api;
 mod equivalent;
+mod explain;
 mod geodesic;
 mod grids;
 mod operations;

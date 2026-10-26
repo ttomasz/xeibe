@@ -9,6 +9,7 @@ use crate::grid::Grids;
 use crate::methods::{LAT_LIMIT, adjlon};
 use crate::operation::Method;
 use crate::select::crs::CrsRef;
+use crate::select::explain::Explanation;
 use crate::select::{Candidates, OperationInfo, Selection};
 
 /// The order coordinates are given and returned in.
@@ -405,6 +406,36 @@ impl Transform {
     pub fn operation_index_for(&self, x: f64, y: f64, z: Option<f64>) -> Option<usize> {
         let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)]).ok()?;
         self.index_for(internal)
+    }
+
+    /// How the operation for one coordinate is chosen: for every
+    /// operation of [`Transform::operation_info`], whether its area of use
+    /// contains the point, tested as the choice tests it, and what became
+    /// of it (chosen, passed over for another and why, outside, failed, the
+    /// fallback). It runs the same choice as [`Transform::convert`], which
+    /// pays nothing for it. `None` for a conversion on one datum, and for
+    /// a coordinate that can't be placed (not finite, out of range). A
+    /// Bound CRS's transform answers for its hub, as
+    /// [`Transform::operation_index_for`] does.
+    pub fn explain_point(&self, x: f64, y: f64, z: Option<f64>) -> Option<Explanation> {
+        let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)]).ok()?;
+        self.explain_internal(internal)
+    }
+
+    fn explain_internal(&self, internal: [f64; 3]) -> Option<Explanation> {
+        match &self.plan {
+            Plan::Conversion => None,
+            Plan::Operations(c) | Plan::Via(_, c) | Plan::Only(c) => {
+                Some(c.explain(&self.src, &self.dst, internal))
+            }
+            Plan::Bound(b) => {
+                let hub = match &b.first {
+                    Some(leg) => leg.to_hub(internal, false).ok()?,
+                    None => internal,
+                };
+                b.middle.explain_internal(hub)
+            }
+        }
     }
 
     fn index_for(&self, internal: [f64; 3]) -> Option<usize> {

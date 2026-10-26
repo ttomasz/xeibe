@@ -21,12 +21,14 @@ use crate::transform::{from_geographic, to_geographic};
 
 pub(crate) mod candidate;
 pub(crate) mod crs;
+pub(crate) mod explain;
 pub(crate) mod filter;
 pub(crate) mod search;
 
 use candidate::{Candidate, SingleKind};
 use crs::CrsCache;
 use crs::CrsRef;
+use explain::{Explain, Explained, Explanation, Outcome, PassReason, Recorder};
 
 /// One step of a runnable pipeline.
 #[derive(Debug, Clone)]
@@ -272,6 +274,8 @@ pub(crate) struct Prepared {
     unknown_area_name: bool,
     priority: bool,
     has_grids: bool,
+    /// Used for every coordinate, whatever its area ([`Prepared::everywhere`]).
+    everywhere: bool,
 }
 
 /// Options of the search for operations between datums, as PROJ's
@@ -406,6 +410,7 @@ impl Candidates {
                     unknown_area_name: area_name.is_empty() || area_name == "unknown",
                     priority: is_priority(&c.name),
                     has_grids: c.has_grids(),
+                    everywhere: false,
                 });
             }
         }
@@ -578,23 +583,31 @@ impl Candidates {
         out
     }
 
+    /// Whether a prepared candidate's area, converted into the source
+    /// CRS, contains a point of [`Candidates::choice_point`].
+    fn contains(&self, alt: &Prepared, [x, y]: [f64; 2]) -> bool {
+        let [minx, miny, maxx, maxy] = alt.bbox;
+        let mut inside = x >= minx && y >= miny && x <= maxx && y <= maxy;
+        if !inside && self.src_geographic && y >= miny && y <= maxy {
+            let lon = normalize_longitude(x);
+            inside = lon >= minx && lon <= maxx;
+        }
+        inside
+    }
+
     /// `pj_get_suggested_operation` for a coordinate in the source CRS's
-    /// internal form.
-    fn suggest(&self, point: [f64; 2], excluded: &[usize]) -> Option<usize> {
+    /// internal form, telling `rec` why each candidate whose area contains
+    /// it isn't the one.
+    fn suggest<R: Recorder>(
+        &self,
+        point: [f64; 2],
+        excluded: &[usize],
+        rec: &mut R,
+    ) -> Option<usize> {
         let mut best: Option<usize> = None;
         let mut best_accuracy = f64::MAX;
         for (i, alt) in self.list.iter().enumerate() {
-            if excluded.contains(&i) {
-                continue;
-            }
-            let [x, y] = point;
-            let [minx, miny, maxx, maxy] = alt.bbox;
-            let mut inside = x >= minx && y >= miny && x <= maxx && y <= maxy;
-            if !inside && self.src_geographic && y >= miny && y <= maxy {
-                let lon = normalize_longitude(x);
-                inside = lon >= minx && lon <= maxx;
-            }
-            if !inside {
+            if excluded.contains(&i) || !self.contains(alt, point) {
                 continue;
             }
             let replace = match best {
@@ -609,6 +622,22 @@ impl Candidates {
                         && !alt.offshore
                 }
             };
+            if R::DETAILED
+                && let Some(b) = best
+            {
+                let cur = &self.list[b];
+                if replace {
+                    // The one displaced is passed over for this one.
+                    let reason = if alt.accuracy < best_accuracy {
+                        PassReason::LessAccurate
+                    } else {
+                        PassReason::LargerArea
+                    };
+                    rec.passed(b, i, reason);
+                } else {
+                    rec.passed(i, b, pass_reason(alt, cur, best_accuracy));
+                }
+            }
             if replace {
                 best = Some(i);
                 best_accuracy = alt.accuracy;
@@ -637,17 +666,43 @@ impl Candidates {
         dst: &Crs,
         internal: [f64; 3],
     ) -> Result<([f64; 3], usize), CoordinateError> {
+        self.choose(src, dst, internal, &mut ())
+    }
+
+    /// [`Candidates::run_with`], telling `rec` how the choice is made.
+    fn choose<R: Recorder>(
+        &self,
+        src: &Crs,
+        dst: &Crs,
+        internal: [f64; 3],
+        rec: &mut R,
+    ) -> Result<([f64; 3], usize), CoordinateError> {
         if self.single {
-            return run(&self.list[0].steps, src, dst, internal).map(|out| (out, 0));
+            if R::DETAILED
+                && let Ok(point) = self.choice_point(src, internal)
+            {
+                rec.inside(0, self.contains(&self.list[0], point));
+            }
+            let result = run(&self.list[0].steps, src, dst, internal);
+            rec.tried(0, result.err());
+            return result.map(|out| (out, 0));
         }
         let point = self.choice_point(src, internal)?;
+        if R::DETAILED {
+            for (i, alt) in self.list.iter().enumerate() {
+                rec.inside(i, self.contains(alt, point));
+            }
+        }
         let mut excluded = Vec::new();
         let mut last_error = CoordinateError::OutsideDomain;
         for _ in 0..3 {
-            let Some(best) = self.suggest(point, &excluded) else {
+            rec.round();
+            let Some(best) = self.suggest(point, &excluded, rec) else {
                 break;
             };
-            match run(&self.list[best].steps, src, dst, internal) {
+            let result = run(&self.list[best].steps, src, dst, internal);
+            rec.tried(best, result.err());
+            match result {
                 Ok(out) => return Ok((out, best)),
                 // A grid that isn't loaded or can't be read is an error, not
                 // a reason to try a less accurate operation (PROJ returns
@@ -662,9 +717,86 @@ impl Candidates {
         // No candidate covers the point: PROJ falls back to the first one
         // that uses no grid, whatever its area.
         if let Some(i) = self.list.iter().position(|p| !p.has_grids) {
-            return run(&self.list[i].steps, src, dst, internal).map(|out| (out, i));
+            rec.fallback(i);
+            let result = run(&self.list[i].steps, src, dst, internal);
+            rec.tried(i, result.err());
+            return result.map(|out| (out, i));
         }
         Err(last_error)
+    }
+
+    /// How the operation for one coordinate is chosen, by operation of
+    /// [`Candidates::info`].
+    pub(crate) fn explain(&self, src: &Crs, dst: &Crs, internal: [f64; 3]) -> Explanation {
+        let mut rec = Explain::new(self.list.len());
+        let result = self.choose(src, dst, internal, &mut rec);
+        let used = result.as_ref().ok().map(|&(_, i)| i);
+        let operations = self.list.last().map_or(0, |p| p.index + 1);
+        let mut candidates: Vec<Option<Explained>> = vec![None; operations];
+        for (i, p) in self.list.iter().enumerate() {
+            let outcome = if used == Some(i) {
+                if self.single {
+                    Outcome::Only
+                } else if rec.fallback == Some(i) {
+                    Outcome::Fallback
+                } else {
+                    Outcome::Chosen
+                }
+            } else if let Some(Some(error)) = rec.tried[i] {
+                Outcome::Failed(error)
+            } else if rec.inside[i] == Some(false) {
+                Outcome::Outside
+            } else if let Some((by, reason)) = rec.passed[i] {
+                // Passed over for one that failed in the last of the three
+                // rounds: the choice stopped before this one.
+                if rec.rounds == 3 && matches!(rec.tried[by], Some(Some(_))) {
+                    Outcome::NotReached
+                } else {
+                    Outcome::Passed {
+                        by: self.list[by].index,
+                        reason,
+                    }
+                }
+            } else {
+                Outcome::NotReached
+            };
+            // An operation used whatever its area has no area to test.
+            let explained = Explained {
+                inside: if p.everywhere { None } else { rec.inside[i] },
+                outcome,
+            };
+            let slot = &mut candidates[p.index];
+            *slot = Some(match slot.take() {
+                // An operation across the antimeridian is prepared twice:
+                // the part that says more speaks for it.
+                Some(other) => {
+                    let inside = match (other.inside, explained.inside) {
+                        (Some(a), Some(b)) => Some(a || b),
+                        (a, b) => a.or(b),
+                    };
+                    let outcome = if explained.outcome.weight() > other.outcome.weight() {
+                        explained.outcome
+                    } else {
+                        other.outcome
+                    };
+                    Explained { inside, outcome }
+                }
+                None => explained,
+            });
+        }
+        Explanation {
+            used: used.map(|i| self.list[i].index),
+            error: result.err(),
+            candidates: candidates
+                .into_iter()
+                .map(|c| {
+                    c.unwrap_or(Explained {
+                        inside: None,
+                        outcome: Outcome::NotReached,
+                    })
+                })
+                .collect(),
+        }
     }
 
     pub(crate) fn run(
@@ -713,7 +845,38 @@ impl Prepared {
             offshore: false,
             unknown_area_name: false,
             priority: false,
+            everywhere: true,
         }
+    }
+}
+
+/// Why `alt`, whose area contains the point, doesn't displace `cur`, the
+/// best so far, of accuracy `best_accuracy`: the rule of
+/// [`Candidates::suggest`] read backwards.
+fn pass_reason(alt: &Prepared, cur: &Prepared, best_accuracy: f64) -> PassReason {
+    if alt.accuracy == best_accuracy {
+        if cur.priority {
+            PassReason::Priority
+        } else if alt.unknown_area_name && !cur.unknown_area_name {
+            PassReason::UnknownAreaName
+        } else if alt.pseudo_area >= cur.pseudo_area {
+            PassReason::LargerArea
+        } else if alt.offshore {
+            PassReason::Offshore
+        } else {
+            PassReason::Earlier
+        }
+    } else if alt.accuracy >= 0.0 && alt.accuracy < best_accuracy {
+        // More accurate, and still not chosen: its area is offshore.
+        PassReason::Offshore
+    } else if alt.accuracy < 0.0 {
+        PassReason::UnknownAccuracy
+    } else if best_accuracy < 0.0 {
+        // The best so far has unknown accuracy, which PROJ's comparison
+        // doesn't displace.
+        PassReason::Earlier
+    } else {
+        PassReason::LessAccurate
     }
 }
 

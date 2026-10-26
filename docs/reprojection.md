@@ -80,6 +80,13 @@ ensemble member, a change on one datum) and the CRSs it runs between. `operation
 candidate by its index there, and `with_operation_index(i)` makes the
 transform through that candidate alone, for every coordinate (PROJ's
 `TransformerGroup` members; its inverse runs the same operation back).
+`explain_point(x, y, z)` tells how a coordinate's candidate was chosen:
+for each candidate, whether its area contains the point (as the choice
+tests it, in the source CRS) and what became of it: chosen, the fallback
+or the only one (used whatever their area), passed over for another and
+why (less accurate, a larger area, offshore…), outside, failed, not
+reached. It runs the same choice as `convert`, which pays nothing for it
+(a generic recorder, `select/explain.rs`).
 `Crs::equivalent(&other, ignore_axis_order)` compares two CRSs' definitions
 (datum, ellipsoid, prime meridian, projection method and parameters, axes
 and units) whatever their names and ids, to PROJ's relative 1e-10, as
