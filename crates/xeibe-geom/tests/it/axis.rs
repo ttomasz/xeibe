@@ -7,7 +7,7 @@
 use xeibe_core::{Dialect, SourceId};
 use xeibe_geom::axis::{AxisContext, AxisEvidence, decide, first_axis_from_labels};
 use xeibe_geom::epsg::FirstAxis;
-use xeibe_geom::{AxisKey, AxisOrderMode, AxisOrderOptions};
+use xeibe_geom::{AxisKey, AxisOrderMode, AxisOrderOptions, SrsName};
 
 fn key(srs: &str, dialect: Dialect) -> AxisKey {
     AxisKey {
@@ -400,6 +400,69 @@ fn auto_uses_the_wfs_version_we_requested() {
             &key("EPSG:2180", Dialect::Gml3),
             &AxisEvidence::default(),
             &wfs20,
+            &options(AxisOrderMode::Auto),
+        )
+        .swap
+    );
+}
+
+#[test]
+fn auto_reads_a_legacy_url_in_wfs_11_and_20_as_xy() {
+    // GeoServer writes `…/epsg.xml#4326` exactly when its coordinates are
+    // lon/lat: for a request for CRS84 or a short `EPSG:4326` (checked on
+    // three servers, 2026-10-26). Vienna, as written: both orders are legal
+    // lon/lat, so nothing but the srsName form decides.
+    let vienna = AxisEvidence {
+        sampled_bbox: Some([16.38, 48.24, 16.39, 48.25]),
+        ..AxisEvidence::default()
+    };
+    for (version, requested) in [
+        ("2.0.0", "urn:ogc:def:crs:OGC:1.3:CRS84"),
+        ("2.0.0", "EPSG:4326"),
+        ("1.1.0", "urn:ogc:def:crs:OGC:1.3:CRS84"),
+        ("1.1.0", "EPSG:4326"),
+    ] {
+        let context = AxisContext {
+            wfs_version: Some(version.into()),
+            requested_srs: Some(SrsName::parse(requested)),
+            ..AxisContext::default()
+        };
+        let decision = decide(
+            &key(
+                "http://www.opengis.net/gml/srs/epsg.xml#4326",
+                Dialect::Gml3,
+            ),
+            &vienna,
+            &context,
+            &options(AxisOrderMode::Auto),
+        );
+        assert!(
+            !decision.swap,
+            "WFS {version}, asked for {requested}: {decision:?}"
+        );
+    }
+}
+
+#[test]
+fn auto_trusts_the_wfs_11_response_urn_over_the_form_we_asked_for() {
+    // GeoServer may answer a request for the legacy URL with a URN, in the
+    // URN's (authority) order: Tuscany, lat/lon.
+    let tuscany = AxisEvidence {
+        sampled_bbox: Some([43.52, 11.76, 43.53, 11.77]),
+        ..AxisEvidence::default()
+    };
+    let context = AxisContext {
+        wfs_version: Some("1.1.0".into()),
+        requested_srs: Some(SrsName::parse(
+            "http://www.opengis.net/gml/srs/epsg.xml#4326",
+        )),
+        ..AxisContext::default()
+    };
+    assert!(
+        decide(
+            &key("urn:x-ogc:def:crs:EPSG:4326", Dialect::Gml3),
+            &tuscany,
+            &context,
             &options(AxisOrderMode::Auto),
         )
         .swap

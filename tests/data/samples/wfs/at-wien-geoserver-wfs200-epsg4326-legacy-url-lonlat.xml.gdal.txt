@@ -1,0 +1,71 @@
+
+Layer name: SCOOTERABSTELLOGD
+Geometry: Point
+Feature Count: 2
+Extent: (16.374282, 48.231539) - (16.387806, 48.246264)
+Layer SRS WKT:
+GEOGCRS["WGS 84",
+    ENSEMBLE["World Geodetic System 1984 ensemble",
+        MEMBER["World Geodetic System 1984 (Transit)"],
+        MEMBER["World Geodetic System 1984 (G730)"],
+        MEMBER["World Geodetic System 1984 (G873)"],
+        MEMBER["World Geodetic System 1984 (G1150)"],
+        MEMBER["World Geodetic System 1984 (G1674)"],
+        MEMBER["World Geodetic System 1984 (G1762)"],
+        MEMBER["World Geodetic System 1984 (G2139)"],
+        MEMBER["World Geodetic System 1984 (G2296)"],
+        ELLIPSOID["WGS 84",6378137,298.257223563,
+            LENGTHUNIT["metre",1]],
+        ENSEMBLEACCURACY[2.0]],
+    PRIMEM["Greenwich",0,
+        ANGLEUNIT["degree",0.0174532925199433]],
+    CS[ellipsoidal,2],
+        AXIS["geodetic latitude (Lat)",north,
+            ORDER[1],
+            ANGLEUNIT["degree",0.0174532925199433]],
+        AXIS["geodetic longitude (Lon)",east,
+            ORDER[2],
+            ANGLEUNIT["degree",0.0174532925199433]],
+    USAGE[
+        SCOPE["Horizontal component of 3D system."],
+        AREA["World."],
+        BBOX[-90,-180,90,180]],
+    ID["EPSG",4326]]
+Data axis to CRS axis mapping: 2,1
+Geometry Column = SHAPE
+gml_id: String (0.0) NOT NULL
+OBJECTID: Integer (0.0)
+ABSTELL_ID: Integer (0.0)
+BEZIRK: Integer (0.0)
+ADRESSE: String (23.0)
+STATUS: String (1.0)
+STATUS_TXT: String (10.0)
+ANZ_SCOOTER: Integer (0.0)
+ANL_TYP: String (2.0)
+ANL_TYP_TXT: String (20.0)
+OGRFeature(SCOOTERABSTELLOGD):1321957
+  gml_id (String) = SCOOTERABSTELLOGD.1321957
+  OBJECTID (Integer) = 1321957
+  ABSTELL_ID (Integer) = 127109
+  BEZIRK (Integer) = 21
+  ADRESSE (String) = Donauinselplatz
+  STATUS (String) = R
+  STATUS_TXT (String) = realisiert
+  ANZ_SCOOTER (Integer) = 39
+  ANL_TYP (String) = SC
+  ANL_TYP_TXT (String) = Scooterabstellanlage
+  POINT (16.387806 48.24626385)
+
+OGRFeature(SCOOTERABSTELLOGD):1321958
+  gml_id (String) = SCOOTERABSTELLOGD.1321958
+  OBJECTID (Integer) = 1321958
+  ABSTELL_ID (Integer) = 127110
+  BEZIRK (Integer) = 20
+  ADRESSE (String) = Greiseneckergasse 29-31
+  STATUS (String) = R
+  STATUS_TXT (String) = realisiert
+  ANZ_SCOOTER (Integer) = 31
+  ANL_TYP (String) = SC
+  ANL_TYP_TXT (String) = Scooterabstellanlage
+  POINT (16.37428223 48.23153923)
+

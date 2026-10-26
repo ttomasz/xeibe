@@ -484,7 +484,11 @@ pub struct ReadArgs {
     ///   3. the coordinates fit the CRS's area of use in one order only
     ///   4. a known quirk of the producer (FME, MapServer WFS 1.1)
     ///   5. GML 2-style geometry (`gml:coordinates`): x/y
-    ///   6. `xeibe wfs`: the WFS version and the srsName form requested
+    ///   6. a WFS response (from `xeibe wfs`, or a saved one by its schema
+    ///      location): WFS 1.0 is x/y; in 1.1 and 2.0 a legacy URL such as
+    ///      `http://www.opengis.net/gml/srs/epsg.xml#4326` is x/y (GeoServer
+    ///      writes it exactly when its coordinates are), a URN is the CRS's
+    ///      order, and otherwise the srsName form requested decides
     ///   7. the form of the srsName, as `crs-heuristic`
     ///
     /// `xeibe gml scan` prints the cases in which these contradict each

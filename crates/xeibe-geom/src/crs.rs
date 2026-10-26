@@ -291,6 +291,18 @@ fn parse_http(rest: &str) -> Option<(SrsNameForm, Option<CrsRef>)> {
     if let Some(code) = strip_prefix_ci(rest, "gml/srs/epsg.xml#") {
         return Some((SrsNameForm::LegacyUrl, Some(CrsRef::epsg(epsg_code(code)?))));
     }
+    // GeoServer's legacy URLs for CRS84 (`crs.xml#84`, `ogc.xml#84`).
+    for prefix in ["gml/srs/crs.xml#", "gml/srs/ogc.xml#"] {
+        if let Some(code) = strip_prefix_ci(rest, prefix) {
+            let code = code.strip_prefix("CRS").unwrap_or(code);
+            let code = ["84", "83", "27"].into_iter().find(|c| *c == code)?;
+            let crs = CrsRef::Code {
+                authority: "OGC".into(),
+                code: format!("CRS{code}"),
+            };
+            return Some((SrsNameForm::LegacyUrl, Some(crs)));
+        }
+    }
     if let Some(query) = strip_prefix_ci(rest, "def/crs-compound?") {
         // `1=<uri>&2=<uri>`, in key order.
         let mut parts: Vec<(u32, CrsRef)> = Vec::new();

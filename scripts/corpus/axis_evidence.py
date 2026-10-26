@@ -71,6 +71,9 @@ def epsg_code(srs_name: str) -> int:
     m = re.match(r"urn:adv:crs:([^*]+)", s)
     if m:
         return ADV_CRS[m.group(1)]
+    # GeoServer's legacy URLs for CRS84; srs() uses x/y order, so EPSG:4326 is CRS84.
+    if re.search(r"/gml/srs/(?:crs|ogc)\.xml#(?:CRS)?84$", s, re.I):
+        return 4326
     m = re.search(r"(?:EPSG[:/]+(?:[\d.]*[:/])?|epsg\.xml#)(\d+)$", s, re.I)
     if not m:
         raise ValueError(f"unsupported srsName {srs_name!r}")

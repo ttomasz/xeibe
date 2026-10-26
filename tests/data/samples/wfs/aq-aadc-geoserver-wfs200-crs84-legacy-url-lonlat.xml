@@ -1,0 +1,103 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<wfs:FeatureCollection xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:aadc="https://data.aad.gov.au" xmlns:wfs="http://www.opengis.net/wfs/2.0" xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" numberMatched="39187" numberReturned="2" timeStamp="2026-10-26T21:19:33.700Z" xsi:schemaLocation="http://www.opengis.net/wfs/2.0 https://data.aad.gov.au/geoserver/schemas/wfs/2.0/wfs.xsd https://data.aad.gov.au https://data.aad.gov.au/geoserver/wfs?service=WFS&amp;version=2.0.0&amp;request=DescribeFeatureType&amp;typeName=aadc%3ASCAR_CGA_PLACE_NAMES http://www.opengis.net/gml/3.2 https://data.aad.gov.au/geoserver/schemas/gml/3.2.1/gml.xsd">
+  <wfs:member>
+    <aadc:SCAR_CGA_PLACE_NAMES gml:id="SCAR_CGA_PLACE_NAMES.2">
+      <aadc:place_name_mapping>Lawson Aiguilles</aadc:place_name_mapping>
+      <aadc:place_name_gazetteer>Lawson Aiguilles</aadc:place_name_gazetteer>
+      <aadc:gaz_id>2</aadc:gaz_id>
+      <aadc:country_name>Australia</aadc:country_name>
+      <aadc:latitude>-67.8444722222</aadc:latitude>
+      <aadc:longitude>66.2394444444</aadc:longitude>
+      <aadc:altitude>481.0</aadc:altitude>
+      <aadc:feature_type_name>Aiguilles</aadc:feature_type_name>
+      <aadc:narrative>A line of sharply pointed peaks in the southern part of Mount Rivett, Mac.Robertson Land. One of the peaks was used as an astronomical station by D. Carstens, surveyor at Mawson in 1962.  Another peak was used as a tellurometer station by John Manning, surveyor at Mawson in 1967.  Named after E.J. Lawson, diesel mechanic at Mawson in 1967, who assisted Manning with the survey work.&#13;
+Location for the feature is at southern end of the aigulles - same as survey station NMS40.</aadc:narrative>
+      <aadc:meeting_paper>ANCA 70/2</aadc:meeting_paper>
+      <aadc:date_revised>2010-07-15T00:00:00Z</aadc:date_revised>
+      <aadc:gazetteer>AUS</aadc:gazetteer>
+      <aadc:scar_common_id>8225</aadc:scar_common_id>
+      <aadc:is_complete_flag>N</aadc:is_complete_flag>
+      <aadc:view_by_public_flag>Y</aadc:view_by_public_flag>
+      <aadc:aus_display_scale_20M>No</aadc:aus_display_scale_20M>
+      <aadc:aus_display_scale_10M>No</aadc:aus_display_scale_10M>
+      <aadc:aus_display_scale_5M>No</aadc:aus_display_scale_5M>
+      <aadc:aus_display_scale_2M>No</aadc:aus_display_scale_2M>
+      <aadc:aus_display_scale_1M>No</aadc:aus_display_scale_1M>
+      <aadc:aus_display_scale_500k>No</aadc:aus_display_scale_500k>
+      <aadc:aus_display_scale_250k>No</aadc:aus_display_scale_250k>
+      <aadc:aus_display_scale_100k>No</aadc:aus_display_scale_100k>
+      <aadc:aus_display_scale_50k>No</aadc:aus_display_scale_50k>
+      <aadc:aus_display_scale_25k>No</aadc:aus_display_scale_25k>
+      <aadc:aus_display_scale_10k>No</aadc:aus_display_scale_10k>
+      <aadc:aus_display_scale_5k>No</aadc:aus_display_scale_5k>
+      <aadc:aus_display_scale_1k>No</aadc:aus_display_scale_1k>
+      <aadc:is_proposed>N</aadc:is_proposed>
+      <aadc:is_deleted>N</aadc:is_deleted>
+      <aadc:coordinate_accuracy>20.0</aadc:coordinate_accuracy>
+      <aadc:altitude_accuracy>20.0</aadc:altitude_accuracy>
+      <aadc:source_institution>Australian Antarctic Division</aadc:source_institution>
+      <aadc:source_person>Brolsma</aadc:source_person>
+      <aadc:source_name>AADC Survey Control Database</aadc:source_name>
+      <aadc:source_publisher>National Mapping</aadc:source_publisher>
+      <aadc:status>Official</aadc:status>
+      <aadc:max_digital_display_scale>0</aadc:max_digital_display_scale>
+      <aadc:location_method_id>3</aadc:location_method_id>
+      <aadc:survey_station_code>NMS40</aadc:survey_station_code>
+      <aadc:geometry>
+        <gml:Point srsName="http://www.opengis.net/gml/srs/epsg.xml#4326" srsDimension="2" gml:id="SCAR_CGA_PLACE_NAMES.2.geometry">
+          <gml:pos>66.2394444 -67.844472</gml:pos>
+        </gml:Point>
+      </aadc:geometry>
+      <aadc:relic_flag>No</aadc:relic_flag>
+      <aadc:country_id>36.0</aadc:country_id>
+    </aadc:SCAR_CGA_PLACE_NAMES>
+  </wfs:member><wfs:member>
+    <aadc:SCAR_CGA_PLACE_NAMES gml:id="SCAR_CGA_PLACE_NAMES.3">
+      <aadc:place_name_mapping>Gwamm</aadc:place_name_mapping>
+      <aadc:place_name_gazetteer>Gwamm</aadc:place_name_gazetteer>
+      <aadc:gaz_id>3</aadc:gaz_id>
+      <aadc:country_name>Australia</aadc:country_name>
+      <aadc:latitude>-67.6223888889</aadc:latitude>
+      <aadc:longitude>62.8683888889</aadc:longitude>
+      <aadc:altitude>145.0</aadc:altitude>
+      <aadc:feature_type_name>Landing</aadc:feature_type_name>
+      <aadc:narrative>The old airstrip on blue ice above Mawson.</aadc:narrative>
+      <aadc:named_for>1979 place name minutes show "The name 'Gwamm' is made up of the initials of the wives and sweethearts of the officers and airmen of the 1958 RAAF Antarctic Flight. * The name was considered inappropriate because of its obscure and private origin. It was felt that the ice runway needs a name." The name wasn't approved.&#13;
+&#13;
+1994 place name minutes show "There is a need for a name for the old airstrip on blue ice above Mawson.&#13;
+It was named in association with the RAAF Antarctic Flight and the name has been in continuous use since that time. The name was approved."</aadc:named_for>
+      <aadc:meeting_date>24-Apr-1994</aadc:meeting_date>
+      <aadc:meeting_paper>94/1</aadc:meeting_paper>
+      <aadc:date_revised>2026-10-21T15:03:42Z</aadc:date_revised>
+      <aadc:gazetteer>AUS</aadc:gazetteer>
+      <aadc:scar_common_id>5826</aadc:scar_common_id>
+      <aadc:is_complete_flag>N</aadc:is_complete_flag>
+      <aadc:view_by_public_flag>Y</aadc:view_by_public_flag>
+      <aadc:aus_display_scale_20M>No</aadc:aus_display_scale_20M>
+      <aadc:aus_display_scale_10M>No</aadc:aus_display_scale_10M>
+      <aadc:aus_display_scale_5M>No</aadc:aus_display_scale_5M>
+      <aadc:aus_display_scale_2M>No</aadc:aus_display_scale_2M>
+      <aadc:aus_display_scale_1M>No</aadc:aus_display_scale_1M>
+      <aadc:aus_display_scale_500k>No</aadc:aus_display_scale_500k>
+      <aadc:aus_display_scale_250k>No</aadc:aus_display_scale_250k>
+      <aadc:aus_display_scale_100k>No</aadc:aus_display_scale_100k>
+      <aadc:aus_display_scale_50k>No</aadc:aus_display_scale_50k>
+      <aadc:aus_display_scale_25k>No</aadc:aus_display_scale_25k>
+      <aadc:aus_display_scale_10k>No</aadc:aus_display_scale_10k>
+      <aadc:aus_display_scale_5k>No</aadc:aus_display_scale_5k>
+      <aadc:aus_display_scale_1k>No</aadc:aus_display_scale_1k>
+      <aadc:is_proposed>N</aadc:is_proposed>
+      <aadc:is_deleted>N</aadc:is_deleted>
+      <aadc:source_country_code>AUS</aadc:source_country_code>
+      <aadc:date_named>1994-04-24T00:00:00Z</aadc:date_named>
+      <aadc:max_digital_display_scale>0</aadc:max_digital_display_scale>
+      <aadc:geometry>
+        <gml:Point srsName="http://www.opengis.net/gml/srs/epsg.xml#4326" srsDimension="2" gml:id="SCAR_CGA_PLACE_NAMES.3.geometry">
+          <gml:pos>62.8683889 -67.622389</gml:pos>
+        </gml:Point>
+      </aadc:geometry>
+      <aadc:reason>Added information from the minutes of meetings to the Named For field. </aadc:reason>
+      <aadc:relic_flag>No</aadc:relic_flag>
+      <aadc:country_id>36.0</aadc:country_id>
+    </aadc:SCAR_CGA_PLACE_NAMES>
+  </wfs:member></wfs:FeatureCollection>

@@ -77,7 +77,7 @@ the generated manifest `samples.json`:
   (`*.gdal.txt`), which is reliable for those;
 - **the axis order** comes from `axis.expected_first_xy`, which
   `scripts/corpus/axis_evidence.py` verified against the CRS area of use and
-  regions the features are known to lie in. **GDAL reads 4 of the 18 samples in
+  regions the features are known to lie in. **GDAL reads 4 of the 21 samples in
   the wrong order**, so tests never take the axis order from GDAL
   (`geometry.md`, "Observed in real services").
 

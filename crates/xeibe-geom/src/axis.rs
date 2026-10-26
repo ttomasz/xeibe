@@ -588,8 +588,27 @@ impl Decider<'_> {
                 reason: format!("{what} follow the CRS's axis order, and {}", vote.reason),
             })
         };
+        let response = self.srs.map(|srs| srs.form);
+        // GeoServer (GeoTools' GML encoder) writes the legacy URL exactly when
+        // its coordinates are x/y, whatever the WFS version: the URN forms
+        // promise the CRS's axis order, so a request for CRS84 or a short
+        // `EPSG:4326` comes back as `…/epsg.xml#4326`, longitude first.
+        if response == Some(SrsNameForm::LegacyUrl) {
+            return Some(Vote {
+                swap: false,
+                reason: "WFS 1.1 and 2.0 responses with a legacy URL srsName are x/y (GeoServer writes that form exactly when its coordinates are)".into(),
+            });
+        }
         if version.starts_with("1.1") {
-            let form = self.context.requested_srs.as_ref().or(self.srs)?.form;
+            // The response's own URN wins over the form we asked for: a
+            // server may answer a request for one form with another (GeoServer
+            // answers a legacy URL with a URN when it won't write x/y).
+            let form = match response {
+                None | Some(SrsNameForm::Short | SrsNameForm::Unknown) => {
+                    self.context.requested_srs.as_ref().or(self.srs)?.form
+                }
+                Some(form) => form,
+            };
             return match form {
                 SrsNameForm::Short | SrsNameForm::LegacyUrl => Some(Vote {
                     swap: false,

@@ -323,6 +323,52 @@ licence_evidence = "data.gv.at record https://www.data.gv.at/katalog/dataset/90e
 attribution = "Datenquelle: Stadt Wien – data.wien.gv.at (CC BY 4.0); Auszug, verändert"
 
 [[sample]]
+name = "at-wien-geoserver-wfs200-epsg4326-legacy-url-lonlat"
+axis_order = "x/y"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "countries", code = "AUT", why = "City of Vienna open data" }]
+file = "samples/wfs/at-wien-geoserver-wfs200-epsg4326-legacy-url-lonlat.xml"
+source = "example_data/wfs/data.wien.gv.at/daten/geo/ogdwien_SCOOTERABSTELLOGD/getfeature-2.0.0-srs-epsg-4326.xml"
+rules = ["count=2"]
+covers = ["WFS 2.0.0 / GML 3.2", "GeoServer", "asked for EPSG:4326: legacy URL epsg.xml#4326 in lon/lat order",
+          "both orders are legal lon/lat: only the srsName form decides"]
+publisher = "Stadt Wien – data.wien.gv.at"
+dataset = "Abstellflächen für E-Scooter (SCOOTERABSTELLOGD)"
+dataset_url = "https://data.wien.gv.at/daten/geo?SERVICE=WFS&REQUEST=GetCapabilities"
+licence = "cc-by-4"
+licence_evidence = "data.gv.at record https://www.data.gv.at/katalog/dataset/90e4765e-4d5f-4ec2-8b41-ce9eab737c3e (Scooterabstellplätze Wien): CC BY 4.0; https://data.wien.gv.at/nutzungsbedingungen: OGD Wien under CC BY 4.0 with 'Datenquelle: Stadt Wien – data.wien.gv.at' (GetCapabilities Fees still names CC BY 3.0 AT, outdated)"
+attribution = "Datenquelle: Stadt Wien – data.wien.gv.at (CC BY 4.0); Auszug, verändert"
+
+[[sample]]
+name = "at-wien-geoserver-wfs200-crs84-crs-xml"
+axis_order = "x/y"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "countries", code = "AUT", why = "City of Vienna open data" }]
+file = "samples/wfs/at-wien-geoserver-wfs200-crs84-crs-xml.xml"
+source = "example_data/wfs/data.wien.gv.at/daten/geo/ogdwien_SCOOTERABSTELLOGD/getfeature-2.0.0-srs-urn-crs84.xml"
+rules = ["count=2"]
+covers = ["WFS 2.0.0 / GML 3.2", "GeoServer", "asked for CRS84: legacy URL crs.xml#84, lon/lat"]
+publisher = "Stadt Wien – data.wien.gv.at"
+dataset = "Abstellflächen für E-Scooter (SCOOTERABSTELLOGD)"
+dataset_url = "https://data.wien.gv.at/daten/geo?SERVICE=WFS&REQUEST=GetCapabilities"
+licence = "cc-by-4"
+licence_evidence = "data.gv.at record https://www.data.gv.at/katalog/dataset/90e4765e-4d5f-4ec2-8b41-ce9eab737c3e (Scooterabstellplätze Wien): CC BY 4.0; https://data.wien.gv.at/nutzungsbedingungen: OGD Wien under CC BY 4.0 with 'Datenquelle: Stadt Wien – data.wien.gv.at' (GetCapabilities Fees still names CC BY 3.0 AT, outdated)"
+attribution = "Datenquelle: Stadt Wien – data.wien.gv.at (CC BY 4.0); Auszug, verändert"
+
+[[sample]]
+name = "aq-aadc-geoserver-wfs200-crs84-legacy-url-lonlat"
+axis_order = "x/y"  # verified by scripts/corpus/axis_evidence.py
+axis_places = [{ layer = "countries", code = "ATA", why = "SCAR Composite Gazetteer of Antarctica: place names in Antarctica" }]
+file = "samples/wfs/aq-aadc-geoserver-wfs200-crs84-legacy-url-lonlat.xml"
+source = "example_data/wfs/data.aad.gov.au/geoserver/ows/aadc_SCAR_CGA_PLACE_NAMES/getfeature-2.0.0-srs-urn-crs84.xml"
+rules = ["count=2"]
+covers = ["WFS 2.0.0 / GML 3.2", "GeoServer", "asked for CRS84: legacy URL epsg.xml#4326 in lon/lat order"]
+publisher = "Australian Antarctic Data Centre, for the Scientific Committee on Antarctic Research (SCAR)"
+dataset = "SCAR Composite Gazetteer of Antarctica (SCAR_CGA_PLACE_NAMES)"
+dataset_url = "https://data.aad.gov.au/geoserver/ows?SERVICE=WFS&REQUEST=GetCapabilities"
+licence = "cc-by-4"
+licence_evidence = "GetCapabilities AccessConstraints: 'Data is licensed under a Creative Commons Attribution 4.0 Unported License - https://creativecommons.org/licenses/by/4.0/'"
+attribution = "SCAR Composite Gazetteer of Antarctica, Scientific Committee on Antarctic Research, via the Australian Antarctic Data Centre (data.aad.gov.au), CC BY 4.0; excerpt, modified (feature selection)"
+
+[[sample]]
 name = "de-bfn-wfs100-short-latlon"
 axis_order = "y/x"  # verified by scripts/corpus/axis_evidence.py
 axis_places = [{ layer = "countries", code = "DEU", why = "German federal nature agency (BfN), species distribution in Germany" }]

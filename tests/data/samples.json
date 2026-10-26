@@ -1905,6 +1905,333 @@
    }
   },
   {
+   "name": "at-wien-geoserver-wfs200-epsg4326-legacy-url-lonlat",
+   "axis_order": "x/y",
+   "axis_places": [
+    {
+     "layer": "countries",
+     "code": "AUT",
+     "why": "City of Vienna open data"
+    }
+   ],
+   "file": "samples/wfs/at-wien-geoserver-wfs200-epsg4326-legacy-url-lonlat.xml",
+   "source": "example_data/wfs/data.wien.gv.at/daten/geo/ogdwien_SCOOTERABSTELLOGD/getfeature-2.0.0-srs-epsg-4326.xml",
+   "covers": [
+    "WFS 2.0.0 / GML 3.2",
+    "GeoServer",
+    "asked for EPSG:4326: legacy URL epsg.xml#4326 in lon/lat order",
+    "both orders are legal lon/lat: only the srsName form decides"
+   ],
+   "publisher": "Stadt Wien – data.wien.gv.at",
+   "dataset": "Abstellflächen für E-Scooter (SCOOTERABSTELLOGD)",
+   "dataset_url": "https://data.wien.gv.at/daten/geo?SERVICE=WFS&REQUEST=GetCapabilities",
+   "licence": "cc-by-4",
+   "licence_evidence": "data.gv.at record https://www.data.gv.at/katalog/dataset/90e4765e-4d5f-4ec2-8b41-ce9eab737c3e (Scooterabstellplätze Wien): CC BY 4.0; https://data.wien.gv.at/nutzungsbedingungen: OGD Wien under CC BY 4.0 with 'Datenquelle: Stadt Wien – data.wien.gv.at' (GetCapabilities Fees still names CC BY 3.0 AT, outdated)",
+   "attribution": "Datenquelle: Stadt Wien – data.wien.gv.at (CC BY 4.0); Auszug, verändert",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "count=2"
+    ],
+    "features_kept": 2,
+    "features_scanned": 2,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "FeatureCollection@numberReturned: 3 -> 2",
+     "kept 2 of 2 features scanned"
+    ],
+    "original_encoding": null
+   },
+   "provenance": {
+    "download_url": "https://data.wien.gv.at/daten/geo?SERVICE=WFS&REQUEST=GetFeature&VERSION=2.0.0&SRSNAME=EPSG%3A4326&TYPENAMES=ogdwien%3ASCOOTERABSTELLOGD&COUNT=3",
+    "retrieved": "2026-10-26T22:19:51",
+    "portal": "WFS GetFeature"
+   },
+   "sha256": "5b94f08d4b062ce7129802dce60e9fa402b2190615ee47831bbf45d25ea1718c",
+   "bytes": 2255,
+   "validation": {
+    "status": "schema unavailable",
+    "messages": [
+     "warning: failed to load external entity \"https://stp.wien.gv.at/geoserverneuogd/schemas/wfs/2.0/wfs.xsd\"",
+     "/tmp/tmpuiefsh73.xsd:3: element import: Schemas parser warning : Element '{http://www.w3.org/2001/XMLSchema}import': Failed to locate a schema at location 'https://stp.wien.gv.at/geoserverneuogd/schemas/wfs/2.0/wfs.xsd'. Skipping the import.",
+     "warning: failed to load external entity \"https://stp.wien.gv.at/geoserverneuogd/schemas/gml/3.2.1/gml.xsd\"",
+     "/tmp/tmpuiefsh73.xsd:4: element import: Schemas parser warning : Element '{http://www.w3.org/2001/XMLSchema}import': Failed to locate a schema at location 'https://stp.wien.gv.at/geoserverneuogd/schemas/gml/3.2.1/gml.xsd'. Skipping the import."
+    ]
+   },
+   "gdal": {
+    "file": "samples/wfs/at-wien-geoserver-wfs200-epsg4326-legacy-url-lonlat.xml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     2
+    ],
+    "stderr": []
+   },
+   "axis": {
+    "source_order": "x/y",
+    "first_position_as_written": [
+     16.387806,
+     48.24626385
+    ],
+    "expected_first_xy": [
+     16.387806,
+     48.24626385
+    ],
+    "gdal_first_xy": [
+     16.387806,
+     48.24626385
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "x/y",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 2,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:4326",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 1.0,
+       "passes": true,
+       "rejects_swapped": false
+      },
+      {
+       "check": "place",
+       "detail": "Austria (countries AUT, tolerance 5000 m); expected because: City of Vienna open data",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 4478.1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "at-wien-geoserver-wfs200-crs84-crs-xml",
+   "axis_order": "x/y",
+   "axis_places": [
+    {
+     "layer": "countries",
+     "code": "AUT",
+     "why": "City of Vienna open data"
+    }
+   ],
+   "file": "samples/wfs/at-wien-geoserver-wfs200-crs84-crs-xml.xml",
+   "source": "example_data/wfs/data.wien.gv.at/daten/geo/ogdwien_SCOOTERABSTELLOGD/getfeature-2.0.0-srs-urn-crs84.xml",
+   "covers": [
+    "WFS 2.0.0 / GML 3.2",
+    "GeoServer",
+    "asked for CRS84: legacy URL crs.xml#84, lon/lat"
+   ],
+   "publisher": "Stadt Wien – data.wien.gv.at",
+   "dataset": "Abstellflächen für E-Scooter (SCOOTERABSTELLOGD)",
+   "dataset_url": "https://data.wien.gv.at/daten/geo?SERVICE=WFS&REQUEST=GetCapabilities",
+   "licence": "cc-by-4",
+   "licence_evidence": "data.gv.at record https://www.data.gv.at/katalog/dataset/90e4765e-4d5f-4ec2-8b41-ce9eab737c3e (Scooterabstellplätze Wien): CC BY 4.0; https://data.wien.gv.at/nutzungsbedingungen: OGD Wien under CC BY 4.0 with 'Datenquelle: Stadt Wien – data.wien.gv.at' (GetCapabilities Fees still names CC BY 3.0 AT, outdated)",
+   "attribution": "Datenquelle: Stadt Wien – data.wien.gv.at (CC BY 4.0); Auszug, verändert",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "count=2"
+    ],
+    "features_kept": 2,
+    "features_scanned": 2,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "FeatureCollection@numberReturned: 3 -> 2",
+     "kept 2 of 2 features scanned"
+    ],
+    "original_encoding": null
+   },
+   "provenance": {
+    "download_url": "https://data.wien.gv.at/daten/geo?SERVICE=WFS&REQUEST=GetFeature&VERSION=2.0.0&SRSNAME=urn%3Aogc%3Adef%3Acrs%3AOGC%3A1.3%3ACRS84&TYPENAMES=ogdwien%3ASCOOTERABSTELLOGD&COUNT=3",
+    "retrieved": "2026-10-26T22:19:55",
+    "portal": "WFS GetFeature"
+   },
+   "sha256": "9fb534416f280eb3e36476b4969cfde6f3795172a8192f826946e5f03c4deee7",
+   "bytes": 2250,
+   "validation": {
+    "status": "schema unavailable",
+    "messages": [
+     "warning: failed to load external entity \"https://stp.wien.gv.at/geoserverneuogd/schemas/wfs/2.0/wfs.xsd\"",
+     "/tmp/tmpv2__mxj4.xsd:3: element import: Schemas parser warning : Element '{http://www.w3.org/2001/XMLSchema}import': Failed to locate a schema at location 'https://stp.wien.gv.at/geoserverneuogd/schemas/wfs/2.0/wfs.xsd'. Skipping the import.",
+     "warning: failed to load external entity \"https://stp.wien.gv.at/geoserverneuogd/schemas/gml/3.2.1/gml.xsd\"",
+     "/tmp/tmpv2__mxj4.xsd:4: element import: Schemas parser warning : Element '{http://www.w3.org/2001/XMLSchema}import': Failed to locate a schema at location 'https://stp.wien.gv.at/geoserverneuogd/schemas/gml/3.2.1/gml.xsd'. Skipping the import."
+    ]
+   },
+   "gdal": {
+    "file": "samples/wfs/at-wien-geoserver-wfs200-crs84-crs-xml.xml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     2
+    ],
+    "stderr": [
+     "ERROR 1: Cannot import http://www.opengis.net/gml/srs/crs.xml#84 due to ALLOW_NETWORK_ACCESS=NO",
+     "ERROR 1: Cannot import http://www.opengis.net/gml/srs/crs.xml#84 due to ALLOW_NETWORK_ACCESS=NO",
+     "ERROR 1: Cannot import http://www.opengis.net/gml/srs/crs.xml#84 due to ALLOW_NETWORK_ACCESS=NO"
+    ]
+   },
+   "axis": {
+    "source_order": "x/y",
+    "first_position_as_written": [
+     16.3898644,
+     48.24848168
+    ],
+    "expected_first_xy": [
+     16.3898644,
+     48.24848168
+    ],
+    "gdal_first_xy": [
+     16.3898644,
+     48.24848168
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "x/y",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 2,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:4326",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 1.0,
+       "passes": true,
+       "rejects_swapped": false
+      },
+      {
+       "check": "place",
+       "detail": "Austria (countries AUT, tolerance 5000 m); expected because: City of Vienna open data",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 4478.1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "aq-aadc-geoserver-wfs200-crs84-legacy-url-lonlat",
+   "axis_order": "x/y",
+   "axis_places": [
+    {
+     "layer": "countries",
+     "code": "ATA",
+     "why": "SCAR Composite Gazetteer of Antarctica: place names in Antarctica"
+    }
+   ],
+   "file": "samples/wfs/aq-aadc-geoserver-wfs200-crs84-legacy-url-lonlat.xml",
+   "source": "example_data/wfs/data.aad.gov.au/geoserver/ows/aadc_SCAR_CGA_PLACE_NAMES/getfeature-2.0.0-srs-urn-crs84.xml",
+   "covers": [
+    "WFS 2.0.0 / GML 3.2",
+    "GeoServer",
+    "asked for CRS84: legacy URL epsg.xml#4326 in lon/lat order"
+   ],
+   "publisher": "Australian Antarctic Data Centre, for the Scientific Committee on Antarctic Research (SCAR)",
+   "dataset": "SCAR Composite Gazetteer of Antarctica (SCAR_CGA_PLACE_NAMES)",
+   "dataset_url": "https://data.aad.gov.au/geoserver/ows?SERVICE=WFS&REQUEST=GetCapabilities",
+   "licence": "cc-by-4",
+   "licence_evidence": "GetCapabilities AccessConstraints: 'Data is licensed under a Creative Commons Attribution 4.0 Unported License - https://creativecommons.org/licenses/by/4.0/'",
+   "attribution": "SCAR Composite Gazetteer of Antarctica, Scientific Committee on Antarctic Research, via the Australian Antarctic Data Centre (data.aad.gov.au), CC BY 4.0; excerpt, modified (feature selection)",
+   "companions": [],
+   "extraction": {
+    "rules": [
+     "count=2"
+    ],
+    "features_kept": 2,
+    "features_scanned": 2,
+    "changes": [
+     "stopped scanning once all rules were satisfied (rest of document dropped)",
+     "FeatureCollection@numberReturned: 3 -> 2",
+     "kept 2 of 2 features scanned"
+    ],
+    "original_encoding": null
+   },
+   "provenance": {
+    "download_url": "https://data.aad.gov.au/geoserver/ows?SERVICE=WFS&REQUEST=GetFeature&VERSION=2.0.0&SRSNAME=urn%3Aogc%3Adef%3Acrs%3AOGC%3A1.3%3ACRS84&TYPENAMES=aadc%3ASCAR_CGA_PLACE_NAMES&COUNT=3",
+    "retrieved": "2026-10-26T22:19:34",
+    "portal": "WFS GetFeature"
+   },
+   "sha256": "2e32c4b5370c0716cd133da0b21c8056ca6b40fd8545d9d822daaca117906e4a",
+   "bytes": 7351,
+   "validation": {
+    "status": "invalid",
+    "validator": "Xerces (GDAL GMLAS)",
+    "messages": [
+     "ERROR 1: Validation errors encountered"
+    ]
+   },
+   "gdal": {
+    "file": "samples/wfs/aq-aadc-geoserver-wfs200-crs84-legacy-url-lonlat.xml.gdal.txt",
+    "driver": "GML",
+    "exit_code": 0,
+    "layers": 1,
+    "feature_counts": [
+     2
+    ],
+    "stderr": []
+   },
+   "axis": {
+    "source_order": "x/y",
+    "first_position_as_written": [
+     66.2394444,
+     -67.844472
+    ],
+    "expected_first_xy": [
+     66.2394444,
+     -67.844472
+    ],
+    "gdal_first_xy": [
+     66.2394444,
+     -67.844472
+    ],
+    "gdal_agrees": true,
+    "evidence": {
+     "axis_order": "x/y",
+     "status": "confirmed",
+     "scope": "sample",
+     "positions_checked": 2,
+     "checks": [
+      {
+       "check": "crs_area",
+       "detail": "area of use of EPSG:4326",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 1.0,
+       "passes": true,
+       "rejects_swapped": false
+      },
+      {
+       "check": "place",
+       "detail": "Antarctica (countries ATA, tolerance 5000 m); expected because: SCAR Composite Gazetteer of Antarctica: place names in Antarctica",
+       "recorded_order_inside": 1.0,
+       "swapped_order_inside": 0.0,
+       "passes": true,
+       "rejects_swapped": true,
+       "first_position_km_outside": {
+        "recorded": 0.0,
+        "swapped": 14322.6
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
    "name": "de-bfn-wfs100-short-latlon",
    "axis_order": "y/x",
    "axis_places": [

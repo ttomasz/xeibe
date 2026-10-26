@@ -376,7 +376,7 @@ mode, so neither needs a selector.
 | Form | Example | Source | Order under `CrsHeuristic` |
 |---|---|---|---|
 | Short / CURIE | `EPSG:2180` | common; WFS 1.1 required format | **as written (x/y)** — see below |
-| Legacy URL | `http://www.opengis.net/gml/srs/epsg.xml#2180` | GML 2, WFS 1.0/1.1 | as written (x/y) |
+| Legacy URL | `http://www.opengis.net/gml/srs/epsg.xml#2180`; GeoServer's `…/crs.xml#84`, `…/ogc.xml#84` for CRS84 | GML 2, WFS 1.0/1.1; GeoServer in every version, exactly when it writes x/y | as written (x/y) |
 | OGC URN | `urn:ogc:def:crs:EPSG::2180` | 07-092r3 | **authority order** |
 | Versioned URN | `urn:ogc:def:crs:EPSG:6.6:4326` | 07-092r3 | authority order (version ignored) |
 | Experimental URN | `urn:x-ogc:def:crs:EPSG::4326`, `urn:x-ogc:def:crs:EPSG:4326` | GML 3.1/early 3.2, GeoServer WFS 1.1 | authority order |
@@ -446,7 +446,7 @@ evidence wins:
 | 3 | **Coordinate range check** against the CRS's valid area (from the EPSG area of use, projected into the CRS) | decisive only if *exactly one* of {as written, swapped} fits the sampled extent | Clear-cut for projected CRSs with a small area of use (EPSG:2180 → Poland). **Inconclusive** for projected CRSs whose easting and northing ranges overlap, and for EPSG:4326, whose area of use is the whole world: it then only rejects an ordinate above 90 |
 | 4 | Known producer quirks (fingerprint of the root element's namespaces) | strong | Two so far: FME (the root declares the FME namespace) → authority order for the short form (**[GDAL]**), and MapServer WFS 1.1 (`mapserver.gis.umn.edu` namespace) → authority order for the short form (see [below](#observed-in-real-services)). Other producers (ArcGIS, specific GeoServer versions) are not fingerprinted yet |
 | 5 | **GML 2 dialect** (the detection table above), whatever the srsName says | strong | GML 2 predates the authority-order policy: 02-069 has no axis-order concept and every GML 2 producer writes x/y. This is the `GmlVersion { gml2: XY, … }` rule used as evidence. It needs nothing but the geometry, so it is the only strong evidence available for a plain file |
-| 6 | WFS context: version and the srsName form *we requested* | strong | 1.0 → x/y; 1.1 with `EPSG:` → x/y; 1.1 with URN → authority; 2.0 → authority. Known on a live WFS read, which begins with `GetCapabilities` ([wfs.md](wfs.md#flow)). When a saved response is read as a file, take the version from `xsi:schemaLocation` (`…/wfs/1.0.0/…`, or the `VERSION=` of the `DescribeFeatureType` URL) — the WFS 1.0 and 1.1 namespaces are identical and neither response carries a `version` attribute |
+| 6 | WFS context: version, the response's srsName form and the form *we requested* | strong | 1.0 → x/y; 1.1 and 2.0 with a legacy URL in the response → x/y (GeoServer writes that form exactly when its coordinates are x/y, see [below](#observed-in-real-services)); 1.1 with a URN in the response → authority, otherwise by the form we requested (`EPSG:` → x/y, URN → authority); 2.0 → authority. Known on a live WFS read, which begins with `GetCapabilities` ([wfs.md](wfs.md#flow)). When a saved response is read as a file, take the version from `xsi:schemaLocation` (`…/wfs/1.0.0/…`, or the `VERSION=` of the `DescribeFeatureType` URL) — the WFS 1.0 and 1.1 namespaces are identical and neither response carries a `version` attribute |
 | 7 | Envelope consistency: the collection/feature `boundedBy` and the `BBOX` we sent must match the geometry under the chosen order | supporting | Only used to break ties and to raise warnings |
 | 8 | `CrsHeuristic` rule | fallback | |
 
@@ -503,8 +503,25 @@ north/lat-first can show a difference (2180, 3301, 3035, 4326, 4258):
 | WFS **1.0** with short `EPSG:4258` → **lat/lon** | ArcGIS (`geoserver.vuvh.sk`), `geodienste.bfn.de` | "WFS 1.0 is always x/y" is false |
 | WFS **1.0** with **URN** `EPSG::4326` → **lon/lat** | `services.sandre.eaufrance.fr` | "URN means authority order" is false in 1.0 |
 | GeoServer WFS 1.0: legacy `epsg.xml#` URL → x/y | GeoServer | consistent with the convention |
+| GeoServer WFS 1.1/2.0: legacy `epsg.xml#` URL → x/y (Vienna, CENIA) | GeoServer | by design, see below |
 
-**GDAL 3.13 as a reference gets 4 of 18 axis-order samples wrong** (MapServer WFS 1.1 short
+**GeoServer's legacy URL** (checked 2026-10-26 on three GeoServers, data.aad.gov.au,
+data.wien.gv.at and unionepratomagno.ldpgis.it, in WFS 1.1 and 2.0 with each srsName
+request form; `scripts/corpus/fetch_srs_variants.py`). GeoTools' GML encoder
+(`GML2EncodingUtils.toURI`) writes `http://www.opengis.net/gml/srs/epsg.xml#CODE`
+whenever the CRS it encodes with is east/north (judged by the base geographic CRS),
+because the URN forms promise the CRS's axis order. So a request for CRS84, for a
+short `EPSG:4326` or for the legacy URL comes back as `…/epsg.xml#4326`, longitude
+first, and a URN request as a URN, latitude first: 42 of 42 responses. A newer setup
+(Vienna) writes CRS84 as `…/crs.xml#84` or `…/ogc.xml#84`, and one server (Tuscany)
+answers a legacy-URL request with a URN in latitude-first order. GUGiK's INSPIRE
+services are the one producer seen writing the legacy URL in authority order
+(`epsg.xml#4258`, lat/lon); the range check settles them, as Poland read the wrong way
+round falls outside EPSG:4258's area of use. Until 2026-10-26 row 6 read every WFS 2.0
+response in authority order, and so swapped GeoServer's lon/lat wherever the range
+check couldn't tell (all of Europe in EPSG:4326).
+
+**GDAL 3.13 as a reference gets 4 of 21 axis-order samples wrong** (MapServer WFS 1.1 short
 form, BfN WFS 1.0 short form lat/lon, Sandre WFS 1.0 URN lon/lat, GUGiK BU legacy URL lat/lon);
 see the axis-order lines in `tests/data/BOM.md`. Tests must assert against the verified
 `axis_order` in `tests/data/samples.toml`, not against GDAL's output.

@@ -1,0 +1,175 @@
+
+Layer name: SCAR_CGA_PLACE_NAMES
+Geometry: Unknown (any)
+Feature Count: 2
+Extent: (62.868389, -67.844472) - (66.239444, -67.622389)
+Layer SRS WKT:
+GEOGCRS["WGS 84",
+    ENSEMBLE["World Geodetic System 1984 ensemble",
+        MEMBER["World Geodetic System 1984 (Transit)"],
+        MEMBER["World Geodetic System 1984 (G730)"],
+        MEMBER["World Geodetic System 1984 (G873)"],
+        MEMBER["World Geodetic System 1984 (G1150)"],
+        MEMBER["World Geodetic System 1984 (G1674)"],
+        MEMBER["World Geodetic System 1984 (G1762)"],
+        MEMBER["World Geodetic System 1984 (G2139)"],
+        MEMBER["World Geodetic System 1984 (G2296)"],
+        ELLIPSOID["WGS 84",6378137,298.257223563,
+            LENGTHUNIT["metre",1]],
+        ENSEMBLEACCURACY[2.0]],
+    PRIMEM["Greenwich",0,
+        ANGLEUNIT["degree",0.0174532925199433]],
+    CS[ellipsoidal,2],
+        AXIS["geodetic latitude (Lat)",north,
+            ORDER[1],
+            ANGLEUNIT["degree",0.0174532925199433]],
+        AXIS["geodetic longitude (Lon)",east,
+            ORDER[2],
+            ANGLEUNIT["degree",0.0174532925199433]],
+    USAGE[
+        SCOPE["Horizontal component of 3D system."],
+        AREA["World."],
+        BBOX[-90,-180,90,180]],
+    ID["EPSG",4326]]
+Data axis to CRS axis mapping: 2,1
+Geometry Column = geometry
+gml_id: String (0.0) NOT NULL
+place_name_mapping: String (16.0)
+place_name_gazetteer: String (16.0)
+gaz_id: Integer (0.0)
+country_name: String (9.0)
+latitude: Real (0.0)
+longitude: Real (0.0)
+altitude: Real (0.0)
+feature_type_name: String (9.0)
+narrative: String (477.0)
+meeting_paper: String (9.0)
+date_revised: DateTime
+gazetteer: String (3.0)
+scar_common_id: Integer (0.0)
+is_complete_flag: String (1.0)
+view_by_public_flag: String (1.0)
+aus_display_scale_20M: String (2.0)
+aus_display_scale_10M: String (2.0)
+aus_display_scale_5M: String (2.0)
+aus_display_scale_2M: String (2.0)
+aus_display_scale_1M: String (2.0)
+aus_display_scale_500k: String (2.0)
+aus_display_scale_250k: String (2.0)
+aus_display_scale_100k: String (2.0)
+aus_display_scale_50k: String (2.0)
+aus_display_scale_25k: String (2.0)
+aus_display_scale_10k: String (2.0)
+aus_display_scale_5k: String (2.0)
+aus_display_scale_1k: String (2.0)
+is_proposed: String (1.0)
+is_deleted: String (1.0)
+coordinate_accuracy: Real (0.0)
+altitude_accuracy: Real (0.0)
+source_institution: String (29.0)
+source_person: String (7.0)
+source_name: String (28.0)
+source_publisher: String (16.0)
+status: String (8.0)
+max_digital_display_scale: Integer (0.0)
+location_method_id: Integer (0.0)
+survey_station_code: String (5.0)
+relic_flag: String (2.0)
+country_id: Real (0.0)
+named_for: String (568.0)
+meeting_date: String (11.0)
+source_country_code: String (3.0)
+date_named: DateTime
+reason: String (71.0)
+OGRFeature(SCAR_CGA_PLACE_NAMES):2
+  gml_id (String) = SCAR_CGA_PLACE_NAMES.2
+  place_name_mapping (String) = Lawson Aiguilles
+  place_name_gazetteer (String) = Lawson Aiguilles
+  gaz_id (Integer) = 2
+  country_name (String) = Australia
+  latitude (Real) = -67.8444722222
+  longitude (Real) = 66.2394444444
+  altitude (Real) = 481
+  feature_type_name (String) = Aiguilles
+  narrative (String) = A line of sharply pointed peaks in the southern part of Mount Rivett, Mac.Robertson Land. One of the peaks was used as an astronomical station by D. Carstens, surveyor at Mawson in 1962.  Another peak was used as a tellurometer station by John Manning, surveyor at Mawson in 1967.  Named after E.J. Lawson, diesel mechanic at Mawson in 1967, who assisted Manning with the survey work.
+Location for the feature is at southern end of the aigulles - same as survey station NMS40.
+  meeting_paper (String) = ANCA 70/2
+  date_revised (DateTime) = 2010/07/15 00:00:00+00
+  gazetteer (String) = AUS
+  scar_common_id (Integer) = 8225
+  is_complete_flag (String) = N
+  view_by_public_flag (String) = Y
+  aus_display_scale_20M (String) = No
+  aus_display_scale_10M (String) = No
+  aus_display_scale_5M (String) = No
+  aus_display_scale_2M (String) = No
+  aus_display_scale_1M (String) = No
+  aus_display_scale_500k (String) = No
+  aus_display_scale_250k (String) = No
+  aus_display_scale_100k (String) = No
+  aus_display_scale_50k (String) = No
+  aus_display_scale_25k (String) = No
+  aus_display_scale_10k (String) = No
+  aus_display_scale_5k (String) = No
+  aus_display_scale_1k (String) = No
+  is_proposed (String) = N
+  is_deleted (String) = N
+  coordinate_accuracy (Real) = 20
+  altitude_accuracy (Real) = 20
+  source_institution (String) = Australian Antarctic Division
+  source_person (String) = Brolsma
+  source_name (String) = AADC Survey Control Database
+  source_publisher (String) = National Mapping
+  status (String) = Official
+  max_digital_display_scale (Integer) = 0
+  location_method_id (Integer) = 3
+  survey_station_code (String) = NMS40
+  relic_flag (String) = No
+  country_id (Real) = 36
+  POINT (66.2394444 -67.844472)
+
+OGRFeature(SCAR_CGA_PLACE_NAMES):3
+  gml_id (String) = SCAR_CGA_PLACE_NAMES.3
+  place_name_mapping (String) = Gwamm
+  place_name_gazetteer (String) = Gwamm
+  gaz_id (Integer) = 3
+  country_name (String) = Australia
+  latitude (Real) = -67.6223888889
+  longitude (Real) = 62.8683888889
+  altitude (Real) = 145
+  feature_type_name (String) = Landing
+  narrative (String) = The old airstrip on blue ice above Mawson.
+  meeting_paper (String) = 94/1
+  date_revised (DateTime) = 2026/10/21 15:03:42+00
+  gazetteer (String) = AUS
+  scar_common_id (Integer) = 5826
+  is_complete_flag (String) = N
+  view_by_public_flag (String) = Y
+  aus_display_scale_20M (String) = No
+  aus_display_scale_10M (String) = No
+  aus_display_scale_5M (String) = No
+  aus_display_scale_2M (String) = No
+  aus_display_scale_1M (String) = No
+  aus_display_scale_500k (String) = No
+  aus_display_scale_250k (String) = No
+  aus_display_scale_100k (String) = No
+  aus_display_scale_50k (String) = No
+  aus_display_scale_25k (String) = No
+  aus_display_scale_10k (String) = No
+  aus_display_scale_5k (String) = No
+  aus_display_scale_1k (String) = No
+  is_proposed (String) = N
+  is_deleted (String) = N
+  max_digital_display_scale (Integer) = 0
+  relic_flag (String) = No
+  country_id (Real) = 36
+  named_for (String) = 1979 place name minutes show "The name 'Gwamm' is made up of the initials of the wives and sweethearts of the officers and airmen of the 1958 RAAF Antarctic Flight. * The name was considered inappropriate because of its obscure and private origin. It was felt that the ice runway needs a name." The name wasn't approved.
+
+1994 place name minutes show "There is a need for a name for the old airstrip on blue ice above Mawson.
+It was named in association with the RAAF Antarctic Flight and the name has been in continuous use since that time. The name was approved."
+  meeting_date (String) = 24-Apr-1994
+  source_country_code (String) = AUS
+  date_named (DateTime) = 1994/04/24 00:00:00+00
+  reason (String) = Added information from the minutes of meetings to the Named For field. 
+  POINT (62.8683889 -67.622389)
+

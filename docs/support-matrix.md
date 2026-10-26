@@ -297,7 +297,7 @@ file. Not listed individually:
 | Feature | Status | Priority | Notes |
 |---|---|---|---|
 | `EPSG:XXXX` (short form, x/y) | ✅ Supported | P0 | PRG uses this. `crates/xeibe-geom/tests/it/crs.rs`, `axis.rs`, `crates/xeibe-arrow/tests/it/samples.rs` |
-| `http://www.opengis.net/gml/srs/epsg.xml#XXXX` (x/y) | ✅ Supported | P0 | `crates/xeibe-geom/tests/it/crs.rs`, `axis.rs`, `crates/xeibe-arrow/tests/it/samples.rs` |
+| `http://www.opengis.net/gml/srs/epsg.xml#XXXX` (x/y), GeoServer's `…/crs.xml#84` and `…/ogc.xml#84` (CRS84) | ✅ Supported | P0 | x/y in every WFS version: GeoServer writes the legacy URL exactly when its coordinates are (`geometry.md`, "Observed in real services"). `crates/xeibe-geom/tests/it/crs.rs`, `axis.rs`, `crates/xeibe-arrow/tests/it/samples.rs` |
 | `urn:ogc:def:crs:EPSG::XXXX` (authority axis order) | ✅ Supported | P0 | `crates/xeibe-geom/tests/it/crs.rs`, `axis.rs`, `crates/xeibe-arrow/tests/it/samples.rs` |
 | `urn:x-ogc:def:crs:EPSG:XXXX`, `urn:x-ogc:def:crs:EPSG::XXXX` | ✅ Supported | P1 | Used in GML 3.1 and early 3.2 data, and GeoServer WFS 1.1. `crates/xeibe-geom/tests/it/crs.rs`, `axis.rs`, `crates/xeibe-arrow/tests/it/samples.rs` |
 | Versioned URN `urn:ogc:def:crs:EPSG:6.6:XXXX` | ✅ Supported | P1 | Version ignored. `crates/xeibe-geom/tests/it/crs.rs`, `axis.rs`. Reads use the same parser and decision (`xeibe-arrow::axis`) |

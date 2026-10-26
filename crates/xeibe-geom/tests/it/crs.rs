@@ -94,6 +94,17 @@ fn crs84_and_friends_are_the_ogc_authority() {
         SrsNameForm::HttpUri,
         Some(crs84.clone()),
     );
+    // GeoServer's legacy URLs for CRS84 (data.wien.gv.at, 2026-10-26).
+    for raw in [
+        "http://www.opengis.net/gml/srs/crs.xml#84",
+        "http://www.opengis.net/gml/srs/ogc.xml#84",
+    ] {
+        assert_srs(raw, SrsNameForm::LegacyUrl, Some(crs84.clone()));
+    }
+    assert_eq!(
+        SrsName::parse("http://www.opengis.net/gml/srs/crs.xml#12").crs,
+        None
+    );
     assert!(crs84.is_lon_lat_by_definition());
     assert!(!epsg("4326").is_lon_lat_by_definition());
 }
