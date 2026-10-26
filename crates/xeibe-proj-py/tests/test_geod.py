@@ -1,13 +1,16 @@
 """``Geod`` against pyproj's, method by method (docs/pyproj-phase2.md).
 
 Both run PROJ's ``geodesic.c`` algorithms, so the numbers agree to a few
-ulps (exactly on Linux but for rare cube-root roundings).
+ulps on x86-64 (exactly on Linux but for rare cube-root roundings). On
+arm64 the C compiler fuses multiplies and adds into FMAs, which Rust never
+does, and pyproj's results drift by tens of ulps.
 """
 
 from __future__ import annotations
 
 import math
 import pickle
+import platform
 import random
 import warnings
 from array import array
@@ -24,15 +27,18 @@ pyproj = pytest.importorskip("pyproj")
 np = pytest.importorskip("numpy")
 
 ULPS = 4
+FMA = platform.machine().lower() in ("arm64", "aarch64")
 
 
 def close(ours: Any, theirs: Any) -> bool:
-    """Equal within a few ulps, element by element, for floats and
-    sequences of them."""
+    """Equal within a few ulps (within 1e-12 on arm64), element by
+    element, for floats and sequences of them."""
     if isinstance(ours, (list, tuple)) or hasattr(ours, "__len__"):
         return len(ours) == len(theirs) and all(close(o, t) for o, t in zip(ours, theirs, strict=True))
     if math.isnan(ours) or math.isnan(theirs):
         return math.isnan(ours) and math.isnan(theirs)
+    if FMA:
+        return math.isclose(ours, theirs, rel_tol=1e-12, abs_tol=1e-12)
     return abs(ours - theirs) <= ULPS * math.ulp(max(abs(ours), abs(theirs)))
 
 

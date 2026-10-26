@@ -83,6 +83,12 @@ lines, where the starting guess (`Astroid`) takes a cube root: Rust's
 round differently now and then. glibc's is LGPL, so it isn't ported; the
 full set is checked within 4 ulps.
 
+`test_geod.py` compares with pyproj itself the same way, within 4 ulps,
+except on arm64 (the macOS runners): there clang fuses PROJ's multiplies
+and adds into FMAs, which Rust never does, and pyproj's results drift by
+tens of ulps (3e-14° on a longitude). There the tests allow 1e-12,
+relative or absolute.
+
 Two things came out of the comparison:
 
 - **`serde_json`'s default float parser can be one ulp off.** At first
@@ -272,7 +278,10 @@ database. Its data comes from these places:
 The units come in PROJ's order, by authority and code. A name used twice
 is the later unit's, as in pyproj's dict. An empty `auth_name` means every
 authority. `test_database.py` compares every filter with pyproj, value by
-value and in order: equal, without Esri's units.
+value and in order: equal, without Esri's units, but for the factors,
+which are compared within an ulp. The proj.db in pyproj's macOS wheels
+rounds some of them the other way (`3.16887651727315e-11` for mm/year,
+`3.168876517273149e-11` elsewhere).
 
 ## Selection: `area_of_interest`, `accuracy`, `only_best`
 
