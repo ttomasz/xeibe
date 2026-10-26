@@ -147,7 +147,7 @@ impl Crs {
                 && (datums.is_empty()
                     || r.datum
                         .is_some_and(|d| datums.contains(&d) || relatives.contains(&d)))
-                && (method.is_none() || r.method.is_some_and(&same_method))
+                && (method.is_none() || r.method.is_some_and(same_method))
         });
         for record in candidates {
             let Ok(epsg) = Crs::from_epsg(record.code) else {

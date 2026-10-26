@@ -161,7 +161,7 @@ fn xy(values: &[f64], size: usize) -> Vec<f64> {
 impl Part {
     fn each_position(&self, mut f: impl FnMut(f64, f64)) {
         let mut pairs = |values: &[f64]| {
-            values.chunks_exact(2).for_each(|p| f(p[0], p[1]));
+            values.as_chunks::<2>().0.iter().for_each(|&[x, y]| f(x, y));
         };
         match self {
             Part::Point(p) => pairs(p),
@@ -175,8 +175,8 @@ impl Part {
     fn map(&self, f: &mut impl FnMut(f64, f64) -> Option<[f64; 2]>) -> Option<Part> {
         let mut all = |values: &[f64]| -> Option<Vec<f64>> {
             let mut out = Vec::with_capacity(values.len());
-            for p in values.chunks_exact(2) {
-                out.extend(f(p[0], p[1])?);
+            for &[x, y] in values.as_chunks::<2>().0 {
+                out.extend(f(x, y)?);
             }
             Some(out)
         };
@@ -377,7 +377,7 @@ fn triangulate(earcut: &mut earcut::Earcut<f64>, rings: &[Vec<f64>], out: &mut V
     }
     let positions = rings
         .iter()
-        .flat_map(|ring| ring.chunks_exact(2).map(|p| [p[0], p[1]]));
+        .flat_map(|ring| ring.as_chunks::<2>().0.iter().copied());
     earcut.earcut(positions, &holes, out);
 }
 

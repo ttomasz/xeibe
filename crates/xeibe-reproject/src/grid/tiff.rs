@@ -483,13 +483,12 @@ impl Reader<'_> {
             return invalid("expected DOUBLE values");
         }
         let b = self.bytes(e.at, 8 * e.count)?;
-        Ok(b.chunks_exact(8)
-            .map(|c| {
-                let a: [u8; 8] = c.try_into().expect("8 bytes");
-                match self.order {
-                    ByteOrder::Little => f64::from_le_bytes(a),
-                    ByteOrder::Big => f64::from_be_bytes(a),
-                }
+        Ok(b.as_chunks::<8>()
+            .0
+            .iter()
+            .map(|&a| match self.order {
+                ByteOrder::Little => f64::from_le_bytes(a),
+                ByteOrder::Big => f64::from_be_bytes(a),
             })
             .collect())
     }
@@ -662,7 +661,7 @@ fn image(r: &Reader, tags: &HashMap<u16, Entry>) -> Result<Image, TiffError> {
         if keys[0] != 1 {
             return invalid("unsupported GeoTIFF major version");
         }
-        for k in keys[4..].chunks_exact(4) {
+        for k in keys[4..].as_chunks::<4>().0 {
             match k[0] {
                 1024 => match k[3] {
                     1 => geographic = false,
@@ -903,8 +902,10 @@ mod tests {
         }
         floating_point_predictor(&mut diffed, 4, 1, ByteOrder::Little);
         let got: Vec<f32> = diffed
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|&c| f32::from_le_bytes(c))
             .collect();
         assert_eq!(got, values);
     }
