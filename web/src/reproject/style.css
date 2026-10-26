@@ -1,0 +1,823 @@
+@import '../common/base.css';
+
+:root {
+  --line-height: 20px;
+  --pane-height: 340px;
+  --gutter-bg: #eef2f7;
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+#status {
+  flex: 1;
+  min-width: 10em;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#status.error {
+  color: var(--error);
+}
+
+.repo {
+  margin-left: auto;
+}
+
+.page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+h2 {
+  font-size: 17px;
+  margin: 0 0 10px;
+}
+
+h3 {
+  font-size: 15px;
+  margin: 0 0 8px;
+}
+
+.small {
+  font-size: 12.5px;
+}
+
+/* CRSs */
+
+.crs-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto;
+  gap: 10px 14px;
+  align-items: start;
+}
+
+.crs-field {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.crs-field label {
+  font-weight: 600;
+}
+
+.crs-field input,
+.options input,
+.options select,
+.examples select,
+.tools select {
+  font: inherit;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: var(--bg);
+}
+
+.crs-field input {
+  font-family: var(--mono);
+  font-size: 15px;
+  width: 100%;
+}
+
+.crs-name {
+  grid-column: 2;
+  min-height: 1.45em;
+  overflow-wrap: anywhere;
+}
+
+.swap {
+  margin-top: 1px;
+  font-size: 16px;
+  padding: 3px 10px;
+}
+
+.examples {
+  color: var(--muted);
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.examples select {
+  max-width: 260px;
+}
+
+/* Options */
+
+.options-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  align-items: baseline;
+  margin: 14px 0 12px;
+}
+
+.order {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+#options summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.options {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.options fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+}
+
+.options legend {
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.options input[type='number'] {
+  width: 7em;
+}
+
+.options select {
+  max-width: 100%;
+}
+
+/* Input and output, line for line */
+
+/* One grid for both panes, so that their heads share a height and the
+   lines face each other. */
+.panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  grid-auto-flow: column;
+  column-gap: 14px;
+  margin-bottom: 18px;
+}
+
+.pane {
+  display: contents;
+}
+
+/* Under the output: the summary on the left, the controls on the right,
+   on one line; the gutter's key below, across. */
+.pane-foot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 12px;
+}
+
+.key-block {
+  grid-column: 1 / -1;
+  font-size: 12.5px;
+}
+
+.key-block p {
+  margin: 0 0 4px;
+  color: var(--muted);
+}
+
+.pane-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-bottom: 4px;
+}
+
+.axes {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.axis {
+  white-space: nowrap;
+}
+
+.small-button {
+  margin-left: auto;
+  padding: 1px 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.small-button:hover {
+  color: var(--text);
+}
+
+.tools {
+  margin: 4px 0 0 auto;
+  white-space: nowrap;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+}
+
+#input,
+.output {
+  display: block;
+  width: 100%;
+  height: var(--pane-height);
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: 13px/var(--line-height) var(--mono);
+  tab-size: 16;
+  white-space: pre;
+  overflow: auto;
+}
+
+#input {
+  resize: vertical;
+  color: var(--text);
+  background: var(--bg);
+}
+
+/* The input's line numbers, in a gutter like the output's: a separate
+   element over the textarea's left padding, scrolled with it from JS. */
+.editor {
+  --numbers: 40px;
+  position: relative;
+}
+
+.editor #input {
+  padding-left: calc(var(--numbers) + 10px);
+}
+
+.numbers {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  z-index: 1;
+  width: var(--numbers);
+  overflow: hidden;
+  border-right: 1px solid var(--line);
+  border-radius: 7px 0 0 7px;
+  background: var(--gutter-bg);
+  pointer-events: none;
+  user-select: none;
+}
+
+.numbers > div {
+  padding: 8px 0;
+  font: 11.5px/var(--line-height) var(--mono);
+  color: var(--muted);
+}
+
+.numbers span {
+  display: block;
+  height: var(--line-height);
+  padding-right: 8px;
+  text-align: right;
+}
+
+.numbers .selected {
+  background: #fbefb0;
+  color: var(--text);
+}
+
+.numbers .bad {
+  color: var(--error);
+  font-weight: 600;
+}
+
+#input:focus {
+  outline: 2px solid var(--accent-soft);
+  border-color: var(--accent);
+}
+
+/* The output has a gutter, like an editor's line numbers: each line's
+   operation number, and its colour as a bar along the gutter's edge. The
+   gutter is drawn by CSS (::before), so selections and Copy skip it; it
+   runs the pane's full height, and stays when long lines scroll sideways. */
+.output {
+  --gutter: 64px;
+  padding-left: 0;
+  background: linear-gradient(
+    to right,
+    var(--gutter-bg) var(--gutter),
+    var(--line) var(--gutter) calc(var(--gutter) + 1px),
+    var(--panel) calc(var(--gutter) + 1px)
+  );
+  cursor: default;
+}
+
+.output .line {
+  height: var(--line-height);
+  width: max-content;
+  min-width: 100%;
+  display: flex;
+  align-items: center;
+  padding-right: 10px;
+  cursor: pointer;
+  white-space: pre;
+}
+
+.output .line::before {
+  content: attr(data-op);
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: none;
+  box-sizing: border-box;
+  width: calc(var(--gutter) + 1px);
+  height: 100%;
+  margin-right: 10px;
+  padding: 0 6px 0 11px;
+  border-right: 1px solid var(--line);
+  text-align: left;
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--bar, none) left top / 4px 100% no-repeat, var(--gutter-bg);
+}
+
+.output .line[style]::before {
+  --bar: linear-gradient(var(--op), var(--op));
+}
+
+.output .line.striped::before {
+  --bar: repeating-linear-gradient(to bottom, var(--op) 0 3px, transparent 3px 5px);
+}
+
+.output .line.selected::before {
+  background-color: #fbefb0;
+  color: var(--text);
+}
+
+.output .line:hover {
+  background: var(--line);
+}
+
+.output .line.selected {
+  background: var(--selected);
+}
+
+.output .line.err {
+  width: auto;
+  color: var(--error);
+}
+
+.output .line.err .e {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.output .v {
+  tab-size: 16;
+}
+
+.output .tag[data-warn]::after {
+  content: attr(data-warn);
+  margin-left: 8px;
+  color: var(--warn);
+}
+
+/* An operation's colour: a square in the lists, a bar down the output's
+   left edge (the gutter), so lines through one operation form a band. */
+.swatch {
+  display: inline-block;
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  background: var(--c);
+  vertical-align: -1px;
+}
+
+.swatch.striped {
+  background: repeating-linear-gradient(45deg, var(--c) 0 2px, white 2px 4px);
+  box-shadow: inset 0 0 0 1px var(--c);
+}
+
+.opn {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.op-head .opn {
+  font-weight: 600;
+}
+
+/* Its first line on the summary's, across the panes. */
+.input-foot {
+  padding-top: 8px;
+}
+
+.legend {
+  white-space: nowrap;
+  margin-right: 6px;
+}
+
+.invalid,
+.summary {
+  min-height: 1.45em;
+  margin-top: 4px;
+  font-size: 12.5px;
+}
+
+.timing {
+  color: var(--muted);
+}
+
+/* The gutter's key: an operation a row, its number, name and points. */
+.key {
+  display: grid;
+  grid-template-columns: auto minmax(0, auto) auto;
+  justify-content: start;
+  gap: 2px 12px;
+  margin: 2px 0 4px;
+  color: var(--text);
+}
+
+.key > span:first-child,
+.key > span:nth-child(3n + 1) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.key-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.key-count {
+  color: var(--muted);
+  text-align: right;
+}
+
+.hint {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+}
+
+.invalid:empty {
+  display: none;
+}
+
+/* The general area */
+
+.block {
+  margin: 0 0 22px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+#details {
+  border-color: #fde68a;
+  background: #fffdf2;
+}
+
+#details h2 {
+  display: flex;
+  align-items: center;
+}
+
+#details h3 {
+  margin-top: 14px;
+}
+
+.close {
+  margin-left: auto;
+  font-size: 20px;
+  line-height: 1;
+}
+
+button.link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+table.facts {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+table.facts > tbody > tr > th,
+table.facts > tr > th {
+  width: 9.5em;
+  padding: 3px 12px 3px 0;
+  text-align: left;
+  vertical-align: top;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+table.facts td {
+  padding: 3px 0;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+table.params {
+  border-collapse: collapse;
+  margin: 2px 0;
+}
+
+table.params td {
+  padding: 1px 16px 1px 0;
+}
+
+td.num {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+td.center {
+  text-align: center;
+}
+
+table.grid {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+table.grid th,
+table.grid td {
+  text-align: left;
+  padding: 4px 10px 4px 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+table.grid th {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+table.grid tr.chosen td {
+  background: var(--selected);
+}
+
+.remarks p,
+span.remarks {
+  white-space: pre-line;
+}
+
+details > summary {
+  cursor: pointer;
+}
+
+details.remarks,
+details.steps {
+  margin-top: 8px;
+}
+
+ol.operations {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+li.operation {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+/* Used by some of the points: the gutter's bar, in its colour. */
+li.operation.used {
+  box-shadow: inset 5px 0 0 var(--c);
+}
+
+li.operation > details[open] > summary {
+  margin-bottom: 8px;
+}
+
+.op-head {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+}
+
+.op-head::before {
+  content: '▸';
+  width: 10px;
+  color: var(--muted);
+}
+
+details[open] > .op-head::before {
+  content: '▾';
+}
+
+.op-sum {
+  white-space: nowrap;
+}
+
+.op-area {
+  flex-basis: 100%;
+  padding-left: 37px;
+  font-size: 12.5px;
+}
+
+details.steps ol {
+  margin: 8px 0 0;
+  padding-left: 22px;
+}
+
+li.step {
+  margin-bottom: 10px;
+}
+
+.step-head .kind {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-right: 4px;
+}
+
+.op-detail {
+  margin: 4px 0 0;
+}
+
+ol.substeps {
+  margin: 4px 0;
+}
+
+.note {
+  margin: 4px 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.note.warn {
+  color: var(--warn);
+}
+
+.command {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.command pre {
+  flex: 1;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  background: var(--panel);
+  border-radius: 6px;
+}
+
+/* Grids being fetched */
+
+.modal {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  background: var(--bg);
+  box-shadow: 0 12px 40px rgb(15 23 42 / 0.25);
+}
+
+.modal::backdrop {
+  background: rgb(15 23 42 / 0.35);
+}
+
+.modal form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.modal h2,
+.modal p {
+  margin: 0;
+}
+
+.modal .files {
+  margin: 0;
+  padding: 6px 10px;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  max-height: 40vh;
+  overflow: auto;
+}
+
+.modal .files li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  padding: 3px 0;
+}
+
+.modal .files .users {
+  flex-basis: 100%;
+  font-size: 12.5px;
+}
+
+.modal .files .size {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+.modal progress {
+  width: 100%;
+  height: 10px;
+  accent-color: var(--accent);
+}
+
+.modal .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+footer {
+  margin: 8px 0 24px;
+}
+
+@media (max-width: 860px) {
+  .crs-row {
+    grid-template-columns: 1fr;
+  }
+
+  .swap {
+    justify-self: start;
+  }
+
+  .panes {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-auto-flow: row;
+  }
+
+  .input-foot {
+    margin-bottom: 14px;
+  }
+
+  .cards {
+    grid-template-columns: 1fr;
+  }
+}

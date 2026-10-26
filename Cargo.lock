@@ -4306,6 +4306,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "xeibe-wasm-reproject"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "wasm-bindgen",
+ "xeibe-crs",
+ "xeibe-reproject",
+]
+
+[[package]]
 name = "xeibe-wfs"
 version = "0.1.0"
 dependencies = [

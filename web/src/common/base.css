@@ -1,0 +1,105 @@
+/* What every page shares: the colours, the type, links, buttons, and the
+   links between the pages. */
+
+:root {
+  --bg: #ffffff;
+  --panel: #f8fafc;
+  --line: #e2e8f0;
+  --text: #0f172a;
+  --muted: #64748b;
+  --accent: #1d4ed8;
+  --accent-soft: #dbeafe;
+  --warn: #b45309;
+  --warn-soft: #fef3c7;
+  --error: #b91c1c;
+  --selected: #fef9c3;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  color-scheme: light;
+  font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+code,
+pre {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+a {
+  color: var(--accent);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.warn {
+  color: var(--warn);
+}
+
+.error {
+  color: var(--error);
+}
+
+.button {
+  font: inherit;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+/* The page's name, linking to the landing page, and the other pages. */
+
+.home {
+  margin: 0 6px 0 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.pages {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.pages a {
+  padding: 3px 9px;
+  border-radius: 6px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.pages a:hover {
+  color: var(--text);
+  background: var(--line);
+}
+
+.pages a[aria-current='page'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}

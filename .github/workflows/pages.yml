@@ -1,6 +1,7 @@
-# The web page (docs/web.md): crates/xeibe-wasm built to WebAssembly, web/
-# built with Vite, deployed to GitHub Pages. Needs Pages set to "GitHub
-# Actions" in the repository's settings.
+# The web pages (docs/web.md, docs/web-reproject.md): crates/xeibe-wasm and
+# crates/xeibe-wasm-reproject built to WebAssembly, web/ built with Vite,
+# deployed to GitHub Pages. Needs Pages set to "GitHub Actions" in the
+# repository's settings.
 name: Web page
 
 on:

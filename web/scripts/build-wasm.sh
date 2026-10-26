@@ -1,6 +1,12 @@
 #!/bin/sh
-# Build crates/xeibe-wasm into web/src/wasm (generated, not in git): the
-# module, wasm-bindgen's JavaScript glue, then wasm-opt.
+# Build the pages' wasm modules into web/src/wasm (generated, not in git):
+# each module, wasm-bindgen's JavaScript glue, then wasm-opt.
+#
+#   crates/xeibe-wasm            → xeibe_wasm.js, xeibe_wasm_bg.wasm (GML page)
+#   crates/xeibe-wasm-reproject  → xeibe_wasm_reproject.js, … (reproject page)
+#
+# `build-wasm.sh gml` or `build-wasm.sh reproject` builds one; no argument
+# builds both.
 #
 # Needs the wasm32-unknown-unknown target (rust-toolchain.toml has rustup add
 # it), clang (zstd's C code) and wasm-bindgen-cli at the version Cargo.toml
@@ -17,14 +23,29 @@ if [ "$pinned" != "$installed" ]; then
     exit 1
 fi
 
-cargo build --profile dist --target wasm32-unknown-unknown -p xeibe-wasm
 out=web/src/wasm
-rm -rf "$out"
-wasm-bindgen --target web --out-dir "$out" \
-    target/wasm32-unknown-unknown/dist/xeibe_wasm.wasm
-# The features Rust enables by default for wasm32-unknown-unknown.
-web/node_modules/.bin/wasm-opt -O3 \
-    --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext \
-    --enable-mutable-globals --enable-reference-types --enable-multivalue \
-    "$out/xeibe_wasm_bg.wasm" -o "$out/xeibe_wasm_bg.wasm"
-ls -l "$out/xeibe_wasm_bg.wasm"
+mkdir -p "$out"
+
+build() {
+    crate=$1
+    name=$(echo "$crate" | tr - _)
+    cargo build --profile dist --target wasm32-unknown-unknown -p "$crate"
+    rm -f "$out/$name.js" "$out/$name.d.ts" "$out/${name}_bg.wasm" "$out/${name}_bg.wasm.d.ts"
+    wasm-bindgen --target web --out-dir "$out" \
+        "target/wasm32-unknown-unknown/dist/$name.wasm"
+    # The features Rust enables by default for wasm32-unknown-unknown.
+    web/node_modules/.bin/wasm-opt -O3 \
+        --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext \
+        --enable-mutable-globals --enable-reference-types --enable-multivalue \
+        "$out/${name}_bg.wasm" -o "$out/${name}_bg.wasm"
+    ls -l "$out/${name}_bg.wasm"
+}
+
+[ $# -gt 0 ] || set -- gml reproject
+for page in "$@"; do
+    case $page in
+        gml) build xeibe-wasm ;;
+        reproject) build xeibe-wasm-reproject ;;
+        *) echo "unknown page $page: gml or reproject" >&2; exit 1 ;;
+    esac
+done

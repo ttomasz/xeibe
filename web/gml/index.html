@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>xeibe · GML</title>
+    <meta name="description" content="See how the xeibe library reads a GML file, a zip archive of them or a saved WFS response: its layers, columns, axis order and features on a map. Nothing is uploaded." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d4ed8'/%3E%3Cpath d='M8 9l16 14M24 9L8 23' stroke='white' stroke-width='3.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <header id="bar">
+      <h1><a class="home" href="../">xeibe</a></h1>
+      <nav class="pages" aria-label="Pages"><a href="./" aria-current="page">GML</a><a href="../reproject/">Reproject</a></nav>
+      <label class="button primary" for="file">Open GML…</label>
+      <input type="file" id="file" multiple accept=".gml,.xml,.gz,.zst,.zip" hidden />
+      <label class="field">Layer <select id="layer" disabled></select></label>
+      <label class="field" title="Stop after this many features; empty reads them all">Max features
+        <input id="limit" type="number" min="1" step="1" value="100000" placeholder="all" aria-describedby="limitHint" />
+        <span id="limitHint" class="hint">empty reads all</span>
+      </label>
+      <button id="stop" class="button" hidden>Stop</button>
+      <button id="exportButton" class="button" disabled title="Save the whole layer as a GeoParquet file">Export…</button>
+      <span id="status" role="status"></span>
+      <a class="repo" href="https://github.com/ttomasz/xeibe" target="_blank" rel="noopener">GitHub</a>
+    </header>
+    <main id="main">
+      <section id="mapPane" aria-label="Map">
+        <div id="map"></div>
+        <div id="source"></div>
+        <div id="views" role="group" aria-label="View">
+          <button data-view="map" class="active">Map</button>
+          <button data-view="source">Source CRS</button>
+        </div>
+        <div id="pointer"></div>
+        <div id="mapNote" hidden></div>
+      </section>
+      <div id="divider" role="separator" aria-orientation="vertical" title="Drag to resize"></div>
+      <section id="side">
+        <nav id="tabs" role="tablist">
+          <button role="tab" data-tab="overview" class="active">Overview</button>
+          <button role="tab" data-tab="schema">Schema</button>
+          <button role="tab" data-tab="data">Data</button>
+          <button role="tab" data-tab="xml" title="The selected feature as it is written in the file">XML</button>
+        </nav>
+        <div id="overview" class="tab active">
+          <div class="intro">
+            <h2>Read GML in your browser</h2>
+            <p>Open or drop a GML (Geography Markup Language) file, a zip archive of them, or a response you saved from a WFS
+              (Web Feature Service). Files ending in <code>.gml</code> or <code>.xml</code> both work.
+              Nothing from this page is uploaded anywhere: <a href="https://github.com/ttomasz/xeibe">xeibe</a> runs in your
+              browser.</p>
+            <p>You'll see the features in a table and on a map. You'll also see how xeibe read the file: the columns of each
+              layer, the order of the coordinates and anything it had to skip.</p>
+            <p class="muted">To draw the map, coordinates are converted from the file's coordinate reference system (CRS) by an
+              AI port of <a href="https://proj.org">PROJ</a>. Grids come from <code>cdn.proj.org</code>. Basemap © OpenStreetMap
+              contributors.</p>
+          </div>
+        </div>
+        <div id="schema" class="tab"></div>
+        <div id="data" class="tab"></div>
+        <div id="xml" class="tab"><p class="muted">Select a feature on the map or a row in the Data tab to see its XML.</p></div>
+      </section>
+    </main>
+    <dialog id="open" aria-labelledby="openTitle">
+      <form method="dialog">
+        <h2 id="openTitle">Open</h2>
+        <div class="files" role="group" aria-label="Files"></div>
+        <p class="selected muted"></p>
+        <fieldset>
+          <legend>Schema</legend>
+          <label class="choice"><input type="radio" name="extent" value="full" />
+            <span><b>Scan the whole files</b><span class="full-time muted"></span>
+              <span class="hint">Every layer, exact feature counts, types from all the values.</span></span></label>
+          <label class="choice"><input type="radio" name="extent" value="sample" />
+            <span><b>Scan the first <input name="sample" type="number" min="1" step="1" aria-label="Features to scan in each file" /> features of each file</b>
+              <span class="hint">Starts reading the data sooner. A layer that only starts later in a file isn't found, and a
+                value later on that doesn't fit its column's type stops the read.</span></span></label>
+        </fieldset>
+        <div class="actions">
+          <button class="button" value="cancel" formnovalidate>Cancel</button>
+          <button class="button primary" value="open">Scan and read</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="progress" class="modal" aria-labelledby="progressTitle">
+      <form method="dialog">
+        <h2 id="progressTitle">Scanning</h2>
+        <p class="what muted"></p>
+        <progress max="1"></progress>
+        <p class="state" role="status"></p>
+        <p class="note muted">Closing this leaves the scan running: the bar at the top shows how far it is.</p>
+        <div class="actions">
+          <button class="button" type="button" data-action="stop">Stop</button>
+          <button class="button primary" value="close">Close</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="export" class="modal" aria-labelledby="exportTitle">
+      <form method="dialog">
+        <h2 id="exportTitle">Export to GeoParquet</h2>
+        <div class="body"></div>
+        <progress max="1" hidden></progress>
+        <p class="state" role="status"></p>
+        <div class="actions">
+          <button class="button" value="close">Cancel</button>
+          <button class="button" type="button" data-action="stop" hidden>Stop</button>
+          <button class="button primary" type="button" data-action="save">Save as GeoParquet…</button>
+        </div>
+      </form>
+    </dialog>
+    <div id="drop" hidden><div>Drop GML files to read them</div></div>
+    <script type="module" src="../src/gml/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>xeibe · Reproject</title>
+    <meta name="description" content="Convert coordinates between EPSG CRSs in your browser with xeibe, and see which operation converted each point, among which, and why. Nothing is uploaded." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d4ed8'/%3E%3Cpath d='M8 9l16 14M24 9L8 23' stroke='white' stroke-width='3.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <header class="top">
+      <a class="home" href="../">xeibe</a>
+      <nav class="pages" aria-label="Pages"><a href="../gml/">GML</a><a href="./" aria-current="page">Reproject</a></nav>
+      <span id="status" role="status"></span>
+      <a class="repo" href="https://github.com/ttomasz/xeibe" target="_blank" rel="noopener">GitHub</a>
+    </header>
+    <main class="page">
+      <section class="crs-row" aria-label="CRSs">
+        <div class="crs-field">
+          <label for="src">From</label>
+          <input id="src" value="EPSG:4326" spellcheck="false" autocomplete="off" aria-describedby="srcName" />
+          <div class="crs-name" id="srcName"></div>
+        </div>
+        <button id="swap" class="button swap" title="Swap source and target: the output becomes the input" aria-label="Swap source and target">⇄</button>
+        <div class="crs-field">
+          <label for="dst">To</label>
+          <input id="dst" value="EPSG:3857" spellcheck="false" autocomplete="off" aria-describedby="dstName" />
+          <div class="crs-name" id="dstName"></div>
+        </div>
+        <label class="examples">Examples
+          <select id="examples"></select>
+        </label>
+      </section>
+
+      <section class="options-row">
+        <div class="order" role="radiogroup" aria-label="Axis order">
+          <span class="muted">Axis order</span>
+          <label><input type="radio" name="order" value="crs" checked /> the CRSs' own</label>
+          <label title="Easting or longitude first, whatever the CRS says"><input type="radio" name="order" value="east" /> east first (x, y)</label>
+        </div>
+        <details id="options">
+          <summary>Operation options <span id="optionsSummary" class="muted"></span></summary>
+          <div class="options">
+            <fieldset>
+              <legend>Area of interest <span class="muted">(degrees: replaces the CRSs' areas of use in the search, and ranks the operations)</span></legend>
+              <label>West <input id="aoiW" type="number" step="any" /></label>
+              <label>South <input id="aoiS" type="number" step="any" /></label>
+              <label>East <input id="aoiE" type="number" step="any" /></label>
+              <label>North <input id="aoiN" type="number" step="any" /></label>
+              <button id="aoiPoints" class="button" type="button">The points' bounds</button>
+              <button id="aoiClear" class="button" type="button">Clear</button>
+            </fieldset>
+            <label>Minimum accuracy <input id="accuracy" type="number" min="0" step="any" placeholder="any" /> m
+              <span class="muted">(only operations whose accuracy is known and no worse)</span></label>
+            <label>Operation <select id="force"><option value="">automatic, chosen per point</option></select></label>
+          </div>
+        </details>
+      </section>
+
+      <section class="panes">
+        <div class="pane">
+          <div class="pane-head">
+            <b>Input</b>
+            <span id="inAxes" class="axes"></span>
+            <button id="clear" class="button small-button" type="button" title="Clear the input">Clear</button>
+          </div>
+          <div class="editor">
+            <div id="lineNumbers" class="numbers" aria-hidden="true"><div></div></div>
+            <textarea id="input" wrap="off" spellcheck="false" aria-label="Input coordinates, one point per line"></textarea>
+          </div>
+          <div class="input-foot">
+            <div id="invalid" class="invalid" role="status"></div>
+            <p class="hint muted">One point per line: two or three decimal numbers separated by spaces or tabs. Click a line in either
+              pane for its details.</p>
+          </div>
+        </div>
+        <div class="pane">
+          <div class="pane-head">
+            <b>Output</b>
+            <span id="outAxes" class="axes"></span>
+          </div>
+          <div id="output" class="output" aria-label="Output coordinates"></div>
+          <div class="pane-foot">
+            <div id="summary" class="summary muted"></div>
+            <span class="tools">
+              <label title="Decimal places">Decimals <select id="precision"></select></label>
+              <label title="What separates the values of a line, in the output and when copied">Separator
+                <select id="separator">
+                  <option value="input">as input</option>
+                  <option value="tab">tab</option>
+                  <option value="space">space</option>
+                </select></label>
+              <button id="copy" class="button" type="button" title="Copy the output, line for line">Copy</button>
+            </span>
+            <div id="key" class="key-block"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="details" class="block" hidden></section>
+
+      <section class="block">
+        <h2>Operations</h2>
+        <p class="lead muted">An operation is the chain of steps that takes coordinates from the source CRS to the target. Projecting
+          coordinates is a matter of formulas and loses no accuracy. Changing the datum relies on a transformation published by EPSG,
+          fitted to surveyed points in a particular area, either as a few parameters or as a grid of shifts. It is only as accurate as
+          EPSG states, and only within that area. Between two datums there are often several such transformations, and their results
+          differ.</p>
+        <div id="operations"></div>
+      </section>
+
+      <section class="cards">
+        <div id="srcCard" class="card"></div>
+        <div id="dstCard" class="card"></div>
+      </section>
+
+      <section class="block">
+        <h2>Check with PROJ</h2>
+        <div id="commands"></div>
+      </section>
+
+      <footer class="muted small">
+        Coordinates are converted by an AI port of <a href="https://proj.org">PROJ</a>. Verify correctness of results with more
+        mature and tested libraries. Grids come from <code>cdn.proj.org</code>. EPSG data © IOGP, <span id="epsgVersion"></span>.
+        <a href="https://github.com/ttomasz/xeibe/blob/main/crates/xeibe-reproject/PROJ-NOTICE.md">Notices</a>
+      </footer>
+    </main>
+    <dialog id="grids" class="modal" aria-labelledby="gridsTitle">
+      <form method="dialog">
+        <h2 id="gridsTitle">Fetching grids</h2>
+        <p class="muted">The transformations these points may go through shift coordinates by grids. Only the parts of each file
+          around the points are fetched, from <code>cdn.proj.org</code>, and kept while the page is open.</p>
+        <ul class="files"></ul>
+        <progress max="1"></progress>
+        <p class="state" role="status"></p>
+        <p class="muted small stop-hint">Stop gives up on the grids still coming: the points that need them fail, and say so.</p>
+        <div class="actions">
+          <button class="button" type="button" data-action="stop">Stop</button>
+          <button class="button primary" type="button" data-action="continue" disabled>Continue</button>
+        </div>
+      </form>
+    </dialog>
+    <script type="module" src="../src/reproject/main.ts"></script>
+  </body>
+</html>

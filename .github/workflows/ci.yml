@@ -49,7 +49,7 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       # Every suite is expected to pass (docs/testing.md). The default members
-      # leave out xeibe-datafusion, xeibe-py, xeibe-proj-py and xeibe-wasm.
+      # leave out xeibe-datafusion, xeibe-py, xeibe-proj-py and the two wasm crates.
       - name: Test
         run: cargo test --workspace --locked
 
@@ -74,7 +74,7 @@ jobs:
       - name: Check
         run: cargo "+$MSRV" check --workspace --locked
 
-  # The web page's bindings, as pages.yml builds them on main; rustup adds the
+  # The web pages' bindings, as pages.yml builds them on main; rustup adds the
   # target from rust-toolchain.toml.
   wasm:
     runs-on: ubuntu-latest
@@ -85,7 +85,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Check
-        run: cargo check -p xeibe-wasm --target wasm32-unknown-unknown --locked
+        run: cargo check -p xeibe-wasm -p xeibe-wasm-reproject --target wasm32-unknown-unknown --locked
 
   python:
     runs-on: ubuntu-latest

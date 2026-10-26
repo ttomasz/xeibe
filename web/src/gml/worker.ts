@@ -2,8 +2,8 @@
 // It holds the dropped files and the current read; the UI thread gets JSON,
 // table rows on demand, and the map's buffers (transferred, not copied).
 
-import init, { crsInfo, Dataset, Export, Reader, onProgress } from './wasm/xeibe_wasm.js';
-import wasmUrl from './wasm/xeibe_wasm_bg.wasm?url';
+import init, { crsInfo, Dataset, Export, Reader, onProgress } from '../wasm/xeibe_wasm.js';
+import wasmUrl from '../wasm/xeibe_wasm_bg.wasm?url';
 import type { AxisOverride, FromWorker, GridRequest, Space, ToWorker } from './protocol';
 
 const ready = init({ module_or_path: wasmUrl });

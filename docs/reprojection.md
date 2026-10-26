@@ -891,8 +891,8 @@ without it the operations and pinned pairs whose grids are committed.
    - On native, `xeibe-io` fetches them: `HttpClient::get_range`, a `Range`
      request with the client's retries, cut to the range when a server
      sends the whole file.
-   - On WebAssembly, the web page's worker (`web/src/worker.ts`) fetches
-     them with `fetch` and a `Range` header, in rounds; browser storage maybe
+   - On WebAssembly, the web pages (`web/src/gml/worker.ts`,
+     `web/src/reproject/main.ts`) fetch them with `fetch` and a `Range` header, in rounds; browser storage maybe
      later. `xeibe-io` stays synchronous and
      gets no wasm HTTP client: the browser's `fetch` is async, and `xeibe-io`
      (blocking `reqwest`, `ByteSource::open` returning `Read + Send`) is not.

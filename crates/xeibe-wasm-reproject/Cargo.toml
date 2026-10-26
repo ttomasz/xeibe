@@ -1,0 +1,20 @@
+[package]
+name = "xeibe-wasm-reproject"
+description = "WebAssembly bindings for the web page's reproject page (docs/web-reproject.md): EPSG CRSs, conversion, and what the operations are"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+# The reproject page's bindings (docs/web-reproject.md); built into the page,
+# not published.
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+xeibe-crs.workspace = true
+xeibe-reproject.workspace = true
+serde_json.workspace = true
+wasm-bindgen.workspace = true
