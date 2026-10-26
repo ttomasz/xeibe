@@ -1,6 +1,7 @@
 // The page: files in, the worker reads them, the tabs and the map show it.
 
 import './style.css';
+import { loading } from '../common/loading';
 import { MapPane, type View } from './map';
 import { ExportDialog } from './export';
 import { bytes, DEFAULT_SAMPLE, OpenDialog, type OpenRequest, ProgressDialog } from './open';
@@ -39,7 +40,10 @@ function restartWorker() {
 function startWorker(): Worker {
   const w = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   w.onmessage = (event: MessageEvent<FromWorker>) => receive(event.data);
-  w.onerror = (event) => setStatus(`The worker failed: ${event.message}`, true);
+  w.onerror = (event) => {
+    if (loading.shown()) loading.failed(`The worker failed: ${event.message}`);
+    else setStatus(`The worker failed: ${event.message}`, true);
+  };
   return w;
 }
 
@@ -425,6 +429,16 @@ function receive(message: FromWorker) {
   if ('id' in message && message.type !== 'rows' && message.id !== state.readId) return;
   if ('exportId' in message && message.exportId !== state.exportId) return;
   switch (message.type) {
+    case 'loading':
+      loading.progress(message.bytes, message.total);
+      break;
+    case 'loaded':
+      loading.done();
+      break;
+    case 'load-failed':
+      if (loading.shown()) loading.failed(message.message);
+      else setStatus(`The WebAssembly module didn't load: ${message.message}`, true);
+      break;
     case 'files':
       if (state.choose) {
         state.choose = false;

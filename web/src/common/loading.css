@@ -1,0 +1,67 @@
+/* The loading screen (loading.ts). Linked from the page's HTML, not imported
+   by its script, so it is there from the first paint: the colours fall back
+   to base.css's in case that isn't loaded yet. */
+
+#loading {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(255 255 255 / 0.88);
+  backdrop-filter: blur(3px);
+  font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text, #0f172a);
+  transition: opacity 0.2s;
+}
+
+#loading.done {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#loading .box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(360px, 100%);
+  padding: 24px;
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 10px;
+  background: var(--bg, #ffffff);
+  box-shadow: 0 8px 30px rgb(15 23 42 / 0.08);
+  text-align: center;
+}
+
+#loading .name {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+#loading p {
+  margin: 0;
+}
+
+#loading progress {
+  width: 100%;
+  accent-color: var(--accent, #1d4ed8);
+}
+
+#loading .detail {
+  color: var(--muted, #64748b);
+  font-size: 12.5px;
+}
+
+#loading .detail.error {
+  color: var(--error, #b91c1c);
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #loading {
+    transition: none;
+  }
+}

@@ -7,6 +7,7 @@
 import './style.css';
 import init, { crsCard, epsgVersion, lonlatBounds, Session } from '../wasm/xeibe_wasm_reproject.js';
 import wasmUrl from '../wasm/xeibe_wasm_reproject_bg.wasm?url';
+import { fetchWasm, loading } from '../common/loading';
 import { accuracy, axisLabel, defaultDecimals, escape } from './format';
 import { loadGrids } from './grids';
 import { parse } from './parse';
@@ -678,13 +679,14 @@ document.addEventListener('click', async (e) => {
 // --- Start --------------------------------------------------------------
 
 async function start() {
-  status('Loading…');
   try {
-    await init({ module_or_path: wasmUrl });
+    const module = await fetchWasm(wasmUrl, __XEIBE_WASM_REPROJECT_SIZE__, loading.progress);
+    await init({ module_or_path: module });
   } catch (error) {
-    status(`The WebAssembly module didn't load: ${errorMessage(error)}`, true);
+    loading.failed(errorMessage(error));
     return;
   }
+  loading.done();
   ui.epsgVersion.textContent = `EPSG ${epsgVersion()}`;
   await loadExample(0);
 }

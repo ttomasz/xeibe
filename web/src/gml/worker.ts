@@ -4,9 +4,25 @@
 
 import init, { crsInfo, Dataset, Export, Reader, onProgress } from '../wasm/xeibe_wasm.js';
 import wasmUrl from '../wasm/xeibe_wasm_bg.wasm?url';
+import { fetchWasm } from '../common/loading';
 import type { AxisOverride, FromWorker, GridRequest, Space, ToWorker } from './protocol';
 
-const ready = init({ module_or_path: wasmUrl });
+/** Whether the module loaded; the page's loading screen follows it. */
+const ready = load();
+
+async function load(): Promise<boolean> {
+  try {
+    const module = await fetchWasm(wasmUrl, __XEIBE_WASM_SIZE__, (bytes, total) =>
+      post({ type: 'loading', bytes, total }),
+    );
+    await init({ module_or_path: module });
+  } catch (error) {
+    post({ type: 'load-failed', message: errorMessage(error) });
+    return false;
+  }
+  post({ type: 'loaded' });
+  return true;
+}
 
 let dataset: Dataset | null = null;
 /** The last read, kept after it ends or stops: the table asks it for rows. */
@@ -27,7 +43,7 @@ function errorMessage(error: unknown): string {
 
 self.onmessage = async (event: MessageEvent<ToWorker>) => {
   const message = event.data;
-  await ready;
+  if (!(await ready)) return;
   try {
     switch (message.type) {
       case 'open': {

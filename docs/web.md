@@ -447,7 +447,12 @@ above.
   (EPSG tables and operations, arrow, geoarrow, the reprojection engine, and
   for export `parquet` with its zstd encoder: 1.7 MB of it, 0.5 MB gzipped). The
   JavaScript is 1.8 MB, 0.5 MB gzipped, most of it deck.gl and MapLibre.
-  Loaded once, then cached.
+  Loaded once, then cached. Until the module runs, a loading screen covers
+  the page (`#loading` in the HTML, `web/src/common/loading.ts`, shared with
+  the reproject page) with the download's progress, or why it failed. The
+  worker fetches the module itself to count the bytes. GitHub Pages gzips
+  it, so Content-Length is the compressed size and the total is the
+  module's size at build time, which `vite.config.ts` defines.
 - **Measured** in headless Chromium on 2026-10-18: a 35 MB BDOT10k file (24,026
   buildings) scans in 0.6 s and reads onto the map in 0.8 s; the 657 MB PRG
   file of lubelskie scans in 7.7 s, and its first 100,000 address points read

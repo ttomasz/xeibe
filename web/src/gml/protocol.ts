@@ -62,6 +62,10 @@ export type ToWorker =
   | { type: 'xml'; id: number; row: number };
 
 export type FromWorker =
+  /** The wasm module's download; then `loaded` or `load-failed`. */
+  | { type: 'loading'; bytes: number; total: number | null }
+  | { type: 'loaded' }
+  | { type: 'load-failed'; message: string }
   | { type: 'files'; files: InputFile[] }
   | { type: 'progress'; bytes: number; total: number }
   /** A read's bytes so far: features of a layer can start late in a file. */

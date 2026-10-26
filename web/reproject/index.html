@@ -6,8 +6,18 @@
     <title>xeibe · Reproject</title>
     <meta name="description" content="Convert coordinates between EPSG CRSs in your browser with xeibe, and see which operation converted each point, among which, and why. Nothing is uploaded." />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d4ed8'/%3E%3Cpath d='M8 9l16 14M24 9L8 23' stroke='white' stroke-width='3.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="../src/common/loading.css" />
   </head>
   <body>
+    <div id="loading">
+      <div class="box">
+        <span class="name">xeibe</span>
+        <p class="what" role="status">Loading the page…</p>
+        <progress max="1"></progress>
+        <p class="detail">xeibe runs in your browser as WebAssembly, downloaded once.</p>
+        <noscript><p class="detail error">This page needs JavaScript.</p></noscript>
+      </div>
+    </div>
     <header class="top">
       <a class="home" href="../">xeibe</a>
       <nav class="pages" aria-label="Pages"><a href="../gml/">GML</a><a href="./" aria-current="page">Reproject</a></nav>
