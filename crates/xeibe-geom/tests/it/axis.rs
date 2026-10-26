@@ -63,6 +63,18 @@ fn crs_mode_follows_the_authority_order_for_every_form() {
 }
 
 #[test]
+fn polar_crss_follow_their_axes_along_meridians() {
+    // EPSG:3031's "E" points north along 90°E and its "N" along 0°E: easting
+    // first, so authority order is as written. UPS South (N,E) is the other
+    // way round.
+    for mode in [|| AxisOrderMode::Crs, || AxisOrderMode::Auto] {
+        assert!(!swaps(mode(), "urn:ogc:def:crs:EPSG::3031"), "{:?}", mode());
+        assert!(!swaps(mode(), "urn:ogc:def:crs:EPSG::6932"), "{:?}", mode());
+        assert!(swaps(mode(), "urn:ogc:def:crs:EPSG::32761"), "{:?}", mode());
+    }
+}
+
+#[test]
 fn a_compound_crs_takes_the_axis_order_of_its_horizontal_part() {
     // NAD83 is latitude-first; the height doesn't matter.
     let nad83 = "urn:ogc:def:crs,crs:EPSG::4269,crs:EPSG::5713";

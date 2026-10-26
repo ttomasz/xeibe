@@ -378,7 +378,7 @@ impl Decider<'_> {
             FirstAxis::Other => Vote {
                 swap: false,
                 reason: format!(
-                    "{authority}:{code}'s first axis points neither east nor north, which a swap can't fix, so the coordinates are left in the file's order"
+                    "{authority}:{code}'s axes aren't an easting and a northing (or longitude and latitude) in either order, which a swap can't fix, so the coordinates are left in the file's order"
                 ),
             },
         })

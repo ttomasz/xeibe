@@ -510,12 +510,30 @@ KIND_ORDINAL = {
 }
 
 
-def first_axis(direction: str) -> int:
-    if direction == "east":
+def first_axis(axes: list[dict]) -> int:
+    """Northing first when PROJ swaps the axes for visualization (pyproj's
+    `always_xy`; `mustAxisOrderBeSwitchedForVisualization` in PROJ's
+    `crs.cpp`): northing-easting, and of the polar axes along meridians only
+    UPS North and South (N,E) and RSPS2000. The other polar CRSs, whose axes
+    both point north (or south) along meridians, are as written: EPSG:3031's
+    "E" points north along 90°E, its "N" north along 0°E."""
+    if not axes:
+        return AXIS_OTHER
+    d0 = axes[0]["direction"]
+    d1 = axes[1]["direction"] if len(axes) > 1 else None
+    if d0 == "east":
         return AXIS_EAST
-    if direction == "north":
+    if (d0, d1) == ("north", "east"):
         return AXIS_NORTH
-    return AXIS_OTHER
+    if d0 != d1 or d0 not in ("north", "south"):
+        return AXIS_OTHER
+    m0, m1 = (a.get("meridian", {}).get("longitude") for a in axes[:2])
+    if m0 is None or m1 is None:
+        return AXIS_OTHER
+    swapped = {"north": [(0, 90), (180, -90)], "south": [(180, 90)]}[d0]
+    if any(abs(m0 - a) < 1e-10 and abs(m1 - b) < 1e-10 for a, b in swapped):
+        return AXIS_NORTH
+    return AXIS_EAST
 
 
 def crs_record(e: Epsg, row: sqlite3.Row) -> dict:
@@ -544,7 +562,7 @@ def crs_record(e: Epsg, row: sqlite3.Row) -> dict:
             else:
                 extra_dimensions += len(part_axes)
 
-    direction = first_axis(axes[0]["direction"]) if axes else AXIS_OTHER
+    direction = first_axis(axes)
 
     # The linear unit matters for ArcByCenterPoint radii; the angular one tells
     # a geographic CRS in gradians from one in degrees.

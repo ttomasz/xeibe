@@ -151,7 +151,8 @@ pub(crate) struct Axes {
     /// Internal (east, north) from the two horizontal values, in SI units
     /// and in the order the axes come.
     inverse: [[f64; 2]; 2],
-    /// The first axis's direction is `north`: xeibe-crs's `NorthOrLat`.
+    /// The first two axes are a northing and an easting
+    /// (`Ctx::northing_first`): xeibe-crs's `NorthOrLat`.
     first_is_north: bool,
 }
 
@@ -259,10 +260,12 @@ impl Axes {
         a[0].same(&b[1]) && a[1].same(&b[0]) && pairwise(&a[2..], &b[2..])
     }
 
-    /// Whether the first axis points north, so data in xeibe's east-first
-    /// order has its first two values swapped against this CRS. Matches
-    /// `xeibe_crs::FirstAxis::NorthOrLat`: a southing or westing first axis
-    /// is not swapped.
+    /// Whether the first two axes are a northing and an easting, so data in
+    /// xeibe's east-first order has its first two values swapped against
+    /// this CRS, as PROJ's `always_xy` swaps them. Matches
+    /// `xeibe_crs::FirstAxis::NorthOrLat`: other axes (southing or westing
+    /// first, northing then westing, the polar axes of EPSG:3031) are not
+    /// swapped.
     pub(crate) fn first_is_northing(&self) -> bool {
         self.first_is_north
     }
@@ -1020,6 +1023,47 @@ impl Ctx<'_> {
         Ok(params)
     }
 
+    /// Whether the first two axes are a northing and an easting, as PROJ
+    /// swaps them for visualization (pyproj's `always_xy`;
+    /// `mustAxisOrderBeSwitchedForVisualization` in PROJ's `crs.cpp`):
+    /// north then east, and of the polar axes along meridians only UPS North
+    /// and South (N,E) and RSPS2000. The other polar CRSs are as written:
+    /// EPSG:3031's "E" points north along 90°E, its "N" north along 0°E.
+    /// `scripts/gen_crs_tables.py` marks the same CRSs `NorthOrLat`.
+    fn northing_first(&self, list: &[Value]) -> Result<bool, Error> {
+        let direction = |i: usize| list.get(i).and_then(|axis| axis["direction"].as_str());
+        let (Some(d0), Some(d1)) = (direction(0), direction(1)) else {
+            return Ok(false);
+        };
+        if (d0, d1) == ("north", "east") {
+            return Ok(true);
+        }
+        if d0 != d1 || !matches!(d0, "north" | "south") {
+            return Ok(false);
+        }
+        let meridian = |i: usize| -> Result<Option<f64>, Error> {
+            let meridian = &list[i]["meridian"];
+            if meridian.is_null() {
+                return Ok(None);
+            }
+            Ok(Some(
+                self.value(&meridian["longitude"], UnitKind::Angle)?
+                    .to_degrees(),
+            ))
+        };
+        let (Some(m0), Some(m1)) = (meridian(0)?, meridian(1)?) else {
+            return Ok(false);
+        };
+        let swapped: &[(f64, f64)] = if d0 == "north" {
+            &[(0.0, 90.0), (180.0, -90.0)]
+        } else {
+            &[(180.0, 90.0)]
+        };
+        Ok(swapped
+            .iter()
+            .any(|(a, b)| (m0 - a).abs() < 1e-10 && (m1 - b).abs() < 1e-10))
+    }
+
     /// `origin` is the projection's longitude of origin, for axes given
     /// along a meridian.
     fn axes(&self, cs: &Value, kind: CsKind, origin: Option<f64>) -> Result<Axes, Error> {
@@ -1118,9 +1162,7 @@ impl Ctx<'_> {
         }
         // The matrix maps (east, north) to the two values; invert it.
         let inverse = [[d / det, -b / det], [-c / det, a / det]];
-        let first_is_north = list
-            .first()
-            .is_some_and(|axis| axis["direction"].as_str() == Some("north"));
+        let first_is_north = self.northing_first(list)?;
         Ok(Axes {
             axes,
             inverse,

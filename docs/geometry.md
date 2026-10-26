@@ -561,6 +561,11 @@ first axis (the CRS's "authority" axis order).
   `scripts/gen_crs_tables.py` and committed, with, for each code: first-axis
   direction, dimension, units and the area of use (for the range check). There is
   no PROJ dependency. See [open question 3](#open-questions-srsname--crs).
+  Northing first means what PROJ swaps for `always_xy`: northing then easting,
+  latitude then longitude, and of the polar CRSs whose axes both point along
+  meridians only UPS North and South (N,E) and RSPS2000. EPSG:3031's "E" points
+  north along 90°E and its "N" north along 0°E, so it is easting first, as GDAL
+  reads it. Northing then westing (Faroe Lambert) is reported, not swapped.
 - A user-supplied table for extra codes and other authorities
   (`CrsTable::with_user_entries`, passed as `AxisOrderOptions::crs_table`). User
   entries win over built-in ones. It can be set from code only, not from the

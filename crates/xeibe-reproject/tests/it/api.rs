@@ -18,6 +18,56 @@ fn east_first_order_swaps_northing_first_crss_only() {
     assert!((450_000.0..520_000.0).contains(&y), "{y}");
 }
 
+/// PROJ 9.8.1's `always_xy` (pyproj 3.8.0) for (1000 km, 2000 km), to each
+/// CRS's geographic CRS. Of the polar CRSs with both axes along meridians,
+/// only UPS North and South (N,E) and RSPS2000 are swapped: the others are
+/// as written (EPSG:3031's "E" points north along 90°E, its "N" along 0°E).
+const POLAR: &[(u32, u32, f64, f64)] = &[
+    (3031, 4326, 26.56505117707799, -69.62866938575715),
+    (3032, 4326, -58.65980825409011, -35.43650425675358),
+    (3276, 4326, -108.43494882292201, -70.03090169172592),
+    (3413, 4326, 108.43494882292201, 69.56876575655875),
+    (3976, 4326, 26.56505117707799, -69.56876575655875),
+    (5041, 4326, -90.0, 81.01066326450201),
+    (5042, 4326, -90.0, -81.01066326450201),
+    (5482, 4764, 104.03624346792647, -54.04366174636288),
+    (6932, 4326, 26.56505117707799, -69.86894542320586),
+    (9354, 4326, 26.56505117707799, -69.21874355612178),
+    (32661, 4326, -90.0, 81.01066326450201),
+    (32761, 4326, -90.0, -81.01066326450201),
+];
+
+#[test]
+fn east_first_order_swaps_polar_axes_as_proj_does() {
+    for &(code, geographic, lon, lat) in POLAR {
+        let t = Transform::from_epsg(code, geographic, AxisOrder::EastFirst).unwrap();
+        let (x, y, _) = t.convert(1_000_000.0, 2_000_000.0, None).unwrap();
+        assert!(
+            (x - lon).abs() < 1e-9 && (y - lat).abs() < 1e-9,
+            "EPSG:{code}: {x} {y}, PROJ {lon} {lat}"
+        );
+        let (e, n, _) = t.inverse().unwrap().convert(lon, lat, None).unwrap();
+        assert!(
+            (e - 1_000_000.0).abs() < 1e-6 && (n - 2_000_000.0).abs() < 1e-6,
+            "EPSG:{code}: {e} {n}"
+        );
+    }
+}
+
+#[test]
+fn east_first_order_keeps_northing_westing_axes() {
+    // Astra Minas Grid: northing, then westing. A swap wouldn't make it x/y,
+    // and PROJ's always_xy keeps it as it is: PROJ 9.8.1 gives
+    // (4915661.955434943, 2590394.630374936) in Campo Inchauspe /
+    // Argentina 2.
+    let t = Transform::from_epsg(5800, 22192, AxisOrder::EastFirst).unwrap();
+    let (x, y, _) = t.convert(10_000.0, 20_000.0, None).unwrap();
+    assert!(
+        (x - 4_915_661.955_434_943).abs() < 1e-6 && (y - 2_590_394.630_374_936).abs() < 1e-6,
+        "{x} {y}"
+    );
+}
+
 #[test]
 fn round_trip_through_a_projection() {
     let t = Transform::from_epsg(4258, 2180, AxisOrder::EastFirst).unwrap();

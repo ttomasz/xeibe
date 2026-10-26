@@ -29,6 +29,37 @@ fn knows_which_crss_are_northing_or_latitude_first() {
 fn axes_that_are_not_east_or_north_are_marked() {
     // Krovak is south-west; swapping alone does not normalize it.
     assert_eq!(get(2065).unwrap().first_axis, FirstAxis::Other);
+    // Northing then westing (Faroe Lambert, a Greenland zone): a swap gives
+    // westing first, and PROJ's always_xy keeps them as they are.
+    for code in [3144, 2218] {
+        assert_eq!(
+            get(code).unwrap().first_axis,
+            FirstAxis::Other,
+            "EPSG:{code}"
+        );
+    }
+}
+
+#[test]
+fn polar_axes_are_swapped_as_proj_swaps_them() {
+    // Both axes point north (or south) along meridians. PROJ's always_xy
+    // swaps only UPS North and South (N,E) and RSPS2000; the others are
+    // easting first as written: EPSG:3031's "E" points north along 90°E,
+    // its "N" along 0°E.
+    for code in [32661, 32761, 5482] {
+        assert_eq!(
+            get(code).unwrap().first_axis,
+            FirstAxis::NorthOrLat,
+            "EPSG:{code}"
+        );
+    }
+    for code in [3031, 3032, 3276, 3413, 3976, 5041, 5042, 6932, 9354] {
+        assert_eq!(
+            get(code).unwrap().first_axis,
+            FirstAxis::EastOrLon,
+            "EPSG:{code}"
+        );
+    }
 }
 
 #[test]

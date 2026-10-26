@@ -46,18 +46,25 @@ pub use datums::{DATUM_ALIASES, DATUMS};
 pub use table::{CRS, EPSG_DATE, EPSG_VERSION, PROJJSON_COUNT};
 pub use units::UNITS_OF_MEASURE;
 
-/// Direction of a CRS's first axis, in the authority's own axis order.
+/// What a CRS's first axis is, in the authority's own axis order.
 ///
 /// This is what decides whether coordinates written in authority order need
-/// swapping; see `docs/geometry.md`, "CRS and axis order".
+/// swapping; see `docs/geometry.md`, "CRS and axis order". It follows PROJ's
+/// normalization for visualization (pyproj's `always_xy`), polar axes
+/// included.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FirstAxis {
-    /// Easting or longitude first: x/y as written.
+    /// Easting or longitude first: x/y as written. Also the polar CRSs whose
+    /// axes both point north or south along meridians and that PROJ keeps as
+    /// they are: EPSG:3031's "E" points north along 90°E, its "N" along 0°E.
     EastOrLon,
     /// Northing or latitude first: y/x, so authority order needs a swap.
+    /// Northing then easting, and of the polar CRSs only UPS North and South
+    /// (N,E) and RSPS2000.
     NorthOrLat,
-    /// Westing, southing, geocentric, ordinal and the like. Swapping the first
-    /// two ordinates does not normalise these, so they are reported, not fixed.
+    /// Westing, southing, northing then westing, geocentric, ordinal and the
+    /// like. Swapping the first two ordinates does not normalise these, so
+    /// they are reported, not fixed.
     Other,
 }
 

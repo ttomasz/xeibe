@@ -97,9 +97,8 @@ def _swapped_for_xy(crs: CRS) -> bool:
     """Whether ``always_xy`` swaps the first two values of this CRS: PROJ's
     ``mustAxisOrderBeSwitchedForVisualization`` (src/iso19111/crs.cpp).
     Northing-easting axes are swapped, and of the polar CRSs with both axes
-    along meridians only UPS North and South (N,E) and RSPS2000. So
-    ``xeibe-reproject``'s own east-first order, which swaps whenever the
-    first axis points north, isn't used for this."""
+    along meridians only UPS North and South (N,E) and RSPS2000.
+    ``xeibe-reproject``'s ``AxisOrder::EastFirst`` follows the same rule."""
     if crs.is_compound:
         components = crs.sub_crs_list
         return bool(components) and _swapped_for_xy(components[0])

@@ -137,7 +137,15 @@ Bessel Namibia ellipsoid below. A unit test also checks that
 
 Polar CRSs define their axes along meridians ("south along 45°E"), so each
 CRS's two horizontal axes are held as a 2 × 2 matrix over (east, north), not
-just a swap and signs.
+just a swap and signs. `AxisOrder::EastFirst` swaps them as PROJ's
+`always_xy` does (`mustAxisOrderBeSwitchedForVisualization`): of the polar
+CRSs only UPS North and South (N,E) and RSPS2000. The others are easting
+first as written: EPSG:3031's "E" points north along 90°E, its "N" north
+along 0°E. Northing then westing (Faroe Lambert, old Greenland zones, Astra
+Minas) is kept as it is too. Until 2026-10-26, any CRS whose first axis
+pointed north was swapped, which turned 31 Antarctic CRSs (3031, 3976,
+EASE-Grid 2.0 South…) and those northing-westing ones round, and left UPS
+North (N,E) as it was.
 
 Known differences from PROJ, kept because xeibe follows EPSG:
 

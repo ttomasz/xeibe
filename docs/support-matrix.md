@@ -311,7 +311,7 @@ file. Not listed individually:
 | FME-produced GML: `EPSG:XXXX` in authority axis order | ✅ Supported | P1 | Detected by `xmlns:fme="http://www.safe.com/gml/fme"`, as in GDAL. `crates/xeibe-geom/tests/it/crs.rs`, `axis.rs`, `crates/xeibe-arrow/tests/it/samples.rs` (Geneva) |
 | `http://www.opengis.net/def/crs/EPSG/0/XXXX` | ✅ Supported | P0 | `crates/xeibe-geom/tests/it/crs.rs`, `axis.rs`, `crates/xeibe-arrow/tests/it/samples.rs` |
 | CRS84 / CRS83 / CRS27 (`urn:ogc:def:crs:OGC:1.3:CRS84`, `…/def/crs/OGC/1.3/CRS84`) | ✅ Supported | P1 | lon/lat. `crates/xeibe-geom/tests/it/crs.rs`, `axis.rs`. Reads use the same parser and decision (`xeibe-arrow::axis`) |
-| Built-in table of northing-first EPSG codes | ✅ Supported | P0 | Generated from the EPSG database. `xeibe-geom` `tests/it/epsg.rs` |
+| Built-in table of northing-first EPSG codes | ✅ Supported | P0 | Generated from the EPSG database. Polar CRSs with both axes along meridians follow PROJ's `always_xy`: only UPS (N,E) and RSPS2000 are northing first, EPSG:3031 is easting first. `xeibe-geom` `tests/it/epsg.rs`, `axis.rs`; `crates/xeibe-crs/tests/it/main.rs` |
 | Axis mode `XY` (always x/y) | ✅ Supported | P0 | `crates/xeibe-geom/tests/it/axis.rs`; `crates/xeibe-arrow/tests/it/samples.rs` (`an_explicit_axis_mode_reads_every_sample_in_the_verified_order`) |
 | Axis mode `YX` (always y/x) | ✅ Supported | P0 | `crates/xeibe-geom/tests/it/axis.rs`; `crates/xeibe-arrow/tests/it/samples.rs` (`an_explicit_axis_mode_reads_every_sample_in_the_verified_order`) |
 | Axis mode `Crs` (CRS decides, for every srsName form) | ✅ Supported | P0 | Follows OGC 09-048r7 §5.3.3 for `EPSG:XXXX`. `crates/xeibe-geom/tests/it/axis.rs`; applied per key by reads (`xeibe-arrow::axis`) |

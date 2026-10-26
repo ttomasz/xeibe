@@ -114,8 +114,10 @@ as of 2026-10-24 all of it is done: the geodesic port, `Geod`, `Proj`,
   (`mustAxisOrderBeSwitchedForVisualization`). Northing-easting axes are
   swapped. Of the polar CRSs with both axes along meridians, only UPS North
   and South (N,E) and RSPS2000 are swapped. `xeibe-reproject`'s own
-  east-first order, which swaps whenever the first axis points north, is
-  not used for this. It differed on EASE-Grid 2.0 and SCAR IMW CRSs.
+  east-first order swapped whenever the first axis pointed north and
+  differed on EASE-Grid 2.0 and SCAR IMW CRSs; it follows the same rule
+  since 2026-10-26 ([reprojection.md](reprojection.md#validation)), but
+  this module still applies `always_xy` itself.
 - **Interim.**
   - The first-use log message names the grids a transformer may read, not
     the operation that read them.

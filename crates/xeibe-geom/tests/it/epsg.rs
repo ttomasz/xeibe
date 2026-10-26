@@ -30,6 +30,18 @@ fn axes_that_are_not_east_or_north_are_marked() {
 }
 
 #[test]
+fn polar_axes_are_as_written_but_for_ups_n_e() {
+    // EPSG:3031's "E" points north along 90°E, its "N" along 0°E: easting
+    // first, as GDAL and PROJ read it. UPS (N,E) is northing first.
+    for code in ["3031", "3976", "6932", "5041", "5042"] {
+        assert_eq!(first_axis(code), FirstAxis::EastOrLon, "EPSG:{code}");
+    }
+    for code in ["32661", "32761"] {
+        assert_eq!(first_axis(code), FirstAxis::NorthOrLat, "EPSG:{code}");
+    }
+}
+
+#[test]
 fn geographic_crss_and_dimensions_are_recorded() {
     let table = CrsTable::builtin();
     let wgs84 = table.get("EPSG", "4326").expect("EPSG:4326");
