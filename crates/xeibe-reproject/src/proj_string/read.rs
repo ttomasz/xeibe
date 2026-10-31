@@ -52,7 +52,7 @@ pub(crate) fn crs(text: &str) -> Result<Value, Error> {
         return Err(invalid("an inverted CRS (+inv)"));
     }
     if p.step.is_init {
-        return p.init().map(ids);
+        return p.init();
     }
     let name = p.step.name.clone();
     if name == "topocentric" {
@@ -376,7 +376,17 @@ fn proj_name(e: &proj_tables::NamedEllipsoid) -> String {
 }
 
 fn well_known(e: &Ellipsoid) -> Option<&'static proj_tables::NamedEllipsoid> {
-    let (a, b, rf) = (e.a, e.b(), e.rf());
+    well_known_ellipsoid(e.a, e.b(), e.rf())
+}
+
+/// `lookForProjWellKnownEllps`: the first of PROJ's ellipsoids with this
+/// semi-major axis and, as PROJ defines it, semi-minor axis or inverse
+/// flattening.
+pub(super) fn well_known_ellipsoid(
+    a: f64,
+    b: f64,
+    rf: f64,
+) -> Option<&'static proj_tables::NamedEllipsoid> {
     proj_tables::ELLIPSOIDS.iter().find(|n| {
         (a - n.a).abs() < 1e-10 * n.a
             && match n.shape {
@@ -1086,21 +1096,41 @@ impl Parser<'_> {
         let code: u32 = code
             .parse()
             .map_err(|_| invalid(&format!("invalid EPSG code {code}")))?;
+        let text = xeibe_crs::projjson(code).ok_or(Error::UnknownCode(code))?;
+        let mut significant = false;
         for kv in &self.step.params {
             if kv.key == "over" {
                 return Err(unsupported("+over".into()));
             }
-            if !((kv.key == "type" && kv.value == "crs")
+            significant |= !((kv.key == "type" && kv.value == "crs")
                 || kv.key == "wktext"
-                || kv.key == "no_defs")
-            {
-                return Err(unsupported(format!(
-                    "+init=epsg: with other parameters (+{})",
-                    kv.key
-                )));
-            }
+                || kv.key == "no_defs");
         }
-        let text = xeibe_crs::projjson(code).ok_or(Error::UnknownCode(code))?;
+        if significant {
+            // PROJ reads the EPSG CRS's own PROJ string, after the
+            // parameters given with it.
+            let mut words = Vec::new();
+            if !self.title.is_empty() {
+                words.push(format!(
+                    "title={}",
+                    tokens::double_quote_if_needed(&self.title)
+                ));
+            }
+            for kv in &self.step.params {
+                words.push(if kv.value.is_empty() {
+                    format!("+{}", kv.key)
+                } else {
+                    format!("+{}={}", kv.key, tokens::double_quote_if_needed(&kv.value))
+                });
+            }
+            words.push(super::write::crs(&serde_json::from_str(text).map_err(
+                |e| Error::Projjson {
+                    crs: format!("EPSG:{code}"),
+                    message: e.to_string(),
+                },
+            )?)?);
+            return crs(&words.join(" "));
+        }
         let epsg: Value = serde_json::from_str(text).map_err(|e| Error::Projjson {
             crs: format!("EPSG:{code}"),
             message: e.to_string(),
@@ -1173,6 +1203,7 @@ impl Parser<'_> {
             }
             _ => Ok(epsg),
         }
+        .map(ids)
     }
 
     /// A key's value, without marking it used.

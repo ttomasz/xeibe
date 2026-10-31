@@ -327,3 +327,115 @@ fn unknown_datum_is_an_error_naming_it() {
     let (x, _, _) = t.convert(15.0, 52.0, None).unwrap();
     assert!((x - 500000.0).abs() < 1e-6, "{x}");
 }
+
+/// The same tokens, numbers within 1e-13 relative: PROJ writes 15
+/// significant digits, and for 15 EPSG CRSs PROJ's database holds an angle
+/// one step from `xeibe-crs`'s (`-91.2944444444444` and `…445`).
+fn same_tokens(a: &str, b: &str) -> bool {
+    let (a, b): (Vec<&str>, Vec<&str>) = (a.split(' ').collect(), b.split(' ').collect());
+    a.len() == b.len()
+        && a.iter().zip(&b).all(|(x, y)| {
+            x == y
+                || match (x.split_once('='), y.split_once('=')) {
+                    (Some((kx, vx)), Some((ky, vy))) if kx == ky => {
+                        let (vx, vy): (Vec<&str>, Vec<&str>) =
+                            (vx.split(',').collect(), vy.split(',').collect());
+                        vx.len() == vy.len()
+                            && vx.iter().zip(&vy).all(|(p, q)| {
+                                match (p.parse::<f64>(), q.parse::<f64>()) {
+                                    (Ok(p), Ok(q)) => (p - q).abs() <= 1e-13 * p.abs().max(q.abs()),
+                                    _ => p == q,
+                                }
+                            })
+                    }
+                    _ => false,
+                }
+        })
+}
+
+/// Where our string for a CRS differs from PROJ's, grouped by the first
+/// token that differs.
+fn writing(dir: &Path) -> (usize, BTreeMap<String, Vec<String>>) {
+    let mut failed: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut written = 0;
+    let mut check = |label: String, json: &str, theirs: Option<&str>| {
+        written += 1;
+        let ours = proj_string::from_projjson(json);
+        match (ours, theirs) {
+            (Ok(ours), Some(theirs)) if same_tokens(&ours, theirs) => {}
+            (Err(_), None) => {}
+            (Ok(ours), Some(theirs)) => {
+                let a: Vec<&str> = ours.split(' ').collect();
+                let b: Vec<&str> = theirs.split(' ').collect();
+                let i = a.iter().zip(&b).take_while(|(x, y)| x == y).count();
+                let key = format!(
+                    "{} != {}",
+                    a.get(i)
+                        .map_or("(end)", |t| t.split('=').next().unwrap_or(t)),
+                    b.get(i)
+                        .map_or("(end)", |t| t.split('=').next().unwrap_or(t))
+                );
+                failed
+                    .entry(key)
+                    .or_default()
+                    .push(format!("{label}: {ours}  !=  {theirs}"));
+            }
+            (Ok(ours), None) => failed
+                .entry("PROJ can't write it, we do".into())
+                .or_default()
+                .push(format!("{label}: {ours}")),
+            (Err(e), Some(theirs)) => failed
+                .entry(format!("we can't write it: {e}"))
+                .or_default()
+                .push(format!("{label}: {theirs}")),
+        }
+    };
+    for r in records(&dir.join("epsg.jsonl")) {
+        let code = r["code"].as_u64().unwrap() as u32;
+        if let Some(json) = xeibe_crs::projjson(code) {
+            check(format!("EPSG:{code}"), json, r["proj4"].as_str());
+        }
+    }
+    for r in records(&dir.join("corpus.jsonl")) {
+        // What PROJ keeps outside the PROJJSON (an extension: `+over`, a
+        // pipeline, a PROJ-only method; `+approx`) can't be written back
+        // from it: the strings the reader refuses, and `+approx`.
+        let srs = r["srs"].as_str().unwrap_or("");
+        if srs.contains("+approx") || proj_string::to_projjson(srs).is_err() {
+            continue;
+        }
+        if r["projjson"].is_object() {
+            check(
+                r["srs"].as_str().unwrap().to_owned(),
+                &r["projjson"].to_string(),
+                r["to_proj4"].as_str(),
+            );
+        }
+    }
+    (written, failed)
+}
+
+fn writing_report(written: usize, failed: &BTreeMap<String, Vec<String>>) -> String {
+    let mut out = format!("{written} CRSs written\n");
+    for (k, v) in failed {
+        out += &format!("{} x {k}\n", v.len());
+        for e in v.iter().take(3) {
+            out += &format!("    {e}\n");
+        }
+    }
+    out
+}
+
+#[test]
+fn proj_strings_write_as_proj_writes_them() {
+    let (written, failed) = writing(&xeibe_testkit::data_dir().join("proj-string"));
+    assert!(failed.is_empty(), "{}", writing_report(written, &failed));
+}
+
+#[test]
+#[ignore = "needs target/proj-string/ (scripts/gen_proj_string_vectors.py --all)"]
+fn every_epsg_crs_writes_as_proj_writes_it_as_a_proj_string() {
+    let (written, failed) = writing(&xeibe_testkit::data_dir().join("../../target/proj-string"));
+    println!("{}", writing_report(written, &failed));
+    assert!(failed.is_empty(), "{}", writing_report(written, &failed));
+}

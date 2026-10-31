@@ -2,7 +2,7 @@
 
 > **Status: designed, 2026-10-24; reviewed, 2026-10-31 (decision 8:
 > unknown datums raise; the PROJ-only projections are still open); PROJ
-> strings read in Rust, 2026-10-31 (step 1, see [Order of work](#order-of-work)).** This is phase 3 of
+> strings read and written in Rust, 2026-10-31 (step 1, see [Order of work](#order-of-work)).** This is phase 3 of
 > [pyproj-compat.md](pyproj-compat.md#phases). Facts about PROJ, pyproj
 > and GeoPandas were checked against PROJ 9.8.1 through pyproj 3.8.0 and
 > GeoPandas 1.2.0, with the oracle database
@@ -241,8 +241,8 @@ these rules:
   without `+alpha` or `+gamma` gets PROJ's two-point checks.
 - **`+init=epsg:CODE`** takes the EPSG CRS from `xeibe-crs`, with the
   conversion's EPSG id and the base CRS's remarks, which PROJ writes.
-  With other parameters it is refused until the writer exists: PROJ
-  re-reads the CRS's own PROJ string with them added.
+  With other parameters (`+towgs84`, `+units`), the CRS's own PROJ string
+  is read with them put first, as PROJ does.
 - **Two fixes outside the reader**, both in
   [reprojection.md](reprojection.md). A projected CRS whose axes both point
   south (or north) along meridians now has PROJ's axes whatever the
@@ -264,12 +264,27 @@ for operations:
   name, else `+a`/`+rf` or `+R`;
 - `+pm`, `+units` or `+to_meter`, `+towgs84` for a Bound CRS, `+no_defs`
   and `+type=crs`;
-- numbers formatted as PROJ formats them (`%.15g`, then its rounding of
-  values close to whole numbers).
+- numbers formatted as PROJ formats them (`%.15g`, after rounding a value
+  within 1e-8 of a tenth to it).
 
-A CRS PROJ can't write as a PROJ string (a compound CRS with a vertical
-part that has no `+geoidgrids`, an engineering CRS) raises `CRSError`, as
-PROJ does.
+A CRS PROJ can't write as a PROJ string (an engineering CRS, a method PROJ
+has no PROJ name for, Mercator with a latitude of origin, TM South
+Orientated with a false easting) raises `CRSError`, as PROJ does.
+
+**As built (2026-10-31).** PROJ writes the same string in its PROJ_4 and
+PROJ_5 conventions for every EPSG CRS, so one writer serves both
+`to_proj4(version)`s. Besides the list above it follows PROJ in writing
+Swiss Oblique Mercator (`somerc`) for Hotine with both angles 90°,
+`+czech` for Krovak's west-south axes, `+lat_0=±90` for Polar
+Stereographic B, Web Mercator's own string, Coordinate Frame rotations
+turned into Position Vector ones in `+towgs84`, and a derived vertical
+CRS as a vertical one (PROJ's database holds EPSG's as plain vertical
+CRSs). For every EPSG CRS (8,883, with the 45 PROJ can't write) and for
+PROJ's reading of each corpus string, the string is PROJ's token for
+token, numbers to 1e-13: for 15 CRSs PROJ's database holds an angle one
+step from `xeibe-crs`'s (`-91.2944444444444` against `…445`). Corpus
+strings whose reading carries what PROJJSON can't hold (`+over`,
+`+approx`, a pipeline) are left out.
 
 ### In `xeibe_proj`
 
@@ -323,8 +338,8 @@ Gates:
 
 **Results of the reader (2026-10-31).** Every one of the 8,838 strings
 PROJ writes for EPSG CRSs reads as PROJ reads it, to 1e-11 relative. Of
-the 366 corpus strings, 115 are no CRS for PROJ either, and we refuse
-them too; 182 read as PROJ reads them; 69 PROJ reads that we refuse, each
+the 369 corpus strings, 115 are no CRS for PROJ either, and we refuse
+them too; 185 read as PROJ reads them; 69 PROJ reads that we refuse, each
 for one of decision 6's reasons: projections only PROJ defines (21: Robinson,
 Mollweide, Geostationary, Peirce Quincuncial, …) or with no CRS method
 (7, `ob_tran`, `mbt_s`), pipelines (16), ellipsoids of other bodies (11),
@@ -333,8 +348,7 @@ Mollweide, Geostationary, Peirce Quincuncial, …) or with no CRS method
 skipped or allowed with their reason: `+approx`, PROJ's approximate
 Transverse Mercator, which is converted with the exact one (2 mm apart
 1° from the central meridian), and Krovak at points far outside its area
-(up to 22 µm). `to_epsg` and `to_proj4` come with the writer and
-`xeibe_proj`.
+(up to 22 µm). `to_epsg` comes with `xeibe_proj`.
 
 ## Sub-objects and builders
 
@@ -463,8 +477,8 @@ imports no Arrow library.
 
 1. **PROJ strings in Rust**: the generator, `proj_string`, the vectors
    script, `@null`, and the error and same-datum rule for unknown datums
-   (decision 8). Gated on the vectors. **Reading done** (2026-10-31): see
-   [the results](#validation); the writer is next.
+   (decision 8). Gated on the vectors. **Done** (2026-10-31): see
+   [Writing](#writing) and [the results](#validation).
 2. **PROJ strings in `xeibe_proj`**, with `Proj`, `from_proj` and the
    warnings, gated on pyproj's suite.
 3. **`install_as_pyproj()` and the GeoPandas runner**, gated on GeoPandas'

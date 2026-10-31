@@ -101,7 +101,7 @@ pub(super) fn syntax(text: &str) -> Syntax {
 }
 
 /// PROJ's `pj_double_quote_string_param_if_needed`.
-fn double_quote_if_needed(s: &str) -> String {
+pub(super) fn double_quote_if_needed(s: &str) -> String {
     if s.contains(' ') {
         format!("\"{}\"", s.replace('"', "\"\""))
     } else {

@@ -88,6 +88,10 @@ EXTRA = [
     "+proj=cea +lon_0=0 +lat_ts=45 +x_0=0 +y_0=0 +ellps=WGS84 +units=m",
     "+init=epsg:4326",
     "+init=epsg:26918 +no_defs",
+    # +init with other parameters: PROJ re-reads the CRS's string with them
+    "+init=epsg:4326 +towgs84=1,2,3",
+    "+init=epsg:26918 +units=ft",
+    "+init=epsg:2180 +ellps=bessel",
     # Unknown datums
     "+proj=longlat +ellps=GRS80",
     "+proj=utm +zone=33 +ellps=GRS80",
