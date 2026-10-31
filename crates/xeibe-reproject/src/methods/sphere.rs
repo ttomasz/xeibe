@@ -64,6 +64,32 @@ impl<U: Unit> Spherical<U> {
         Self::with(unit, params.get(param::LON_NATURAL_ORIGIN)?, params, a)
     }
 
+    /// From PROJ keys (a projection PROJ has no CRS method for): `lon_0`,
+    /// `x_0` and `y_0`, each 0 when absent, on a sphere of radius `a`.
+    pub(crate) fn from_keys(unit: U, params: &Params, a: f64) -> Self {
+        let key = |k: &str| params.key(k).unwrap_or(0.0);
+        Spherical {
+            unit,
+            lon0: key("lon_0"),
+            fe: key("x_0"),
+            fn_: key("y_0"),
+            a,
+            ra: 1.0 / a,
+        }
+    }
+
+    /// The radius forwards, where PROJ's set-up replaces the semi-major
+    /// axis after it has taken 1/a for the inverse (`gs48`, `alsk`,
+    /// `gs50`): the inverse keeps the CRS's own.
+    pub(crate) fn forward_radius(&mut self, a: f64) {
+        self.a = a;
+    }
+
+    /// The central meridian, where PROJ's set-up replaces `lon_0`.
+    pub(crate) fn set_lon0(&mut self, lon0: f64) {
+        self.lon0 = lon0;
+    }
+
     /// With this central meridian and radius.
     pub(crate) fn with(unit: U, lon0: f64, params: &Params, a: f64) -> Result<Self, BuildError> {
         Ok(Spherical {
@@ -113,6 +139,16 @@ pub(crate) fn aacos(v: f64) -> Result<f64, CoordinateError> {
         return Ok(if v < 0.0 { PI } else { 0.0 });
     }
     Ok(v.acos())
+}
+
+/// atan2, 0 at the origin (PROJ's `aatan2`).
+pub(crate) fn aatan2(n: f64, d: f64) -> f64 {
+    const ATOL: f64 = 1e-50;
+    if n.abs() < ATOL && d.abs() < ATOL {
+        0.0
+    } else {
+        n.atan2(d)
+    }
 }
 
 /// √v, 0 for v ≤ 0 (PROJ's `asqrt`).

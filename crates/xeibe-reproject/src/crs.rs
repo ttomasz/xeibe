@@ -491,6 +491,7 @@ impl Crs {
                         methods::BuildError::Invalid(message) => {
                             ctx.invalid(&format!("{method}: {message}"))
                         }
+                        methods::BuildError::Unsupported(what) => ctx.unsupported(&what),
                     })?;
                 let axes = ctx.axes(&value["coordinate_system"], CsKind::Projected)?;
                 (
@@ -501,6 +502,42 @@ impl Crs {
                         method_code,
                         params,
                         stored,
+                    },
+                    axes,
+                )
+            }
+            // A rotated pole (PROJ's `ob_tran` to longitude and latitude):
+            // held as a projection whose output is the turned longitude and
+            // latitude, in radians, on an ellipsoidal coordinate system.
+            "DerivedGeographicCRS" => {
+                let conversion = &value["conversion"];
+                let method = conversion["method"]["name"]
+                    .as_str()
+                    .unwrap_or("unnamed method")
+                    .to_owned();
+                if !methods::is_rotated_pole(&method) {
+                    return Err(ctx.unsupported(&format!("a geographic CRS derived by {method}")));
+                }
+                let datum = ctx.datum(&value["base_crs"])?;
+                let params = ctx.params(conversion)?;
+                let projection = methods::build(None, &method, &params, &datum.ellipsoid).map_err(
+                    |e| match e {
+                        methods::BuildError::Unsupported(what) => ctx.unsupported(&what),
+                        methods::BuildError::Invalid(message) => {
+                            ctx.invalid(&format!("{method}: {message}"))
+                        }
+                        _ => ctx.unsupported(&format!("the projection method {method}")),
+                    },
+                )?;
+                let axes = ctx.axes(&value["coordinate_system"], CsKind::Ellipsoidal)?;
+                (
+                    Kind::Projected {
+                        datum,
+                        projection,
+                        method,
+                        method_code: None,
+                        params,
+                        stored: Vec::new(),
                     },
                     axes,
                 )
@@ -902,7 +939,7 @@ pub(crate) fn projection_error(value: &Value) -> Option<String> {
     } else {
         value
     };
-    if value["type"] != "ProjectedCRS" {
+    if value["type"] != "ProjectedCRS" && value["type"] != "DerivedGeographicCRS" {
         return None;
     }
     let ctx = Ctx { crs: "PROJ string" };
@@ -1121,7 +1158,29 @@ impl Ctx<'_> {
 
     fn params(&self, conversion: &Value) -> Result<Params, Error> {
         let mut params = Params::default();
+        // A projection PROJ has no CRS method for: its flags in the method's
+        // name, its parameters named by PROJ key.
+        let custom = conversion["method"]["name"]
+            .as_str()
+            .and_then(|n| n.strip_prefix("PROJ "));
+        if let Some(custom) = custom {
+            for flag in custom.split(' ').skip(1).filter(|t| !t.is_empty()) {
+                let (k, v) = flag.split_once('=').unwrap_or((flag, ""));
+                params.push_flag(k, v);
+            }
+        }
         for param in conversion["parameters"].as_array().into_iter().flatten() {
+            if custom.is_some() {
+                let name = param["name"]
+                    .as_str()
+                    .ok_or_else(|| self.invalid("a parameter without a name"))?;
+                let raw = param["value"]
+                    .as_f64()
+                    .ok_or_else(|| self.invalid("a parameter without a number"))?;
+                let factor = self.unit(&param["unit"], UnitKind::Scale)?;
+                params.push_key(name, raw * factor);
+                continue;
+            }
             // By name when the definition gives no id, as WKT may.
             let code = methods::parameter_code(param);
             let Some(code) = code else {

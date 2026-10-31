@@ -55,9 +55,10 @@ EPSG names (`"WGS 84"`), as WKT (WKT1 as GDAL and Esri write it, with
 since defined (`"ESRI:102100"`) give the EPSG CRS. PROJ strings
 (`"+proj=utm +zone=33 +datum=WGS84"`), dicts and keyword arguments are read
 as PROJ reads them, for the CRSs PROJ reads into a CRS method: EPSG's, and
-PROJ's own (`+proj=robin`, `moll`, `geos`, …), also on other celestial
-bodies; projections PROJ has no CRS method for (`+proj=mbt_s`) and
-pipelines are an error.
+PROJ's own (`+proj=robin`, `moll`, `geos`, …) and those PROJ names "PROJ
+hammer", rotated poles (`ob_tran`) included, also on other celestial
+bodies; pipelines and options PROJ keeps only as an extension (`+over`) are
+an error.
 `to_proj4()` writes PROJ's string. A CRS whose datum is unknown (a PROJ
 string with `+ellps` but no `+datum`) converts only to CRSs on that datum:
 there is no zero datum shift, as PROJ's ballpark would apply.

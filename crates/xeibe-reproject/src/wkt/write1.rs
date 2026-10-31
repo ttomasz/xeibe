@@ -356,6 +356,9 @@ fn geographic(v: &Value, rule: AxisRule) -> Result<Node, Error> {
     if always {
         args.extend(axis_nodes(list)?);
     }
+    if let Some(e) = crate::proj_string::write::extension(v) {
+        args.push(sub(node("EXTENSION", vec![text("PROJ4"), text(e)])));
+    }
     id(v, &mut args);
     Ok(node("GEOGCS", args))
 }
@@ -425,6 +428,10 @@ fn projected(v: &Value, always: bool) -> Result<Node, Error> {
     let (linear, length) = unit_node(&list[0]["unit"], "metre")?;
     let mut args = vec![text(&crs_name(v)?), sub(geographic_base(base)?)];
     let (projection, extension) = projection(v, &v["conversion"], angle, length)?;
+    // A CRS PROJ keeps a PROJ string for writes that string instead.
+    let extension = crate::proj_string::write::extension(v)
+        .map(str::to_owned)
+        .or(extension);
     args.extend(projection);
     args.push(sub(linear));
     if always
@@ -463,6 +470,15 @@ fn projection(
     };
     let mut args = Vec::new();
     let mut extension = None;
+    // A projection PROJ has no CRS method for: `custom_proj4` and the
+    // conversion's PROJ string.
+    if conversion["method"]["name"]
+        .as_str()
+        .is_some_and(|n| n.starts_with("PROJ "))
+    {
+        args.push(sub(node("PROJECTION", vec![text("custom_proj4")])));
+        return Ok((args, Some(crate::proj_string::write::custom_extension(v)?)));
+    }
     match code {
         Some(1024) => {
             // GDAL's Web Mercator: Mercator_1SP on the datum's ellipsoid,

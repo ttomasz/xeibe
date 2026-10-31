@@ -442,7 +442,13 @@ From a PROJJSON value:
 - **WKT1_GDAL** is the WKT1 table in reverse. Web Mercator gets GDAL's
   `PROJ4` extension back, and Geostationary Satellite (Sweep X), which
   WKT1 has no name for, is written as Sweep Y's `Geostationary_Satellite`
-  with the CRS's PROJ string in a `PROJ4` extension, as PROJ writes it.
+  with the CRS's PROJ string in a `PROJ4` extension, as PROJ writes it. A
+  projection PROJ has no CRS method for ("PROJ hammer") is
+  `PROJECTION["custom_proj4"]` with the conversion's PROJ string, and a
+  CRS whose remarks carry a "PROJ CRS string" gets that string as its
+  `PROJ4` extension.
+- **Derived geographic CRSs** (PROJ's rotated poles) are `GEOGCRS` with
+  `BASEGEOGCRS` and `DERIVINGCONVERSION` in WKT2, written and read.
 - **Axes** follow pyproj's `output_axis_rule` (`wkt::AxisRule`), with
   PROJ's rules for each value:
 

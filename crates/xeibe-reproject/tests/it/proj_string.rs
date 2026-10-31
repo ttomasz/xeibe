@@ -206,7 +206,10 @@ fn check(dir: &Path) -> Report {
             report.check(s, reading.as_object().map(|_| reading));
         }
     }
-    for r in records(&dir.join("methods.jsonl")) {
+    for r in records(&dir.join("methods.jsonl"))
+        .into_iter()
+        .chain(records(&dir.join("custom.jsonl")))
+    {
         report.check(
             r["srs"].as_str().unwrap(),
             r["projjson"].as_object().map(|_| &r["projjson"]),
@@ -402,9 +405,11 @@ fn writing(dir: &Path) -> (usize, BTreeMap<String, Vec<String>>) {
             check(format!("EPSG:{code}"), json, r["proj4"].as_str());
         }
     }
-    for r in records(&dir.join("methods.jsonl")) {
-        // PROJ keeps a string with a `+R_A` it doesn't look up as given.
-        if r["projjson"].is_object() && !r["srs"].as_str().unwrap().contains("+R_A") {
+    for r in records(&dir.join("methods.jsonl"))
+        .into_iter()
+        .chain(records(&dir.join("custom.jsonl")))
+    {
+        if r["projjson"].is_object() {
             check(
                 r["srs"].as_str().unwrap().to_owned(),
                 &r["projjson"].to_string(),
@@ -518,17 +523,17 @@ fn every_proj_string_is_identified_as_proj_identifies_it() {
 /// results being rounded to 1 µm; back to 1e-9°, from PROJ's forward
 /// results). Every string must build a CRS here, but those of `NOT_PORTED`,
 /// which must not.
-fn method_conversions(dir: &Path) -> (usize, Vec<String>) {
+fn method_conversions(path: &Path, not_ported: &[&str]) -> (usize, Vec<String>) {
     let (mut compared, mut failed) = (0, Vec::new());
-    for r in records(&dir.join("methods.jsonl")) {
+    for r in records(path) {
         let srs = r["srs"].as_str().unwrap();
         let Some(points) = r["points"].as_array() else {
             continue;
         };
         let json: Value = serde_json::from_str(&proj_string::to_projjson(srs).unwrap()).unwrap();
         let proj = srs.split(' ').next().unwrap().trim_start_matches("+proj=");
-        let not_ported = NOT_PORTED.contains(&proj);
-        let base = if json["type"] == "ProjectedCRS" {
+        let not_ported = not_ported.contains(&proj);
+        let base = if json["type"] == "ProjectedCRS" || json["type"] == "DerivedGeographicCRS" {
             &json["base_crs"]
         } else {
             &json
@@ -604,9 +609,56 @@ fn method_conversions(dir: &Path) -> (usize, Vec<String>) {
 /// The projections of `methods.jsonl` not yet ported from PROJ.
 const NOT_PORTED: &[&str] = &[];
 
+/// The projections of `custom.jsonl` not yet ported from PROJ.
+const CUSTOM_NOT_PORTED: &[&str] = &[
+    "airocean",
+    "bertin1953",
+    "healpix",
+    "rhealpix",
+    "imoll",
+    "imoll_o",
+    "isea",
+    "calcofi",
+    "s2",
+    "spilhaus",
+    "lsat",
+    "misrsom",
+    "som",
+];
+
+/// The projections PROJ has no CRS method for (`custom.jsonl`), as
+/// `methods.jsonl`'s.
+#[test]
+fn custom_proj_methods_convert_as_in_proj() {
+    let (compared, failed) = method_conversions(
+        &xeibe_testkit::data_dir().join("proj-string/custom.jsonl"),
+        CUSTOM_NOT_PORTED,
+    );
+    assert!(compared > 500, "{compared}");
+    assert!(
+        failed.is_empty(),
+        "{} of {compared}:\n{}",
+        failed.len(),
+        failed
+            .iter()
+            .take(
+                std::env::var("TAKE")
+                    .ok()
+                    .and_then(|t| t.parse().ok())
+                    .unwrap_or(60)
+            )
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
 #[test]
 fn proj_methods_convert_as_in_proj() {
-    let (compared, failed) = method_conversions(&xeibe_testkit::data_dir().join("proj-string"));
+    let (compared, failed) = method_conversions(
+        &xeibe_testkit::data_dir().join("proj-string/methods.jsonl"),
+        NOT_PORTED,
+    );
     assert!(
         failed.is_empty(),
         "{} of {compared}:\n{}",
@@ -709,15 +761,15 @@ fn reading(crs: &Value) -> Value {
 /// and PROJ's WKT (those and WKT1_ESRI) read as PROJ reads it.
 fn method_wkt(dir: &Path) -> (usize, Vec<String>) {
     let (mut compared, mut failed) = (0, Vec::new());
-    for r in records(&dir.join("methods.jsonl")) {
+    for r in records(&dir.join("methods.jsonl"))
+        .into_iter()
+        .chain(records(&dir.join("custom.jsonl")))
+    {
         let srs = r["srs"].as_str().unwrap();
         if !r["projjson"].is_object() {
             continue;
         }
         let json = r["projjson"].to_string();
-        // PROJ writes a string with a `+R_A` it doesn't look up in
-        // WKT1_GDAL's PROJ4 extension.
-        let extension = srs.contains("+R_A");
         for (key, version) in [
             ("WKT2_2019", Some(wkt::Version::Wkt2_2019)),
             ("WKT1_GDAL", Some(wkt::Version::Wkt1Gdal)),
@@ -725,9 +777,7 @@ fn method_wkt(dir: &Path) -> (usize, Vec<String>) {
         ] {
             let entry = &r["wkt"][key];
             let theirs = entry["text"].as_str();
-            if let Some(version) = version
-                && !(extension && key == "WKT1_GDAL")
-            {
+            if let Some(version) = version {
                 compared += 1;
                 match (wkt::from_projjson(&json, version, false), theirs) {
                     (Ok(ours), Some(theirs)) => {
@@ -763,6 +813,10 @@ fn method_wkt(dir: &Path) -> (usize, Vec<String>) {
                 }
                 (Err(_), None) => {}
                 (Ok(_), None) => failed.push(format!("{srs} {key}: read, PROJ can't")),
+                // PROJ writes a "PROJ" method in WKT1_ESRI as `PROJ_tpers`,
+                // which it reads back as a method of that name it can't
+                // convert either.
+                (Err(_), Some(_)) if key == "WKT1_ESRI" && text.contains("PROJECTION[\"PROJ_") => {}
                 (Err(e), Some(_)) => failed.push(format!("{srs} {key}: not read: {e}")),
             }
         }

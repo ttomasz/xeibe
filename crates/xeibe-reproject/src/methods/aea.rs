@@ -1,8 +1,10 @@
-//! Albers Equal Area (EPSG:9822).
+//! Albers Equal Area (EPSG:9822), and Lambert Equal Area Conic (PROJ's
+//! `leac`), which has no CRS method.
 //!
-//! Ported from PROJ 9.8.1 `src/projections/aea.cpp` (`aea`; MIT, see
-//! PROJ-NOTICE.md). EPSG's latitude and longitude of false origin become
-//! `lat_0` and `lon_0`, the two standard parallels `lat_1` and `lat_2`.
+//! Ported from PROJ 9.8.1 `src/projections/aea.cpp` (`aea`, `leac`; MIT,
+//! see PROJ-NOTICE.md). EPSG's latitude and longitude of false origin
+//! become `lat_0` and `lon_0`, the two standard parallels `lat_1` and
+//! `lat_2`. `leac` is Albers with its first parallel at a pole.
 
 use std::f64::consts::FRAC_PI_2;
 
@@ -33,10 +35,45 @@ pub(crate) struct AlbersEqualArea {
 
 impl AlbersEqualArea {
     pub(crate) fn new(params: &Params, ellipsoid: &Ellipsoid) -> Result<Self, BuildError> {
+        Self::with(
+            [
+                params.get(param::LAT_FALSE_ORIGIN)?,
+                params.get(param::LAT_1ST_PARALLEL)?,
+                params.get(param::LAT_2ND_PARALLEL)?,
+            ],
+            [
+                params.get(param::LON_FALSE_ORIGIN)?,
+                params.get(param::EASTING_FALSE_ORIGIN)?,
+                params.get(param::NORTHING_FALSE_ORIGIN)?,
+            ],
+            ellipsoid,
+        )
+    }
+
+    /// Lambert Equal Area Conic from PROJ keys: one standard parallel
+    /// (`lat_1`), the other at the north pole, or the south with `south`.
+    pub(crate) fn leac(params: &Params, ellipsoid: &Ellipsoid) -> Result<Self, BuildError> {
+        let key = |k: &str| params.key(k).unwrap_or(0.0);
+        let pole = if params.flag("south").is_some() {
+            -FRAC_PI_2
+        } else {
+            FRAC_PI_2
+        };
+        Self::with(
+            [key("lat_0"), pole, key("lat_1")],
+            [key("lon_0"), key("x_0"), key("y_0")],
+            ellipsoid,
+        )
+    }
+
+    /// From the latitudes of origin and of the two parallels, and the
+    /// longitude of origin and false easting and northing.
+    fn with(
+        [phi0, phi1, phi2]: [f64; 3],
+        [lon0, fe, fn_]: [f64; 3],
+        ellipsoid: &Ellipsoid,
+    ) -> Result<Self, BuildError> {
         let invalid = |m: &str| BuildError::Invalid(m.to_owned());
-        let phi0 = params.get(param::LAT_FALSE_ORIGIN)?;
-        let phi1 = params.get(param::LAT_1ST_PARALLEL)?;
-        let phi2 = params.get(param::LAT_2ND_PARALLEL)?;
         if phi1.abs() > FRAC_PI_2 {
             return Err(invalid("|lat_1| should be <= 90°"));
         }
@@ -88,9 +125,9 @@ impl AlbersEqualArea {
             authalic = None;
         }
         Ok(AlbersEqualArea {
-            lon0: params.get(param::LON_FALSE_ORIGIN)?,
-            fe: params.get(param::EASTING_FALSE_ORIGIN)?,
-            fn_: params.get(param::NORTHING_FALSE_ORIGIN)?,
+            lon0,
+            fe,
+            fn_,
             a: ellipsoid.a,
             authalic,
             ec,

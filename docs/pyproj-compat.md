@@ -78,12 +78,13 @@ read and written (its steps 1 and 2).
     EPSG's remarks on CRSs and operations in a file of their own, read on
     first use. The wheel grew from 2.0 to 2.2 MB.
 - **Measured** (see [Testing](#testing)):
-  - pyproj's own suite: 439 of its 963 tests pass: 120 before phase 1's
+  - pyproj's own suite: 444 of its 963 tests pass: 120 before phase 1's
     Rust changes, 129 after, 149 with the WKT part of phase 2, 318 with
     `Geod`, 324 with `Proj`, 335 with `to_2d`/`to_3d`, 348 with
     `get_units_map`, 351 with the selection's options, 356 with
     `Transformer.to_json` and `to_wkt`, 438 with PROJ strings, 439 with
-    PROJ's own methods and other celestial bodies.
+    PROJ's own methods and other celestial bodies, 444 with the
+    projections PROJ has no CRS method for.
   - Against the oracle `proj.db`, every EPSG CRS reports what PROJ does,
     scopes, area descriptions and remarks included, except four documented
     differences:
@@ -350,7 +351,7 @@ becomes the package's status tracker.
 | `to_2d`, `to_3d`, `get_geod` | 2 | PROJ's `demoteTo2D` and `promoteTo3D`, with EPSG's 2D–3D twins ([pyproj-phase2.md](pyproj-phase2.md#to_2d-to_3d-get_non_deprecated)), and the `Geod` of the CRS's ellipsoid. **Done.** |
 | `from_wkt`, objects with `to_wkt()` (rasterio, fiona) | 2 | WKT1 (GDAL and ESRI flavours) and WKT2 2015/2019 → PROJJSON, in Rust ([crs-wkt.md](crs-wkt.md)). **Done.** |
 | `to_wkt(version, pretty, output_axis_rule)`, also on the parts (`Datum`, `Ellipsoid`, …) | 2 | WKT2_2019 and WKT1_GDAL from PROJJSON, what GeoPandas, pyogrio and rioxarray ask for; other versions raise ([crs-wkt.md](crs-wkt.md#writing)). Equivalent to PROJ's output, not byte-identical. **Done**: PROJ's token for token for every EPSG CRS but listed differences. |
-| `from_proj4`, `from_dict`, `+proj=…` strings, `CRS(proj=…)` | 3 | Read as PROJ reads them into an EPSG method, with pyproj's preparation and `+init` warning; projections with no CRS method, pipelines and PROJ4 extensions are an error ([pyproj-phase3.md](pyproj-phase3.md#proj-strings)). **Done.** |
+| `from_proj4`, `from_dict`, `+proj=…` strings, `CRS(proj=…)` | 3 | Read as PROJ reads them into an EPSG method, with pyproj's preparation and `+init` warning; pipelines and PROJ4 extensions are an error ([pyproj-phase3.md](pyproj-phase3.md#proj-strings)). **Done.** |
 | `to_proj4`, `to_dict`, `to_string` | 3 | PROJ's string, token for token for every EPSG CRS. **Done.** |
 | Builder classes (`GeographicCRS`, `ProjectedCRS`, `CompoundCRS`, `*Conversion`) | 3 | For the methods `xeibe-reproject` implements. |
 | `to_cf`, `from_cf`, `cs_to_cf` | 3, if asked | pyproj's implementation is pure Python over PROJJSON (MIT), so it could be ported. |
@@ -496,9 +497,9 @@ These are documented in the package README and in its `NotImplementedError` and
    which picks a different operation from PROJ at 38 of 21,132 test points.
 5. **A newer EPSG.** CRS names, supersessions and the operations available
    can differ from those in pyproj's bundled `proj.db`.
-6. **Only EPSG** (and the three OGC CRSs) as an authority, and only
-   projection methods a CRS can name: EPSG's and PROJ's own with a WKT2
-   name (Robinson, Mollweide, …), not those PROJ keeps as "PROJ mbt_s".
+6. **Only EPSG** (and the three OGC CRSs) as an authority, and only the
+   projection methods PROJ makes a CRS of: EPSG's, PROJ's own (Robinson,
+   Mollweide, …) and the "PROJ hammer" methods of the others.
 7. **Text output** (WKT, PROJ strings) is equivalent to PROJ's, not
    identical, and `repr` follows pyproj's layout but not its wording
    character for character.

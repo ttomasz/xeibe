@@ -700,7 +700,7 @@ pub(crate) static PROJECTION_READS: &[(&str, &[&str])] = &[
     ("cc", &[]),
     ("ccon", &["lat_1"]),
     ("cea", &["lat_ts"]),
-    ("chamb", &[]),
+    ("chamb", &["lat_1", "lat_2", "lat_3", "lon_1", "lon_2", "lon_3"]),
     ("col_urban", &["h_0"]),
     ("collg", &[]),
     ("comill", &[]),

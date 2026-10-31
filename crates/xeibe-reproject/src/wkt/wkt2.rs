@@ -796,8 +796,8 @@ fn axis_json(name: &str, abbreviation: &str, direction: &str, unit: &Unit) -> Va
 // --- CRSs ------------------------------------------------------------------
 
 fn geodetic(node: &Node) -> Result<Value, Error> {
-    if node.child(BASE_GEODETIC).is_some() {
-        return Err(unsupported(node, "a derived geodetic or geographic CRS"));
+    if let Some(base) = node.child(BASE_GEODETIC) {
+        return derived_geographic(node, base);
     }
     node.only(&[
         GEODETIC_DATUM,
@@ -830,6 +830,32 @@ fn geodetic(node: &Node) -> Result<Value, Error> {
         o.insert("deformation_models".into(), Value::Array(models));
     }
     o.insert("coordinate_system".into(), cs);
+    finish(node, &mut o)?;
+    Ok(Value::Object(o))
+}
+
+/// `GEOGCRS[…, BASEGEOGCRS[…], DERIVINGCONVERSION[…], …]`: a derived
+/// geographic CRS, such as PROJ's rotated pole (`ob_tran`).
+fn derived_geographic(node: &Node, base: &Node) -> Result<Value, Error> {
+    if !node.keyword.starts_with("GEOG") {
+        return Err(unsupported(node, "a derived geodetic CRS"));
+    }
+    node.only(&[
+        BASE_GEODETIC,
+        UNITS,
+        USAGE,
+        &["DERIVINGCONVERSION", "CS", "AXIS"],
+    ])?;
+    let conv = node
+        .child(&["DERIVINGCONVERSION"])
+        .ok_or_else(|| node.invalid("no DERIVINGCONVERSION"))?;
+    let mut o = named("DerivedGeographicCRS", node)?;
+    o.insert("base_crs".into(), base_geographic(base)?);
+    o.insert(
+        "conversion".into(),
+        conversion(conv, &Unit::metre(), &base_angle_unit(base)?)?,
+    );
+    o.insert("coordinate_system".into(), coordinate_system(node)?);
     finish(node, &mut o)?;
     Ok(Value::Object(o))
 }

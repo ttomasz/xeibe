@@ -369,6 +369,7 @@ impl Writer {
             "CompoundCRS" => self.compound(v),
             "EngineeringCRS" => self.engineering(v),
             "DerivedProjectedCRS" => self.derived_projected(v),
+            "DerivedGeographicCRS" => self.derived_geographic(v),
             "BoundCRS" => bound(v),
             other => Err(Error::Unsupported {
                 crs: v["name"].as_str().unwrap_or("PROJJSON").into(),
@@ -407,6 +408,17 @@ impl Writer {
         args.extend(cs_args(&v["coordinate_system"])?);
         self.finish(v, &mut args)?;
         Ok(node("DERIVEDPROJCRS", args))
+    }
+
+    /// A rotated pole (PROJ's `ob_tran`): `GEOGCRS` with its base and the
+    /// deriving conversion.
+    fn derived_geographic(&mut self, v: &Value) -> Result<Node, Error> {
+        let mut args = vec![text(str_of(v, "name")?)];
+        args.push(sub(base_geographic(&v["base_crs"])?));
+        args.push(sub(conversion("DERIVINGCONVERSION", &v["conversion"])?));
+        args.extend(cs_args(&v["coordinate_system"])?);
+        self.finish(v, &mut args)?;
+        Ok(node("GEOGCRS", args))
     }
 
     fn vertical(&mut self, v: &Value) -> Result<Node, Error> {

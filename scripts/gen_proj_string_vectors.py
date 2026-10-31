@@ -31,6 +31,9 @@ what its `exportToPROJString` writes. PROJ (pyproj 3.8.0) runs on the full
   reading of that (as the changes to the string's PROJJSON), and points over the whole globe converted forwards
   (rounded to 1 µm) and those results back (to 1e-11°). The same file
   is written with and without `--all`.
+* `custom.jsonl`: the same for `CUSTOM_STRINGS`, the projections PROJ
+  has no CRS method for (`hammer`, `ob_tran`, …), which it names
+  "PROJ hammer" with its PROJ string's keys as parameters.
 
 The committed subset (`tests/data/proj-string/`) has the whole corpus and,
 of the EPSG CRSs, `PINNED` plus a few per conversion method. `--all` writes
@@ -223,6 +226,64 @@ METHOD_STRINGS = [
     "+proj=robin +R=1737400",
     "+proj=tmerc +lon_0=10 +a=2 +b=1.5",
 ]
+# The projections PROJ has no CRS method for, which it names "PROJ hammer"
+# with its keys as parameters: each without parameters on a sphere and an
+# ellipsoid, then with its own.
+CUSTOM_PLAIN = [
+    "adams_hemi", "adams_ws1", "adams_ws2", "guyou", "airocean", "airy", "apian",
+    "august", "bacon", "bertin1953", "boggs", "collg", "denoy", "fahey", "fouc",
+    "gins8", "gs48", "gs50", "alsk", "hatano", "healpix", "rhealpix", "imoll",
+    "imoll_o", "isea", "kav5", "kav7", "larr", "lask", "lee_os", "mbt_fps", "mbt_s",
+    "mbtfpp", "mil_os", "nell", "nell_h", "nicol", "ortel", "putp1", "putp2", "putp3",
+    "putp3p", "putp4p", "putp5", "putp5p", "putp6", "putp6p", "rouss", "tcc",
+    "tobmerc", "vandg2", "vandg3", "vandg4", "weren", "calcofi", "s2", "spilhaus",
+    "ups", "hammer", "urmfps", "lcca", "bipc", "ccon",
+]  # fmt: skip
+CUSTOM_STRINGS = [
+    *(f"+proj={p} +R=6371000" for p in CUSTOM_PLAIN),
+    *(f"+proj={p} +ellps=WGS84" for p in CUSTOM_PLAIN),
+    "+proj=adams_ws2 +lon_0=30 +R=6371000",
+    "+proj=airocean +orient=horizontal +R=6371000",
+    "+proj=airy +no_cut +lat_b=30 +R=6371000",
+    "+proj=bipc +ns +R=6371000",
+    "+proj=ccon +lat_1=52 +lon_0=19 +x_0=1000 +ellps=WGS84",
+    "+proj=chamb +lat_1=10 +lon_1=30 +lon_2=40 +R=6371000",
+    "+proj=euler +lat_1=20 +lat_2=50 +lon_0=10 +R=6371000",
+    "+proj=fouc_s +n=0.6 +R=6371000",
+    "+proj=gn_sinu +m=0.5 +n=1.785 +R=6371000",
+    "+proj=hammer +W=0.5 +M=2 +lon_0=10 +R=6371000",
+    "+proj=hammer +W=0.25 +R=6371000",
+    "+proj=healpix +rot_xy=10 +ellps=WGS84",
+    "+proj=rhealpix +north_square=1 +south_square=2 +R=6371000",
+    "+proj=isea +mode=plane +R=6371007.18091875",
+    "+proj=lagrng +W=2 +lat_1=10 +R=6371000",
+    "+proj=lcca +lat_0=40 +lon_0=-100 +k_0=0.9 +x_0=1000 +y_0=-500 +ellps=WGS84",
+    "+proj=leac +lat_1=20 +R=6371000",
+    "+proj=leac +lat_1=-30 +south +ellps=WGS84",
+    "+proj=lsat +lsat=5 +path=10 +ellps=WGS84",
+    "+proj=misrsom +path=10 +ellps=WGS84",
+    "+proj=som +inc_angle=98.2 +ps_rev=0.06868 +asc_lon=64.2 +ellps=WGS84",
+    "+proj=murd1 +lat_1=20 +lat_2=60 +R=6371000",
+    "+proj=murd2 +lat_1=20 +lat_2=60 +R=6371000",
+    "+proj=murd3 +lat_1=20 +lat_2=60 +R=6371000",
+    "+proj=ob_tran +o_proj=moll +o_lat_p=45 +o_lon_p=-90 +lon_0=-90 +R=6371000",
+    "+proj=ob_tran +o_proj=merc +o_lat_p=30 +o_lon_p=20 +lon_0=10 +ellps=WGS84",
+    "+proj=ob_tran +o_proj=longlat +o_lat_p=40 +o_lon_p=10 +lon_0=-170 +R=6371000",
+    "+proj=ob_tran +o_proj=latlon +o_lat_p=39.25 +o_lon_p=0 +lon_0=18 +ellps=WGS84",
+    "+proj=ocea +alpha=30 +lonc=20 +R=6371000",
+    "+proj=ocea +lat_1=10 +lon_1=20 +lat_2=40 +lon_2=50 +ellps=WGS84",
+    "+proj=oea +n=2 +m=3 +theta=10 +R=6371000",
+    "+proj=pconic +lat_1=30 +lat_2=60 +lon_0=-90 +R=6371000",
+    "+proj=rpoly +lat_ts=30 +R=6371000",
+    "+proj=tissot +lat_1=20 +lat_2=60 +R=6371000",
+    "+proj=tpers +lat_0=40 +lon_0=10 +h=3000000 +tilt=10 +azi=20 +R=6371000",
+    "+proj=tpers +lat_0=90 +h=1000000 +tilt=-20 +R=6371000",
+    "+proj=urm5 +n=0.8 +q=1.5 +alpha=20 +R=6371000",
+    "+proj=urmfps +n=0.5 +R=6371000",
+    "+proj=vitk1 +lat_1=20 +lat_2=60 +R=6371000",
+    "+proj=ups +south +ellps=WGS84",
+    "+proj=s2 +UVtoST=quadratic +ellps=WGS84",
+]
 WKT_VERSIONS = ["WKT2_2019", "WKT1_GDAL", "WKT1_ESRI"]
 
 
@@ -286,19 +347,37 @@ def points(srs: str) -> list[list[float]]:
     return out
 
 
+def geodetic_of(crs: pyproj.CRS) -> pyproj.CRS | None:
+    """The geodetic CRS a CRS's points are converted from: a derived
+    geographic CRS's base (pyproj's `geodetic_crs` of one is itself)."""
+    j = crs.to_json_dict()
+    if j["type"] == "DerivedGeographicCRS":
+        return pyproj.CRS.from_json_dict(j["base_crs"])
+    return crs.geodetic_crs
+
+
 def converted(crs: pyproj.CRS, pts: list[list[float]]) -> list[list[float] | None] | None:
     base = crs.source_crs if crs.is_bound else crs
-    if base is None or base.geodetic_crs is None or not (base.is_projected or base.is_geographic):
+    if base is None or geodetic_of(base) is None or not (base.is_projected or base.is_geographic):
         return None
     try:
-        t = pyproj.Transformer.from_crs(base.geodetic_crs, base, always_xy=True)
+        t = pyproj.Transformer.from_crs(geodetic_of(base), base, always_xy=True)
+        forward = lambda lon, lat: t.transform(lon, lat, errcheck=True)  # noqa: E731
     except pyproj.exceptions.ProjError:
-        return None
+        # A projection without an inverse (`airy`): PROJ builds no
+        # transformation, but its projection runs forwards.
+        if not base.is_projected:
+            return None
+        try:
+            p = pyproj.Proj(base)
+        except pyproj.exceptions.CRSError:
+            return None
+        forward = lambda lon, lat: p(lon, lat, errcheck=True)  # noqa: E731
     out: list[list[float] | None] = []
     for lon, lat in pts:
         try:
-            x, y = t.transform(lon, lat, errcheck=True)
-        except pyproj.exceptions.ProjError:
+            x, y = forward(lon, lat)
+        except (pyproj.exceptions.ProjError, pyproj.exceptions.CRSError):
             out.append(None)
             continue
         out.append([x, y] if math.isfinite(x) and math.isfinite(y) else None)
@@ -358,7 +437,7 @@ def method_vector(srs: str) -> dict:
     record["points"] = pts
     record["converted"] = [None if p is None else [round(p[0], 6), round(p[1], 6)] for p in out]
     try:
-        t = pyproj.Transformer.from_crs(crs, crs.geodetic_crs, always_xy=True)
+        t = pyproj.Transformer.from_crs(crs, geodetic_of(crs), always_xy=True)
     except pyproj.exceptions.ProjError:
         record["inverse"] = None  # PROJ has no inverse (wag7)
         return record
@@ -526,6 +605,13 @@ def main() -> int:
         out / "methods.jsonl",
         methods,
         "PROJ strings of PROJ's projections, read, written as WKT and converted by PROJ",
+    )
+    with ProcessPoolExecutor(max_workers=args.jobs, initializer=init_worker) as pool:
+        custom = list(pool.map(method_vector, CUSTOM_STRINGS, chunksize=2))
+    write(
+        out / "custom.jsonl",
+        custom,
+        "PROJ strings of PROJ's projections without a CRS method, read, written and converted by PROJ",
     )
     written = sum(r["proj4"] is not None for r in epsg)
     read = sum(r.get("reading", {}).get("projjson") is not None for r in epsg)

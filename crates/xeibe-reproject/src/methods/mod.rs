@@ -13,15 +13,19 @@ use serde_json::{Value, json};
 use crate::ellipsoid::Ellipsoid;
 use crate::error::CoordinateError;
 
+mod adams;
 mod aea;
 mod aeqd;
 mod authalic_q;
 pub(crate) mod auxlat;
+mod bipc;
 mod bonne;
 mod cass;
 mod cea;
 mod col_urban;
 mod common;
+mod conic;
+mod custom;
 mod eqc;
 mod eqdc;
 mod eqearth;
@@ -40,13 +44,18 @@ pub(crate) use merc::variant_a_as_b;
 mod merc;
 mod mlfn;
 mod nzmg;
+mod ob_tran;
+pub(crate) use ob_tran::is_geographic as is_rotated_pole;
+mod misc;
+mod mod_ster;
 mod omerc;
 mod ortho;
-mod peirce;
+mod pcyl;
 mod perspective;
 mod poly;
 pub(crate) mod proj_codes;
 mod qsc;
+mod rouss;
 mod sch;
 mod sphere;
 mod stere;
@@ -116,15 +125,61 @@ pub(crate) trait Projection: Send + Sync + std::fmt::Debug {
     fn inverse(&self, x: f64, y: f64) -> Result<(f64, f64), CoordinateError>;
 }
 
-/// Conversion parameters by EPSG parameter code, in SI units.
+/// Conversion parameters by EPSG parameter code, in SI units, or for a
+/// projection PROJ has no CRS method for ("PROJ hammer"), by PROJ key, with
+/// the flags of its method's name.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Params {
     values: Vec<(u32, f64)>,
+    keys: Vec<(String, f64)>,
+    flags: Vec<(String, String)>,
 }
 
 impl Params {
     pub(crate) fn push(&mut self, code: u32, value: f64) {
         self.values.push((code, value));
+    }
+
+    pub(crate) fn push_key(&mut self, key: &str, value: f64) {
+        self.keys.push((key.to_owned(), value));
+    }
+
+    /// A flag (`south`, value empty) or a key with a word for its value
+    /// (`o_proj=moll`), from a "PROJ" method's name.
+    pub(crate) fn push_flag(&mut self, key: &str, value: &str) {
+        self.flags.push((key.to_owned(), value.to_owned()));
+    }
+
+    /// A PROJ key's value, in SI units.
+    pub(crate) fn key(&self, key: &str) -> Option<f64> {
+        self.keys.iter().find(|(k, _)| k == key).map(|&(_, v)| v)
+    }
+
+    /// A flag's value: empty for a bare flag, `None` when absent.
+    pub(crate) fn flag(&self, key: &str) -> Option<&str> {
+        self.flags
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    }
+
+    /// The PROJ keys and their values.
+    pub(crate) fn proj_key_values(&self) -> impl Iterator<Item = (&str, f64)> {
+        self.keys.iter().map(|(k, v)| (k.as_str(), *v))
+    }
+
+    /// The flags and their values (empty for a bare flag).
+    pub(crate) fn proj_flags(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.flags.iter().map(|(k, v)| (k.as_str(), v.as_str()))
+    }
+
+    /// Every PROJ key and flag, to check them against what a projection
+    /// takes.
+    pub(crate) fn proj_keys(&self) -> impl Iterator<Item = &str> {
+        self.keys
+            .iter()
+            .map(|(k, _)| k.as_str())
+            .chain(self.flags.iter().map(|(k, _)| k.as_str()))
     }
 
     /// Every parameter, by EPSG code, in SI units.
@@ -138,7 +193,16 @@ impl Params {
     /// for a scale factor, else 0), and for Lambert Conic Conformal (2SP)
     /// the two standard parallels may be swapped.
     pub(crate) fn same(&self, other: &Params, method: Option<u32>) -> bool {
-        self.covered_by(other, method) && other.covered_by(self, method)
+        let close = |a: f64, b: f64| a == b || (a - b).abs() <= 2e-10 * a.abs().max(b.abs());
+        let keys = |a: &Params, b: &Params| {
+            a.keys
+                .iter()
+                .all(|(k, v)| b.key(k).is_some_and(|w| close(*v, w)))
+        };
+        self.covered_by(other, method)
+            && other.covered_by(self, method)
+            && keys(self, other)
+            && keys(other, self)
     }
 
     fn covered_by(&self, other: &Params, method: Option<u32>) -> bool {
@@ -230,6 +294,9 @@ pub(crate) enum BuildError {
     UnknownMethod,
     MissingParameter(u32),
     Invalid(String),
+    /// Something the method can't be built with here, such as a PROJ key
+    /// that changes more than the projection.
+    Unsupported(String),
 }
 
 /// Parameters a method fixes, added where the definition leaves them out.
@@ -237,15 +304,20 @@ pub(crate) fn complete(code: Option<u32>, params: &mut Params) {
     krovak::complete(code, params);
 }
 
-/// The projection for an EPSG method code. The name is only for messages.
+/// The projection for an EPSG method code, or this crate's code of one only
+/// PROJ defines, or by name a "PROJ" method.
 pub(crate) fn build(
     code: Option<u32>,
-    _name: &str,
+    name: &str,
     params: &Params,
     ellipsoid: &Ellipsoid,
 ) -> Result<Arc<dyn Projection>, BuildError> {
     let Some(code) = code else {
-        return Err(BuildError::UnknownMethod);
+        // A projection PROJ has no CRS method for.
+        return match name.strip_prefix("PROJ ") {
+            Some(proj) => custom::build(proj, params, ellipsoid),
+            None => Err(BuildError::UnknownMethod),
+        };
     };
     if code >= proj_codes::FIRST_METHOD {
         return proj_method(code, params, ellipsoid);
@@ -374,8 +446,13 @@ fn proj_method(
         c::SPHERICAL_CROSS_TRACK_HEIGHT => return Ok(Arc::new(sch::Sch::new(params, ellipsoid)?)),
         c::PEIRCE_QUINCUNCIAL_SQUARE | c::PEIRCE_QUINCUNCIAL_DIAMOND => {
             let square = code == c::PEIRCE_QUINCUNCIAL_SQUARE;
+            let shape = if square {
+                adams::Shape::Square
+            } else {
+                adams::Shape::Diamond
+            };
             return Ok(Arc::new(sphere::Spherical::new(
-                peirce::Peirce::new(square),
+                adams::Adams::Peirce(shape),
                 params,
                 ellipsoid,
             )?));

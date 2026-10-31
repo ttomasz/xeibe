@@ -157,12 +157,7 @@ impl World {
                     cy: 1.139_753_528_477 / n,
                 }
             }
-            c::QUARTIC_AUTHALIC => World::Sts {
-                cx: 1.0,
-                cy: 2.0,
-                cp: 0.5,
-                tan_mode: false,
-            },
+            c::QUARTIC_AUTHALIC => World::sts(2.0, 2.0, false),
             c::ROBINSON => World::Robinson,
             c::NATURAL_EARTH => World::NaturalEarth,
             c::NATURAL_EARTH_II => World::NaturalEarth2,
@@ -219,6 +214,17 @@ impl World {
             cx: 2.0 * r / PI,
             cy: r / sp,
             cp: p2 + p2.sin(),
+        }
+    }
+
+    /// `sts.cpp`'s set-up (Quartic Authalic, Kavrayskiy V, Foucaut,
+    /// McBryde-Thomas Flat-Polar Sine).
+    pub(crate) fn sts(p: f64, q: f64, tan_mode: bool) -> World {
+        World::Sts {
+            cx: q / p,
+            cy: p,
+            cp: 1.0 / q,
+            tan_mode,
         }
     }
 

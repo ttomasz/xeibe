@@ -1,15 +1,16 @@
 //! A PROJ string to PROJJSON, the way PROJ 9.8.1 reads it
 //! (`PROJStringParser::createFromPROJString` in `io.cpp`), for the strings
-//! PROJ reads into a geographic, geocentric or projected CRS with an EPSG
-//! method, possibly bound to WGS 84 (`docs/pyproj-phase3.md`, "PROJ
+//! PROJ reads into a geographic, geocentric or projected CRS or a rotated
+//! pole, possibly bound to WGS 84 (`docs/pyproj-phase3.md`, "PROJ
 //! strings").
 //!
 //! PROJ checks a string by building the operation it describes, keeps the
 //! parameters that operation looks up and drops the others. Of those kept,
 //! one the CRS doesn't use (`+over`, `+lon_wrap`, a `+lon_0` on
 //! `+proj=longlat`) is kept only as a `PROJ4` extension of the CRS: such
-//! strings are refused here, as are PROJ-only projections, pipelines and
-//! `+geoidgrids`.
+//! strings are refused here, as are pipelines and `+geoidgrids`. A
+//! projection with no CRS method keeps its keys in a "PROJ hammer" method
+//! instead, and the string in the remarks, as PROJ keeps them.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -176,7 +177,7 @@ fn is_projected(name: &str) -> bool {
 }
 
 /// The keys PROJ's operation `name` looks up, if PROJ has one by that name.
-fn reads(name: &str) -> Option<&'static [&'static str]> {
+pub(crate) fn reads(name: &str) -> Option<&'static [&'static str]> {
     PROJECTION_READS
         .binary_search_by(|(n, _)| (*n).cmp(name))
         .ok()
@@ -615,6 +616,12 @@ impl Parser<'_> {
     fn drop_unread(&mut self) {
         let name = self.step.name.clone();
         let specific: &[&str] = reads(&name).unwrap_or(&[]);
+        // `ob_tran` builds its `o_proj`, which reads keys of its own.
+        let inner: &[&str] = if name == "ob_tran" {
+            reads(self.get("o_proj")).unwrap_or(&[])
+        } else {
+            &[]
+        };
         let geoidgrids = self.step.params.iter().any(|kv| kv.key == "geoidgrids");
         let mut seen: Vec<String> = Vec::new();
         self.step.params.retain(|kv| {
@@ -624,6 +631,7 @@ impl Parser<'_> {
             seen.push(kv.key.clone());
             GENERIC_READS.contains(&kv.key.as_str())
                 || specific.contains(&kv.key.as_str())
+                || inner.contains(&kv.key.as_str())
                 || ((name == "krovak" || name == "mod_krovak") && kv.key == "alpha")
                 || (kv.key == "geoid_crs" && geoidgrids)
         });
@@ -1479,10 +1487,6 @@ impl Parser<'_> {
             _ => {}
         }
         let unit = self.unit("units", "to_meter")?;
-        let unsupported = |what: String| Error::Unsupported {
-            crs: self.text.to_owned(),
-            what,
-        };
         let conversion = if name == "utm" {
             let zone: i64 = atoi(self.get("zone"));
             let north = !self.has("south");
@@ -1493,9 +1497,21 @@ impl Parser<'_> {
             utm(zone as u32, north)
         } else {
             let Some(m) = mapping else {
-                return Err(unsupported(format!(
-                    "+proj={name} (a projection PROJ has no CRS method for: it would be a PROJ-based operation)"
-                )));
+                // A projection with no CRS method: PROJ's "PROJ name".
+                let (conversion, extension) = self.custom_conversion()?;
+                if conversion["method"]["name"]
+                    .as_str()
+                    .is_some_and(|n| OB_TRAN_GEOGRAPHIC.iter().any(|p| n.starts_with(p)))
+                {
+                    return Ok(json!({
+                        "type": "DerivedGeographicCRS",
+                        "name": "unnamed",
+                        "coordinate_system": geodetic["coordinate_system"].clone(),
+                        "base_crs": geodetic,
+                        "conversion": conversion,
+                    }));
+                }
+                return self.finish_projected(geodetic, conversion, &unit, pole, extension);
             };
             let mut parameters = Vec::new();
             for param in m.params {
@@ -1586,13 +1602,8 @@ impl Parser<'_> {
             }
             json!({"name": "unknown", "method": method, "parameters": parameters})
         };
-        let [e, n] = self.axes(&unit, false, pole, false)?;
-        let mut axes = vec![e, n];
-        if let Some(h) = geodetic["coordinate_system"]["axis"].get(2) {
-            axes.push(h.clone());
-        }
-        let cs = json!({"subtype": "Cartesian", "axis": axes});
         if web_mercator {
+            let cs = self.projected_cs(&geodetic, &unit, pole)?;
             return Ok(json!({
                 "type": "ProjectedCRS",
                 "name": web_mercator_name,
@@ -1615,6 +1626,30 @@ impl Parser<'_> {
                 "coordinate_system": cs,
             }));
         }
+        self.finish_projected(geodetic, conversion, &unit, pole, r_a_remark)
+    }
+
+    /// A projected CRS's Cartesian axes in `unit`, with the base's height.
+    fn projected_cs(&self, geodetic: &Value, unit: &Unit, pole: Pole) -> Result<Value, Error> {
+        let [e, n] = self.axes(unit, false, pole, false)?;
+        let mut axes = vec![e, n];
+        if let Some(h) = geodetic["coordinate_system"]["axis"].get(2) {
+            axes.push(h.clone());
+        }
+        Ok(json!({"subtype": "Cartesian", "axis": axes}))
+    }
+
+    /// The projected CRS, with PROJ's remark when PROJ keeps the string as
+    /// an extension (`extension`).
+    fn finish_projected(
+        &self,
+        geodetic: Value,
+        conversion: Value,
+        unit: &Unit,
+        pole: Pole,
+        extension: bool,
+    ) -> Result<Value, Error> {
+        let cs = self.projected_cs(&geodetic, unit, pole)?;
         let name_json = if self.title.is_empty() {
             "unknown"
         } else {
@@ -1627,17 +1662,124 @@ impl Parser<'_> {
             "conversion": conversion,
             "coordinate_system": cs,
         });
-        if r_a_remark {
-            let text: Vec<&str> = self
-                .text
-                .split(' ')
-                .filter(|t| !t.is_empty() && *t != "+type=crs")
-                .collect();
-            crs["remarks"] = json!(format!("PROJ CRS string: {}", text.join(" ")));
+        if extension {
+            crs["remarks"] = json!(format!("PROJ CRS string: {}", self.kept_text()));
         }
         Ok(crs)
     }
+
+    /// The string as PROJ keeps it for an extension: the step and the keys
+    /// its operation reads, without `+type=crs`.
+    fn kept_text(&self) -> String {
+        let mut out = format!("+proj={}", self.step.name);
+        for kv in self.globals.iter().chain(&self.step.params) {
+            if kv.key == "type" && kv.value == "crs" {
+                continue;
+            }
+            out.push_str(" +");
+            out.push_str(&kv.key);
+            if !kv.value.is_empty() {
+                out.push('=');
+                out.push_str(&kv.value);
+            }
+        }
+        out
+    }
+
+    /// The conversion PROJ builds for a projection with no CRS method
+    /// (`buildProjectedCRS`'s last branch): a method named "PROJ" and the
+    /// projection, its flags and its keys with a word for a value
+    /// (`PROJ ob_tran o_proj=moll`), and its other keys as parameters named
+    /// by the key, metres for `x_0`, `y_0`, `h` and `h_0`, unitless for the
+    /// keys PROJ lists, degrees for the rest. PROJ looks none of them up, so
+    /// with any of them it keeps the string as an extension (the `bool`).
+    fn custom_conversion(&self) -> Result<(Value, bool), Error> {
+        const SKIPPED: &[&str] = &[
+            "wktext",
+            "no_defs",
+            "datum",
+            "ellps",
+            "a",
+            "b",
+            "R",
+            "f",
+            "rf",
+            "towgs84",
+            "nadgrids",
+            "geoidgrids",
+            "units",
+            "to_meter",
+            "vunits",
+            "vto_meter",
+            "type",
+        ];
+        let mut name = format!("PROJ {}", self.step.name);
+        let mut parameters = Vec::new();
+        let mut extension = false;
+        for kv in &self.step.params {
+            if SKIPPED.contains(&kv.key.as_str()) {
+                continue;
+            }
+            // A key read otherwise (Peirce Quincuncial's `shape`, which picks
+            // among its CRS methods) isn't an extension.
+            extension |= !kv.used.get();
+            kv.used.set(true);
+            if kv.value.is_empty() {
+                name = format!("{name} {}", kv.key);
+            } else if kv.value.starts_with(|c: char| c.is_ascii_alphabetic()) {
+                name = format!("{name} {}={}", kv.key, kv.value);
+            } else {
+                let bad = || invalid(&format!("invalid value for {}", kv.key));
+                let (value, unit) = if CUSTOM_METRES.contains(&kv.key.as_str()) {
+                    (tokens::number(&kv.value).ok_or_else(bad)?, "metre")
+                } else if CUSTOM_UNITLESS.contains(&kv.key.as_str()) {
+                    (tokens::number(&kv.value).ok_or_else(bad)?, "unity")
+                } else {
+                    (Self::angle_of(&kv.value).ok_or_else(bad)?, "degree")
+                };
+                parameters.push(json!({"name": kv.key, "value": num(value), "unit": unit}));
+            }
+        }
+        let mut conversion = json!({"name": "unknown", "method": {"name": name}});
+        if !parameters.is_empty() {
+            conversion["parameters"] = Value::Array(parameters);
+        }
+        Ok((conversion, extension))
+    }
 }
+
+/// The keys of a "PROJ" method's parameters in metres, and those without a
+/// unit; the others are in degrees.
+const CUSTOM_METRES: &[&str] = &["x_0", "y_0", "h", "h_0"];
+const CUSTOM_UNITLESS: &[&str] = &[
+    "k",
+    "k_0",
+    "north_square",
+    "south_square",
+    "n",
+    "m",
+    "q",
+    "path",
+    "lsat",
+    "W",
+    "M",
+    "aperture",
+    "resolution",
+];
+
+/// Whether a "PROJ" method's parameter with this key is an angle.
+pub(crate) fn is_angular_key(key: &str) -> bool {
+    !CUSTOM_METRES.contains(&key) && !CUSTOM_UNITLESS.contains(&key)
+}
+
+/// The `ob_tran` methods PROJ reads as a derived geographic CRS: a rotated
+/// pole, its output longitude and latitude.
+const OB_TRAN_GEOGRAPHIC: &[&str] = &[
+    "PROJ ob_tran o_proj=longlat",
+    "PROJ ob_tran o_proj=lonlat",
+    "PROJ ob_tran o_proj=latlon",
+    "PROJ ob_tran o_proj=latlong",
+];
 
 #[derive(Debug, Clone, Copy)]
 enum Pole {

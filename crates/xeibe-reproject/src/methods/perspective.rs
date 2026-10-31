@@ -1,6 +1,6 @@
-//! Vertical Perspective (EPSG:9838) and Gnomonic, the perspective
-//! azimuthal projections from a point above the surface and from its
-//! centre.
+//! Vertical Perspective (EPSG:9838), its tilted form (`tpers`, which has
+//! no CRS method) and Gnomonic, the perspective azimuthal projections from
+//! a point above the surface and from its centre.
 //!
 //! Ported from PROJ 9.8.1 `src/projections/nsper.cpp` and `gnom.cpp` (MIT,
 //! see PROJ-NOTICE.md). PROJ maps Vertical Perspective to `nsper`, which is
@@ -39,9 +39,12 @@ fn mode(phi0: f64) -> Mode {
     }
 }
 
-/// Vertical Perspective on the unit sphere (`nsper`, without tilt).
+/// Vertical Perspective on the unit sphere (`nsper`), or tilted (`tpers`).
 #[derive(Debug)]
 pub(crate) struct NearSidedPerspective {
+    /// cos and sin of the azimuth and of the tilt, and the radius over the
+    /// height, for `tpers`.
+    tilt: Option<(f64, f64, f64, f64, f64)>,
     phi0: f64,
     mode: Mode,
     sinph0: f64,
@@ -70,6 +73,7 @@ impl NearSidedPerspective {
         let p = 1.0 + pn1;
         let h = 1.0 / pn1;
         Ok(NearSidedPerspective {
+            tilt: None,
             phi0,
             mode,
             sinph0,
@@ -79,6 +83,16 @@ impl NearSidedPerspective {
             rp: 1.0 / p,
             pfact: (p + 1.0) * h,
         })
+    }
+}
+
+impl NearSidedPerspective {
+    /// Tilted by `tilt` towards the azimuth `azi` (`tpers`).
+    pub(crate) fn tilted(mut self, tilt: f64, azi: f64) -> Self {
+        let (sg, cg) = azi.sin_cos();
+        let (sw, cw) = tilt.sin_cos();
+        self.tilt = Some((cg, sg, cw, sw, 1.0 / self.pn1));
+        self
     }
 }
 
@@ -107,10 +121,22 @@ impl Unit for NearSidedPerspective {
                 y *= cosphi * coslam;
             }
         }
+        if let Some((cg, sg, cw, sw, h)) = self.tilt {
+            let yt = y * cg + x * sg;
+            let ba = 1.0 / (yt * sw * h + cw);
+            return Ok(((x * cg - y * sg) * cw * ba, yt * ba));
+        }
         Ok((x, y))
     }
 
     fn inv(&self, mut x: f64, mut y: f64) -> Result<(f64, f64), CoordinateError> {
+        if let Some((cg, sg, cw, sw, _)) = self.tilt {
+            let yt = 1.0 / (self.pn1 - y * sw);
+            let bm = self.pn1 * x * yt;
+            let bq = self.pn1 * y * cw * yt;
+            x = bm * cg + bq * sg;
+            y = bq * cg - bm * sg;
+        }
         let rh = x.hypot(y);
         if rh.abs() <= EPS10 {
             return Ok((0.0, self.phi0));

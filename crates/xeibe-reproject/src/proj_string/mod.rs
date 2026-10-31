@@ -5,16 +5,17 @@
 //! PROJ strings have no specification: what one means as a CRS is what
 //! PROJ 9.8.1's `PROJStringParser` makes of it, and that is what this
 //! module follows. A string is read when PROJ reads it into a geographic,
-//! geocentric or projected CRS with an EPSG method, or into such a CRS
-//! bound to WGS 84 by `+towgs84` or `+nadgrids`. Anything else is an error
-//! naming what isn't supported: projections only PROJ defines (`robin`,
-//! `moll`), options PROJ keeps only as an extension of the CRS (`+over`,
+//! geocentric or projected CRS (with EPSG's method, one of PROJ's own, or
+//! the "PROJ hammer" method PROJ makes for a projection with neither), a
+//! rotated pole, or such a CRS bound to WGS 84 by `+towgs84` or
+//! `+nadgrids`. Anything else is an error naming what isn't supported:
+//! options PROJ keeps only as an extension of the CRS (`+over`,
 //! `+lon_wrap`), pipelines, and `+geoidgrids`.
 
-mod names;
+pub(crate) mod names;
 pub(crate) mod read;
 mod tokens;
-mod write;
+pub(crate) mod write;
 
 use crate::error::Error;
 

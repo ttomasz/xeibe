@@ -88,9 +88,8 @@ def test_strings_dicts_and_keywords() -> None:
     assert CRS("+proj=utm +datum=WGS84", zone=34).to_epsg() == 32634
     with pytest.raises(CRSError, match="Invalid PROJ string"):
         CRS.from_proj4("EPSG:4326")
-    # Projections without a CRS method, pipelines and PROJ4 extensions are
-    # refused.
-    for s in ("+proj=mbt_s", "+proj=pipeline +step +proj=utm +zone=33", "+proj=longlat +datum=WGS84 +over"):
+    # Pipelines and PROJ4 extensions are refused.
+    for s in ("+proj=pipeline +step +proj=utm +zone=33", "+proj=longlat +datum=WGS84 +over"):
         with pytest.raises(CRSError, match="not supported"):
             CRS(s)
 
@@ -114,6 +113,20 @@ def test_projs_own_methods() -> None:
     # The Moon's datum is unknown to EPSG: no conversion to the Earth's.
     with pytest.raises(ProjError, match="is unknown"):
         Transformer.from_crs(moon, 4326)
+    # A projection PROJ has no CRS method for: "PROJ hammer".
+    hammer = CRS("+proj=hammer +lon_0=10 +R=6371000")
+    assert hammer.to_json_dict()["conversion"]["method"] == {"name": "PROJ hammer"}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        assert hammer.to_proj4() == "+proj=hammer +lon_0=10 +R=6371000 +type=crs"
+    t = Transformer.from_crs(hammer.geodetic_crs, hammer, always_xy=True)
+    assert t.transform(30, 40) == pytest.approx((1809721.2270118664, 4372451.339604651), abs=1e-6)
+    # A rotated pole: a derived geographic CRS.
+    rotated = CRS("+proj=ob_tran +o_proj=longlat +o_lat_p=40 +o_lon_p=10 +lon_0=-170 +R=6371000")
+    assert rotated.is_geographic and rotated.is_derived
+    base = CRS.from_json_dict(rotated.to_json_dict()["base_crs"])
+    t = Transformer.from_crs(base, rotated, always_xy=True)
+    assert t.transform(30, 40) == pytest.approx((-73.53364560572551, 74.71145988741112), abs=1e-9)
 
 
 def test_init_and_its_warning() -> None:

@@ -151,6 +151,12 @@ def projection_reads(sources: dict[str, str]) -> dict[str, list[str]]:
             name = m.group(2)[1:] if m.group(1) == "pj_param" else m.group(2)
             if name not in keys:
                 keys.append(name)
+        # Keys built at run time: `chamb.cpp`'s "rlat_%d" for its three
+        # control points.
+        for m in re.finditer(r'snprintf\([^"]*"\w(\w+_)%d"', src):
+            for i in (1, 2, 3):
+                if m.group(1) + str(i) not in keys:
+                    keys.append(m.group(1) + str(i))
         for name in re.findall(r"PROJ_HEAD\(\s*(\w+)", src):
             out[name] = keys
     return out

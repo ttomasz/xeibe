@@ -50,6 +50,7 @@ test.crs.test_crs::test_init_from_wkt
 test.crs.test_crs::test_init_from_wkt_invalid
 test.crs.test_crs::test_initialize_projparams_with_kwargs
 test.crs.test_crs::test_is_compound
+test.crs.test_crs::test_is_derived
 test.crs.test_crs::test_is_engineering
 test.crs.test_crs::test_is_exact_same_different_type
 test.crs.test_crs::test_is_geocentric
@@ -85,6 +86,7 @@ test.crs.test_crs::test_to_3d[EPSG:2056]
 test.crs.test_crs::test_to_3d[EPSG:4326]
 test.crs.test_crs::test_to_3d__name
 test.crs.test_crs::test_to_dict_from_dict
+test.crs.test_crs::test_to_dict_no_proj4
 test.crs.test_crs::test_to_proj4
 test.crs.test_crs::test_to_proj4_enum
 test.crs.test_crs::test_to_proj4_enum__invalid
@@ -369,6 +371,8 @@ test.test_proj.GeodSharedMemoryBugTestIssue64::test_distances
 test.test_proj.GeodSharedMemoryBugTestIssue64::test_not_shared_memory
 test.test_proj.Geod_NaN_Issue112_Test::test_geod_nans
 test.test_proj.Geod_NoDefs_Issue22_Test::test_geod_nodefs
+test.test_proj.InverseHammerTest::test_forward
+test.test_proj.InverseHammerTest::test_inverse
 test.test_proj.ReprTests::test_ellps_name_round_trip
 test.test_proj.ReprTests::test_sphere
 test.test_proj.TestRadians::test_fwd_radians
@@ -376,6 +380,7 @@ test.test_proj.TestRadians::test_inv_radians
 test.test_proj.TestRadians::test_npts_radians
 test.test_proj::test_equals_different_type
 test.test_proj::test_initialize_proj_crs_no_plus
+test.test_proj::test_initialize_proj_crs_no_proj4
 test.test_proj::test_initialize_projparams_with_kwargs
 test.test_proj::test_is_exact_same_different_type
 test.test_proj::test_network__default

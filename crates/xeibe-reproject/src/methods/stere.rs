@@ -1,5 +1,6 @@
-//! Polar Stereographic variants A (EPSG:9810) and B (EPSG:9829), and the
-//! general oblique and equatorial Stereographic they belong to.
+//! Polar Stereographic variants A (EPSG:9810) and B (EPSG:9829), the
+//! general oblique and equatorial Stereographic they belong to, and
+//! Universal Polar Stereographic.
 //!
 //! Ported from PROJ 9.8.1 `src/projections/stere.cpp` (MIT, see
 //! PROJ-NOTICE.md). PROJ maps variant A to `stere` with `lat_0` = ±90° and a
@@ -73,6 +74,27 @@ impl Stereographic {
             lat_ts,
             params.get(param::FALSE_EASTING)?,
             params.get(param::FALSE_NORTHING)?,
+        )
+    }
+
+    /// Universal Polar Stereographic (PROJ's `ups`, which has no CRS
+    /// method): north, or south with `south`, scale 0.994, false easting
+    /// and northing 2,000 km, central meridian 0, on an ellipsoid only.
+    pub(crate) fn ups(ellipsoid: &Ellipsoid, south: bool) -> Result<Self, BuildError> {
+        if ellipsoid.es == 0.0 {
+            return Err(BuildError::Invalid(
+                "Invalid value for es: only ellipsoidal formulation supported".into(),
+            ));
+        }
+        let pole = if south { -FRAC_PI_2 } else { FRAC_PI_2 };
+        Self::setup(
+            ellipsoid,
+            pole,
+            0.0,
+            0.994,
+            FRAC_PI_2,
+            2_000_000.0,
+            2_000_000.0,
         )
     }
 

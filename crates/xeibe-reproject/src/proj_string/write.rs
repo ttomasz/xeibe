@@ -41,6 +41,11 @@ const PROJ_UNITS: &[(&str, f64)] = &[
 
 /// A CRS's PROJJSON as a PROJ string.
 pub(crate) fn crs(v: &Value) -> Result<String, Error> {
+    // A CRS PROJ keeps a PROJ string for (in its remarks): that string, as
+    // its `exportToPROJString` gives it back.
+    if let Some(text) = extension(v) {
+        return Ok(format!("{} +type=crs", text.replace(" +type=crs", "")));
+    }
     let mut f = Formatter::default();
     f.crs(v)?;
     if !f.has("no_defs") {
@@ -50,6 +55,33 @@ pub(crate) fn crs(v: &Value) -> Result<String, Error> {
         f.param("type", "crs");
     }
     Ok(f.finish())
+}
+
+/// The `PROJ4` extension PROJ writes in WKT1 for a projected CRS whose
+/// method is "PROJ …" (`createPROJExtensionFromCustomProj`): the
+/// conversion's step, flags and parameters, its base's datum, `+wktext` and
+/// `+no_defs`.
+pub(crate) fn custom_extension(crs: &Value) -> Result<String, Error> {
+    let base = &crs["base_crs"];
+    if base["type"] != "GeographicCRS" {
+        return Err(cannot());
+    }
+    let mut f = Formatter::default();
+    f.custom(&crs["conversion"])?;
+    f.datum_info(base)?;
+    f.flag("wktext");
+    f.flag("no_defs");
+    Ok(f.finish())
+}
+
+/// The PROJ string PROJ keeps as a CRS's extension, from its remarks
+/// ("PROJ CRS string: …", up to ". "), as PROJ's `CRS::setProperties`
+/// reads it.
+pub(crate) fn extension(v: &Value) -> Option<&str> {
+    const PREFIX: &str = "PROJ CRS string: ";
+    let remarks = v["remarks"].as_str()?;
+    let rest = &remarks[remarks.find(PREFIX)? + PREFIX.len()..];
+    Some(rest.find(". ").map_or(rest, |end| &rest[..end]))
 }
 
 fn cannot() -> Error {
@@ -126,6 +158,18 @@ impl Formatter {
                 Ok(())
             }
             Some("ProjectedCRS") => self.projected(v),
+            // A rotated pole (`ob_tran`): the conversion, then the base's datum.
+            Some("DerivedGeographicCRS") => {
+                let conv = &v["conversion"];
+                if !conv["method"]["name"]
+                    .as_str()
+                    .is_some_and(|n| n.starts_with("PROJ "))
+                {
+                    return Err(cannot());
+                }
+                self.custom(conv)?;
+                self.datum_info(&v["base_crs"])
+            }
             Some("BoundCRS") => self.bound(v),
             Some("CompoundCRS") => {
                 for c in v["components"].as_array().into_iter().flatten() {
@@ -373,7 +417,10 @@ impl Formatter {
                 ellipsoid_done = true;
                 target_modifiers = false;
             }
-            _ if method_name.starts_with("PROJ ") => return Err(cannot()),
+            _ if method_name.starts_with("PROJ ") => {
+                self.custom(conv)?;
+                done = true;
+            }
             _ if equivalent_name(method_name, "Peirce Quincuncial (Square)")
                 || equivalent_name(method_name, "Peirce Quincuncial (Diamond)") =>
             {
@@ -462,6 +509,46 @@ impl Formatter {
             } else {
                 self.param("units", "m");
             }
+        }
+        Ok(())
+    }
+
+    /// `createPROJExtensionFromCustomProj`: a "PROJ" conversion's step,
+    /// the flags of its name and its parameters, lengths in metres and
+    /// angles in degrees.
+    fn custom(&mut self, conv: &Value) -> Result<(), Error> {
+        let name = conv["method"]["name"].as_str().ok_or_else(cannot)?;
+        let mut tokens = name.split(' ').skip(1);
+        self.add_step(tokens.next().ok_or_else(cannot)?);
+        for t in tokens {
+            match t.split_once('=') {
+                Some((k, v)) => self.param(k, v),
+                None => self.flag(t),
+            }
+        }
+        for p in conv["parameters"].as_array().into_iter().flatten() {
+            let key = p["name"].as_str().ok_or_else(cannot)?;
+            let value = p["value"].as_f64().ok_or_else(cannot)?;
+            let unit = &p["unit"];
+            let kind = match unit {
+                Value::String(s) if s == "degree" => "angle",
+                Value::String(s) if s == "metre" => "length",
+                Value::Object(o) => match o.get("type").and_then(Value::as_str) {
+                    Some("AngularUnit") => "angle",
+                    Some("LinearUnit") => "length",
+                    _ => "other",
+                },
+                _ => "other",
+            };
+            let factor = unit_factor(unit);
+            self.number(
+                key,
+                match kind {
+                    "angle" => value * factor / (std::f64::consts::PI / 180.0),
+                    "length" => value * factor,
+                    _ => value,
+                },
+            );
         }
         Ok(())
     }
