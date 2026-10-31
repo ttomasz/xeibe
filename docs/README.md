@@ -49,6 +49,7 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 | [pyproj-compat.md](pyproj-compat.md) | pyproj-compatible Python package `xeibe_proj` over `xeibe-crs` and `xeibe-reproject`: scope, extras, phases (phases 0 and 1 built) |
 | [crs-wkt.md](crs-wkt.md) | Reading and writing CRS WKT (WKT1, ESRI, WKT2) through PROJJSON, identifying EPSG codes, and Bound CRSs (implemented) |
 | [pyproj-phase2.md](pyproj-phase2.md) | The rest of `xeibe_proj`'s phase 2: the full geodesic port and `Geod`, `Proj`, `to_2d`/`to_3d`, units, selection options, operation JSON/WKT, grid downloads (designed) |
+| [pyproj-phase3.md](pyproj-phase3.md) | `xeibe_proj`'s phase 3: `install_as_pyproj()` and GeoPandas, PROJ strings, builders, CF, GeoArrow, Pyodide (designed) |
 | [web.md](web.md) | Browser page on WebAssembly: layout, map views, inputs, network limits, building it (first version built) |
 | [support-matrix.md](support-matrix.md) | Supported, planned and out-of-scope GML/WFS features (progress tracker) |
 | [testing.md](testing.md) | How the test suites are organized: synthetic tests, the samples, the GDAL reference |

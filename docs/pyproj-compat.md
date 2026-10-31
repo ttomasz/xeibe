@@ -562,6 +562,7 @@ flowchart LR
   its submodules in `sys.modules` under `pyproj`, before GeoPandas is
   imported. It is opt-in and documented as experimental. After that come PROJ
   strings, the builder classes, GeoArrow and Pyodide.
+  Designed in [pyproj-phase3.md](pyproj-phase3.md).
 
 ## Open questions
 
