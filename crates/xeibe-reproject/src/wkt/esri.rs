@@ -137,6 +137,14 @@ pub(super) fn codes(_table: Table, _name: &str) -> Vec<u32> {
     Vec::new()
 }
 
+/// The EPSG CRSs Esri calls `name`, geodetic or projected: what PROJ's
+/// alias table finds a CRS by.
+pub(crate) fn crs_codes(name: &str) -> Vec<u32> {
+    let mut out = codes(Table::GeodeticCrs, name);
+    out.extend(codes(Table::ProjectedCrs, name));
+    out
+}
+
 /// EPSG's name for the CRS Esri calls `name`, preferring a live CRS and,
 /// with `dimension`, one with that many axes.
 pub(super) fn crs_name(table: Table, name: &str, dimension: Option<u8>) -> Option<&'static str> {

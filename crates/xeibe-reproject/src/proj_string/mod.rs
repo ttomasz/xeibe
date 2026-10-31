@@ -12,7 +12,7 @@
 //! `+lon_wrap`), pipelines, and `+geoidgrids`.
 
 mod names;
-mod read;
+pub(crate) mod read;
 mod tokens;
 mod write;
 

@@ -468,7 +468,7 @@ are PROJ's:
 |---|---|
 | 100 | Equivalent, with EPSG's name |
 | 90 | Equivalent, with a name that matches EPSG's or one of its aliases after normalising (`WGS_1984` for "WGS 84") |
-| 70 | Equivalent, under another name; or as for 60, with a datum named "unknown" or "unnamed" |
+| 70 | Equivalent, under another name; or, for a projected CRS, as for 60 with a datum named "unknown…" or "unnamed" |
 | 60 | Equivalent but for the datum, which has no EPSG code or name, and has the EPSG CRS's ellipsoid and prime meridian |
 | 25 | Not equivalent, but the input's `ID`/`AUTHORITY` names this code, or the names match |
 
@@ -520,7 +520,8 @@ flowchart TD
 - **Ranking**: confidence, then live before deprecated, then CRSs whose
   axes are the input's exactly (of UTM zone 30N and its N-E twin, both
   equal to a WKT1 without `AXIS`, the E-N one, as PROJ ranks them), then
-  code. Geographic 2D and 3D are one kind, told apart by their axes,
+  code. A projected CRS without a name (a PROJ string's) ranks its
+  equals by name instead, as PROJ's database search does. Geographic 2D and 3D are one kind, told apart by their axes,
   because EPSG classes some 3D CRSs as 2D (NAD83(FBN), EPSG:8449).
 
 Where it differs from PROJ on purpose:
@@ -530,7 +531,9 @@ Where it differs from PROJ on purpose:
   northing first) is EPSG:2180 at 100. PROJ applies that rule to its name
   search only and gives the `AUTHORITY` 25, so `to_epsg()` is None for
   its own WKT1_GDAL of 2,459 CRSs.
-- **Deprecated CRSs** are candidates; PROJ leaves them out of its search.
+- **Deprecated CRSs** are candidates by name only (for compound and
+  vertical CRSs, always), as PROJ leaves them out of its searches by
+  datum, ellipsoid and conversion.
   A deprecated CRS by its own name ranks before a live one under another
   name: EPSG deprecated NAD83 / South Dakota North (ftUS), EPSG:3454, for
   having South's parameters, so it is equivalent to EPSG:3455, and the
@@ -545,6 +548,28 @@ Where it differs from PROJ on purpose:
 
 Unchanged from PROJ: no **engineering CRS** is identified, not even with
 its `ID`.
+
+**PROJ strings (2026-10-31).** A CRS read from a PROJ string has implicit
+axes, as PROJ marks it (`IMPLICIT_CS`), so it is compared by axis units,
+and a projected one by its first axis's unit whatever its height. Its
+datum is often unknown ("Unknown based on GRS 1980 ellipsoid"), where
+PROJ's rules decide, all now followed (`gen_proj_string_vectors.py`: all
+8,704 readings get PROJ's `to_epsg`, where 3,493 differed before):
+
+- a geographic CRS on such a datum is 60 at best, never `to_epsg`'s 70;
+- a projected one is sought as PROJ's database query
+  (`createProjectedCRSFromExisting`) finds it: the live EPSG projected
+  CRSs with the same method, a semi-major axis within 1e-4 of the stored
+  value (in its own unit, so never one EPSG stores in feet), a base CRS
+  among those the input's base is identified with (on its datum, or for
+  an unknown datum on the same EPSG ellipsoid and of the same dimension),
+  and each degree-valued parameter at the same place with the same code
+  within 1 of the stored value (so never one stored in grads); none when
+  more than 200 match;
+- an unnamed UTM conversion on WGS 84, NAD27 or NAD83 is EPSG's UTM CRS
+  of the zone, PROJ's shortcut;
+- Esri's names and PROJ's approximate name search (an EPSG name
+  containing the input's) find a CRS by name, outside that query.
 
 **Transforming.** `Transform` looks operations between datums up by EPSG
 code. A CRS without one (WKT without ids) now uses the code of the EPSG

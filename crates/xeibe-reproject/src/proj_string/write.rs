@@ -606,8 +606,7 @@ fn mapping(code: Option<u32>, name: &str) -> Option<&'static Method> {
 fn is_grid_method(t: &Value) -> bool {
     let name = t["method"]["name"].as_str().unwrap_or("");
     let code = t["method"]["id"]["code"].as_u64();
-    matches!(code, Some(9613..=9615))
-        || ["NTv1", "NTv2", "NADCON"].iter().any(|n| name.contains(n))
+    matches!(code, Some(9613..=9615)) || ["NTv1", "NTv2", "NADCON"].iter().any(|n| name.contains(n))
 }
 
 /// `Transformation::getTOWGS84Parameters`: a Helmert transformation's

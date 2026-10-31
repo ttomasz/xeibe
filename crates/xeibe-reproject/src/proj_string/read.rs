@@ -25,6 +25,20 @@ use crate::wkt::wkt2::num;
 
 type Obj = Map<String, Value>;
 
+/// A PROJ string's CRS as a PROJJSON value, and whether its axes are
+/// implicit, as PROJ marks a CRS it builds from a PROJ string
+/// (`IMPLICIT_CS`), which identification compares leniently; not the EPSG
+/// CRS of a plain `+init=epsg:`.
+pub(crate) fn read(text: &str) -> Result<(Value, bool), Error> {
+    let init = tokens::syntax(text).steps.first().is_some_and(|s| {
+        s.is_init
+            && s.params.iter().all(|kv| {
+                (kv.key == "type" && kv.value == "crs") || kv.key == "wktext" || kv.key == "no_defs"
+            })
+    });
+    Ok((crs(text)?, !init))
+}
+
 /// A PROJ string's CRS as a PROJJSON value.
 pub(crate) fn crs(text: &str) -> Result<Value, Error> {
     let syntax = tokens::syntax(text);

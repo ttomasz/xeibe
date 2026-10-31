@@ -439,3 +439,59 @@ fn every_epsg_crs_writes_as_proj_writes_it_as_a_proj_string() {
     println!("{}", writing_report(written, &failed));
     assert!(failed.is_empty(), "{}", writing_report(written, &failed));
 }
+
+/// Where the EPSG code our identification gives a string's CRS (as
+/// `CRS.to_epsg()`: its own code, else the best match at confidence 70 or
+/// more) differs from PROJ's `to_epsg()`.
+fn identification(dir: &Path) -> (usize, Vec<String>) {
+    let mut compared = 0;
+    let mut failed = Vec::new();
+    let mut check = |s: &str, theirs: Option<u64>| {
+        let Ok(crs) = Crs::from_proj_string(s) else {
+            return;
+        };
+        compared += 1;
+        let ours = crs
+            .code()
+            .or_else(|| {
+                crs.identify()
+                    .into_iter()
+                    .find(|&(_, c)| c >= 70)
+                    .map(|(code, _)| code)
+            })
+            .map(u64::from);
+        if ours != theirs {
+            failed.push(format!("{s}: {ours:?}, PROJ {theirs:?}"));
+        }
+    };
+    for r in records(&dir.join("corpus.jsonl")) {
+        if let (Some(srs), true) = (r["srs"].as_str(), r["projjson"].is_object()) {
+            check(srs, r["to_epsg"].as_u64());
+        }
+    }
+    for r in records(&dir.join("epsg.jsonl")) {
+        if let (Some(s), true) = (r["proj4"].as_str(), r["reading"]["projjson"].is_object()) {
+            check(s, r["reading"]["to_epsg"].as_u64());
+        }
+    }
+    (compared, failed)
+}
+
+#[test]
+#[ignore = "needs target/proj-string/ (scripts/gen_proj_string_vectors.py --all)"]
+fn every_proj_string_is_identified_as_proj_identifies_it() {
+    let (compared, failed) =
+        identification(&xeibe_testkit::data_dir().join("../../target/proj-string"));
+    println!("{compared} identified, {} differ", failed.len());
+    for f in failed
+        .iter()
+        .take(if std::env::var_os("ALL_FAILED").is_some() {
+            usize::MAX
+        } else {
+            40
+        })
+    {
+        println!("  {f}");
+    }
+    assert!(failed.is_empty());
+}

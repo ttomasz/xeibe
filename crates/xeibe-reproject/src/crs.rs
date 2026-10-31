@@ -88,6 +88,9 @@ pub(crate) enum Kind {
         /// built from: what equivalence compares.
         method_code: Option<u32>,
         params: Params,
+        /// The conversion's parameters as written, in order, for
+        /// identification as PROJ's database query compares them.
+        stored: Vec<StoredParam>,
     },
     /// A gravity-related height or depth. Internally a height in metres,
     /// up, as the third value; the first two carry the horizontal position
@@ -103,6 +106,17 @@ pub(crate) enum Kind {
     /// with no tie to the Earth's shape. Internally (east, north) in metres
     /// in the grid's own plane, as its axes name them.
     Engineering { datum: EngineeringDatum },
+}
+
+/// A conversion parameter as its definition writes it: its EPSG code (0
+/// without one) and value in its own unit, and whether that unit is the
+/// degree while the base CRS's axes are in degrees too, the parameters
+/// PROJ's `createProjectedCRSFromExisting` compares.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct StoredParam {
+    pub(crate) code: u32,
+    pub(crate) value: f64,
+    pub(crate) degree: bool,
 }
 
 /// The datum of an engineering CRS.
@@ -130,6 +144,8 @@ pub(crate) struct Datum {
     pub(crate) key: String,
     pub(crate) name: String,
     pub(crate) ellipsoid: Ellipsoid,
+    /// The ellipsoid's EPSG code: its id, or the EPSG datum's ellipsoid.
+    pub(crate) ellipsoid_code: Option<u32>,
     /// Prime meridian, radians east of Greenwich.
     pub(crate) prime_meridian: f64,
 }
@@ -260,6 +276,25 @@ impl Axes {
         a[0].same(&b[1]) && a[1].same(&b[0]) && pairwise(&a[2..], &b[2..])
     }
 
+    /// Two axes, easting then northing, in metres: PROJ's
+    /// `CartesianCS::createEastingNorthing(metre)`.
+    pub(crate) fn easting_northing_metres(&self) -> bool {
+        self.axes.len() == 2
+            && self.axes[0].along == [1.0, 0.0]
+            && self.axes[1].along == [0.0, 1.0]
+            && self.axes.iter().all(|a| close(a.factor, 1.0))
+    }
+
+    /// The first axes' units alike, whatever the axes' directions and
+    /// whether there is a height: how PROJ compares a projected CRS with
+    /// implicit axes (one read from a PROJ string or WKT1) to an EPSG one.
+    fn same_horizontal_unit(&self, other: &Axes) -> bool {
+        match (self.axes.first(), other.axes.first()) {
+            (Some(x), Some(y)) => close(x.factor, y.factor),
+            _ => false,
+        }
+    }
+
     /// Whether the first two axes are a northing and an easting, so data in
     /// xeibe's east-first order has its first two values swapped against
     /// this CRS, as PROJ's `always_xy` swaps them. Matches
@@ -368,6 +403,15 @@ impl Crs {
         Ok(crs)
     }
 
+    /// A CRS from a PROJ string: see [`crate::proj_string`] for what is
+    /// read.
+    pub fn from_proj_string(text: &str) -> Result<Self, Error> {
+        let (value, implicit_axes) = crate::proj_string::read::read(text)?;
+        let mut crs = Self::from_value(&value)?;
+        crs.implicit_axes = implicit_axes;
+        Ok(crs)
+    }
+
     pub(crate) fn from_value(value: &Value) -> Result<Self, Error> {
         let name = value["name"].as_str().unwrap_or("unnamed CRS").to_owned();
         let code = epsg_id(value);
@@ -417,6 +461,23 @@ impl Crs {
                     .unwrap_or("unnamed method")
                     .to_owned();
                 let method_code = method_id(&conversion["method"]);
+                let is_degree = |u: &Value| match u {
+                    Value::String(s) => s == "degree",
+                    Value::Object(o) => o.get("name").and_then(Value::as_str) == Some("degree"),
+                    _ => false,
+                };
+                let base_degrees = is_degree(&base["coordinate_system"]["axis"][0]["unit"])
+                    || base["coordinate_system"].is_null();
+                let stored = conversion["parameters"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|p| StoredParam {
+                        code: epsg_id(p).unwrap_or(0),
+                        value: p["value"].as_f64().unwrap_or(f64::NAN),
+                        degree: base_degrees && is_degree(&p["unit"]),
+                    })
+                    .collect();
                 let mut params = ctx.params(conversion)?;
                 methods::complete(method_code, &mut params);
                 let projection = methods::build(method_code, &method, &params, &datum.ellipsoid)
@@ -439,6 +500,7 @@ impl Crs {
                         method,
                         method_code,
                         params,
+                        stored,
                     },
                     axes,
                 )
@@ -663,6 +725,11 @@ impl Crs {
                         merc(pb, b).is_some_and(|y| pa.same(&y, Some(9805)))
                     }
                     _ => false,
+                };
+                let same_axes = if relax.axis_directions {
+                    self.axes.same_horizontal_unit(&other.axes)
+                } else {
+                    same_axes
                 };
                 a.same(b, relax) && same_projection && same_axes
             }
@@ -920,10 +987,18 @@ impl Ctx<'_> {
             Value::Null => 0.0,
             pm => self.value(&pm["longitude"], UnitKind::Angle)?,
         };
+        let ellipsoid_code = epsg_id(&datum["ellipsoid"]).or_else(|| {
+            let code = key.strip_prefix("EPSG:")?.parse().ok()?;
+            crate::registry::registry()
+                .datums
+                .get(&code)
+                .map(|d| d.ellipsoid)
+        });
         Ok(Datum {
             key,
             name,
             ellipsoid,
+            ellipsoid_code,
             prime_meridian,
         })
     }

@@ -7,7 +7,7 @@
 //! and [`Crs::identify`](crate::Crs::identify) finds its EPSG code.
 
 pub(crate) mod datums;
-mod esri;
+pub(crate) mod esri;
 mod names;
 mod parse;
 pub(crate) mod wkt1;

@@ -14,13 +14,14 @@
 //! - A deprecated CRS is found too, ranked after live ones of the same
 //!   confidence. PROJ leaves deprecated CRSs out of its search.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
 use xeibe_crs::{CrsKind, DatumKind};
 
-use crate::crs::{Crs, Kind, Relax, oriented_alike};
+use crate::crs::{Crs, Kind, Relax, StoredParam, oriented_alike};
 use crate::name::canonical;
+use crate::registry::GeodeticKind;
 use crate::wkt::datums;
 
 impl Crs {
@@ -110,6 +111,14 @@ impl Crs {
             found.insert(code, (25, false, false));
         }
 
+        // For a CRS without a name (a PROJ string's); a named one keeps
+        // its name's CRS (WGS 84 / TMzn35N, not WGS 84 / UTM zone 35N).
+        if insignificant(&self.name)
+            && let Some(found) = self.utm()
+        {
+            return vec![found];
+        }
+
         let datums = datum_codes(self);
         let method = match &self.horizontal().kind {
             Kind::Projected { method_code, .. } => *method_code,
@@ -134,6 +143,17 @@ impl Crs {
         };
         let same_method = |m: u32| method.is_none_or(|method| alike(method) == alike(m));
         let named = named(&self.name);
+        // Esri's names of EPSG CRSs, which PROJ's database has as aliases.
+        let esri_named = crate::wkt::esri::crs_codes(&self.name);
+        // PROJ's second, approximate search by name: EPSG names containing
+        // this one (Esri's "Nord_Maroc" in "Merchich / Nord Maroc"). What
+        // it finds isn't sought again in the database.
+        let wanted = canonical(&self.name, false);
+        let approximately_named = |code: u32| {
+            !insignificant(&self.name)
+                && wanted.len() > 2
+                && xeibe_crs::get(code).is_some_and(|r| canonical(r.name, false).contains(&wanted))
+        };
         // The ensembles of those datums and their members: EPSG has moved
         // CRSs named "ETRS89 / …" from the ETRS89 ensemble to national
         // members of it, which Esri's and older WKT still have them on.
@@ -142,6 +162,9 @@ impl Crs {
             .flat_map(|&d| crate::datum::relatives(d))
             .filter(|d| !datums.contains(d))
             .collect();
+        let existing = (kind == CrsKind::Projected)
+            .then(|| existing_projected(self, &datums))
+            .flatten();
         let candidates = xeibe_crs::CRS.iter().filter(|r| {
             same_kind(r.kind)
                 && (datums.is_empty()
@@ -155,11 +178,29 @@ impl Crs {
             };
             let by_name = if record.name.trim() == self.name.trim() {
                 100
-            } else if named.contains(&record.code) {
+            } else if named.contains(&record.code) || esri_named.contains(&record.code) {
                 90
             } else {
                 70
             };
+            // PROJ's searches of geodetic and projected CRSs by datum,
+            // ellipsoid and conversion leave deprecated CRSs out; only its
+            // search by name finds them. Compound CRSs it finds by their
+            // parts, deprecated or not.
+            let searched =
+                matches!(kind, CrsKind::Projected | CrsKind::Geocentric) || kind.is_geographic();
+            if record.deprecated && by_name < 90 && searched {
+                continue;
+            }
+            // Unless found by name, a projected CRS is one PROJ's database
+            // query finds.
+            if by_name < 90
+                && let Some(existing) = &existing
+                && !existing.contains(&record.code)
+                && !approximately_named(record.code)
+            {
+                continue;
+            }
             let on_relative = record.datum.is_some_and(|d| relatives.contains(&d));
             let datum_only = Relax {
                 datum_identity: true,
@@ -175,7 +216,13 @@ impl Crs {
             } else if self.matches(&epsg, relax) {
                 (by_name, true)
             } else if datums.is_empty() && self.matches(&epsg, datum_only) {
-                if self.datum().is_some_and(|d| insignificant(&d.name)) {
+                // A projected CRS on a datum named "unknown…" (a PROJ
+                // string's "Unknown based on GRS 1980 ellipsoid") is 70 by
+                // ellipsoid and conversion; a geographic one only 60, as by
+                // ellipsoid alone (PROJ's `ProjectedCRS::identify` and
+                // `GeodeticCRS::identify`).
+                let projected = matches!(self.horizontal().kind, Kind::Projected { .. });
+                if projected && self.datum().is_some_and(|d| insignificant(&d.name)) {
                     (70, false)
                 } else {
                     (60, false)
@@ -219,15 +266,350 @@ impl Crs {
         // with another name: EPSG deprecated NAD83 / South Dakota North
         // (ftUS), EPSG:3454, for having South's parameters, so it is
         // equivalent to EPSG:3455, and the name says which was meant.
-        out.sort_by_key(|f| {
-            (
-                u8::MAX - f.confidence,
-                deprecated(f.code),
-                !f.exact_axes,
-                f.code,
-            )
+        // Projected CRSs of equal confidence come by name, as PROJ sorts
+        // them, after one with the input's own name.
+        // Projected CRSs of equal confidence that PROJ's database query
+        // found (for a CRS without a name, as a PROJ string's) come by
+        // name, as PROJ sorts them.
+        let projected = kind == CrsKind::Projected && insignificant(&self.name);
+        let name = |code: u32| xeibe_crs::get(code).map_or("", |r| r.name);
+        let other_name = |code: u32| name(code).trim() != self.name.trim();
+        out.sort_by(|a, b| {
+            let key = |f: &Found| {
+                if projected {
+                    (
+                        u8::MAX - f.confidence,
+                        other_name(f.code),
+                        false,
+                        false,
+                        name(f.code),
+                    )
+                } else {
+                    (
+                        u8::MAX - f.confidence,
+                        false,
+                        deprecated(f.code),
+                        !f.exact_axes,
+                        "",
+                    )
+                }
+            };
+            key(a).cmp(&key(b)).then(a.code.cmp(&b.code))
         });
         out
+    }
+}
+
+/// The live EPSG geographic CRSs (2D, or 3D for a CRS with a height) a
+/// projected CRS's base is identified with, which PROJ's
+/// `createProjectedCRSFromExisting` looks for projected CRSs on: those on
+/// its datum, or for a datum EPSG doesn't have, those on its ellipsoid
+/// (the same EPSG ellipsoid, or one equal to it) and prime meridian
+/// (`GeodeticCRS::identify`). `None`, no restriction, when there are none.
+fn base_candidates(crs: &Crs, datums: &[u32]) -> Option<HashSet<u32>> {
+    let datum = crs.datum()?;
+    let kind = if crs.dimension() == 3 {
+        GeodeticKind::Geographic3d
+    } else {
+        GeodeticKind::Geographic2d
+    };
+    let registry = crate::registry::registry();
+    let (ellipsoids, meridians) = epsg_shapes();
+    let on_ellipsoid = |code: u32| {
+        let Some(d) = registry.datums.get(&code) else {
+            return false;
+        };
+        let ellipsoid = match datum.ellipsoid_code {
+            Some(e) => d.ellipsoid == e,
+            None => ellipsoids
+                .get(&d.ellipsoid)
+                .is_some_and(|e| e.is(&datum.ellipsoid)),
+        };
+        ellipsoid
+            && meridians
+                .get(&d.prime_meridian)
+                .is_some_and(|&pm| (pm - datum.prime_meridian).abs() < 1e-10)
+    };
+    let set: HashSet<u32> = registry
+        .geodetic
+        .values()
+        .filter(|g| !g.deprecated && g.kind == kind)
+        .filter(|g| {
+            if datums.is_empty() {
+                on_ellipsoid(g.datum)
+            } else {
+                datums.contains(&g.datum)
+            }
+        })
+        .map(|g| g.code)
+        .collect();
+    (!set.is_empty()).then_some(set)
+}
+
+/// An EPSG ellipsoid as PROJ's database stores it, in its own unit (feet
+/// for Clarke 1858): the semi-major axis, and the semi-minor axis or the
+/// inverse flattening, whichever EPSG gives.
+#[derive(Debug, Clone, Copy)]
+struct StoredEllipsoid {
+    a: f64,
+    b: Option<f64>,
+    rf: Option<f64>,
+}
+
+impl StoredEllipsoid {
+    fn of(e: &serde_json::Value) -> Option<Self> {
+        let raw = |v: &serde_json::Value| v.as_f64().or_else(|| v["value"].as_f64());
+        if let Some(r) = raw(&e["radius"]) {
+            return Some(Self {
+                a: r,
+                b: Some(r),
+                rf: None,
+            });
+        }
+        Some(Self {
+            a: raw(&e["semi_major_axis"])?,
+            b: raw(&e["semi_minor_axis"]),
+            rf: e["inverse_flattening"].as_f64(),
+        })
+    }
+
+    /// `createEllipsoidFromExisting`: the stored values against an
+    /// ellipsoid's in metres, within 1e-10.
+    fn is(&self, e: &crate::ellipsoid::Ellipsoid) -> bool {
+        let close = |stored: f64, x: f64| (stored - x).abs() < 1e-10 * stored.abs();
+        let rf = if e.f == 0.0 { 0.0 } else { 1.0 / e.f };
+        close(self.a, e.a)
+            && (self.b.is_some_and(|b| close(b, e.b))
+                || self.rf.is_some_and(|stored| close(stored, rf)))
+    }
+}
+
+fn ellipsoid_json(crs: &serde_json::Value) -> &serde_json::Value {
+    let datum = if crs["datum"].is_object() {
+        &crs["datum"]
+    } else {
+        &crs["datum_ensemble"]
+    };
+    &datum["ellipsoid"]
+}
+
+/// EPSG's ellipsoids as stored and prime meridians in radians, by code,
+/// from the geodetic CRSs that use them.
+fn epsg_shapes() -> &'static (HashMap<u32, StoredEllipsoid>, HashMap<u32, f64>) {
+    static SHAPES: OnceLock<(HashMap<u32, StoredEllipsoid>, HashMap<u32, f64>)> = OnceLock::new();
+    SHAPES.get_or_init(|| {
+        let registry = crate::registry::registry();
+        let (mut ellipsoids, mut meridians) = (HashMap::new(), HashMap::new());
+        for g in registry.geodetic.values() {
+            let Some(d) = registry.datums.get(&g.datum) else {
+                continue;
+            };
+            if ellipsoids.contains_key(&d.ellipsoid) && meridians.contains_key(&d.prime_meridian) {
+                continue;
+            }
+            let Some(json) = xeibe_crs::projjson(g.code)
+                .and_then(|t| serde_json::from_str::<serde_json::Value>(t).ok())
+            else {
+                continue;
+            };
+            if let Some(e) = StoredEllipsoid::of(ellipsoid_json(&json)) {
+                ellipsoids.insert(d.ellipsoid, e);
+            }
+            if let Some(datum) = Crs::from_epsg(g.code).ok().and_then(|c| c.datum().cloned()) {
+                meridians.insert(d.prime_meridian, datum.prime_meridian);
+            }
+        }
+        (ellipsoids, meridians)
+    })
+}
+
+/// A live EPSG projected CRS as PROJ's database query over projected CRSs
+/// sees it: its method, its ellipsoid's semi-major axis as stored (in its
+/// own unit, which PROJ compares with metres), its base CRS and
+/// its conversion's parameters as written.
+struct ProjectedRow {
+    code: u32,
+    name: &'static str,
+    method: u32,
+    a: f64,
+    base: u32,
+    stored: Vec<StoredParam>,
+}
+
+fn projected_rows() -> &'static [ProjectedRow] {
+    static ROWS: OnceLock<Vec<ProjectedRow>> = OnceLock::new();
+    ROWS.get_or_init(|| {
+        xeibe_crs::CRS
+            .iter()
+            .filter(|r| r.kind == CrsKind::Projected && !r.deprecated)
+            .filter_map(|r| {
+                let crs = Crs::from_epsg(r.code).ok()?;
+                let Kind::Projected {
+                    datum,
+                    method_code,
+                    stored,
+                    ..
+                } = &crs.kind
+                else {
+                    return None;
+                };
+                let json: serde_json::Value =
+                    serde_json::from_str(xeibe_crs::projjson(r.code)?).ok()?;
+                let _ = datum;
+                Some(ProjectedRow {
+                    code: r.code,
+                    name: r.name,
+                    method: (*method_code)?,
+                    a: StoredEllipsoid::of(ellipsoid_json(&json["base_crs"]))?.a,
+                    base: json["base_crs"]["id"]["code"].as_u64()? as u32,
+                    stored: stored.clone(),
+                })
+            })
+            .collect()
+    })
+}
+
+/// PROJ's `createProjectedCRSFromExisting`: the live EPSG projected CRSs
+/// with the same method, a semi-major axis within 1e-4, a base its base is
+/// identified as ([`base_candidates`]), and each parameter in degrees at
+/// the same place, with the same code, within 1 of the value as stored
+/// (so not one EPSG stores in grads; Lambert Conic Conformal (2SP)'s
+/// standard parallels in either order). Those with the CRS's name, if any;
+/// none when more than 200 match, as PROJ then gives up.
+fn existing_projected(crs: &Crs, datums: &[u32]) -> Option<HashSet<u32>> {
+    let Kind::Projected {
+        datum,
+        method_code,
+        stored,
+        ..
+    } = &crs.horizontal().kind
+    else {
+        return None;
+    };
+    let Some(method) = *method_code else {
+        return Some(HashSet::new());
+    };
+    let bases = base_candidates(crs, datums);
+    let mut checks = Vec::new();
+    let (mut first, mut second) = (None, None);
+    for (i, p) in stored.iter().enumerate() {
+        if p.code == 0 || p.value.is_nan() {
+            break;
+        }
+        if !p.degree {
+            continue;
+        }
+        match (method, p.code) {
+            (9802, 8823) => first = Some((i, p.value)),
+            (9802, 8824) => second = Some((i, p.value)),
+            _ => checks.push((i, p.code, p.value)),
+        }
+    }
+    let near = |row: &ProjectedRow, i: usize, code: u32, v: f64| {
+        row.stored
+            .get(i)
+            .is_some_and(|q| q.code == code && (q.value - v).abs() <= 1.0)
+    };
+    let rows: Vec<&ProjectedRow> = projected_rows()
+        .iter()
+        .filter(|row| {
+            row.method == method
+                && (row.a - datum.ellipsoid.a).abs() <= 1e-4 * row.a
+                && bases.as_ref().is_none_or(|b| b.contains(&row.base))
+                && checks.iter().all(|&(i, code, v)| near(row, i, code, v))
+                && match (first, second) {
+                    (Some((i1, v1)), Some((i2, v2))) => {
+                        (near(row, i1, 8823, v1) && near(row, i2, 8824, v2))
+                            || (near(row, i1, 8823, v2) && near(row, i2, 8824, v1))
+                    }
+                    _ => true,
+                }
+        })
+        .collect();
+    let named: HashSet<u32> = rows
+        .iter()
+        .filter(|row| canonical(row.name, false) == canonical(&crs.name, false))
+        .map(|row| row.code)
+        .collect();
+    if !named.is_empty() {
+        return Some(named);
+    }
+    if rows.len() > 200 {
+        return Some(HashSet::new());
+    }
+    Some(rows.iter().map(|row| row.code).collect())
+}
+
+impl Crs {
+    /// PROJ's shortcut for UTM (`ProjectedCRS::identify`): a UTM conversion
+    /// with easting and northing in metres on WGS 84, or north of the
+    /// equator on NAD27 or NAD83, is EPSG's UTM CRS of the zone, 100 by
+    /// its name, 90 by an equivalent one, else 70.
+    fn utm(&self) -> Option<Found> {
+        let Kind::Projected {
+            datum,
+            method_code: Some(9807),
+            params,
+            ..
+        } = &self.kind
+        else {
+            return None;
+        };
+        if !self.axes.easting_northing_metres() || datum.prime_meridian != 0.0 {
+            return None;
+        }
+        let value = |code: u32| params.get(code).ok();
+        let lon = value(8802)?.to_degrees();
+        let zone = (lon + 183.0) / 6.0;
+        let north = match value(8807)? {
+            n if n.abs() < 1e-10 => true,
+            n if (n - 10_000_000.0).abs() < 1e-10 => false,
+            _ => return None,
+        };
+        if value(8801)?.to_degrees().abs() >= 1e-10
+            || (value(8805)? - 0.9996).abs() >= 1e-10
+            || value(8806)? != 500_000.0
+            || !(zone > 0.9 && zone < 60.1 && (zone - zone.round()).abs() < 1e-10)
+        {
+            return None;
+        }
+        let zone = zone.round() as u32;
+        let hemisphere = if north { "N" } else { "S" };
+        let old_zone = matches!(zone, 59 | 60);
+        let (name, code) = match datum.key.as_str() {
+            "EPSG:6326" => ("WGS 84", if north { 32600 } else { 32700 } + zone),
+            "EPSG:6267" if north && (zone <= 22 || old_zone) => (
+                "NAD27",
+                if old_zone {
+                    3370 + zone - 59
+                } else {
+                    26700 + zone
+                },
+            ),
+            "EPSG:6269" if north && (zone <= 23 || old_zone) => (
+                "NAD83",
+                if old_zone {
+                    3372 + zone - 59
+                } else {
+                    26900 + zone
+                },
+            ),
+            _ => return None,
+        };
+        let name = format!("{name} / UTM zone {zone}{hemisphere}");
+        let confidence = if name == self.name {
+            100
+        } else if canonical(&name, false) == canonical(&self.name, false) {
+            90
+        } else {
+            70
+        };
+        Some(Found {
+            code,
+            confidence,
+            equivalent: true,
+            exact_axes: true,
+        })
     }
 }
 
