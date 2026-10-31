@@ -15,24 +15,38 @@ Differences from pyproj (``docs/pyproj-compat.md``):
 - EPSG's parameters are used at full precision, where pyproj's PROJ string
   rounds them to 15 digits, and EPSG's prime meridians, where PROJ's names
   ``+pm=paris`` and the like; results differ by about 1e-6 of the unit.
-- ``srs`` is the CRS's ``srs``, not a PROJ string, and the parts that are
-  PROJ strings (``Proj(proj="utm", …)``, ``definition_string``,
-  ``to_latlong_def``) come with phase 3.
+- ``srs`` is the CRS's ``srs``.
 """
 
 from __future__ import annotations
 
 import threading
+import warnings
 from typing import Any
 
 from xeibe_proj import _native, _operation_json
-from xeibe_proj._unsupported import not_yet, out
+from xeibe_proj._unsupported import out
 from xeibe_proj.aoi import AreaOfUse
 from xeibe_proj.crs import CRS
 from xeibe_proj.network import is_network_enabled
 from xeibe_proj.transformer import Transformer, _reject  # pyright: ignore[reportPrivateUsage]
 
 __all__ = ["Proj"]
+
+# PROJ's datum table (`pj_datums` in `datums.cpp`): what `+datum=`
+# expands to in an operation's definition, as (ellipsoid, parameter).
+_PROJ_DATUMS = {
+    "WGS84": ("WGS84", "towgs84=0,0,0"),
+    "GGRS87": ("GRS80", "towgs84=-199.87,74.79,246.62"),
+    "NAD83": ("GRS80", "towgs84=0,0,0"),
+    "NAD27": ("clrk66", "nadgrids=@conus,@alaska,@ntv2_0.gsb,@ntv1_can.dat"),
+    "potsdam": ("bessel", "nadgrids=@BETA2007.gsb"),
+    "carthage": ("clrk80ign", "towgs84=-263.0,6.0,431.0"),
+    "hermannskogel": ("bessel", "towgs84=577.326,90.129,463.919,5.137,1.474,5.297,2.4232"),
+    "ire65": ("mod_airy", "towgs84=482.530,-130.596,564.557,-1.042,-0.214,-0.631,8.15"),
+    "nzgd49": ("intl", "towgs84=59.47,-5.04,187.44,0.47,-0.1,1.024,-4.5993"),
+    "OSGB36": ("airy", "towgs84=446.448,-125.157,542.060,0.1502,0.2470,0.8421,-20.4894"),
+}
 
 
 class Proj(Transformer):
@@ -126,10 +140,23 @@ class Proj(Transformer):
         return None if conversion is None else {"$schema": _operation_json.SCHEMA, **conversion}
 
     def definition_string(self) -> str:
-        raise not_yet("Proj.definition_string", 3)
+        """The projection as PROJ defines it: the CRS's PROJ string without
+        ``+`` and ``+type=crs``, with ``+datum`` spelled out as PROJ's
+        datum table does (``proj=longlat datum=WGS84 no_defs ellps=WGS84
+        towgs84=0,0,0``)."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            words = [w.lstrip("+") for w in self.crs.to_proj4().split() if w != "+type=crs"]
+        datum = next((w.split("=", 1)[1] for w in words if w.startswith("datum=")), None)
+        if datum in _PROJ_DATUMS:
+            ellps, definition = _PROJ_DATUMS[datum]
+            words += [f"ellps={ellps}", definition]
+        return " ".join(words)
 
     def to_latlong_def(self) -> str | None:
-        raise not_yet("Proj.to_latlong_def", 3)
+        """The PROJ string of the CRS's geodetic CRS."""
+        geodetic = self.crs.geodetic_crs
+        return None if geodetic is None else geodetic.to_proj4(4)
 
     def to_latlong(self) -> Proj:
         """The ``Proj`` of the CRS's geodetic CRS."""

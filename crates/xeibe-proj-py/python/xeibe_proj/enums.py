@@ -56,7 +56,7 @@ class WktVersion(BaseEnum):
 
 
 class ProjVersion(BaseEnum):
-    """PROJ string versions (PROJ strings come in phase 3)."""
+    """PROJ string conventions; PROJ writes a CRS's string the same in both."""
 
     PROJ_4 = 4
     PROJ_5 = 5

@@ -2,16 +2,19 @@
 
 Input is an EPSG code in any of its usual spellings, one of OGC's three
 longitude-first CRSs, an old Esri code that EPSG has since defined, WKT
-(WKT1, ESRI's included, and WKT2) or PROJJSON. PROJ strings come in
-phase 3 (``docs/pyproj-compat.md``). WKT is written in WKT2_2019 and
-WKT1_GDAL, and a CRS without an EPSG id is identified by its definition,
-with PROJ's confidence levels (``docs/crs-wkt.md``).
+(WKT1, ESRI's included, and WKT2), PROJJSON, or a PROJ string, dict or
+keyword arguments for the CRSs PROJ reads into an EPSG method
+(``docs/pyproj-phase3.md``, "PROJ strings"). WKT is written in WKT2_2019
+and WKT1_GDAL, PROJ strings as PROJ writes them, and a CRS without an EPSG
+id is identified by its definition, with PROJ's confidence levels
+(``docs/crs-wkt.md``).
 """
 
 from __future__ import annotations
 
 import json
 import re
+import warnings
 from functools import cached_property
 from collections.abc import Sequence
 from typing import Any, NamedTuple, Self, cast
@@ -66,6 +69,9 @@ _WKT = re.compile(
     r"TEMPORALCRS|PARAMETRICCRS)\s*\[",
     re.IGNORECASE,
 )
+
+# A PROJ string's `+key` or `+key=value`, as pyproj's `to_dict` reads it.
+_PROJ_PARAM = re.compile(r"\+(?P<param>\w+)=?(?P<value>\S+)?\s*?")
 
 # What equality ignores: identifiers and descriptions.
 _METADATA = {"$schema", "id", "ids", "remarks", "scope", "area", "bbox", "usages"}
@@ -147,8 +153,8 @@ def _from_string(text: str) -> JsonDict:
         except json.JSONDecodeError as e:
             raise CRSError(f"invalid PROJJSON: {e}") from None
         return _check_projjson(projjson)
-    if s.startswith("+") or s.lower().startswith("proj="):
-        raise not_yet("CRS from a PROJ string", 3)
+    if _is_proj_string(s):
+        return _from_proj_string(_prepare_from_proj_string(s))
     if _WKT.match(s):
         return _from_wkt(text)
     if m := _GML_SRS.fullmatch(s):
@@ -177,6 +183,70 @@ def _from_string(text: str) -> JsonDict:
     if code is not None:
         return _epsg_json(code)
     raise CRSError(f"Invalid projection: {text}: not an EPSG code, OGC CRS, WKT, PROJJSON or EPSG name")
+
+
+# PROJ strings. `_prepare_from_dict` and `_prepare_from_proj_string` are
+# pyproj 3.8.0's (MIT, see NOTICE.md): what a CRS from a dict or a PROJ
+# string hands PROJ, and so the `srs`.
+
+
+def _is_proj_string(text: str) -> bool:
+    """pyproj's ``is_proj``: not WKT, with a ``=``; URLs and PROJJSON,
+    which may have one too, aren't."""
+    s = text.strip()
+    return "=" in s and not _WKT.match(s) and not s.startswith(("{", "http://", "https://"))
+
+
+def _prepare_from_dict(projparams: dict[str, Any], allow_json: bool = True) -> str:
+    if "proj" not in projparams and "init" not in projparams and allow_json:
+        return json.dumps(projparams)
+    pjargs: list[str] = []
+    for key, value in projparams.items():
+        if isinstance(value, (list, tuple)):
+            value = ",".join(str(v) for v in cast(Sequence[object], value))
+        if value is None or str(value) == "True":
+            pjargs.append(f"+{key}")
+        elif str(value) == "False":
+            pass
+        else:
+            pjargs.append(f"+{key}={value}")
+    return _prepare_from_proj_string(" ".join(pjargs))
+
+
+def _prepare_from_proj_string(in_crs_string: str) -> str:
+    in_crs_string = re.sub(r"[\s+]?=[\s+]?", "=", in_crs_string.lstrip())
+    starting_params = ("+init", "+proj", "init", "proj")
+    if not in_crs_string.startswith(starting_params):
+        kvpairs: list[str] = []
+        first_item_inserted = False
+        for kvpair in in_crs_string.split():
+            if not first_item_inserted and kvpair.startswith(starting_params):
+                kvpairs.insert(0, kvpair)
+                first_item_inserted = True
+            else:
+                kvpairs.append(kvpair)
+        in_crs_string = " ".join(kvpairs)
+    if "type=crs" not in in_crs_string:
+        in_crs_string += " +type=crs" if "+" in in_crs_string else " type=crs"
+    in_crs_string = in_crs_string.replace("+init=EPSG", "+init=epsg").strip()
+    if in_crs_string.startswith(("+init", "init")):
+        warnings.warn(
+            "'+init=<authority>:<code>' syntax is deprecated. "
+            "'<authority>:<code>' is the preferred initialization method. "
+            "When making the change, be mindful of axis order changes: "
+            "https://pyproj4.github.io/pyproj/stable/gotchas.html"
+            "#axis-order-changes-in-proj-6",
+            FutureWarning,
+            stacklevel=4,
+        )
+    return in_crs_string
+
+
+def _from_proj_string(srs: str) -> JsonDict:
+    try:
+        return _check_projjson(json.loads(_native.proj_string_to_projjson(srs)))
+    except CRSError as e:
+        raise CRSError(f"Invalid projection: {srs}: ({e})") from None
 
 
 def _check_projjson(projjson: object) -> JsonDict:
@@ -216,8 +286,9 @@ def _definition(value: object, ignore_axis_order: bool) -> object:
 class CRS:
     """A coordinate reference system.
 
-    ``CRS(x)`` takes what ``CRS.from_user_input`` takes. PROJ parameters as
-    keyword arguments (``CRS(proj="utm", zone=33)``) come in phase 3.
+    ``CRS(x)`` takes what ``CRS.from_user_input`` takes, and PROJ
+    parameters as keyword arguments (``CRS(proj="utm", zone=33)``), added
+    to a PROJ string or dict given as ``x``, as in pyproj.
     """
 
     _projjson: JsonDict
@@ -225,7 +296,11 @@ class CRS:
 
     def __init__(self, projparams: Any = None, **kwargs: Any) -> None:
         if kwargs:
-            raise not_yet("CRS from PROJ parameters", 3)
+            base = "" if not projparams else _prepared(projparams)
+            srs = " ".join((base, _prepare_from_dict(kwargs, allow_json=False)))
+            srs = _prepare_from_proj_string(srs)
+            self._projjson, self._srs = _from_proj_string(srs), srs
+            return
         if projparams is None:
             raise CRSError("Invalid CRS input: None")
         if isinstance(projparams, CRS):
@@ -301,11 +376,18 @@ class CRS:
 
     @classmethod
     def from_proj4(cls, in_proj_string: str) -> Self:
-        raise not_yet("CRS.from_proj4", 3)
+        """A CRS from a PROJ string (``"+proj=utm +zone=33 +datum=WGS84"``),
+        for the CRSs PROJ reads into an EPSG method; ``+init=epsg:CODE``
+        with pyproj's ``FutureWarning``."""
+        if not _is_proj_string(in_proj_string):
+            raise CRSError(f"Invalid PROJ string: {in_proj_string}")
+        return cls.from_user_input(_prepare_from_proj_string(in_proj_string))
 
     @classmethod
     def from_dict(cls, proj_dict: dict[str, Any]) -> Self:
-        raise not_yet("CRS.from_dict", 3)
+        """A CRS from a dict of PROJ parameters (``{"proj": "utm", "zone":
+        33}``), or of PROJJSON."""
+        return cls.from_user_input(_prepare_from_dict(proj_dict))
 
     @classmethod
     def from_cf(cls, in_cf: dict[str, Any], ellipsoidal_cs: Any = None, cartesian_cs: Any = None, vertical_cs: Any = None) -> Self:
@@ -693,10 +775,50 @@ class CRS:
             ) from None
 
     def to_proj4(self, version: Any = 5) -> str:
-        raise not_yet("CRS.to_proj4", 3)
+        """The CRS as a PROJ string, as PROJ writes it, with pyproj's
+        ``UserWarning`` that a PROJ string loses information. PROJ writes
+        the same string for a CRS in either ``version``."""
+        from xeibe_proj.enums import ProjVersion
+
+        warnings.warn(
+            "You will likely lose important projection information when "
+            "converting to a PROJ string from another format. See: "
+            "https://proj.org/faq.html#what-is-the-best-format-for-describing-"
+            "coordinate-reference-systems",
+            stacklevel=2,
+        )
+        ProjVersion.create(version)
+        try:
+            return _native.to_proj4(json.dumps(self._projjson))
+        except CRSError:
+            raise CRSError("CRS cannot be converted to a PROJ string.") from None
 
     def to_dict(self) -> dict[str, Any]:
-        raise not_yet("CRS.to_dict", 3)
+        """The PROJ string's parameters, parsed as pyproj parses them."""
+
+        def parse(value: str) -> Any:
+            if value.lower() == "true":
+                return True
+            if value.lower() == "false":
+                return False
+            try:
+                return int(value)
+            except ValueError:
+                pass
+            try:
+                return float(value)
+            except ValueError:
+                pass
+            parts = value.split(",")
+            return [float(p.strip()) for p in parts] if len(parts) > 1 else value
+
+        out_: dict[str, Any] = {}
+        for m in _PROJ_PARAM.finditer(self.to_proj4()):
+            key, value = m.groups()
+            parsed = None if value is None else parse(value)
+            if parsed is not False:
+                out_[key] = parsed
+        return out_
 
     def to_cf(self, wkt_version: Any = None, errcheck: bool = False) -> dict[str, Any]:
         raise not_yet("CRS.to_cf", 3)
@@ -755,9 +877,12 @@ class CRS:
             return None
 
     def _native_input(self) -> str:
-        """What ``xeibe-reproject`` reads the CRS from: its WKT when it
-        was made from WKT, else its PROJJSON."""
-        return self._srs if _WKT.match(self._srs) else json.dumps(self._projjson)
+        """What ``xeibe-reproject`` reads the CRS from: its WKT or PROJ
+        string when it was made from one (their axes are implicit, which
+        identification compares leniently, as in PROJ), else its PROJJSON."""
+        if _WKT.match(self._srs) or _is_proj_string(self._srs):
+            return self._srs
+        return json.dumps(self._projjson)
 
     def equals(self, other: Any, ignore_axis_order: bool = False) -> bool:
         """Whether both CRSs define the same coordinates, as PROJ's
@@ -836,6 +961,17 @@ class CRS:
         )
 
 
+def _prepared(value: Any) -> str:
+    """The text pyproj makes of ``CRS()``'s first argument before adding
+    keyword arguments to it, without reading it."""
+    if isinstance(value, str):
+        return _prepare_from_proj_string(value) if _is_proj_string(value) else value
+    d = as_dict(value)
+    if d is not None and "type" not in d:
+        return _prepare_from_dict(d)
+    return _parse(value)[1]
+
+
 def _parse(value: Any) -> tuple[JsonDict, str]:
     """The PROJJSON and ``srs`` of anything ``CRS()`` takes."""
     if isinstance(value, bool):
@@ -843,12 +979,18 @@ def _parse(value: Any) -> tuple[JsonDict, str]:
     if isinstance(value, int):
         return _epsg_json(value), f"EPSG:{value}"
     if isinstance(value, str):
+        if _is_proj_string(value):
+            srs = _prepare_from_proj_string(value)
+            return _from_proj_string(srs), srs
         return _from_string(value), value
     d = as_dict(value)
     if d is not None:
         if "type" in d:
             return _check_projjson(d), json.dumps(d)
-        raise not_yet("CRS from a dict of PROJ parameters", 3)
+        srs = _prepare_from_dict(d)
+        if srs.startswith("{"):
+            raise CRSError(f"Invalid CRS input: {value!r}")
+        return _from_proj_string(srs), srs
     # Another library's CRS object (pyproj's, rasterio's).
     to_json_dict = getattr(value, "to_json_dict", None)
     if callable(to_json_dict):

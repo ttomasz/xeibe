@@ -2,7 +2,7 @@
 
 > **Status: designed, 2026-10-24; reviewed, 2026-10-31 (decision 8:
 > unknown datums raise; the PROJ-only projections are still open); PROJ
-> strings read and written in Rust, 2026-10-31 (step 1, see [Order of work](#order-of-work)).** This is phase 3 of
+> strings, 2026-10-31 (steps 1 and 2, see [Order of work](#order-of-work)).** This is phase 3 of
 > [pyproj-compat.md](pyproj-compat.md#phases). Facts about PROJ, pyproj
 > and GeoPandas were checked against PROJ 9.8.1 through pyproj 3.8.0 and
 > GeoPandas 1.2.0, with the oracle database
@@ -348,7 +348,7 @@ Mollweide, Geostationary, Peirce Quincuncial, …) or with no CRS method
 skipped or allowed with their reason: `+approx`, PROJ's approximate
 Transverse Mercator, which is converted with the exact one (2 mm apart
 1° from the central meridian), and Krovak at points far outside its area
-(up to 22 µm). `to_epsg` comes with `xeibe_proj`.
+(up to 22 µm). Every reading gets PROJ's `to_epsg()`.
 
 ## Sub-objects and builders
 
@@ -480,7 +480,11 @@ imports no Arrow library.
    (decision 8). Gated on the vectors. **Done** (2026-10-31): see
    [Writing](#writing) and [the results](#validation).
 2. **PROJ strings in `xeibe_proj`**, with `Proj`, `from_proj` and the
-   warnings, gated on pyproj's suite.
+   warnings, gated on pyproj's suite. **Done** (2026-10-31): pyproj's
+   suite went from 356 to 438 of 963. CRSs read from PROJ strings are
+   identified as PROJ identifies them, which took PROJ's database search
+   for projected CRSs ([crs-wkt.md](crs-wkt.md#identification), "PROJ
+   strings").
 3. **`install_as_pyproj()` and the GeoPandas runner**, gated on GeoPandas'
    suite: every test that passes with pyproj is in the pass list or in
    `known.txt` with a reason.

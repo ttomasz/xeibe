@@ -95,7 +95,5 @@ def test_errors() -> None:
         Proj(2180)(19.0, 95.0)
     with pytest.raises(NotImplementedError, match="errcheck"):
         Proj(2180)(19.0, 52.0, False, True)  # type: ignore[call-arg]
-    with pytest.raises(NotImplementedError, match="phase 3"):
-        Proj(proj="utm", zone=33)
-    with pytest.raises(NotImplementedError, match="phase 3"):
-        Proj(2180).definition_string()
+    with pytest.raises(CRSError, match="not supported"):
+        Proj(proj="robin")

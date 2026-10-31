@@ -36,7 +36,9 @@ rest of phase 2 is designed in [pyproj-phase2.md](pyproj-phase2.md), and
 as of 2026-10-24 all of it is done: the geodesic port, `Geod`, `Proj`,
 `to_2d`, `to_3d` and `get_non_deprecated`, `get_units_map`,
 `area_of_interest`, `accuracy` and `only_best`, `Transformer.to_json` and
-`to_wkt`, and `download_grids`.
+`to_wkt`, and `download_grids`. Phase 3 is designed in
+[pyproj-phase3.md](pyproj-phase3.md); as of 2026-10-31 PROJ strings are
+read and written (its steps 1 and 2).
 
 - **Done.**
   - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
@@ -44,8 +46,9 @@ as of 2026-10-24 all of it is done: the geodesic port, `Geod`, `Proj`,
     wheel on Linux, macOS and Windows. Its wheels aren't release builds;
     `.github/workflows/release.yml` builds and publishes those
     ([releasing.md](releasing.md)).
-  - `CRS` from every input form in the table below except PROJ strings,
-    with its properties, parts, `repr`, equality, hashing and pickling.
+  - `CRS` from every input form in the table below, PROJ strings, dicts
+    and keyword arguments included (phase 3), with its properties, parts,
+    `repr`, equality, hashing and pickling; `to_proj4` and `to_dict`.
   - WKT: `from_wkt` and WKT wherever a CRS is taken, `to_wkt` in
     WKT2_2019 and WKT1_GDAL with `output_axis_rule`, `to_wkt` and WKT
     `repr` on the parts, `to_epsg`/`to_authority`/`list_authority` with
@@ -75,11 +78,11 @@ as of 2026-10-24 all of it is done: the geodesic port, `Geod`, `Proj`,
     EPSG's remarks on CRSs and operations in a file of their own, read on
     first use. The wheel grew from 2.0 to 2.2 MB.
 - **Measured** (see [Testing](#testing)):
-  - pyproj's own suite: 356 of its 963 tests pass: 120 before phase 1's
+  - pyproj's own suite: 438 of its 963 tests pass: 120 before phase 1's
     Rust changes, 129 after, 149 with the WKT part of phase 2, 318 with
     `Geod`, 324 with `Proj`, 335 with `to_2d`/`to_3d`, 348 with
     `get_units_map`, 351 with the selection's options, 356 with
-    `Transformer.to_json` and `to_wkt`.
+    `Transformer.to_json` and `to_wkt`, 438 with PROJ strings.
   - Against the oracle `proj.db`, every EPSG CRS reports what PROJ does,
     scopes, area descriptions and remarks included, except four documented
     differences:
@@ -346,8 +349,8 @@ becomes the package's status tracker.
 | `to_2d`, `to_3d`, `get_geod` | 2 | PROJ's `demoteTo2D` and `promoteTo3D`, with EPSG's 2D–3D twins ([pyproj-phase2.md](pyproj-phase2.md#to_2d-to_3d-get_non_deprecated)), and the `Geod` of the CRS's ellipsoid. **Done.** |
 | `from_wkt`, objects with `to_wkt()` (rasterio, fiona) | 2 | WKT1 (GDAL and ESRI flavours) and WKT2 2015/2019 → PROJJSON, in Rust ([crs-wkt.md](crs-wkt.md)). **Done.** |
 | `to_wkt(version, pretty, output_axis_rule)`, also on the parts (`Datum`, `Ellipsoid`, …) | 2 | WKT2_2019 and WKT1_GDAL from PROJJSON, what GeoPandas, pyogrio and rioxarray ask for; other versions raise ([crs-wkt.md](crs-wkt.md#writing)). Equivalent to PROJ's output, not byte-identical. **Done**: PROJ's token for token for every EPSG CRS but listed differences. |
-| `from_proj4`, `from_dict`, `+proj=…` strings | 3 | A translator to PROJJSON for the projections we have (`longlat`, `utm`, `tmerc`, `lcc`, `merc`, `stere`, `sterea`, `laea`, `aea`, `eqc`, `cea`, `omerc`, `krovak`, …) with `+ellps`, `+datum`, `+towgs84`, `+units`, `+axis`, `+pm`. Anything else is an error. |
-| `to_proj4`, `to_dict`, `to_string` | 3 | The same subset, reversed. |
+| `from_proj4`, `from_dict`, `+proj=…` strings, `CRS(proj=…)` | 3 | Read as PROJ reads them into an EPSG method, with pyproj's preparation and `+init` warning; PROJ-only projections, pipelines and PROJ4 extensions are an error ([pyproj-phase3.md](pyproj-phase3.md#proj-strings)). **Done.** |
+| `to_proj4`, `to_dict`, `to_string` | 3 | PROJ's string, token for token for every EPSG CRS. **Done.** |
 | Builder classes (`GeographicCRS`, `ProjectedCRS`, `CompoundCRS`, `*Conversion`) | 3 | For the methods `xeibe-reproject` implements. |
 | `to_cf`, `from_cf`, `cs_to_cf` | 3, if asked | pyproj's implementation is pure Python over PROJJSON (MIT), so it could be ported. |
 | Other authorities (`ESRI:`, `IGNF:`, `IAU_2015:`, `NKG:`) | Out | Not in EPSG. Exception, in phase 2: the 987 old ESRI codes that are now EPSG codes (`ESRI:102100` → 3857), from `xeibe-esri` ([crs-wkt.md](crs-wkt.md#esri-names)). **Done.** |
@@ -369,7 +372,8 @@ becomes the package's status tracker.
 | `__eq__`, `is_exact_same`, pickling | 1 | Pickles as (source, target, options). |
 | `to_json`, `to_json_dict`, `to_wkt` | 2 | PROJJSON / WKT2 2019 of the operation in PROJ's shapes, built from EPSG's data; `None` while chosen per coordinate, as pyproj's ([pyproj-phase2.md](pyproj-phase2.md#transformerto_json-to_json_dict-to_wkt)). **Done.** |
 | `definition`, `to_proj4` | Out | These are PROJ pipeline strings. `definition` raises with a pointer to `description`. |
-| `from_pipeline`, `from_proj`, the module-level `pyproj.transform` / `itransform` | Out | PROJ pipelines, or APIs pyproj deprecated. |
+| `from_proj` | 3 | `from_crs` on the two `Proj`s' CRSs, as in pyproj. **Done.** |
+| `from_pipeline`, the module-level `pyproj.transform` / `itransform` | Out | PROJ pipelines, or APIs pyproj deprecated. |
 | `TransformerGroup(…)`: `transformers`, `unavailable_operations`, `best_available` | 1 | One `Transform::via` per candidate from `operations()`. Operations whose grids aren't on the CDN are `unavailable_operations`. `area_of_interest` and `accuracy` (2) as for `from_crs`. The candidates are those `from_crs` chooses from, where pyproj's group ignores grid availability while searching: the lists can differ where grids are involved ([pyproj-phase2.md](pyproj-phase2.md#validation-2)). |
 | `TransformerGroup.download_grids` | 2 | Whole files from `cdn.proj.org` into the user data directory (or `directory`), where grids are looked for next ([pyproj-phase2.md](pyproj-phase2.md#download_grids)). **Done.** |
 | `TransformerGroup(crs_extent_use=, pivot_crs=, grid_check=, allow_superseded=)` | Out | Defaults accepted. Other values raise an error. |
@@ -381,7 +385,7 @@ becomes the package's status tracker.
 | `Geod(ellps=…)`, `Geod(a=, b=, f=, rf=, es=, sphere=)`, `Geod("+ellps=…")`, `CRS.get_geod()` | 2 | PROJ's ellipsoid name table (`ellps.cpp`, MIT). **Done.** |
 | `Geod.inv`, `fwd`, `line_length`, `line_lengths` | 2 | All of `geodesic.c` is ported (`xeibe_reproject::geodesic`, [pyproj-phase2.md](pyproj-phase2.md#geodesics)). **Done**, without `inplace=` (as for `transform`). |
 | `npts`, `fwd_intermediate`, `inv_intermediate`, `polygon_area_perimeter`, `geometry_length`, `geometry_area_perimeter` | 2 | Geodesic lines and polygon areas. **Done.** |
-| `Proj(crs)(lon, lat, inverse=, radians=)`, `Proj(proj="utm", zone=…)` | 2 / 3 | Phase 2 for EPSG and WKT input: the CRS's projection on its own ellipsoid ([pyproj-phase2.md](pyproj-phase2.md#proj)). **Done** for that. Keyword PROJ parameters arrive with the phase 3 translator. |
+| `Proj(crs)(lon, lat, inverse=, radians=)`, `Proj(proj="utm", zone=…)` | 2 / 3 | Phase 2 for EPSG and WKT input: the CRS's projection on its own ellipsoid ([pyproj-phase2.md](pyproj-phase2.md#proj)). Phase 3: PROJ parameters, `definition_string` and `to_latlong_def`. **Done.** |
 | `Proj.get_factors` | Out | |
 | `pyproj.database`: `query_crs_info`, `query_utm_crs_info`, `get_authorities`, `get_codes`, `get_units_map`, `get_database_metadata("EPSG.VERSION")` | 1 / 2 | From the `xeibe-crs` tables; `get_units_map` (2) with PROJ's short names and own units, not Esri's. **Done.** `query_utm_crs_info` (GeoPandas' `estimate_utm_crs`) needs each projected CRS's datum, which the PROJJSON has. |
 | `pyproj.aoi` (`AreaOfInterest`, `AreaOfUse`, `BBox`), `pyproj.enums`, `pyproj.exceptions` (`CRSError`, `ProjError`, `GeodError`, `DataDirError`) | 1 | Same names and hierarchy. Error messages differ. |
@@ -460,7 +464,7 @@ use are dropped. Seeing them takes one line, for example
 | `BoundCRS` (a CRS with its transformation to a hub such as WGS 84) in `Crs` and the selection ([crs-wkt.md](crs-wkt.md#towgs84-and-boundcrs)). **Done** for Helmert transformations: read (WKT1 `TOWGS84`, WKT2 `BOUNDCRS`), written, and converted as PROJ routes them | reproject | WKT1 `TOWGS84` (2), `+towgs84` (3) |
 | The rest of `geodesic.c`: lines, polygon area and perimeter. **Done:** `xeibe_reproject::geodesic`, bit for bit with pyproj on Linux | reproject | `Geod` (2) |
 | PROJ's ellipsoid name table. **Done:** `xeibe_reproject::proj_tables`, with the prime meridians | reproject | `Geod(ellps=)`, `+ellps` (2) |
-| PROJ string ↔ PROJJSON translator for the supported methods | reproject | `from_proj4`, `to_proj4`, `Proj(**kwargs)` (3) |
+| PROJ string ↔ PROJJSON translator for the supported methods. **Done:** `xeibe_reproject::proj_string` | reproject | `from_proj4`, `to_proj4`, `Proj(**kwargs)` (3) |
 
 ## Deliberate divergences from pyproj
 
@@ -472,7 +476,10 @@ These are documented in the package README and in its `NotImplementedError` and
    the area of use of every EPSG operation, pyproj's default switches to a
    ballpark, which leaves out the datum shift (tens to hundreds of metres).
    xeibe_proj uses the best operation anyway, as PROJ does with
-   `allow_ballpark=False`.
+   `allow_ballpark=False`. A CRS whose datum is unknown (a PROJ string with
+   `+ellps` but no `+datum`) converts only to CRSs on that datum, with an
+   error naming it otherwise, where PROJ shifts by zero
+   ([pyproj-phase3.md](pyproj-phase3.md#decisions), decision 8).
 2. **Failed coordinates raise.** `transform`, `itransform` and `Proj.__call__`
    raise `ProjError` at the first coordinate that fails, instead of writing
    `inf`. Code that filters `inf` out afterwards has to catch the error,

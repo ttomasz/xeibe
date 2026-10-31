@@ -77,9 +77,10 @@ def test_projjson_input() -> None:
         (None, CRSError),
         # Mollweide, which only Esri defines.
         ("ESRI:54009", NotImplementedError),
-        ("+proj=longlat +datum=WGS84", NotImplementedError),
+        # Robinson, which only PROJ defines.
+        ("+proj=robin", CRSError),
         ('GEOGCS["WGS 84",DATUM["WGS_1984"]]', CRSError),
-        ({"proj": "longlat"}, NotImplementedError),
+        ({"proj": "longlat", "datum": "nowhere"}, CRSError),
     ],
 )
 def test_bad_input(value: object, error: type[Exception]) -> None:
@@ -191,7 +192,7 @@ def test_not_yet() -> None:
     with pytest.raises(NotImplementedError, match="not supported"):
         CRS(4326).to_wkt("WKT1_ESRI")
     with pytest.raises(NotImplementedError, match="phase 3"):
-        CRS(4326).to_proj4()
+        CRS(4326).to_cf()
 
 
 def test_axis_info_is_frozen() -> None:

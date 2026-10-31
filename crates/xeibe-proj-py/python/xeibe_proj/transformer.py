@@ -297,7 +297,15 @@ class Transformer:
 
     @staticmethod
     def from_proj(proj_from: Any, proj_to: Any, always_xy: bool = False, area_of_interest: AreaOfInterest | None = None) -> Transformer:
-        raise out("Transformer.from_proj", "pyproj deprecated it; use Transformer.from_crs")
+        """The transformer between two ``Proj``s' CRSs (or what makes
+        them); pyproj recommends ``from_crs``."""
+        from xeibe_proj.proj import Proj
+
+        if not isinstance(proj_from, Proj):
+            proj_from = Proj(proj_from)
+        if not isinstance(proj_to, Proj):
+            proj_to = Proj(proj_to)
+        return Transformer.from_crs(proj_from.crs, proj_to.crs, always_xy=always_xy, area_of_interest=area_of_interest)
 
     @staticmethod
     def from_pipeline(proj_pipeline: str, always_xy: bool = False) -> Transformer:

@@ -52,8 +52,13 @@ CRSs can be given as EPSG codes in any common spelling (`4326`,
 `"EPSG:4326"`, `"EPSG:4326+5773"`, OGC URNs and URLs), as `"OGC:CRS84"`, as
 EPSG names (`"WGS 84"`), as WKT (WKT1 as GDAL and Esri write it, with
 `TOWGS84`, and WKT2), or as PROJJSON. Esri's old codes of CRSs EPSG has
-since defined (`"ESRI:102100"`) give the EPSG CRS. PROJ strings are not read
-yet.
+since defined (`"ESRI:102100"`) give the EPSG CRS. PROJ strings
+(`"+proj=utm +zone=33 +datum=WGS84"`), dicts and keyword arguments are read
+as PROJ reads them, for the CRSs PROJ reads into an EPSG method;
+projections only PROJ defines (`+proj=robin`) and pipelines are an error.
+`to_proj4()` writes PROJ's string. A CRS whose datum is unknown (a PROJ
+string with `+ellps` but no `+datum`) converts only to CRSs on that datum:
+there is no zero datum shift, as PROJ's ballpark would apply.
 
 ## Differences from pyproj
 

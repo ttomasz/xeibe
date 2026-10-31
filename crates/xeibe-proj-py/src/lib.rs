@@ -35,6 +35,7 @@ fn error(py: Python<'_>, error: Error) -> PyErr {
         Error::UnknownCode(_)
         | Error::Projjson { .. }
         | Error::Wkt { .. }
+        | Error::ProjString { .. }
         | Error::Unsupported { .. } => "CRSError",
         _ => "ProjError",
     };
@@ -115,10 +116,27 @@ fn to_wkt(
     wkt::from_projjson_with(projjson, version, pretty, axes).map_err(|e| error(py, e))
 }
 
-/// A CRS from PROJJSON, or from WKT when the text isn't a JSON object.
+/// The PROJJSON of a CRS given as a PROJ string, as pyproj prepares it
+/// (`+type=crs` included).
+#[pyfunction]
+fn proj_string_to_projjson(py: Python<'_>, text: &str) -> PyResult<String> {
+    xeibe_reproject::proj_string::to_projjson(text).map_err(|e| error(py, e))
+}
+
+/// A CRS's PROJJSON as a PROJ string, as PROJ writes it.
+#[pyfunction]
+fn to_proj4(py: Python<'_>, projjson: &str) -> PyResult<String> {
+    xeibe_reproject::proj_string::from_projjson(projjson).map_err(|e| error(py, e))
+}
+
+/// A CRS from PROJJSON, from a PROJ string (`proj=` or `init=`, as pyproj
+/// prepares one), or else from WKT.
 fn read_crs(text: &str) -> Result<Crs, Error> {
-    if text.trim_start().starts_with('{') {
+    let s = text.trim_start();
+    if s.starts_with('{') {
         Crs::from_projjson(text)
+    } else if !s.contains('[') && (s.contains("proj=") || s.contains("init=")) {
+        Crs::from_proj_string(text)
     } else {
         Crs::from_wkt(text)
     }
@@ -630,6 +648,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(operations_json, m)?)?;
     m.add_function(wrap_pyfunction!(wkt_to_projjson, m)?)?;
     m.add_function(wrap_pyfunction!(to_wkt, m)?)?;
+    m.add_function(wrap_pyfunction!(proj_string_to_projjson, m)?)?;
+    m.add_function(wrap_pyfunction!(to_proj4, m)?)?;
     m.add_function(wrap_pyfunction!(extent, m)?)?;
     m.add_class::<Transform>()?;
     m.add_class::<OperationInfo>()?;
