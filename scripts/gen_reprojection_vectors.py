@@ -101,7 +101,7 @@ def read_table() -> dict[int, tuple[list[float] | None, bool]]:
     """Area of use ([south, west, north, east], WGS 84 degrees) and the
     deprecated flag, from the generated Rust table."""
     pattern = re.compile(
-        r"code: (\d+),.*area_wgs84: (None|Some\(\[([^\]]+)\]\)), deprecated: (true|false)"
+        r"code: (\d+),.*area_wgs84: (None|Some\(\[([^\]]+)\]\)),.* deprecated: (true|false)"
     )
     out = {}
     for line in TABLE.read_text().splitlines():

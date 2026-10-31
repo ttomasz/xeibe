@@ -373,10 +373,12 @@ WGS 84.
 
 **As built (step 6).** A `Crs` read from a Bound CRS is its base CRS
 carrying the transformation (`Crs::bound`): the hub, and the
-transformation as an operation without a code. Only the Helmert family is
-read; a Bound CRS with another transformation (a grid) is an error, and so
-is a compound CRS whose horizontal part is bound, unless no transformation
-is needed.
+transformation as an operation without a code. The Helmert family is
+read, and NTv2 by the grid `@null` (PROJ strings' `+nadgrids=@null`, in
+every Web Mercator `.prj`): a geographic offset of zero, which leaves
+longitude and latitude as they are, as PROJ applies it. A Bound CRS with
+another transformation (a named grid) is an error, and so is a compound
+CRS whose horizontal part is bound, unless no transformation is needed.
 
 ```mermaid
 flowchart LR

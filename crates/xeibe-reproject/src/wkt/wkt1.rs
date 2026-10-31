@@ -451,7 +451,7 @@ fn towgs84(crs: &Node) -> Result<Option<[f64; 7]>, Error> {
 /// the values are a Coordinate Frame transformation's and not a Position
 /// Vector one's, and the rotations turned round aren't another Coordinate
 /// Frame one's, they are turned round.
-fn autocorrect(v: &mut [f64; 7]) {
+pub(crate) fn autocorrect(v: &mut [f64; 7]) {
     if v[3] == 0.0 && v[4] == 0.0 && v[5] == 0.0 {
         return;
     }
@@ -482,14 +482,20 @@ fn autocorrect(v: &mut [f64; 7]) {
     }
 }
 
-/// The CRS as a Bound CRS when its datum has a `TOWGS84`, as PROJ's
-/// `BoundCRS::createFromTOWGS84` makes it: a Position Vector transformation
-/// to WGS 84, geographic (EPSG:4326) or, for a geocentric CRS, geocentric
-/// (EPSG:4978).
+/// The CRS as a Bound CRS when its datum has a `TOWGS84`.
 fn bound(node: &Node, crs: Value, geocentric: bool) -> Result<Value, Error> {
-    let Some(v) = towgs84(node)? else {
-        return Ok(crs);
-    };
+    Ok(match towgs84(node)? {
+        Some(v) => towgs84_bound(crs, &v, geocentric),
+        None => crs,
+    })
+}
+
+/// `crs` as a Bound CRS with these `TOWGS84` values (3, or 7 after PROJ's
+/// autocorrection), as PROJ's `BoundCRS::createFromTOWGS84` makes it: a
+/// transformation to WGS 84, geographic (EPSG:4326) or, for a geocentric
+/// CRS, geocentric (EPSG:4978). Three values are a geocentric translation,
+/// seven a Position Vector transformation.
+pub(crate) fn towgs84_bound(crs: Value, v: &[f64], geocentric: bool) -> Value {
     let geodetic_name = if crs["type"] == "ProjectedCRS" {
         &crs["base_crs"]["name"]
     } else {
@@ -497,28 +503,27 @@ fn bound(node: &Node, crs: Value, geocentric: bool) -> Result<Value, Error> {
     };
     let wgs84_datum = json!({"type": "GeodeticReferenceFrame", "name": "World Geodetic System 1984",
         "ellipsoid": {"name": "WGS 84", "semi_major_axis": 6378137, "inverse_flattening": 298.257223563}});
-    let (hub, method) = if geocentric {
-        (
-            json!({"type": "GeodeticCRS", "name": "WGS 84", "datum": wgs84_datum,
-                "coordinate_system": {"subtype": "Cartesian", "axis": [
-                    {"name": "Geocentric X", "abbreviation": "X", "direction": "geocentricX", "unit": "metre"},
-                    {"name": "Geocentric Y", "abbreviation": "Y", "direction": "geocentricY", "unit": "metre"},
-                    {"name": "Geocentric Z", "abbreviation": "Z", "direction": "geocentricZ", "unit": "metre"}]},
-                "id": {"authority": "EPSG", "code": 4978}}),
-            json!({"name": "Position Vector transformation (geocentric domain)",
-                "id": {"authority": "EPSG", "code": 1033}}),
-        )
+    let hub = if geocentric {
+        json!({"type": "GeodeticCRS", "name": "WGS 84", "datum": wgs84_datum,
+            "coordinate_system": {"subtype": "Cartesian", "axis": [
+                {"name": "Geocentric X", "abbreviation": "X", "direction": "geocentricX", "unit": "metre"},
+                {"name": "Geocentric Y", "abbreviation": "Y", "direction": "geocentricY", "unit": "metre"},
+                {"name": "Geocentric Z", "abbreviation": "Z", "direction": "geocentricZ", "unit": "metre"}]},
+            "id": {"authority": "EPSG", "code": 4978}})
     } else {
-        (
-            json!({"type": "GeographicCRS", "name": "WGS 84", "datum": wgs84_datum,
-                "coordinate_system": {"subtype": "ellipsoidal", "axis": [
-                    {"name": "Latitude", "abbreviation": "lat", "direction": "north", "unit": "degree"},
-                    {"name": "Longitude", "abbreviation": "lon", "direction": "east", "unit": "degree"}]},
-                "id": {"authority": "EPSG", "code": 4326}}),
-            json!({"name": "Position Vector transformation (geog2D domain)",
-                "id": {"authority": "EPSG", "code": 9606}}),
-        )
+        json!({"type": "GeographicCRS", "name": "WGS 84", "datum": wgs84_datum,
+            "coordinate_system": {"subtype": "ellipsoidal", "axis": [
+                {"name": "Latitude", "abbreviation": "lat", "direction": "north", "unit": "degree"},
+                {"name": "Longitude", "abbreviation": "lon", "direction": "east", "unit": "degree"}]},
+            "id": {"authority": "EPSG", "code": 4326}})
     };
+    let (name, code) = match (v.len(), geocentric) {
+        (3, true) => ("Geocentric translations (geocentric domain)", 1031),
+        (3, false) => ("Geocentric translations (geog2D domain)", 9603),
+        (_, true) => ("Position Vector transformation (geocentric domain)", 1033),
+        (_, false) => ("Position Vector transformation (geog2D domain)", 9606),
+    };
+    let method = json!({"name": name, "id": {"authority": "EPSG", "code": code}});
     let arc_second = json!({"type": "AngularUnit", "name": "arc-second",
         "conversion_factor": 4.84813681109536e-06});
     let ppm = json!({"type": "ScaleUnit", "name": "parts per million", "conversion_factor": 1e-06});
@@ -531,7 +536,7 @@ fn bound(node: &Node, crs: Value, geocentric: bool) -> Result<Value, Error> {
         "Z-axis rotation",
         "Scale difference",
     ];
-    let parameters: Vec<Value> = (0..7)
+    let parameters: Vec<Value> = (0..v.len())
         .map(|i| {
             let unit = match i {
                 0..=2 => json!("metre"),
@@ -542,7 +547,7 @@ fn bound(node: &Node, crs: Value, geocentric: bool) -> Result<Value, Error> {
                 "id": {"authority": "EPSG", "code": 8605 + i as u32}})
         })
         .collect();
-    Ok(json!({
+    json!({
         "type": "BoundCRS",
         "source_crs": crs,
         "target_crs": hub,
@@ -551,7 +556,7 @@ fn bound(node: &Node, crs: Value, geocentric: bool) -> Result<Value, Error> {
             "method": method,
             "parameters": parameters,
         },
-    }))
+    })
 }
 
 // --- CRSs ------------------------------------------------------------------

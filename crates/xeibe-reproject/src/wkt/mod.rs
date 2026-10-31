@@ -10,8 +10,8 @@ pub(crate) mod datums;
 mod esri;
 mod names;
 mod parse;
-mod wkt1;
-mod wkt2;
+pub(crate) mod wkt1;
+pub(crate) mod wkt2;
 mod write;
 mod write1;
 

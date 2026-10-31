@@ -135,9 +135,17 @@ to within 0.1 µm. The exceptions are Krovak (1 µm), Transverse Mercator
 Bessel Namibia ellipsoid below. A unit test also checks that
 `AxisOrder::EastFirst` swaps exactly the CRSs `xeibe-crs` marks `NorthOrLat`.
 
-Polar CRSs define their axes along meridians ("south along 45°E"), so each
-CRS's two horizontal axes are held as a 2 × 2 matrix over (east, north), not
-just a swap and signs. `AxisOrder::EastFirst` swaps them as PROJ's
+Polar CRSs define their axes along meridians ("south along 45°E"). Each
+CRS's two horizontal axes are held as a 2 × 2 matrix over (east, north),
+and for a projected CRS whose two axes point the same way (both south, or
+both north, along meridians) that matrix is PROJ's
+(`addUnitConvertAndAxisSwap`): the projection's easting and northing as
+they are, or swapped when the axes are named northing then easting,
+whatever the meridians say. For EPSG's polar CRSs the meridians agree.
+PROJ's own PROJ strings name 90°E and 180°E whatever the projection's
+origin (`+proj=stere +lat_0=90 +lon_0=-39`), and until 2026-10-31 such a
+CRS, read from a PROJ string or from the PROJJSON pyproj writes for one,
+was turned by its origin, hundreds of kilometres off. `AxisOrder::EastFirst` swaps them as PROJ's
 `always_xy` does (`mustAxisOrderBeSwitchedForVisualization`): of the polar
 CRSs only UPS North and South (N,E) and RSPS2000. The others are easting
 first as written: EPSG:3031's "E" points north along 90°E, its "N" north
@@ -341,6 +349,12 @@ Details that turned out to matter, each found by the differential:
   operations reached through geog2D or geog3D CRSs give the same pipeline;
   PROJ keeps the first by its name order, which prefers the CRSs of the
   source's dimension. xeibe ranks by that directly (see the tie-breaks).
+- **A CRS EPSG doesn't have, on a datum it does** (a projection of one's
+  own on WGS 84, from WKT or a PROJ string, that identification finds no
+  EPSG CRS for) is converted from the EPSG geographic CRS on its datum
+  (3D for a 3D CRS; the lowest code, live ones first), as PROJ starts from
+  a derived CRS's base: the conversion onto it is the first step. Until
+  2026-10-31 such a CRS had no route to another datum at all.
 - **An accuracy of 999 is unknown.** EPSG gives 999 m for 34 operations
   whose accuracy it doesn't know, and PROJ's factory drops it. Ranked as a
   known 999 m it sorted ahead of better operations with smaller areas, and
@@ -448,6 +462,12 @@ Details that turned out to matter, each found by the differential:
 
 - **No ballpark fallback.** When no EPSG operation applies, `Transform::new`
   fails with `NoTransformation`; PROJ would offer a "ballpark" approximation.
+  When the reason is that a CRS's datum is unknown (no EPSG datum, as in a
+  PROJ string with an ellipsoid but no `+datum`, or one of EPSG's "Not
+  specified (based on … ellipsoid)" datums), it fails with `UnknownDatum`,
+  which names the datum and says what to give instead: PROJ would shift
+  by zero, off by the whole datum shift (54 m for NTF in Paris, 128 m for
+  Pulkovo 1942(58) in Warsaw; `docs/pyproj-phase3.md`, decision 8).
 - **Grid-based operations are unavailable** with `Grids::None`: they are left
   out as PROJ leaves them out when their grids are missing (`ONLY_BEST=NO`).
   By default (level 3) a grid is available when PROJ-data publishes it.

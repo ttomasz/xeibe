@@ -1,7 +1,8 @@
 # pyproj compatibility, phase 3: the ecosystem
 
 > **Status: designed, 2026-10-24; reviewed, 2026-10-31 (decision 8:
-> unknown datums raise; the PROJ-only projections are still open).** This is phase 3 of
+> unknown datums raise; the PROJ-only projections are still open); PROJ
+> strings read in Rust, 2026-10-31 (step 1, see [Order of work](#order-of-work)).** This is phase 3 of
 > [pyproj-compat.md](pyproj-compat.md#phases). Facts about PROJ, pyproj
 > and GeoPandas were checked against PROJ 9.8.1 through pyproj 3.8.0 and
 > GeoPandas 1.2.0, with the oracle database
@@ -175,10 +176,10 @@ It ports these parts of `io.cpp`:
   flags without a value, and `+type=crs`. `+no_defs` and `+wktext` are
   ignored.
 - **The geodetic CRS.**
-  - `buildDatum`: PROJ's `+datum` names from `datums.cpp` (`WGS84`,
-    `NAD83`, `NAD27`, `GGRS87`, `potsdam`, `carthage`, `hermannskogel`,
-    `ire65`, `nzgd49`, `OSGB36`). They are a new table in
-    `xeibe_reproject::proj_tables`, next to the ellipsoids already there.
+  - `buildDatum`: PROJ's `+datum` names (`WGS84`, `NAD83`, `NAD27`,
+    `GGRS87`, `potsdam`, `carthage`, `hermannskogel`, `ire65`, `nzgd49`,
+    `OSGB36`). The first three are PROJ's static datums, the rest its
+    `datumDescs` table in `io.cpp`, kept with the reader.
   - The ellipsoid: `+ellps`, or `+a` with `+b`, `+rf`, `+f`, `+e`, `+es`
     or `+R`.
   - The prime meridian: `+pm`, by name or in degrees.
@@ -197,8 +198,9 @@ It ports these parts of `io.cpp`:
 - **Bound CRSs.** `+towgs84` with 3 or 7 values gives a Bound CRS to WGS 84
   with a Helmert transformation, which `xeibe-reproject` converts already
   ([crs-wkt.md](crs-wkt.md#towgs84-and-boundcrs)). `+nadgrids` gives an
-  NTv2 Bound CRS (decision 10). For a grid named `@null`, the grid code
-  adds a zero shift to the files it knows.
+  NTv2 Bound CRS (decision 10). One by the grid `@null` (or `null`) is
+  converted as a geographic offset of zero, which is what PROJ does with
+  it; one by a named grid is read but not yet converted.
 - **Names.** PROJ calls the CRS `unknown`, and names the datum
   `Unknown based on <ellipsoid> ellipsoid` when there is no `+datum`.
   PROJ recognises the Web Mercator string and returns EPSG:3857 by name.
@@ -213,6 +215,42 @@ The selection's error for them names the unknown datum and says how to
 give a known one, instead of the general "no usable transformation". Two
 unknown datums are the same when their ellipsoids and prime meridians
 are, so a PROJ string converts to another string on the same ellipsoid.
+
+**As built (2026-10-31).** Reading the code against PROJ's output added
+these rules:
+
+- **Which parameters count.** PROJ builds the string's operation, keeps
+  the parameters the operation looks up and drops the rest (`+lat_ts` on
+  `tmerc` vanishes). `gen_wkt1_names.py` now also writes
+  `proj_string/names.rs`: the mapping table with PROJ's names, the keys
+  each of PROJ's projections looks up (scanned from `src/projections/*.cpp`,
+  a superset where a file defines several), the keys every projection's
+  set-up reads, and PROJ's other operations (`noop`, `axisswap`, …). A
+  parameter kept but not used by the CRS is what PROJ would keep as the
+  CRS's `PROJ4` extension, and is refused (decision 6).
+- **No database.** PROJ reads a string with `proj=` and no `init=` without
+  opening `proj.db`, so a 7-value `+towgs84` is not autocorrected, as
+  WKT1's `TOWGS84` is.
+- **Ids** follow PROJ's JSON writer: an object's id is written only when
+  no object around it has one, except for a projected CRS's base CRS, an
+  operation's method and parameters, and a datum ensemble and its
+  members. PROJ's static objects carry ids (`+datum=WGS84` is datum 6326,
+  `+ellps=GRS80` ellipsoid 7019, UTM zone 30N conversion 16030).
+- **PROJ checks values by building the operation**; a projection this
+  crate implements is checked the same way, by building it, and `omerc`
+  without `+alpha` or `+gamma` gets PROJ's two-point checks.
+- **`+init=epsg:CODE`** takes the EPSG CRS from `xeibe-crs`, with the
+  conversion's EPSG id and the base CRS's remarks, which PROJ writes.
+  With other parameters it is refused until the writer exists: PROJ
+  re-reads the CRS's own PROJ string with them added.
+- **Two fixes outside the reader**, both in
+  [reprojection.md](reprojection.md). A projected CRS whose axes both point
+  south (or north) along meridians now has PROJ's axes whatever the
+  meridians, which PROJ's PROJ strings fix at 90°E and 180°E: such a CRS
+  was off by hundreds of kilometres, from the PROJJSON pyproj writes too.
+  And a CRS EPSG doesn't have, on a datum it does, is converted from the
+  EPSG geographic CRS on its datum, where before it had no route at all:
+  most hand-written PROJ strings, and custom projections in WKT.
 
 ### Writing
 
@@ -265,12 +303,12 @@ oracle database, to `tests/data/proj-string/` (a committed subset) and
 - **`epsg.jsonl`**: for every EPSG CRS, PROJ's `to_proj4()` or its error,
   PROJ's PROJJSON when it reads that string back, and `to_epsg` of that
   reading.
-- **`corpus.jsonl`**: hand-written strings, with PROJ's PROJJSON or its
-  error. They come from PROJ's `test/unit/test_io.cpp` (157 cases; the
-  tarball `build_proj_oracle.py` pins), pyproj's tests and GeoPandas'
-  tests.
-- **`coordinates.jsonl`**: for each string whose method `xeibe-reproject`
-  implements, points converted by PROJ to the string's geodetic CRS.
+- **`corpus.jsonl`**: hand-written strings as pyproj prepares them, with
+  PROJ's PROJJSON or its error, and five points around the string's
+  origin converted by PROJ from its geodetic CRS. They come from PROJ's
+  `test/unit/test_io.cpp` (the tarball `build_proj_oracle.py` pins: 273
+  strings), pyproj's tests (56) and a list in the script (GeoPandas'
+  tests and the design's cases).
 
 Gates:
 
@@ -282,6 +320,21 @@ Gates:
   of one of decision 6's kinds, and the count of each kind is reported.
 - Coordinates agree within [reprojection.md](reprojection.md)'s level-1
   tolerances.
+
+**Results of the reader (2026-10-31).** Every one of the 8,838 strings
+PROJ writes for EPSG CRSs reads as PROJ reads it, to 1e-11 relative. Of
+the 366 corpus strings, 115 are no CRS for PROJ either, and we refuse
+them too; 182 read as PROJ reads them; 69 PROJ reads that we refuse, each
+for one of decision 6's reasons: projections only PROJ defines (21: Robinson,
+Mollweide, Geostationary, Peirce Quincuncial, …) or with no CRS method
+(7, `ob_tran`, `mbt_s`), pipelines (16), ellipsoids of other bodies (11),
+`+over` (6), `+geoidgrids` (3), `+lon_wrap`, `+geoc`, `+proj=noop` and
+`topocentric`. The converted points agree to 0.1 mm but for two kinds,
+skipped or allowed with their reason: `+approx`, PROJ's approximate
+Transverse Mercator, which is converted with the exact one (2 mm apart
+1° from the central meridian), and Krovak at points far outside its area
+(up to 22 µm). `to_epsg` and `to_proj4` come with the writer and
+`xeibe_proj`.
 
 ## Sub-objects and builders
 
@@ -409,8 +462,9 @@ imports no Arrow library.
 ## Order of work
 
 1. **PROJ strings in Rust**: the generator, `proj_string`, the vectors
-   script, the grid code's `@null`, and the error and same-datum rule for
-   unknown datums (decision 8). Gated on the vectors.
+   script, `@null`, and the error and same-datum rule for unknown datums
+   (decision 8). Gated on the vectors. **Reading done** (2026-10-31): see
+   [the results](#validation); the writer is next.
 2. **PROJ strings in `xeibe_proj`**, with `Proj`, `from_proj` and the
    warnings, gated on pyproj's suite.
 3. **`install_as_pyproj()` and the GeoPandas runner**, gated on GeoPandas'

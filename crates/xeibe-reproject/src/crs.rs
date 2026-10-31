@@ -380,7 +380,7 @@ impl Crs {
         let (kind, axes) = match kind_name {
             "GeographicCRS" => {
                 let datum = ctx.datum(value)?;
-                let axes = ctx.axes(&value["coordinate_system"], CsKind::Ellipsoidal, None)?;
+                let axes = ctx.axes(&value["coordinate_system"], CsKind::Ellipsoidal)?;
                 (Kind::Geographic { datum }, axes)
             }
             "GeodeticCRS" => {
@@ -393,11 +393,11 @@ impl Crs {
                                 "a geocentric CRS with a prime meridian other than Greenwich",
                             ));
                         }
-                        let axes = ctx.axes(cs, CsKind::Geocentric, None)?;
+                        let axes = ctx.axes(cs, CsKind::Geocentric)?;
                         (Kind::Geocentric { datum }, axes)
                     }
                     Some("ellipsoidal") => {
-                        let axes = ctx.axes(cs, CsKind::Ellipsoidal, None)?;
+                        let axes = ctx.axes(cs, CsKind::Ellipsoidal)?;
                         (Kind::Geographic { datum }, axes)
                     }
                     other => {
@@ -431,11 +431,7 @@ impl Crs {
                             ctx.invalid(&format!("{method}: {message}"))
                         }
                     })?;
-                // EPSG's longitude-of-origin parameters, in the order methods use them.
-                let origin = [8833, 8802, 8822, 8812]
-                    .into_iter()
-                    .find_map(|code| params.get(code).ok());
-                let axes = ctx.axes(&value["coordinate_system"], CsKind::Projected, origin)?;
+                let axes = ctx.axes(&value["coordinate_system"], CsKind::Projected)?;
                 (
                     Kind::Projected {
                         datum,
@@ -449,7 +445,7 @@ impl Crs {
             }
             "VerticalCRS" => {
                 let datum = ctx.vertical_datum(value)?;
-                let axes = ctx.axes(&value["coordinate_system"], CsKind::Vertical, None)?;
+                let axes = ctx.axes(&value["coordinate_system"], CsKind::Vertical)?;
                 (Kind::Vertical { datum }, axes)
             }
             "DerivedVerticalCRS" => {
@@ -462,7 +458,7 @@ impl Crs {
                     return Err(ctx.unsupported(&format!("a vertical CRS derived by {name}")));
                 }
                 let datum = ctx.vertical_datum(&value["base_crs"])?;
-                let axes = ctx.axes(&value["coordinate_system"], CsKind::Vertical, None)?;
+                let axes = ctx.axes(&value["coordinate_system"], CsKind::Vertical)?;
                 (Kind::Vertical { datum }, axes)
             }
             "EngineeringCRS" => {
@@ -474,7 +470,7 @@ impl Crs {
                         cs["subtype"].as_str().unwrap_or("missing")
                     )));
                 }
-                let axes = ctx.axes(cs, CsKind::Engineering, None)?;
+                let axes = ctx.axes(cs, CsKind::Engineering)?;
                 (Kind::Engineering { datum }, axes)
             }
             "BoundCRS" => {
@@ -708,7 +704,7 @@ impl Crs {
             {"name": "Latitude", "abbreviation": "lat", "direction": "north", "unit": "degree"},
             {"name": "Ellipsoidal height", "abbreviation": "h", "direction": "up", "unit": "metre"},
         ]});
-        let axes = ctx.axes(&cs, CsKind::Ellipsoidal, None).ok()?;
+        let axes = ctx.axes(&cs, CsKind::Ellipsoidal).ok()?;
         Some(Crs {
             name: label,
             code: None,
@@ -828,6 +824,37 @@ enum UnitKind {
     Angle,
     Length,
     Scale,
+}
+
+/// Why the projection of a projected CRS's PROJJSON (or a Bound CRS's
+/// source) can't be built from its parameters, if that is why it can't:
+/// `None` when it builds, and when it fails for another reason, such as a
+/// method this crate doesn't implement.
+pub(crate) fn projection_error(value: &Value) -> Option<String> {
+    let value = if value["type"] == "BoundCRS" {
+        &value["source_crs"]
+    } else {
+        value
+    };
+    if value["type"] != "ProjectedCRS" {
+        return None;
+    }
+    let ctx = Ctx { crs: "PROJ string" };
+    let datum = ctx.datum(&value["base_crs"]).ok()?;
+    let conversion = &value["conversion"];
+    let method = conversion["method"]["name"]
+        .as_str()
+        .unwrap_or("unnamed method");
+    let code = method_id(&conversion["method"]);
+    let mut params = ctx.params(conversion).ok()?;
+    methods::complete(code, &mut params);
+    match methods::build(code, method, &params, &datum.ellipsoid) {
+        Err(methods::BuildError::MissingParameter(c)) => {
+            Some(format!("{method}: parameter EPSG:{c} is missing"))
+        }
+        Err(methods::BuildError::Invalid(message)) => Some(format!("{method}: {message}")),
+        _ => None,
+    }
 }
 
 struct Ctx<'a> {
@@ -964,25 +991,39 @@ impl Ctx<'_> {
         }
     }
 
-    /// A Bound CRS's transformation, as an operation without a code. Only
-    /// the Helmert family is read.
+    /// A Bound CRS's transformation, as an operation without a code: a
+    /// Helmert one, or an NTv2 one by the grid `@null` (PROJ strings'
+    /// `+nadgrids=@null`), which leaves longitude and latitude as they are,
+    /// a geographic offset of zero.
     fn bound_operation(&self, transformation: &Value) -> Result<Operation, Error> {
-        let method = method_id(&transformation["method"])
-            .filter(|&m| crate::operation::helmert::is_helmert(m))
-            .ok_or_else(|| {
-                let name = transformation["method"]["name"]
-                    .as_str()
-                    .unwrap_or("unnamed");
-                self.unsupported(&format!("a bound CRS's transformation by {name}"))
-            })?;
-        let params = self.params(transformation)?;
+        let method = method_id(&transformation["method"]);
+        let null_grid = method == Some(9615)
+            && transformation["parameters"].as_array().is_some_and(|p| {
+                p.len() == 1 && matches!(p[0]["value"].as_str(), Some("@null" | "null"))
+            });
+        let (method, table, params) = if null_grid {
+            let mut params = Params::default();
+            params.push(crate::operation::param::LATITUDE_OFFSET, 0.0);
+            params.push(crate::operation::param::LONGITUDE_OFFSET, 0.0);
+            (9619, Table::Other, params)
+        } else {
+            let method = method
+                .filter(|&m| crate::operation::helmert::is_helmert(m))
+                .ok_or_else(|| {
+                    let name = transformation["method"]["name"]
+                        .as_str()
+                        .unwrap_or("unnamed");
+                    self.unsupported(&format!("a bound CRS's transformation by {name}"))
+                })?;
+            (method, Table::Helmert, self.params(transformation)?)
+        };
         Ok(Operation {
             code: 0,
             name: transformation["name"]
                 .as_str()
                 .unwrap_or("unnamed")
                 .to_owned(),
-            table: Table::Helmert,
+            table,
             method,
             src: None,
             dst: None,
@@ -1064,31 +1105,34 @@ impl Ctx<'_> {
             .any(|(a, b)| (m0 - a).abs() < 1e-10 && (m1 - b).abs() < 1e-10))
     }
 
-    /// `origin` is the projection's longitude of origin, for axes given
-    /// along a meridian.
-    fn axes(&self, cs: &Value, kind: CsKind, origin: Option<f64>) -> Result<Axes, Error> {
+    /// The axes of a coordinate system. A projected CRS whose two
+    /// horizontal axes point the same way, both south or both north along
+    /// meridians (polar CRSs, "south along 45°E"), has the projection's
+    /// easting and northing as they are, or swapped when they are named
+    /// northing then easting, whatever the meridians: PROJ's
+    /// `addUnitConvertAndAxisSwap`, which ignores them. For EPSG's polar
+    /// CRSs that is what the meridians say; PROJ's own PROJ strings name
+    /// 90°E and 180°E whatever the projection's origin.
+    fn axes(&self, cs: &Value, kind: CsKind) -> Result<Axes, Error> {
         let list = cs["axis"]
             .as_array()
             .ok_or_else(|| self.invalid("a coordinate system without axes"))?;
+        let direction = |i: usize| list.get(i).and_then(|a| a["direction"].as_str());
+        let polar = kind == CsKind::Projected
+            && direction(0) == direction(1)
+            && matches!(direction(0), Some("north" | "south"));
+        let northing_easting = {
+            let name = |i: usize| list[i]["name"].as_str().unwrap_or("").to_ascii_lowercase();
+            polar && name(0).starts_with("northing") && name(1).starts_with("easting")
+        };
         let mut axes = Vec::with_capacity(list.len());
-        for axis in list {
+        for (i, axis) in list.iter().enumerate() {
             let direction = axis["direction"].as_str().unwrap_or("");
-            let meridian = &axis["meridian"];
-            let (along, vertical) = if !meridian.is_null() && kind == CsKind::Projected {
-                // Polar CRSs: an axis pointing along a meridian, away from
-                // the north pole ("south") or from the south pole ("north").
-                let m = self.value(&meridian["longitude"], UnitKind::Angle)?;
-                let d = m - origin.ok_or_else(|| {
-                    self.unsupported("an axis along a meridian without a longitude of origin")
-                })?;
-                match direction {
-                    "south" => ([d.sin(), -d.cos()], 0.0),
-                    "north" => ([d.sin(), d.cos()], 0.0),
-                    _ => {
-                        return Err(self.unsupported(&format!(
-                            "the axis direction {direction} along a meridian"
-                        )));
-                    }
+            let (along, vertical) = if polar && i < 2 {
+                if (i == 0) == northing_easting {
+                    ([0.0, 1.0], 0.0)
+                } else {
+                    ([1.0, 0.0], 0.0)
                 }
             } else {
                 match (kind, direction) {

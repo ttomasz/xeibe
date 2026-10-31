@@ -55,6 +55,7 @@ mod identify;
 mod methods;
 mod name;
 mod operation;
+pub mod proj_string;
 pub mod proj_tables;
 mod projection;
 mod registry;

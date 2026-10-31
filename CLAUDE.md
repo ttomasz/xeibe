@@ -169,6 +169,14 @@ sources, but their contents haven't been checked against the local copies:
   (`parts.jsonl`). A committed subset goes to
   `tests/data/crs-wkt/`; `--all` writes everything to `target/crs-wkt/`
   (~4 min on 12 CPUs). See `docs/crs-wkt.md`.
+- `scripts/gen_proj_string_vectors.py` writes PROJ string test vectors with
+  PROJ on the full oracle database: every EPSG CRS's `to_proj4()` and
+  PROJ's reading of it back (`epsg.jsonl`), and hand-written strings from
+  PROJ's `test_io.cpp`, pyproj's tests (`target/pyproj-src`, cloned when
+  missing) and GeoPandas', with PROJ's PROJJSON and converted points
+  (`corpus.jsonl`). A committed subset goes to `tests/data/proj-string/`;
+  `--all` writes every EPSG CRS to `target/proj-string/`. See
+  `docs/pyproj-phase3.md`.
 - `scripts/gen_geodesic_vectors.py` writes geodesic test vectors with
   pyproj's `Geod` (no oracle database needed): inverse and direct
   problems, geodesic lines and polygon areas on several ellipsoids,
@@ -184,7 +192,9 @@ sources, but their contents haven't been checked against the local copies:
 - `scripts/gen_wkt1_names.py` regenerates `crates/xeibe-reproject/src/wkt/names.rs`,
   the WKT1_GDAL and ESRI method and parameter names, from the mapping tables
   in PROJ's source (`parammappings.cpp`, `esriparammappings.cpp`; the
-  tarball `build_proj_oracle.py` pins). It then reads PROJ's `WKT1_GDAL`
+  tarball `build_proj_oracle.py` pins), and `src/proj_string/names.rs`, the
+  same table with PROJ's names plus the keys each of PROJ's projections
+  looks up (`src/projections/*.cpp`). It then reads PROJ's `WKT1_GDAL`
   and `WKT1_ESRI` output in `target/crs-wkt/wkt.jsonl` through the tables and
   reports where they disagree with the same CRS's WKT2.
 - `scripts/check_epsg_release.py` asks the public EPSG API

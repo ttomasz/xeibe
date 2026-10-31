@@ -195,7 +195,7 @@ pub(super) fn unsupported(node: &Node, what: &str) -> Error {
 
 /// An integral value as a JSON integer, as PROJ writes `6378137`, not
 /// `6378137.0`.
-pub(super) fn num(v: f64) -> Value {
+pub(crate) fn num(v: f64) -> Value {
     if v.fract() == 0.0 && v.abs() < 9.007_199_254_740_992e15 {
         json!(v as i64)
     } else {

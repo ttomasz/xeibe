@@ -11,6 +11,9 @@ pub enum Error {
     /// `offset` is in bytes from the start of the text.
     #[error("invalid WKT at byte {offset}: {message}")]
     Wkt { offset: usize, message: String },
+    /// A PROJ string PROJ itself wouldn't read as a CRS.
+    #[error("invalid PROJ string: {message}")]
+    ProjString { message: String },
     /// The CRS is valid but uses something this crate doesn't implement: a
     /// projection method, a CRS type, an axis direction.
     #[error("{crs}: {what} is not supported")]
@@ -23,6 +26,16 @@ pub enum Error {
          can apply, and ballpark approximations are not used"
     )]
     NoTransformation { src: String, dst: String },
+    /// The CRS's datum is unknown: nothing says where it is (a PROJ string
+    /// with an ellipsoid but no datum, WKT's `D_unknown`, EPSG's "Not
+    /// specified" datums), so no transformation to another datum exists,
+    /// and a shift of zero isn't assumed.
+    #[error(
+        "{crs}: its datum \"{datum}\" is unknown, so it can't be converted to another \
+         datum (a shift of zero is not assumed): give the CRS as an EPSG code, or say \
+         its datum (+datum= or +towgs84= in a PROJ string)"
+    )]
+    UnknownDatum { crs: String, datum: String },
     /// A coordinate could not be converted. `index` is its position in the
     /// buffer, counted in coordinates (not ordinates).
     #[error("coordinate {index} ({x}, {y}): {reason}")]

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use crate::crs::{Axes, Bound, Crs, Kind};
+use crate::crs::{Axes, Bound, Crs, Datum, Kind};
 use crate::error::{CoordinateError, Error};
 use crate::geocentric::{cartesian, geodetic};
 use crate::grid::Grids;
@@ -228,14 +228,17 @@ impl Transform {
             Plan::Conversion
         } else {
             let (Some(sc), Some(dc)) = (crs_ref(src), crs_ref(dst)) else {
-                return Err(Error::NoTransformation {
+                return Err(unknown_datum(src, dst).unwrap_or(Error::NoTransformation {
                     src: src.label(),
                     dst: dst.label(),
-                });
+                }));
             };
-            Plan::Operations(Arc::new(Candidates::new(
-                src, dst, sc, dc, &grids, &selection,
-            )?))
+            Plan::Operations(Arc::new(
+                Candidates::new(src, dst, sc, dc, &grids, &selection).map_err(|e| match e {
+                    Error::NoTransformation { .. } => unknown_datum(src, dst).unwrap_or(e),
+                    e => e,
+                })?,
+            ))
         };
         Ok(Transform {
             src: src.clone(),
@@ -648,8 +651,48 @@ fn crs_ref(crs: &Crs) -> Option<CrsRef> {
             horizontal.epsg_code()?,
             vertical.epsg_code()?,
         )),
+        // A CRS EPSG doesn't have, on a datum it does (a projection of
+        // one's own on WGS 84, from WKT or a PROJ string): from the EPSG
+        // geographic CRS on the datum, as PROJ starts from a derived CRS's
+        // base. The conversion onto it is the first step.
+        Kind::Geographic { datum } | Kind::Geocentric { datum } | Kind::Projected { datum, .. } => {
+            geographic_on(datum, crs.dimension() == 3).map(CrsRef::Epsg)
+        }
         _ => None,
     }
+}
+
+/// The EPSG geographic CRS (3D or 2D) on an EPSG datum: the lowest code
+/// not deprecated, else the lowest deprecated one.
+fn geographic_on(datum: &Datum, three_d: bool) -> Option<u32> {
+    let code: u32 = datum.key.strip_prefix("EPSG:")?.parse().ok()?;
+    let kind = if three_d {
+        xeibe_crs::CrsKind::Geographic3d
+    } else {
+        xeibe_crs::CrsKind::Geographic2d
+    };
+    xeibe_crs::CRS
+        .iter()
+        .filter(|r| r.kind == kind && r.datum == Some(code))
+        .min_by_key(|r| (r.deprecated, r.code))
+        .map(|r| r.code)
+}
+
+/// The datum of `src` or `dst` that nothing locates (decision 8 of
+/// `docs/pyproj-phase3.md`): one without an EPSG id that no EPSG datum is
+/// identified with, or one of EPSG's "Not specified (based on … ellipsoid)"
+/// datums. Converting it to another datum would take a shift of zero,
+/// which isn't assumed.
+fn unknown_datum(src: &Crs, dst: &Crs) -> Option<Error> {
+    [src, dst].into_iter().find_map(|crs| {
+        let datum = crs.horizontal().datum()?;
+        let unknown = datum.name.starts_with("Not specified (based on")
+            || (!datum.key.starts_with("EPSG:") && crs_ref(crs).is_none());
+        unknown.then(|| Error::UnknownDatum {
+            crs: crs.label(),
+            datum: datum.name.clone(),
+        })
+    })
 }
 
 /// PROJ's special case (`createOperationsBoundToGeog`) for a Bound CRS on
