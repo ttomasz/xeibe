@@ -88,10 +88,32 @@ def test_strings_dicts_and_keywords() -> None:
     assert CRS("+proj=utm +datum=WGS84", zone=34).to_epsg() == 32634
     with pytest.raises(CRSError, match="Invalid PROJ string"):
         CRS.from_proj4("EPSG:4326")
-    # PROJ-only projections, pipelines and PROJ4 extensions are refused.
-    for s in ("+proj=robin", "+proj=pipeline +step +proj=utm +zone=33", "+proj=longlat +datum=WGS84 +over"):
+    # Projections without a CRS method, pipelines and PROJ4 extensions are
+    # refused.
+    for s in ("+proj=mbt_s", "+proj=pipeline +step +proj=utm +zone=33", "+proj=longlat +datum=WGS84 +over"):
         with pytest.raises(CRSError, match="not supported"):
             CRS(s)
+
+
+def test_projs_own_methods() -> None:
+    """Projections only PROJ defines, and other celestial bodies; pyproj
+    3.8.0's results."""
+    robin = CRS("+proj=robin +lon_0=10 +datum=WGS84")
+    assert robin.is_projected and robin.to_epsg() is None
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        assert robin.to_proj4() == "+proj=robin +lon_0=10 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +type=crs"
+    assert 'METHOD["Robinson"]' in robin.to_wkt()
+    t = Transformer.from_crs(4326, robin, always_xy=True)
+    assert t.transform(30, 40) == pytest.approx((1741397.3031325345, 4276351.583838239), abs=1e-6)
+    assert Proj(proj="robin")(30, 40) == pytest.approx((2612095.954698802, 4276351.583838239), abs=1e-6)
+    moon = CRS("+proj=moll +R=1737400")
+    assert moon.to_json_dict()["base_crs"]["datum"]["prime_meridian"]["name"] == "Reference meridian"
+    t = Transformer.from_crs(moon.geodetic_crs, moon, always_xy=True)
+    assert t.transform(30, 40) == pytest.approx((694026.9656442988, 1304628.9352253017), abs=1e-6)
+    # The Moon's datum is unknown to EPSG: no conversion to the Earth's.
+    with pytest.raises(ProjError, match="is unknown"):
+        Transformer.from_crs(moon, 4326)
 
 
 def test_init_and_its_warning() -> None:

@@ -81,6 +81,14 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
         Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
     ] },
+    Method { epsg: 0x4100_0000, name: "Two Point Equidistant", wkt1: "Two_Point_Equidistant", params: &[
+        Param { epsg: 0x4200_0000, name: "Latitude of 1st point", wkt1: "Latitude_Of_1st_Point", unit: UnitType::Angular },
+        Param { epsg: 0x4200_0001, name: "Longitude of 1st point", wkt1: "Longitude_Of_1st_Point", unit: UnitType::Angular },
+        Param { epsg: 0x4200_0002, name: "Latitude of 2nd point", wkt1: "Latitude_Of_2nd_Point", unit: UnitType::Angular },
+        Param { epsg: 0x4200_0003, name: "Longitude of 2nd point", wkt1: "Longitude_Of_2nd_Point", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
     Method { epsg: 9816, name: "Tunisia Mining Grid", wkt1: "Tunisia_Mining_Grid", params: &[
         Param { epsg: 8821, name: "Latitude of false origin", wkt1: "latitude_of_origin", unit: UnitType::Angular },
         Param { epsg: 8822, name: "Longitude of false origin", wkt1: "central_meridian", unit: UnitType::Angular },
@@ -150,6 +158,11 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
         Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
     ] },
+    Method { epsg: 0x4100_0001, name: "Compact Miller", wkt1: "Compact_Miller", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
     Method { epsg: 9835, name: "Lambert Cylindrical Equal Area", wkt1: "Cylindrical_Equal_Area", params: &[
         Param { epsg: 8823, name: "Latitude of 1st standard parallel", wkt1: "standard_parallel_1", unit: UnitType::Angular },
         Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
@@ -176,6 +189,44 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8826, name: "Easting at false origin", wkt1: "false_easting", unit: UnitType::Linear },
         Param { epsg: 8827, name: "Northing at false origin", wkt1: "false_northing", unit: UnitType::Linear },
     ] },
+    Method { epsg: 0x4100_0002, name: "Equidistant Conic", wkt1: "Equidistant_Conic", params: &[
+        Param { epsg: 8801, name: "Latitude of natural origin", wkt1: "latitude_of_center", unit: UnitType::Angular },
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "longitude_of_center", unit: UnitType::Angular },
+        Param { epsg: 8823, name: "Latitude of 1st standard parallel", wkt1: "standard_parallel_1", unit: UnitType::Angular },
+        Param { epsg: 8824, name: "Latitude of 2nd standard parallel", wkt1: "standard_parallel_2", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0003, name: "Eckert I", wkt1: "Eckert_I", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0004, name: "Eckert II", wkt1: "Eckert_II", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0005, name: "Eckert III", wkt1: "Eckert_III", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0006, name: "Eckert IV", wkt1: "Eckert_IV", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0007, name: "Eckert V", wkt1: "Eckert_V", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0008, name: "Eckert VI", wkt1: "Eckert_VI", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
     Method { epsg: 1028, name: "Equidistant Cylindrical", wkt1: "Equirectangular", params: &[
         Param { epsg: 8823, name: "Latitude of 1st standard parallel", wkt1: "standard_parallel_1", unit: UnitType::Angular },
         Param { epsg: 8801, name: "Latitude of natural origin", wkt1: "latitude_of_origin", unit: UnitType::Angular },
@@ -185,6 +236,45 @@ pub(crate) static METHODS: &[Method] = &[
     ] },
     Method { epsg: 1029, name: "Equidistant Cylindrical (Spherical)", wkt1: "Equirectangular", params: &[
         Param { epsg: 8823, name: "Latitude of 1st standard parallel", wkt1: "standard_parallel_1", unit: UnitType::Angular },
+        Param { epsg: 8801, name: "Latitude of natural origin", wkt1: "latitude_of_origin", unit: UnitType::Angular },
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0009, name: "Flat Polar Quartic", wkt1: "Flat_Polar_Quartic", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_000a, name: "Gall Stereographic", wkt1: "Gall_Stereographic", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_000b, name: "Goode Homolosine", wkt1: "Goode_Homolosine", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_000c, name: "Interrupted Goode Homolosine", wkt1: "Interrupted_Goode_Homolosine", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_000f, name: "Geostationary Satellite (Sweep Y)", wkt1: "Geostationary_Satellite", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 0x4200_0004, name: "Satellite Height", wkt1: "satellite_height", unit: UnitType::Linear },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0010, name: "Gauss Schreiber Transverse Mercator", wkt1: "Gauss_Schreiber_Transverse_Mercator", params: &[
+        Param { epsg: 8801, name: "Latitude of natural origin", wkt1: "latitude_of_origin", unit: UnitType::Angular },
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8805, name: "Scale factor at natural origin", wkt1: "scale_factor", unit: UnitType::Scale },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0011, name: "Gnomonic", wkt1: "Gnomonic", params: &[
         Param { epsg: 8801, name: "Latitude of natural origin", wkt1: "latitude_of_origin", unit: UnitType::Angular },
         Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
         Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
@@ -207,6 +297,23 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8815, name: "Scale factor at projection centre", wkt1: "scale_factor", unit: UnitType::Scale },
         Param { epsg: 8816, name: "Easting at projection centre", wkt1: "false_easting", unit: UnitType::Linear },
         Param { epsg: 8817, name: "Northing at projection centre", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0012, name: "Hotine Oblique Mercator Two Point Natural Origin", wkt1: "Hotine_Oblique_Mercator_Two_Point_Natural_Origin", params: &[
+        Param { epsg: 8811, name: "Latitude of projection centre", wkt1: "latitude_of_center", unit: UnitType::Angular },
+        Param { epsg: 0x4200_0000, name: "Latitude of 1st point", wkt1: "latitude_of_point_1", unit: UnitType::Angular },
+        Param { epsg: 0x4200_0001, name: "Longitude of 1st point", wkt1: "longitude_of_point_1", unit: UnitType::Angular },
+        Param { epsg: 0x4200_0002, name: "Latitude of 2nd point", wkt1: "latitude_of_point_2", unit: UnitType::Angular },
+        Param { epsg: 0x4200_0003, name: "Longitude of 2nd point", wkt1: "longitude_of_point_2", unit: UnitType::Angular },
+        Param { epsg: 8815, name: "Scale factor at projection centre", wkt1: "scale_factor", unit: UnitType::Scale },
+        Param { epsg: 8816, name: "Easting at projection centre", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8817, name: "Northing at projection centre", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0013, name: "International Map of the World Polyconic", wkt1: "International_Map_of_the_World_Polyconic", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 0x4200_0000, name: "Latitude of 1st point", wkt1: "Latitude_Of_1st_Point", unit: UnitType::Angular },
+        Param { epsg: 0x4200_0002, name: "Latitude of 2nd point", wkt1: "Latitude_Of_2nd_Point", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
     ] },
     Method { epsg: 1041, name: "Krovak (North Orientated)", wkt1: "Krovak", params: &[
         Param { epsg: 8811, name: "Latitude of projection centre", wkt1: "latitude_of_center", unit: UnitType::Angular },
@@ -238,6 +345,11 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
         Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
     ] },
+    Method { epsg: 0x4100_0014, name: "Miller Cylindrical", wkt1: "Miller_Cylindrical", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "longitude_of_center", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
     Method { epsg: 9804, name: "Mercator (variant A)", wkt1: "Mercator_1SP", params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
         Param { epsg: 8805, name: "Scale factor at natural origin", wkt1: "scale_factor", unit: UnitType::Scale },
@@ -252,6 +364,21 @@ pub(crate) static METHODS: &[Method] = &[
     ] },
     Method { epsg: 1024, name: "Popular Visualisation Pseudo Mercator", wkt1: "Popular_Visualisation_Pseudo_Mercator", params: &[
         Param { epsg: 8801, name: "Latitude of natural origin", wkt1: "latitude_of_origin", unit: UnitType::Angular },
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0015, name: "Mollweide", wkt1: "Mollweide", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0016, name: "Natural Earth", wkt1: "Natural_Earth", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0017, name: "Natural Earth II", wkt1: "Natural_Earth_II", params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
         Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
         Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
@@ -283,6 +410,17 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8816, name: "Easting at projection centre", wkt1: "false_easting", unit: UnitType::Linear },
         Param { epsg: 8817, name: "Northing at projection centre", wkt1: "false_northing", unit: UnitType::Linear },
     ] },
+    Method { epsg: 0x4100_0018, name: "Orthographic (Spherical)", wkt1: "Orthographic", params: &[
+        Param { epsg: 8801, name: "Latitude of natural origin", wkt1: "latitude_of_origin", unit: UnitType::Angular },
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0019, name: "Patterson", wkt1: "Patterson", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
     Method { epsg: 9818, name: "American Polyconic", wkt1: "Polyconic", params: &[
         Param { epsg: 8801, name: "Latitude of natural origin", wkt1: "latitude_of_origin", unit: UnitType::Angular },
         Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
@@ -299,6 +437,127 @@ pub(crate) static METHODS: &[Method] = &[
     Method { epsg: 9829, name: "Polar Stereographic (variant B)", wkt1: "Polar_Stereographic", params: &[
         Param { epsg: 8832, name: "Latitude of standard parallel", wkt1: "latitude_of_origin", unit: UnitType::Angular },
         Param { epsg: 8833, name: "Longitude of origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_001a, name: "Robinson", wkt1: "Robinson", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "longitude_of_center", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_001d, name: "Sinusoidal", wkt1: "Sinusoidal", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "longitude_of_center", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_001e, name: "Stereographic", wkt1: "Stereographic", params: &[
+        Param { epsg: 8801, name: "Latitude of natural origin", wkt1: "latitude_of_origin", unit: UnitType::Angular },
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8805, name: "Scale factor at natural origin", wkt1: "scale_factor", unit: UnitType::Scale },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_001f, name: "Times", wkt1: "Times", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0020, name: "Van Der Grinten", wkt1: "VanDerGrinten", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0021, name: "Wagner I", wkt1: "Wagner_I", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0022, name: "Wagner II", wkt1: "Wagner_II", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0023, name: "Wagner III", wkt1: "Wagner_III", params: &[
+        Param { epsg: 0x4200_0005, name: "Latitude of true scale", wkt1: "latitude_of_origin", unit: UnitType::Angular },
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0024, name: "Wagner IV", wkt1: "Wagner_IV", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0025, name: "Wagner V", wkt1: "Wagner_V", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0026, name: "Wagner VI", wkt1: "Wagner_VI", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0027, name: "Wagner VII", wkt1: "Wagner_VII", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0028, name: "Quadrilateralized Spherical Cube", wkt1: "Quadrilateralized_Spherical_Cube", params: &[
+        Param { epsg: 8801, name: "Latitude of natural origin", wkt1: "latitude_of_origin", unit: UnitType::Angular },
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0029, name: "Spherical Cross-Track Height", wkt1: "Spherical_Cross_Track_Height", params: &[
+        Param { epsg: 0x4200_0006, name: "Peg point latitude", wkt1: "peg_point_latitude", unit: UnitType::Angular },
+        Param { epsg: 0x4200_0007, name: "Peg point longitude", wkt1: "peg_point_longitude", unit: UnitType::Angular },
+        Param { epsg: 0x4200_0008, name: "Peg point heading", wkt1: "peg_point_heading", unit: UnitType::Angular },
+        Param { epsg: 0x4200_0009, name: "Peg point height", wkt1: "peg_point_height", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_002a, name: "Aitoff", wkt1: "Aitoff", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_002b, name: "Winkel I", wkt1: "Winkel_I", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8823, name: "Latitude of 1st standard parallel", wkt1: "standard_parallel_1", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_002c, name: "Winkel II", wkt1: "Winkel_II", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8823, name: "Latitude of 1st standard parallel", wkt1: "standard_parallel_1", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_002d, name: "Winkel Tripel", wkt1: "Winkel_Tripel", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8823, name: "Latitude of 1st standard parallel", wkt1: "standard_parallel_1", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_002e, name: "Craster Parabolic", wkt1: "Craster_Parabolic", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_002f, name: "Loximuthal", wkt1: "Loximuthal", params: &[
+        Param { epsg: 8801, name: "Latitude of natural origin", wkt1: "latitude_of_origin", unit: UnitType::Angular },
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0030, name: "Quartic Authalic", wkt1: "Quartic_Authalic", params: &[
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
+        Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
+    ] },
+    Method { epsg: 0x4100_0031, name: "Transverse Cylindrical Equal Area", wkt1: "Transverse_Cylindrical_Equal_Area", params: &[
+        Param { epsg: 8801, name: "Latitude of natural origin", wkt1: "latitude_of_origin", unit: UnitType::Angular },
+        Param { epsg: 8802, name: "Longitude of natural origin", wkt1: "central_meridian", unit: UnitType::Angular },
+        Param { epsg: 8805, name: "Scale factor at natural origin", wkt1: "scale_factor", unit: UnitType::Scale },
         Param { epsg: 8806, name: "False easting", wkt1: "false_easting", unit: UnitType::Linear },
         Param { epsg: 8807, name: "False northing", wkt1: "false_northing", unit: UnitType::Linear },
     ] },
@@ -369,6 +628,11 @@ pub(crate) static ESRI_METHODS: &[EsriMethod] = &[
         EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
         EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
     ] },
+    EsriMethod { esri: "Miller_Cylindrical", epsg: 0x4100_0014, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
     EsriMethod { esri: "Mercator", epsg: 9805, params: &[
         EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
         EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
@@ -403,6 +667,63 @@ pub(crate) static ESRI_METHODS: &[EsriMethod] = &[
         EsriParam { esri: "Standard_Parallel_1", epsg: 8823, fixed: None },
         EsriParam { esri: "Standard_Parallel_2", epsg: 8824, fixed: None },
         EsriParam { esri: "Latitude_Of_Origin", epsg: 8821, fixed: None },
+    ] },
+    EsriMethod { esri: "Sinusoidal", epsg: 0x4100_001d, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Mollweide", epsg: 0x4100_0015, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Eckert_I", epsg: 0x4100_0003, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Eckert_II", epsg: 0x4100_0004, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Eckert_III", epsg: 0x4100_0005, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Eckert_IV", epsg: 0x4100_0006, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Eckert_V", epsg: 0x4100_0007, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Eckert_VI", epsg: 0x4100_0008, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Gall_Stereographic", epsg: 0x4100_000a, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Winkel_I", epsg: 0x4100_002b, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+        EsriParam { esri: "Standard_Parallel_1", epsg: 8823, fixed: None },
+    ] },
+    EsriMethod { esri: "Winkel_II", epsg: 0x4100_002c, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+        EsriParam { esri: "Standard_Parallel_1", epsg: 8823, fixed: None },
     ] },
     EsriMethod { esri: "Lambert_Conformal_Conic", epsg: 9801, params: &[
         EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
@@ -444,11 +765,39 @@ pub(crate) static ESRI_METHODS: &[EsriMethod] = &[
         EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
         EsriParam { esri: "Latitude_Of_Origin", epsg: 8801, fixed: None },
     ] },
+    EsriMethod { esri: "Quartic_Authalic", epsg: 0x4100_0030, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Loximuthal", epsg: 0x4100_002f, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+        EsriParam { esri: "Central_Parallel", epsg: 8801, fixed: None },
+    ] },
     EsriMethod { esri: "Bonne", epsg: 9827, params: &[
         EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
         EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
         EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
         EsriParam { esri: "Standard_Parallel_1", epsg: 8801, fixed: None },
+    ] },
+    EsriMethod { esri: "Hotine_Oblique_Mercator_Two_Point_Natural_Origin", epsg: 0x4100_0012, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8816, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8817, fixed: None },
+        EsriParam { esri: "Latitude_Of_1st_Point", epsg: 0x4200_0000, fixed: None },
+        EsriParam { esri: "Latitude_Of_2nd_Point", epsg: 0x4200_0002, fixed: None },
+        EsriParam { esri: "Scale_Factor", epsg: 8815, fixed: None },
+        EsriParam { esri: "Longitude_Of_1st_Point", epsg: 0x4200_0001, fixed: None },
+        EsriParam { esri: "Longitude_Of_2nd_Point", epsg: 0x4200_0003, fixed: None },
+        EsriParam { esri: "Latitude_Of_Center", epsg: 8811, fixed: None },
+    ] },
+    EsriMethod { esri: "Stereographic", epsg: 0x4100_001e, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+        EsriParam { esri: "Scale_Factor", epsg: 8805, fixed: None },
+        EsriParam { esri: "Latitude_Of_Origin", epsg: 8801, fixed: None },
     ] },
     EsriMethod { esri: "Polar_Stereographic_Variant_A", epsg: 9810, params: &[
         EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
@@ -471,6 +820,24 @@ pub(crate) static ESRI_METHODS: &[EsriMethod] = &[
         EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
         EsriParam { esri: "Scale_Factor", epsg: 0, fixed: Some(1.0) },
         EsriParam { esri: "Latitude_Of_Origin", epsg: 8801, fixed: None },
+    ] },
+    EsriMethod { esri: "Van_der_Grinten_I", epsg: 0x4100_0020, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Robinson", epsg: 0x4100_001a, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Two_Point_Equidistant", epsg: 0x4100_0000, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Latitude_Of_1st_Point", epsg: 0x4200_0000, fixed: None },
+        EsriParam { esri: "Latitude_Of_2nd_Point", epsg: 0x4200_0002, fixed: None },
+        EsriParam { esri: "Longitude_Of_1st_Point", epsg: 0x4200_0001, fixed: None },
+        EsriParam { esri: "Longitude_Of_2nd_Point", epsg: 0x4200_0003, fixed: None },
     ] },
     EsriMethod { esri: "Azimuthal_Equidistant", epsg: 1125, params: &[
         EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
@@ -495,6 +862,16 @@ pub(crate) static ESRI_METHODS: &[EsriMethod] = &[
         EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
         EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: Some(0.0) },
         EsriParam { esri: "Standard_Parallel_1", epsg: 8823, fixed: Some(30.0) },
+    ] },
+    EsriMethod { esri: "Hotine_Oblique_Mercator_Two_Point_Center", epsg: 0x4100_0012, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8816, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8817, fixed: None },
+        EsriParam { esri: "Latitude_Of_1st_Point", epsg: 0x4200_0000, fixed: None },
+        EsriParam { esri: "Latitude_Of_2nd_Point", epsg: 0x4200_0002, fixed: None },
+        EsriParam { esri: "Scale_Factor", epsg: 8815, fixed: None },
+        EsriParam { esri: "Longitude_Of_1st_Point", epsg: 0x4200_0001, fixed: None },
+        EsriParam { esri: "Longitude_Of_2nd_Point", epsg: 0x4200_0003, fixed: None },
+        EsriParam { esri: "Latitude_Of_Origin", epsg: 8801, fixed: None },
     ] },
     EsriMethod { esri: "Hotine_Oblique_Mercator_Azimuth_Natural_Origin", epsg: 9812, params: &[
         EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
@@ -549,6 +926,12 @@ pub(crate) static ESRI_METHODS: &[EsriMethod] = &[
         EsriParam { esri: "Longitude_Of_Origin", epsg: 8802, fixed: None },
         EsriParam { esri: "Latitude_Of_Origin", epsg: 8801, fixed: None },
     ] },
+    EsriMethod { esri: "Orthographic", epsg: 0x4100_0018, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Longitude_Of_Center", epsg: 8802, fixed: None },
+        EsriParam { esri: "Latitude_Of_Center", epsg: 8801, fixed: None },
+    ] },
     EsriMethod { esri: "Local", epsg: 1130, params: &[
         EsriParam { esri: "False_Easting", epsg: 8816, fixed: None },
         EsriParam { esri: "False_Northing", epsg: 8817, fixed: None },
@@ -556,6 +939,38 @@ pub(crate) static ESRI_METHODS: &[EsriMethod] = &[
         EsriParam { esri: "Azimuth", epsg: 8813, fixed: None },
         EsriParam { esri: "Longitude_Of_Center", epsg: 8812, fixed: None },
         EsriParam { esri: "Latitude_Of_Center", epsg: 8811, fixed: None },
+    ] },
+    EsriMethod { esri: "Winkel_Tripel", epsg: 0x4100_002d, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+        EsriParam { esri: "Standard_Parallel_1", epsg: 8823, fixed: None },
+    ] },
+    EsriMethod { esri: "Aitoff", epsg: 0x4100_002a, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Flat_Polar_Quartic", epsg: 0x4100_0009, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Craster_Parabolic", epsg: 0x4100_002e, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Gnomonic", epsg: 0x4100_0011, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Longitude_Of_Center", epsg: 8802, fixed: None },
+        EsriParam { esri: "Latitude_Of_Center", epsg: 8801, fixed: None },
+    ] },
+    EsriMethod { esri: "Times", epsg: 0x4100_001f, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
     ] },
     EsriMethod { esri: "Vertical_Near_Side_Perspective", epsg: 9838, params: &[
         EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
@@ -594,6 +1009,24 @@ pub(crate) static ESRI_METHODS: &[EsriMethod] = &[
         EsriParam { esri: "Latitude_Of_Center", epsg: 8811, fixed: None },
         EsriParam { esri: "XY_Plane_Rotation", epsg: 8814, fixed: None },
     ] },
+    EsriMethod { esri: "Goode_Homolosine", epsg: 0x4100_000b, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+        EsriParam { esri: "Option", epsg: 0, fixed: Some(0.0) },
+    ] },
+    EsriMethod { esri: "Goode_Homolosine", epsg: 0x4100_000c, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+        EsriParam { esri: "Option", epsg: 0, fixed: Some(1.0) },
+    ] },
+    EsriMethod { esri: "Goode_Homolosine", epsg: 0x4100_000d, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+        EsriParam { esri: "Option", epsg: 0, fixed: Some(2.0) },
+    ] },
     EsriMethod { esri: "Equidistant_Cylindrical_Ellipsoidal", epsg: 1028, params: &[
         EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
         EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
@@ -607,6 +1040,55 @@ pub(crate) static ESRI_METHODS: &[EsriMethod] = &[
         EsriParam { esri: "Azimuth", epsg: 8813, fixed: None },
         EsriParam { esri: "Longitude_Of_Center", epsg: 8812, fixed: None },
         EsriParam { esri: "Latitude_Of_Center", epsg: 8811, fixed: None },
+    ] },
+    EsriMethod { esri: "Gnomonic_Ellipsoidal", epsg: 0x4100_0011, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Longitude_Of_Center", epsg: 8802, fixed: None },
+        EsriParam { esri: "Latitude_Of_Center", epsg: 8801, fixed: None },
+    ] },
+    EsriMethod { esri: "Wagner_IV", epsg: 0x4100_0024, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+        EsriParam { esri: "Latitude_Of_Origin", epsg: 0, fixed: Some(0.0) },
+    ] },
+    EsriMethod { esri: "Wagner_V", epsg: 0x4100_0025, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Wagner_VII", epsg: 0x4100_0027, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Natural_Earth", epsg: 0x4100_0016, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Natural_Earth_II", epsg: 0x4100_0017, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Patterson", epsg: 0x4100_0019, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Compact_Miller", epsg: 0x4100_0001, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Geostationary_Satellite", epsg: 0x4100_000f, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Longitude_Of_Center", epsg: 8802, fixed: None },
+        EsriParam { esri: "Height", epsg: 0x4200_0004, fixed: None },
+        EsriParam { esri: "Option", epsg: 0, fixed: Some(0.0) },
     ] },
     EsriMethod { esri: "Mercator_Auxiliary_Sphere", epsg: 1024, params: &[
         EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
@@ -628,6 +1110,13 @@ pub(crate) static ESRI_METHODS: &[EsriMethod] = &[
         EsriParam { esri: "Standard_Parallel_1", epsg: 8823, fixed: None },
         EsriParam { esri: "Latitude_Of_Origin", epsg: 0, fixed: Some(0.0) },
     ] },
+    EsriMethod { esri: "Transverse_Cylindrical_Equal_Area", epsg: 0x4100_0031, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+        EsriParam { esri: "Scale_Factor", epsg: 8805, fixed: None },
+        EsriParam { esri: "Latitude_Of_Origin", epsg: 8801, fixed: None },
+    ] },
     EsriMethod { esri: "IGAC_Plano_Cartesiano", epsg: 1052, params: &[
         EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
         EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
@@ -639,5 +1128,21 @@ pub(crate) static ESRI_METHODS: &[EsriMethod] = &[
         EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
         EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
         EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+    ] },
+    EsriMethod { esri: "Peirce_Quincuncial", epsg: 0x4100_001b, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+        EsriParam { esri: "Scale_Factor", epsg: 8805, fixed: None },
+        EsriParam { esri: "Latitude_Of_Origin", epsg: 8801, fixed: None },
+        EsriParam { esri: "Option", epsg: 0, fixed: Some(0.0) },
+    ] },
+    EsriMethod { esri: "Peirce_Quincuncial", epsg: 0x4100_001c, params: &[
+        EsriParam { esri: "False_Easting", epsg: 8806, fixed: None },
+        EsriParam { esri: "False_Northing", epsg: 8807, fixed: None },
+        EsriParam { esri: "Central_Meridian", epsg: 8802, fixed: None },
+        EsriParam { esri: "Scale_Factor", epsg: 8805, fixed: None },
+        EsriParam { esri: "Latitude_Of_Origin", epsg: 8801, fixed: None },
+        EsriParam { esri: "Option", epsg: 0, fixed: Some(1.0) },
     ] },
 ];

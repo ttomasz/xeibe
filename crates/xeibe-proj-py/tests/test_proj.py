@@ -96,4 +96,4 @@ def test_errors() -> None:
     with pytest.raises(NotImplementedError, match="errcheck"):
         Proj(2180)(19.0, 52.0, False, True)  # type: ignore[call-arg]
     with pytest.raises(CRSError, match="not supported"):
-        Proj(proj="robin")
+        Proj(proj="mbt_s")

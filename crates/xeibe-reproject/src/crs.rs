@@ -866,10 +866,9 @@ fn epsg_id(value: &Value) -> Option<u32> {
     }
 }
 
-/// A method's EPSG code: its id, else its EPSG name, for definitions such
-/// as WKT that may name it without one.
+/// A method's code: EPSG's, or this crate's for one only PROJ defines.
 fn method_id(method: &Value) -> Option<u32> {
-    epsg_id(method).or_else(|| method["name"].as_str().and_then(xeibe_crs::method_code))
+    methods::method_code(method)
 }
 
 /// The components of a diagonal direction (northEast and the like).
@@ -1124,11 +1123,10 @@ impl Ctx<'_> {
         let mut params = Params::default();
         for param in conversion["parameters"].as_array().into_iter().flatten() {
             // By name when the definition gives no id, as WKT may.
-            let code = epsg_id(param)
-                .or_else(|| param["name"].as_str().and_then(xeibe_crs::parameter_code));
+            let code = methods::parameter_code(param);
             let Some(code) = code else {
                 let name = param["name"].as_str().unwrap_or("unnamed");
-                return Err(self.unsupported(&format!("the parameter {name} without an EPSG id")));
+                return Err(self.unsupported(&format!("the parameter {name}")));
             };
             let raw = param["value"]
                 .as_f64()

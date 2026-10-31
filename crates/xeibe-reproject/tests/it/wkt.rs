@@ -339,7 +339,7 @@ fn what_is_not_read_is_named() {
 // --- writing ---------------------------------------------------------------
 
 #[derive(Debug, PartialEq)]
-enum Token {
+pub(super) enum Token {
     Open(String),
     Close,
     Text(String),
@@ -348,7 +348,7 @@ enum Token {
 }
 
 /// WKT as tokens, without commas and white space.
-fn tokens(s: &str) -> Vec<Token> {
+pub(super) fn tokens(s: &str) -> Vec<Token> {
     let b = s.as_bytes();
     let mut out = Vec::new();
     let mut i = 0;
@@ -400,7 +400,7 @@ fn tokens(s: &str) -> Vec<Token> {
 
 /// Where two WKT texts first differ: the keywords enclosing it and the two
 /// tokens. Numbers within 1e-11 relative are the same.
-fn first_difference(ours: &str, theirs: &str) -> Option<(String, String)> {
+pub(super) fn first_difference(ours: &str, theirs: &str) -> Option<(String, String)> {
     first_token_difference(&tokens(ours), &tokens(theirs))
 }
 

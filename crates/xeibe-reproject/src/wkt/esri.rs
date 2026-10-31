@@ -13,10 +13,10 @@ use super::parse::{Arg, Node};
 use super::wkt2::{Unit, UnitKind, num};
 use crate::error::Error;
 
-/// How sure the reader is that WKT1 is ESRI's: PROJ's `esriStyle_` (`Yes`)
-/// and `maybeEsriStyle_` (`Maybe`). Names are looked up in Esri's tables
-/// for both; `Maybe` takes an ESRI projection only if most of its
-/// parameters are there.
+/// How sure the reader is that WKT1 is ESRI's, as `Dialect::get` sums up
+/// PROJ's two flags: `Maybe` while PROJ's `maybeEsriStyle_` is set (an
+/// ESRI projection is then taken only if most of its parameters are
+/// there), else `Yes` for its `esriStyle_`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Esri {
     No,
@@ -24,44 +24,57 @@ pub(super) enum Esri {
     Yes,
 }
 
-/// The reader's state while it reads one WKT1 string.
-pub(super) struct Dialect(Cell<Esri>);
+/// The reader's state while it reads one WKT1 string: PROJ's `esriStyle_`
+/// and `maybeEsriStyle_`, which are set apart.
+pub(super) struct Dialect {
+    sure: Cell<bool>,
+    maybe: Cell<bool>,
+}
 
 impl Dialect {
-    /// PROJ's `guessDialect` and the markers that make it sure: a
+    /// PROJ's `guessDialect`, which makes it maybe ESRI's (no `AXIS` and no
+    /// `AUTHORITY` anywhere, outside a `LOCAL_CS` and without GDAL's Hotine
+    /// `rectified_grid_angle`), and the markers that make it sure: a
     /// `VERTCS`, a `GEOGCS` named `GCS_…`, a `DATUM` named `D_…`, or
-    /// ESRI's `X_Scale` or `Vertical_Shift` parameters make it ESRI's; no
-    /// `AXIS` and no `AUTHORITY` anywhere (outside a `LOCAL_CS`, and
-    /// without GDAL's Hotine `rectified_grid_angle`) make it maybe ESRI's.
+    /// ESRI's `X_Scale` or `Vertical_Shift` parameters.
     pub(super) fn guess(root: &Node) -> Dialect {
         let mut seen = Seen::default();
         seen.walk(root);
-        let esri = if root.keyword == "VERTCS" || seen.esri_marker {
-            Esri::Yes
-        } else if root.keyword != "LOCAL_CS"
-            && !seen.axis
-            && !seen.authority
-            && !seen.rectified_grid_angle
-        {
-            Esri::Maybe
-        } else {
-            Esri::No
-        };
-        Dialect(Cell::new(esri))
+        Dialect {
+            sure: Cell::new(root.keyword == "VERTCS" || seen.esri_marker),
+            maybe: Cell::new(
+                root.keyword != "LOCAL_CS"
+                    && !seen.axis
+                    && !seen.authority
+                    && !seen.rectified_grid_angle,
+            ),
+        }
     }
 
     /// A dialect that isn't ESRI's (GDAL's `VERT_CS`).
     pub(super) fn none() -> Dialect {
-        Dialect(Cell::new(Esri::No))
+        Dialect {
+            sure: Cell::new(false),
+            maybe: Cell::new(false),
+        }
     }
 
     /// ESRI's (its `VERTCS`).
     pub(super) fn esri() -> Dialect {
-        Dialect(Cell::new(Esri::Yes))
+        Dialect {
+            sure: Cell::new(true),
+            maybe: Cell::new(false),
+        }
     }
 
     pub(super) fn get(&self) -> Esri {
-        self.0.get()
+        if self.maybe.get() {
+            Esri::Maybe
+        } else if self.sure.get() {
+            Esri::Yes
+        } else {
+            Esri::No
+        }
     }
 
     /// Whether Esri's names are looked up.
@@ -69,10 +82,12 @@ impl Dialect {
         self.get() != Esri::No
     }
 
-    /// A name found only in Esri's tables makes `Maybe` sure, as in PROJ.
+    /// A name found only in Esri's tables makes it sure, and no longer
+    /// maybe, as in PROJ.
     pub(super) fn confirm(&self) {
-        if self.get() == Esri::Maybe {
-            self.0.set(Esri::Yes);
+        if self.maybe.get() {
+            self.maybe.set(false);
+            self.sure.set(true);
         }
     }
 }
@@ -220,6 +235,17 @@ const EQUIVALENT_PARAMETERS: &[&[&str]] = &[
     &["pseudo_standard_parallel_1", "standard_parallel_1"],
 ];
 
+/// Whether PROJ takes two parameter names as the same
+/// (`areEquivalentParameters`): two different names of one group.
+pub(super) fn equivalent_parameters(a: &str, b: &str) -> bool {
+    let canonical = |n: &str| crate::name::canonical(n, false);
+    let (a, b) = (canonical(a), canonical(b));
+    a != b
+        && EQUIVALENT_PARAMETERS
+            .iter()
+            .any(|g| g.iter().any(|n| canonical(n) == a) && g.iter().any(|n| canonical(n) == b))
+}
+
 /// A parameter by name, else by a name PROJ takes as the same.
 fn value_or_alias(params: &[(String, f64)], name: &str) -> Option<f64> {
     value(params, name).or_else(|| {
@@ -295,7 +321,8 @@ const EXTRA_PARAMETERS: &[(u32, &str)] = &[
     (8834, "Latitude of topocentric origin"),
     (8835, "Longitude of topocentric origin"),
     (8836, "Ellipsoidal height of topocentric origin"),
-    (8840, "Viewing point height"),
+    // PROJ's name; EPSG's is "Viewing point height".
+    (8840, "Viewpoint height"),
 ];
 
 fn parameter_name(code: u32) -> Option<&'static str> {
@@ -420,6 +447,7 @@ pub(super) fn conversion(
         .or_else(|| {
             EXTRA_METHODS
                 .iter()
+                .chain(crate::methods::proj_codes::METHODS)
                 .find(|(c, _)| *c == method)
                 .map(|(_, n)| *n)
         })
@@ -435,15 +463,18 @@ pub(super) fn conversion(
             UnitKind::Scale => json!("unity"),
             _ => length.json.clone(),
         };
-        out.push(json!({"name": name, "value": num(v), "unit": unit,
-            "id": {"authority": "EPSG", "code": code}}));
+        let mut p = json!({"name": name, "value": num(v), "unit": unit});
+        if let Some(id) = crate::methods::id(code) {
+            p["id"] = id;
+        }
+        out.push(p);
+    }
+    let mut m = json!({"name": method_name});
+    if let Some(id) = crate::methods::id(method) {
+        m["id"] = id;
     }
     Ok(Some((
-        json!({
-            "name": "unnamed",
-            "method": {"name": method_name, "id": {"authority": "EPSG", "code": method}},
-            "parameters": out,
-        }),
+        json!({"name": "unnamed", "method": m, "parameters": out}),
         Some(method),
     )))
 }

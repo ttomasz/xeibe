@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde_json::Value;
-use xeibe_reproject::{AxisOrder, Crs, Error, Transform, proj_string};
+use xeibe_reproject::{AxisOrder, Crs, Error, Transform, proj_string, wkt};
 
 fn records(path: &Path) -> Vec<Value> {
     let text = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
@@ -206,6 +206,12 @@ fn check(dir: &Path) -> Report {
             report.check(s, reading.as_object().map(|_| reading));
         }
     }
+    for r in records(&dir.join("methods.jsonl")) {
+        report.check(
+            r["srs"].as_str().unwrap(),
+            r["projjson"].as_object().map(|_| &r["projjson"]),
+        );
+    }
     report
 }
 
@@ -396,6 +402,16 @@ fn writing(dir: &Path) -> (usize, BTreeMap<String, Vec<String>>) {
             check(format!("EPSG:{code}"), json, r["proj4"].as_str());
         }
     }
+    for r in records(&dir.join("methods.jsonl")) {
+        // PROJ keeps a string with a `+R_A` it doesn't look up as given.
+        if r["projjson"].is_object() && !r["srs"].as_str().unwrap().contains("+R_A") {
+            check(
+                r["srs"].as_str().unwrap().to_owned(),
+                &r["projjson"].to_string(),
+                r["to_proj4"].as_str(),
+            );
+        }
+    }
     for r in records(&dir.join("corpus.jsonl")) {
         // What PROJ keeps outside the PROJJSON (an extension: `+over`, a
         // pipeline, a PROJ-only method; `+approx`) can't be written back
@@ -494,4 +510,287 @@ fn every_proj_string_is_identified_as_proj_identifies_it() {
         println!("  {f}");
     }
     assert!(failed.is_empty());
+}
+
+/// The projections EPSG has no CRS for and those only PROJ defines
+/// (`methods.jsonl`): points over the whole globe converted from each
+/// string's geodetic CRS and back, against PROJ's (forwards to 2 µm, PROJ's
+/// results being rounded to 1 µm; back to 1e-9°, from PROJ's forward
+/// results). Every string must build a CRS here, but those of `NOT_PORTED`,
+/// which must not.
+fn method_conversions(dir: &Path) -> (usize, Vec<String>) {
+    let (mut compared, mut failed) = (0, Vec::new());
+    for r in records(&dir.join("methods.jsonl")) {
+        let srs = r["srs"].as_str().unwrap();
+        let Some(points) = r["points"].as_array() else {
+            continue;
+        };
+        let json: Value = serde_json::from_str(&proj_string::to_projjson(srs).unwrap()).unwrap();
+        let proj = srs.split(' ').next().unwrap().trim_start_matches("+proj=");
+        let not_ported = NOT_PORTED.contains(&proj);
+        let base = if json["type"] == "ProjectedCRS" {
+            &json["base_crs"]
+        } else {
+            &json
+        };
+        let (base, crs) = match (
+            Crs::from_projjson(&base.to_string()),
+            Crs::from_projjson(&json.to_string()),
+        ) {
+            (Ok(_), Ok(_)) if not_ported => {
+                failed.push(format!("{srs}: builds, but {proj} is in NOT_PORTED"));
+                continue;
+            }
+            (Ok(b), Ok(c)) => (b, c),
+            (_, Err(Error::Unsupported { .. })) if not_ported => continue,
+            (b, c) => {
+                failed.push(format!("{srs}: {:?}", b.err().or(c.err())));
+                continue;
+            }
+        };
+        let forward = Transform::new(&base, &crs, AxisOrder::EastFirst).unwrap();
+        let inverse = r["inverse"].as_array();
+        let backward = inverse.map(|_| Transform::new(&crs, &base, AxisOrder::EastFirst).unwrap());
+        for (i, (p, want)) in points
+            .iter()
+            .zip(r["converted"].as_array().unwrap())
+            .enumerate()
+        {
+            let (lon, lat) = (p[0].as_f64().unwrap(), p[1].as_f64().unwrap());
+            compared += 1;
+            let ours = forward.convert(lon, lat, None);
+            let Some(want) = want.as_array() else {
+                if let Ok(ours) = ours {
+                    failed.push(format!("{srs} at ({lon}, {lat}): {ours:?}, PROJ fails"));
+                }
+                continue;
+            };
+            let (wx, wy) = (want[0].as_f64().unwrap(), want[1].as_f64().unwrap());
+            match ours {
+                Ok((x, y, _)) if (x - wx).abs() < 2e-6 && (y - wy).abs() < 2e-6 => {}
+                other => failed.push(format!(
+                    "{srs} at ({lon}, {lat}): {other:?}, PROJ ({wx}, {wy})"
+                )),
+            }
+            let (Some(backward), Some(back)) = (&backward, inverse.map(|v| &v[i])) else {
+                continue;
+            };
+            compared += 1;
+            let ours = backward.convert(wx, wy, None);
+            let Some(back) = back.as_array() else {
+                if let Ok(ours) = ours {
+                    failed.push(format!(
+                        "{srs} back from ({wx}, {wy}): {ours:?}, PROJ fails"
+                    ));
+                }
+                continue;
+            };
+            let (blon, blat) = (back[0].as_f64().unwrap(), back[1].as_f64().unwrap());
+            let close = |(l, p): (f64, f64)| {
+                let dl = (l - blon + 540.0).rem_euclid(360.0) - 180.0;
+                (p - blat).abs() < 1e-9 && (dl.abs() < 1e-9 || blat.abs() > 89.999999)
+            };
+            match ours {
+                Ok((l, p, _)) if close((l, p)) => {}
+                other => failed.push(format!(
+                    "{srs} back from ({wx}, {wy}): {other:?}, PROJ ({blon}, {blat})"
+                )),
+            }
+        }
+    }
+    (compared, failed)
+}
+
+/// The projections of `methods.jsonl` not yet ported from PROJ.
+const NOT_PORTED: &[&str] = &[
+    "ortho", "eqdc", "nsper", "gnom", "stere", "tcea", "gstmerc", "imw_p", "tpeqd", "omerc",
+    "geos", "qsc", "sch", "peirce_q",
+];
+
+#[test]
+fn proj_methods_convert_as_in_proj() {
+    let (compared, failed) = method_conversions(&xeibe_testkit::data_dir().join("proj-string"));
+    assert!(
+        failed.is_empty(),
+        "{} of {compared}:\n{}",
+        failed.len(),
+        failed
+            .iter()
+            .take(
+                std::env::var("TAKE")
+                    .ok()
+                    .and_then(|t| t.parse().ok())
+                    .unwrap_or(60)
+            )
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+/// `[path, value]` sets the value at the path, `[path]` removes it: PROJ's
+/// reading of a WKT, from the string's PROJJSON (`changes` in
+/// `gen_proj_string_vectors.py`).
+fn apply(base: &Value, changes: &Value) -> Value {
+    let mut out = base.clone();
+    for c in changes.as_array().unwrap() {
+        let path = c[0].as_array().unwrap();
+        let mut at = &mut out;
+        for (i, key) in path.iter().enumerate() {
+            let last = i + 1 == path.len();
+            match key {
+                Value::String(k) if last => {
+                    let o = at.as_object_mut().unwrap();
+                    match c.get(1) {
+                        Some(v) => {
+                            o.insert(k.clone(), v.clone());
+                        }
+                        None => {
+                            o.remove(k);
+                        }
+                    }
+                    break;
+                }
+                Value::String(k) => at = at.get_mut(k.as_str()).unwrap(),
+                Value::Number(n) if last => {
+                    at[n.as_u64().unwrap() as usize] = c[1].clone();
+                    break;
+                }
+                Value::Number(n) => at = at.get_mut(n.as_u64().unwrap() as usize).unwrap(),
+                _ => unreachable!(),
+            }
+        }
+        if path.is_empty() {
+            out = c[1].clone();
+        }
+    }
+    out
+}
+
+/// What a reading of WKT must get as PROJ does: the conversion's method,
+/// its parameters in SI units (in any order), the remarks (where PROJ
+/// keeps a PROJ4 extension) and the axis directions. Names of the base's
+/// axes and units are the reader's own, as `wkt.rs` compares them.
+fn reading(crs: &Value) -> Value {
+    let si = |p: &Value| {
+        let v = p["value"].as_f64().unwrap();
+        match &p["unit"] {
+            Value::String(u) if u == "degree" => v * 0.0174532925199433,
+            Value::Object(o) => v * o["conversion_factor"].as_f64().unwrap(),
+            _ => v,
+        }
+    };
+    let c = &crs["conversion"];
+    let mut params: Vec<(String, Value, f64)> = c["parameters"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|p| {
+            (
+                p["name"].as_str().unwrap().to_owned(),
+                p["id"].clone(),
+                si(p),
+            )
+        })
+        .collect();
+    params.sort_by(|a, b| a.0.cmp(&b.0));
+    let directions: Vec<&Value> = crs["coordinate_system"]["axis"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|a| &a["direction"])
+        .collect();
+    serde_json::json!({
+        "method": c["method"],
+        "parameters": params,
+        "remarks": crs["remarks"],
+        "directions": directions,
+    })
+}
+
+/// Each method's WKT (WKT2 2019 and WKT1_GDAL) written as PROJ writes it,
+/// and PROJ's WKT (those and WKT1_ESRI) read as PROJ reads it.
+fn method_wkt(dir: &Path) -> (usize, Vec<String>) {
+    let (mut compared, mut failed) = (0, Vec::new());
+    for r in records(&dir.join("methods.jsonl")) {
+        let srs = r["srs"].as_str().unwrap();
+        if !r["projjson"].is_object() {
+            continue;
+        }
+        let json = r["projjson"].to_string();
+        // PROJ writes a string with a `+R_A` it doesn't look up in
+        // WKT1_GDAL's PROJ4 extension.
+        let extension = srs.contains("+R_A");
+        for (key, version) in [
+            ("WKT2_2019", Some(wkt::Version::Wkt2_2019)),
+            ("WKT1_GDAL", Some(wkt::Version::Wkt1Gdal)),
+            ("WKT1_ESRI", None),
+        ] {
+            let entry = &r["wkt"][key];
+            let theirs = entry["text"].as_str();
+            if let Some(version) = version
+                && !(extension && key == "WKT1_GDAL")
+            {
+                compared += 1;
+                match (wkt::from_projjson(&json, version, false), theirs) {
+                    (Ok(ours), Some(theirs)) => {
+                        if let Some((at, what)) = super::wkt::first_difference(&ours, theirs) {
+                            failed.push(format!("{srs} {key} written: at {at}: {what}"));
+                        }
+                    }
+                    (Err(_), None) => {}
+                    (Ok(_), None) => failed.push(format!("{srs} {key}: written, PROJ can't")),
+                    (Err(e), Some(_)) => failed.push(format!("{srs} {key}: not written: {e}")),
+                }
+            }
+            let Some(text) = theirs else {
+                continue;
+            };
+            compared += 1;
+            let ours = wkt::to_projjson(text).map(|s| serde_json::from_str::<Value>(&s).unwrap());
+            match (ours, entry.get("changes")) {
+                (Ok(ours), Some(changes)) => {
+                    let theirs = apply(&r["projjson"], changes);
+                    let mut d = Vec::new();
+                    diff(&reading(&ours), &reading(&theirs), "", &mut d);
+                    for d in d {
+                        failed.push(format!("{srs} {key} read: {d}"));
+                    }
+                    if let (Ok(a), Ok(b)) = (
+                        Crs::from_projjson(&ours.to_string()),
+                        Crs::from_projjson(&theirs.to_string()),
+                    ) && !a.equivalent(&b, false)
+                    {
+                        failed.push(format!("{srs} {key} read: not equivalent to PROJ's"));
+                    }
+                }
+                (Err(_), None) => {}
+                (Ok(_), None) => failed.push(format!("{srs} {key}: read, PROJ can't")),
+                (Err(e), Some(_)) => failed.push(format!("{srs} {key}: not read: {e}")),
+            }
+        }
+    }
+    (compared, failed)
+}
+
+#[test]
+fn proj_methods_wkt_as_in_proj() {
+    let (compared, failed) = method_wkt(&xeibe_testkit::data_dir().join("proj-string"));
+    assert!(compared > 500, "{compared}");
+    assert!(
+        failed.is_empty(),
+        "{} of {compared}:\n{}",
+        failed.len(),
+        failed
+            .iter()
+            .take(
+                std::env::var("TAKE")
+                    .ok()
+                    .and_then(|t| t.parse().ok())
+                    .unwrap_or(60)
+            )
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
 }

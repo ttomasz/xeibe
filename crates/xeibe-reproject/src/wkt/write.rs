@@ -2,7 +2,9 @@
 //! (`docs/crs-wkt.md`, Writing).
 //!
 //! The mapping is the reader's in reverse, plus PROJ's choices where WKT
-//! leaves room: ids only on the CRS, its base CRS, methods and parameters;
+//! leaves room: ids on the CRS, its base CRS, methods and parameters, and
+//! on what is inside them (datums, ellipsoids, prime meridians, units,
+//! conversions) only where nothing around it has one;
 //! every axis with its own unit and, when there are several, its `ORDER`;
 //! axis names in lower case, and left out for easting and northing in
 //! their usual places and for geocentric X/Y/Z; numbers with 15
@@ -16,7 +18,56 @@ use crate::error::Error;
 /// A CRS's PROJJSON as one WKT2 2019 node.
 pub(crate) fn crs(v: &Value) -> Result<Node, Error> {
     let mut w = Writer::outermost();
-    w.crs(v)
+    let mut n = w.crs(v)?;
+    settle_ids(&mut n, false);
+    Ok(n)
+}
+
+/// The keyword of an id written only where nothing around it has one.
+const OPTIONAL_ID: &str = "ID?";
+
+/// PROJ writes the id of an object inside another only when no object
+/// around it has one (`outputId`): an unnamed CRS from a PROJ string shows
+/// its datum's, ellipsoid's and units' ids, an EPSG CRS only its own.
+/// Optional ids become ids where nothing around them has one, and go
+/// elsewhere.
+fn settle_ids(n: &mut Node, inside_id: bool) {
+    let is_id = |a: &Arg, keyword: &str| matches!(a, Arg::Node(c) if c.keyword == keyword);
+    // An object written on its own has its id already.
+    let own = n.args.iter().any(|a| is_id(a, "ID"));
+    n.args.retain_mut(|a| match a {
+        Arg::Node(c) if c.keyword == OPTIONAL_ID => {
+            c.keyword = "ID".into();
+            !inside_id && !own
+        }
+        _ => true,
+    });
+    let has_id = n.args.iter().any(|a| is_id(a, "ID"));
+    for a in &mut n.args {
+        if let Arg::Node(c) = a
+            && c.keyword != "ID"
+        {
+            settle_ids(c, inside_id || has_id);
+        }
+    }
+}
+
+/// `v`'s id as an optional one (`settle_ids`).
+fn optional_id(v: &Value, args: &mut Vec<Arg>) -> Result<(), Error> {
+    if v["id"].is_object() {
+        let mut n = id(&v["id"])?;
+        n.keyword = OPTIONAL_ID.into();
+        args.push(sub(n));
+    }
+    Ok(())
+}
+
+/// An EPSG code as an optional id.
+fn optional_epsg(code: u32) -> Arg {
+    sub(node(
+        OPTIONAL_ID,
+        vec![text("EPSG"), Arg::Number(f64::from(code))],
+    ))
 }
 
 /// The text of `node`, on one line or indented as PROJ indents it.
@@ -142,14 +193,17 @@ fn unit(u: &Value, kind: Kind) -> Result<Node, Error> {
         "ParametricUnit" => "PARAMETRICUNIT",
         _ => "UNIT",
     };
-    let (kw, name, factor) = match u {
-        Value::String(s) if s == "metre" => ("LENGTHUNIT", "metre", 1.0),
-        Value::String(s) if s == "degree" => ("ANGLEUNIT", "degree", 0.017_453_292_519_943_3),
-        Value::String(s) if s == "unity" => ("SCALEUNIT", "unity", 1.0),
+    let (kw, name, factor, code) = match u {
+        Value::String(s) if s == "metre" => ("LENGTHUNIT", "metre", 1.0, Some(9001)),
+        Value::String(s) if s == "degree" => {
+            ("ANGLEUNIT", "degree", 0.017_453_292_519_943_3, Some(9122))
+        }
+        Value::String(s) if s == "unity" => ("SCALEUNIT", "unity", 1.0, Some(9201)),
         Value::Object(o) => (
             keyword(o.get("type").and_then(Value::as_str).unwrap_or("Unit")),
             str_of(u, "name")?,
             num_of(&o["conversion_factor"])?,
+            None,
         ),
         Value::Null => {
             return unit(
@@ -166,7 +220,12 @@ fn unit(u: &Value, kind: Kind) -> Result<Node, Error> {
         }
         other => return Err(invalid(&format!("the unit {other}"))),
     };
-    Ok(node(kw, vec![text(name), Arg::Number(factor)]))
+    let mut args = vec![text(name), Arg::Number(factor)];
+    match code {
+        Some(c) => args.push(optional_epsg(c)),
+        None => optional_id(u, &mut args)?,
+    }
+    Ok(node(kw, args))
 }
 
 /// A measure: a bare number in the default unit, or `{value, unit}`.
@@ -329,7 +388,9 @@ impl Writer {
     fn projected(&mut self, v: &Value) -> Result<Node, Error> {
         let mut args = vec![text(str_of(v, "name")?)];
         args.push(sub(base_geographic(&v["base_crs"])?));
-        args.push(sub(conversion("CONVERSION", &v["conversion"])?));
+        let mut c = conversion("CONVERSION", &v["conversion"])?;
+        optional_id(&v["conversion"], &mut c.args)?;
+        args.push(sub(c));
         args.extend(cs_args(&v["coordinate_system"])?);
         self.finish(v, &mut args)?;
         Ok(node("PROJCRS", args))
@@ -404,6 +465,14 @@ impl Writer {
 /// node, or a dynamic datum's `DYNAMIC` and `DATUM`, or a coordinate
 /// system's `CS` and `AXIS` nodes.
 pub(crate) fn object(v: &Value) -> Result<Vec<Node>, Error> {
+    let mut nodes = object_nodes(v)?;
+    for n in &mut nodes {
+        settle_ids(n, false);
+    }
+    Ok(nodes)
+}
+
+fn object_nodes(v: &Value) -> Result<Vec<Node>, Error> {
     let with_ids = |mut n: Node| -> Result<Vec<Node>, Error> {
         ids(v, &mut n.args)?;
         Ok(vec![n])
@@ -564,15 +633,14 @@ fn ellipsoid(e: &Value) -> Result<Node, Error> {
         };
         (a, u, rf)
     };
-    Ok(node(
-        "ELLIPSOID",
-        vec![
-            text(str_of(e, "name")?),
-            Arg::Number(a),
-            Arg::Number(rf),
-            sub(u),
-        ],
-    ))
+    let mut args = vec![
+        text(str_of(e, "name")?),
+        Arg::Number(a),
+        Arg::Number(rf),
+        sub(u),
+    ];
+    optional_id(e, &mut args)?;
+    Ok(node("ELLIPSOID", args))
 }
 
 /// `ENSEMBLE`, its members with their ids when `member_ids`, as PROJ
@@ -633,12 +701,14 @@ fn dynamic(crs: &Value, datum: &Value) -> Result<Option<Node>, Error> {
 fn geodetic_datum(d: &Value) -> Result<Node, Error> {
     let mut a = vec![text(str_of(d, "name")?), sub(ellipsoid(&d["ellipsoid"])?)];
     anchors(d, &mut a)?;
+    optional_id(d, &mut a)?;
     Ok(node("DATUM", a))
 }
 
 fn vertical_datum(d: &Value) -> Result<Node, Error> {
     let mut a = vec![text(str_of(d, "name")?)];
     anchors(d, &mut a)?;
+    optional_id(d, &mut a)?;
     Ok(node("VDATUM", a))
 }
 
@@ -671,10 +741,13 @@ fn prime_meridian(pm: &Value) -> Result<Node, Error> {
     } else {
         ("Greenwich", 0.0, unit(&Value::Null, Kind::Angle)?)
     };
-    Ok(node(
-        "PRIMEM",
-        vec![text(name), Arg::Number(longitude), sub(u)],
-    ))
+    let mut args = vec![text(name), Arg::Number(longitude), sub(u)];
+    if pm.is_object() {
+        optional_id(pm, &mut args)?;
+    } else {
+        args.push(optional_epsg(8901));
+    }
+    Ok(node("PRIMEM", args))
 }
 
 fn vertical_datum_args(v: &Value) -> Result<Vec<Arg>, Error> {
@@ -798,7 +871,20 @@ fn conversion(keyword: &str, c: &Value) -> Result<Node, Error> {
     let mut method = vec![text(str_of(m, "name")?)];
     ids(m, &mut method)?;
     let mut args = vec![text(str_of(c, "name")?), sub(node("METHOD", method))];
+    let method_code = crate::methods::method_code(m);
     for p in c["parameters"].as_array().into_iter().flatten() {
+        // PROJ leaves out Equidistant Cylindrical's latitude of natural
+        // origin (which EPSG doesn't give it) and Vertical Perspective's
+        // false easting and northing (likewise) when they are zero.
+        let skipped = match (method_code, crate::methods::parameter_code(p)) {
+            (Some(1028 | 1029), Some(8801)) | (Some(9838), Some(8806 | 8807)) => {
+                p["value"].as_f64() == Some(0.0)
+            }
+            _ => false,
+        };
+        if skipped {
+            continue;
+        }
         let mut a = vec![text(str_of(p, "name")?), Arg::Number(num_of(&p["value"])?)];
         a.push(sub(unit(&p["unit"], parameter_kind(p))?));
         ids(p, &mut a)?;

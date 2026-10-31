@@ -242,8 +242,12 @@ WKT1 needs translation, not just mapping:
   WGS 84 ellipsoid, plus
   `EXTENSION["PROJ4","+proj=merc +a=6378137 +b=6378137 … +nadgrids=@null …"]`.
   That exact extension is read as EPSG method 1024 (Popular Visualisation
-  Pseudo Mercator). Any other `PROJ4` extension is an error until the phase 3
-  PROJ-string translator exists.
+  Pseudo Mercator). Any other `PROJ4` extension's `+proj=` string is read
+  as a PROJ string, and its projected CRS's conversion is the CRS's, as in
+  PROJ's `buildProjectionStandard`; the string is kept in the remarks
+  ("PROJ CRS string: …"), where PROJ keeps it. PROJ converts with the
+  whole string, so one whose ellipsoid or unit isn't the WKT's is an
+  error, as is any other `EXTENSION`.
 - **UTM.** A Transverse Mercator conversion with UTM's parameters
   (latitude 0, a zone's central meridian, scale 0.9996, false easting
   500,000 m, false northing 0 or 10,000,000 m) is named "UTM zone 33N",
@@ -419,17 +423,26 @@ From a PROJJSON value:
 - **WKT2 2019** is the mapping above in reverse, in the order ISO 19162
   gives, with PROJ's choices where WKT leaves room (measured on its output
   for every EPSG CRS):
-  - ids only on the CRS itself, its base CRS, `METHOD` and `PARAMETER`;
-    none on compound components, datums, ellipsoids, members or units;
+  - ids on the CRS itself, its base CRS, `METHOD` and `PARAMETER`; on
+    what is inside them (datums, ellipsoids, prime meridians, units, a
+    projected CRS's conversion) only where no object around it has an
+    id (PROJ's `outputId`). An EPSG CRS shows only its own ids; one from
+    a PROJ string, with none, shows its datum's, ellipsoid's and units':
+    `LENGTHUNIT["metre",1,ID["EPSG",9001]]`, Greenwich as 8901, degree as
+    9122, unity as 9201. None on compound components or members;
   - every axis with its own unit, and `ORDER` when there are several;
   - axis names with a lower-case first letter, and left out for Easting
     (E) as the first axis, Northing (N) as the second, and Geocentric X,
     Y, Z in their places: `AXIS["(E)",east]`, but `"northing (N)"` first;
   - a `PRIMEM` always, Greenwich included;
+  - Vertical Perspective's false easting and northing, and Equidistant
+    Cylindrical's latitude of natural origin, only when not zero;
   - the PROJJSON's usages and remarks for the outermost CRS only;
   - numbers as `%.15g`, and an ensemble's accuracy as its text (`2.0`).
 - **WKT1_GDAL** is the WKT1 table in reverse. Web Mercator gets GDAL's
-  `PROJ4` extension back.
+  `PROJ4` extension back, and Geostationary Satellite (Sweep X), which
+  WKT1 has no name for, is written as Sweep Y's `Geostationary_Satellite`
+  with the CRS's PROJ string in a `PROJ4` extension, as PROJ writes it.
 - **Axes** follow pyproj's `output_axis_rule` (`wkt::AxisRule`), with
   PROJ's rules for each value:
 

@@ -18,7 +18,8 @@ pub(crate) enum UnitType {
 /// One parameter of a method.
 #[derive(Debug)]
 pub(crate) struct Param {
-    /// EPSG's code, or 0 for a parameter EPSG doesn't have.
+    /// EPSG's code, or this crate's for one only PROJ defines
+    /// (`methods::proj_codes`).
     pub(crate) epsg: u32,
     /// PROJ's WKT2 name: EPSG's name (`Latitude of natural origin`).
     pub(crate) name: &'static str,
@@ -31,7 +32,8 @@ pub(crate) struct Param {
 /// PROJ builds a conversion from them.
 #[derive(Debug)]
 pub(crate) struct Method {
-    /// EPSG's code, or 0 for a method only PROJ defines (Robinson).
+    /// EPSG's code, or this crate's for a method only PROJ defines
+    /// (Robinson; `methods::proj_codes`).
     pub(crate) epsg: u32,
     /// PROJ's WKT2 name.
     pub(crate) name: &'static str,
@@ -67,11 +69,11 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Two Point Equidistant", proj: Some("tpeqd"), aux: None, params: &[
-        Param { epsg: 0, name: "Latitude of 1st point", unit: UnitType::Angular, proj: Some("lat_1") },
-        Param { epsg: 0, name: "Longitude of 1st point", unit: UnitType::Angular, proj: Some("lon_1") },
-        Param { epsg: 0, name: "Latitude of 2nd point", unit: UnitType::Angular, proj: Some("lat_2") },
-        Param { epsg: 0, name: "Longitude of 2nd point", unit: UnitType::Angular, proj: Some("lon_2") },
+    Method { epsg: 0x4100_0000, name: "Two Point Equidistant", proj: Some("tpeqd"), aux: None, params: &[
+        Param { epsg: 0x4200_0000, name: "Latitude of 1st point", unit: UnitType::Angular, proj: Some("lat_1") },
+        Param { epsg: 0x4200_0001, name: "Longitude of 1st point", unit: UnitType::Angular, proj: Some("lon_1") },
+        Param { epsg: 0x4200_0002, name: "Latitude of 2nd point", unit: UnitType::Angular, proj: Some("lat_2") },
+        Param { epsg: 0x4200_0003, name: "Longitude of 2nd point", unit: UnitType::Angular, proj: Some("lon_2") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
@@ -167,7 +169,7 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Compact Miller", proj: Some("comill"), aux: None, params: &[
+    Method { epsg: 0x4100_0001, name: "Compact Miller", proj: Some("comill"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
@@ -204,7 +206,7 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8826, name: "Easting at false origin", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8827, name: "Northing at false origin", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Equidistant Conic", proj: Some("eqdc"), aux: None, params: &[
+    Method { epsg: 0x4100_0002, name: "Equidistant Conic", proj: Some("eqdc"), aux: None, params: &[
         Param { epsg: 8801, name: "Latitude of natural origin", unit: UnitType::Angular, proj: Some("lat_0") },
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8823, name: "Latitude of 1st standard parallel", unit: UnitType::Angular, proj: Some("lat_1") },
@@ -212,32 +214,32 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Eckert I", proj: Some("eck1"), aux: None, params: &[
+    Method { epsg: 0x4100_0003, name: "Eckert I", proj: Some("eck1"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Eckert II", proj: Some("eck2"), aux: None, params: &[
+    Method { epsg: 0x4100_0004, name: "Eckert II", proj: Some("eck2"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Eckert III", proj: Some("eck3"), aux: None, params: &[
+    Method { epsg: 0x4100_0005, name: "Eckert III", proj: Some("eck3"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Eckert IV", proj: Some("eck4"), aux: None, params: &[
+    Method { epsg: 0x4100_0006, name: "Eckert IV", proj: Some("eck4"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Eckert V", proj: Some("eck5"), aux: None, params: &[
+    Method { epsg: 0x4100_0007, name: "Eckert V", proj: Some("eck5"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Eckert VI", proj: Some("eck6"), aux: None, params: &[
+    Method { epsg: 0x4100_0008, name: "Eckert VI", proj: Some("eck6"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
@@ -256,51 +258,51 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Flat Polar Quartic", proj: Some("mbtfpq"), aux: None, params: &[
+    Method { epsg: 0x4100_0009, name: "Flat Polar Quartic", proj: Some("mbtfpq"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Gall Stereographic", proj: Some("gall"), aux: None, params: &[
+    Method { epsg: 0x4100_000a, name: "Gall Stereographic", proj: Some("gall"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Goode Homolosine", proj: Some("goode"), aux: None, params: &[
+    Method { epsg: 0x4100_000b, name: "Goode Homolosine", proj: Some("goode"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Interrupted Goode Homolosine", proj: Some("igh"), aux: None, params: &[
+    Method { epsg: 0x4100_000c, name: "Interrupted Goode Homolosine", proj: Some("igh"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Interrupted Goode Homolosine Ocean", proj: Some("igh_o"), aux: None, params: &[
+    Method { epsg: 0x4100_000d, name: "Interrupted Goode Homolosine Ocean", proj: Some("igh_o"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Geostationary Satellite (Sweep X)", proj: Some("geos"), aux: Some("sweep=x"), params: &[
+    Method { epsg: 0x4100_000e, name: "Geostationary Satellite (Sweep X)", proj: Some("geos"), aux: Some("sweep=x"), params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
-        Param { epsg: 0, name: "Satellite Height", unit: UnitType::Linear, proj: Some("h") },
+        Param { epsg: 0x4200_0004, name: "Satellite Height", unit: UnitType::Linear, proj: Some("h") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Geostationary Satellite (Sweep Y)", proj: Some("geos"), aux: None, params: &[
+    Method { epsg: 0x4100_000f, name: "Geostationary Satellite (Sweep Y)", proj: Some("geos"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
-        Param { epsg: 0, name: "Satellite Height", unit: UnitType::Linear, proj: Some("h") },
+        Param { epsg: 0x4200_0004, name: "Satellite Height", unit: UnitType::Linear, proj: Some("h") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Gauss Schreiber Transverse Mercator", proj: Some("gstmerc"), aux: None, params: &[
+    Method { epsg: 0x4100_0010, name: "Gauss Schreiber Transverse Mercator", proj: Some("gstmerc"), aux: None, params: &[
         Param { epsg: 8801, name: "Latitude of natural origin", unit: UnitType::Angular, proj: Some("lat_0") },
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8805, name: "Scale factor at natural origin", unit: UnitType::Scale, proj: Some("k_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Gnomonic", proj: Some("gnom"), aux: None, params: &[
+    Method { epsg: 0x4100_0011, name: "Gnomonic", proj: Some("gnom"), aux: None, params: &[
         Param { epsg: 8801, name: "Latitude of natural origin", unit: UnitType::Angular, proj: Some("lat_0") },
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
@@ -324,20 +326,20 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8816, name: "Easting at projection centre", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8817, name: "Northing at projection centre", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Hotine Oblique Mercator Two Point Natural Origin", proj: Some("omerc"), aux: None, params: &[
+    Method { epsg: 0x4100_0012, name: "Hotine Oblique Mercator Two Point Natural Origin", proj: Some("omerc"), aux: None, params: &[
         Param { epsg: 8811, name: "Latitude of projection centre", unit: UnitType::Angular, proj: Some("lat_0") },
-        Param { epsg: 0, name: "Latitude of 1st point", unit: UnitType::Angular, proj: Some("lat_1") },
-        Param { epsg: 0, name: "Longitude of 1st point", unit: UnitType::Angular, proj: Some("lon_1") },
-        Param { epsg: 0, name: "Latitude of 2nd point", unit: UnitType::Angular, proj: Some("lat_2") },
-        Param { epsg: 0, name: "Longitude of 2nd point", unit: UnitType::Angular, proj: Some("lon_2") },
+        Param { epsg: 0x4200_0000, name: "Latitude of 1st point", unit: UnitType::Angular, proj: Some("lat_1") },
+        Param { epsg: 0x4200_0001, name: "Longitude of 1st point", unit: UnitType::Angular, proj: Some("lon_1") },
+        Param { epsg: 0x4200_0002, name: "Latitude of 2nd point", unit: UnitType::Angular, proj: Some("lat_2") },
+        Param { epsg: 0x4200_0003, name: "Longitude of 2nd point", unit: UnitType::Angular, proj: Some("lon_2") },
         Param { epsg: 8815, name: "Scale factor at projection centre", unit: UnitType::Scale, proj: Some("k") },
         Param { epsg: 8816, name: "Easting at projection centre", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8817, name: "Northing at projection centre", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "International Map of the World Polyconic", proj: Some("imw_p"), aux: None, params: &[
+    Method { epsg: 0x4100_0013, name: "International Map of the World Polyconic", proj: Some("imw_p"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
-        Param { epsg: 0, name: "Latitude of 1st point", unit: UnitType::Angular, proj: Some("lat_1") },
-        Param { epsg: 0, name: "Latitude of 2nd point", unit: UnitType::Angular, proj: Some("lat_2") },
+        Param { epsg: 0x4200_0000, name: "Latitude of 1st point", unit: UnitType::Angular, proj: Some("lat_1") },
+        Param { epsg: 0x4200_0002, name: "Latitude of 2nd point", unit: UnitType::Angular, proj: Some("lat_2") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
@@ -389,7 +391,7 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Miller Cylindrical", proj: Some("mill"), aux: Some("R_A"), params: &[
+    Method { epsg: 0x4100_0014, name: "Miller Cylindrical", proj: Some("mill"), aux: Some("R_A"), params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
@@ -419,17 +421,17 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Mollweide", proj: Some("moll"), aux: None, params: &[
+    Method { epsg: 0x4100_0015, name: "Mollweide", proj: Some("moll"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Natural Earth", proj: Some("natearth"), aux: None, params: &[
+    Method { epsg: 0x4100_0016, name: "Natural Earth", proj: Some("natearth"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Natural Earth II", proj: Some("natearth2"), aux: None, params: &[
+    Method { epsg: 0x4100_0017, name: "Natural Earth II", proj: Some("natearth2"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
@@ -461,13 +463,13 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8816, name: "Easting at projection centre", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8817, name: "Northing at projection centre", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Orthographic (Spherical)", proj: Some("ortho"), aux: Some("f=0"), params: &[
+    Method { epsg: 0x4100_0018, name: "Orthographic (Spherical)", proj: Some("ortho"), aux: Some("f=0"), params: &[
         Param { epsg: 8801, name: "Latitude of natural origin", unit: UnitType::Angular, proj: Some("lat_0") },
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Patterson", proj: Some("patterson"), aux: None, params: &[
+    Method { epsg: 0x4100_0019, name: "Patterson", proj: Some("patterson"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
@@ -491,135 +493,135 @@ pub(crate) static METHODS: &[Method] = &[
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Robinson", proj: Some("robin"), aux: None, params: &[
+    Method { epsg: 0x4100_001a, name: "Robinson", proj: Some("robin"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Peirce Quincuncial (Square)", proj: Some("peirce_q"), aux: Some("shape=square"), params: &[
+    Method { epsg: 0x4100_001b, name: "Peirce Quincuncial (Square)", proj: Some("peirce_q"), aux: Some("shape=square"), params: &[
         Param { epsg: 8801, name: "Latitude of natural origin", unit: UnitType::Angular, proj: Some("lat_0") },
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8805, name: "Scale factor at natural origin", unit: UnitType::Scale, proj: Some("k_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Peirce Quincuncial (Diamond)", proj: Some("peirce_q"), aux: Some("shape=diamond"), params: &[
+    Method { epsg: 0x4100_001c, name: "Peirce Quincuncial (Diamond)", proj: Some("peirce_q"), aux: Some("shape=diamond"), params: &[
         Param { epsg: 8801, name: "Latitude of natural origin", unit: UnitType::Angular, proj: Some("lat_0") },
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8805, name: "Scale factor at natural origin", unit: UnitType::Scale, proj: Some("k_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Sinusoidal", proj: Some("sinu"), aux: None, params: &[
+    Method { epsg: 0x4100_001d, name: "Sinusoidal", proj: Some("sinu"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Stereographic", proj: Some("stere"), aux: None, params: &[
+    Method { epsg: 0x4100_001e, name: "Stereographic", proj: Some("stere"), aux: None, params: &[
         Param { epsg: 8801, name: "Latitude of natural origin", unit: UnitType::Angular, proj: Some("lat_0") },
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8805, name: "Scale factor at natural origin", unit: UnitType::Scale, proj: Some("k") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Times", proj: Some("times"), aux: None, params: &[
+    Method { epsg: 0x4100_001f, name: "Times", proj: Some("times"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Van Der Grinten", proj: Some("vandg"), aux: Some("R_A"), params: &[
+    Method { epsg: 0x4100_0020, name: "Van Der Grinten", proj: Some("vandg"), aux: Some("R_A"), params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Wagner I", proj: Some("wag1"), aux: None, params: &[
+    Method { epsg: 0x4100_0021, name: "Wagner I", proj: Some("wag1"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Wagner II", proj: Some("wag2"), aux: None, params: &[
+    Method { epsg: 0x4100_0022, name: "Wagner II", proj: Some("wag2"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Wagner III", proj: Some("wag3"), aux: None, params: &[
-        Param { epsg: 0, name: "Latitude of true scale", unit: UnitType::Angular, proj: Some("lat_ts") },
+    Method { epsg: 0x4100_0023, name: "Wagner III", proj: Some("wag3"), aux: None, params: &[
+        Param { epsg: 0x4200_0005, name: "Latitude of true scale", unit: UnitType::Angular, proj: Some("lat_ts") },
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Wagner IV", proj: Some("wag4"), aux: None, params: &[
+    Method { epsg: 0x4100_0024, name: "Wagner IV", proj: Some("wag4"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Wagner V", proj: Some("wag5"), aux: None, params: &[
+    Method { epsg: 0x4100_0025, name: "Wagner V", proj: Some("wag5"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Wagner VI", proj: Some("wag6"), aux: None, params: &[
+    Method { epsg: 0x4100_0026, name: "Wagner VI", proj: Some("wag6"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Wagner VII", proj: Some("wag7"), aux: None, params: &[
+    Method { epsg: 0x4100_0027, name: "Wagner VII", proj: Some("wag7"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Quadrilateralized Spherical Cube", proj: Some("qsc"), aux: None, params: &[
+    Method { epsg: 0x4100_0028, name: "Quadrilateralized Spherical Cube", proj: Some("qsc"), aux: None, params: &[
         Param { epsg: 8801, name: "Latitude of natural origin", unit: UnitType::Angular, proj: Some("lat_0") },
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Spherical Cross-Track Height", proj: Some("sch"), aux: None, params: &[
-        Param { epsg: 0, name: "Peg point latitude", unit: UnitType::Angular, proj: Some("plat_0") },
-        Param { epsg: 0, name: "Peg point longitude", unit: UnitType::Angular, proj: Some("plon_0") },
-        Param { epsg: 0, name: "Peg point heading", unit: UnitType::Angular, proj: Some("phdg_0") },
-        Param { epsg: 0, name: "Peg point height", unit: UnitType::Linear, proj: Some("h_0") },
+    Method { epsg: 0x4100_0029, name: "Spherical Cross-Track Height", proj: Some("sch"), aux: None, params: &[
+        Param { epsg: 0x4200_0006, name: "Peg point latitude", unit: UnitType::Angular, proj: Some("plat_0") },
+        Param { epsg: 0x4200_0007, name: "Peg point longitude", unit: UnitType::Angular, proj: Some("plon_0") },
+        Param { epsg: 0x4200_0008, name: "Peg point heading", unit: UnitType::Angular, proj: Some("phdg_0") },
+        Param { epsg: 0x4200_0009, name: "Peg point height", unit: UnitType::Linear, proj: Some("h_0") },
     ] },
-    Method { epsg: 0, name: "Aitoff", proj: Some("aitoff"), aux: None, params: &[
+    Method { epsg: 0x4100_002a, name: "Aitoff", proj: Some("aitoff"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Winkel I", proj: Some("wink1"), aux: None, params: &[
+    Method { epsg: 0x4100_002b, name: "Winkel I", proj: Some("wink1"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8823, name: "Latitude of 1st standard parallel", unit: UnitType::Angular, proj: Some("lat_ts") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Winkel II", proj: Some("wink2"), aux: None, params: &[
+    Method { epsg: 0x4100_002c, name: "Winkel II", proj: Some("wink2"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8823, name: "Latitude of 1st standard parallel", unit: UnitType::Angular, proj: Some("lat_1") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Winkel Tripel", proj: Some("wintri"), aux: None, params: &[
+    Method { epsg: 0x4100_002d, name: "Winkel Tripel", proj: Some("wintri"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8823, name: "Latitude of 1st standard parallel", unit: UnitType::Angular, proj: Some("lat_1") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Craster Parabolic", proj: Some("crast"), aux: None, params: &[
+    Method { epsg: 0x4100_002e, name: "Craster Parabolic", proj: Some("crast"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Loximuthal", proj: Some("loxim"), aux: None, params: &[
+    Method { epsg: 0x4100_002f, name: "Loximuthal", proj: Some("loxim"), aux: None, params: &[
         Param { epsg: 8801, name: "Latitude of natural origin", unit: UnitType::Angular, proj: Some("lat_1") },
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Quartic Authalic", proj: Some("qua_aut"), aux: None, params: &[
+    Method { epsg: 0x4100_0030, name: "Quartic Authalic", proj: Some("qua_aut"), aux: None, params: &[
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8806, name: "False easting", unit: UnitType::Linear, proj: Some("x_0") },
         Param { epsg: 8807, name: "False northing", unit: UnitType::Linear, proj: Some("y_0") },
     ] },
-    Method { epsg: 0, name: "Transverse Cylindrical Equal Area", proj: Some("tcea"), aux: None, params: &[
+    Method { epsg: 0x4100_0031, name: "Transverse Cylindrical Equal Area", proj: Some("tcea"), aux: None, params: &[
         Param { epsg: 8801, name: "Latitude of natural origin", unit: UnitType::Angular, proj: Some("lat_0") },
         Param { epsg: 8802, name: "Longitude of natural origin", unit: UnitType::Angular, proj: Some("lon_0") },
         Param { epsg: 8805, name: "Scale factor at natural origin", unit: UnitType::Scale, proj: Some("k") },

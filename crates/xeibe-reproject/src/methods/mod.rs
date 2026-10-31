@@ -8,6 +8,8 @@
 use std::f64::consts::{FRAC_PI_2, PI};
 use std::sync::Arc;
 
+use serde_json::{Value, json};
+
 use crate::ellipsoid::Ellipsoid;
 use crate::error::CoordinateError;
 
@@ -22,6 +24,7 @@ mod col_urban;
 mod common;
 mod eqc;
 mod eqearth;
+mod goode;
 mod krovak;
 mod labrd;
 mod laea;
@@ -36,10 +39,61 @@ mod nzmg;
 mod omerc;
 mod ortho;
 mod poly;
+pub(crate) mod proj_codes;
+mod sphere;
 mod stere;
 mod sterea;
 mod tmerc;
 mod tmerc_variants;
+mod world;
+
+/// Whether a method or parameter code is EPSG's, not this crate's for one
+/// only PROJ defines (`proj_codes`).
+pub(crate) fn is_epsg(code: u32) -> bool {
+    code != 0 && code < proj_codes::FIRST_METHOD
+}
+
+/// The PROJJSON `id` of a method or parameter with this code: EPSG's, or
+/// none for one only PROJ defines, which PROJ names without an id.
+pub(crate) fn id(code: u32) -> Option<Value> {
+    is_epsg(code).then(|| json!({"authority": "EPSG", "code": code}))
+}
+
+fn epsg_id(v: &Value) -> Option<u32> {
+    (v["id"]["authority"] == "EPSG")
+        .then(|| v["id"]["code"].as_u64())
+        .flatten()
+        .and_then(|c| u32::try_from(c).ok())
+}
+
+/// A PROJJSON method's code: its EPSG id, else its EPSG name (WKT may name
+/// it without an id), else PROJ's name of one only PROJ defines.
+pub(crate) fn method_code(method: &Value) -> Option<u32> {
+    let name = method["name"].as_str();
+    epsg_id(method)
+        .or_else(|| name.and_then(xeibe_crs::method_code))
+        .or_else(|| {
+            let name = name?;
+            proj_codes::METHODS
+                .iter()
+                .find(|(_, n)| crate::name::equivalent(n, name))
+                .map(|&(c, _)| c)
+        })
+}
+
+/// A PROJJSON parameter's code, as `method_code`.
+pub(crate) fn parameter_code(param: &Value) -> Option<u32> {
+    let name = param["name"].as_str();
+    epsg_id(param)
+        .or_else(|| name.and_then(xeibe_crs::parameter_code))
+        .or_else(|| {
+            let name = name?;
+            proj_codes::PARAMS
+                .iter()
+                .find(|(_, n)| crate::name::equivalent(n, name))
+                .map(|&(c, _)| c)
+        })
+}
 
 /// One projection, set up with its parameters.
 pub(crate) trait Projection: Send + Sync + std::fmt::Debug {
@@ -181,6 +235,9 @@ pub(crate) fn build(
     let Some(code) = code else {
         return Err(BuildError::UnknownMethod);
     };
+    if code >= proj_codes::FIRST_METHOD {
+        return proj_method(code, params, ellipsoid);
+    }
     Ok(match code {
         9807 => Arc::new(tmerc::TransverseMercator::new(params, ellipsoid)?),
         9801 => Arc::new(lcc::LambertConic::one_sp(params, ellipsoid)?),
@@ -222,6 +279,49 @@ pub(crate) fn build(
         1130 => Arc::new(ortho::LocalOrthographic::new(params, ellipsoid)?),
         _ => return Err(BuildError::UnknownMethod),
     })
+}
+
+/// The projection of a method only PROJ defines.
+fn proj_method(
+    code: u32,
+    params: &Params,
+    ellipsoid: &Ellipsoid,
+) -> Result<Arc<dyn Projection>, BuildError> {
+    use proj_codes as c;
+    if code == c::SINUSOIDAL && !ellipsoid.is_sphere() {
+        return Ok(Arc::new(world::EllipsoidalSinusoidal::new(
+            params, ellipsoid,
+        )?));
+    }
+    match code {
+        c::GOODE_HOMOLOSINE => {
+            return Ok(Arc::new(sphere::Spherical::new(
+                goode::Goode::new(),
+                params,
+                ellipsoid,
+            )?));
+        }
+        c::INTERRUPTED_GOODE_HOMOLOSINE | c::INTERRUPTED_GOODE_HOMOLOSINE_OCEAN => {
+            let ocean = code == c::INTERRUPTED_GOODE_HOMOLOSINE_OCEAN;
+            return Ok(Arc::new(sphere::Spherical::new(
+                goode::Interrupted::new(ocean),
+                params,
+                ellipsoid,
+            )?));
+        }
+        _ => {}
+    }
+    if let Some(w) = world::World::of(code, params)? {
+        // Miller and Van der Grinten are on the authalic sphere (`R_A`).
+        return Ok(
+            if matches!(code, c::MILLER_CYLINDRICAL | c::VAN_DER_GRINTEN) {
+                Arc::new(sphere::Spherical::authalic(w, params, ellipsoid)?)
+            } else {
+                Arc::new(sphere::Spherical::new(w, params, ellipsoid)?)
+            },
+        );
+    }
+    Err(BuildError::UnknownMethod)
 }
 
 /// Reduce a longitude to [−π, π], as PROJ's `adjlon`.

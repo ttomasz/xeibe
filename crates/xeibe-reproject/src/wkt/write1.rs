@@ -22,6 +22,7 @@ use super::AxisRule;
 use super::names::METHODS;
 use super::parse::{Arg, Node};
 use crate::error::Error;
+use crate::methods::{parameter_code, proj_codes};
 use crate::name;
 
 /// A CRS as WKT1_GDAL, with the axes `axes` asks for: `Always` writes
@@ -371,15 +372,21 @@ fn geocentric(v: &Value) -> Result<Node, Error> {
 
 /// Methods PROJ maps but gives no WKT1 name: it doesn't write them.
 const NO_WKT1: &[u32] = &[
-    1102, 1051, 9831, 9833, 1043, 1042, 1078, 9838, 1052, 9836, 9837,
+    1102,
+    1051,
+    9831,
+    9833,
+    1043,
+    1042,
+    1078,
+    9838,
+    1052,
+    9836,
+    9837,
+    proj_codes::INTERRUPTED_GOODE_HOMOLOSINE_OCEAN,
+    proj_codes::PEIRCE_QUINCUNCIAL_SQUARE,
+    proj_codes::PEIRCE_QUINCUNCIAL_DIAMOND,
 ];
-
-fn param_code(p: &Value) -> Option<u32> {
-    (p["id"]["authority"] == "EPSG")
-        .then(|| p["id"]["code"].as_u64())
-        .flatten()
-        .and_then(|c| u32::try_from(c).ok())
-}
 
 /// A parameter's value in the WKT1 units: angles in the base's angle unit,
 /// lengths in the CRS's.
@@ -434,15 +441,15 @@ fn projected(v: &Value, always: bool) -> Result<Node, Error> {
 
 /// A conversion's `PROJECTION` and `PARAMETER` nodes, angles in the unit
 /// of `angle` and lengths in that of `length` (radians and metres per
-/// unit), and GDAL's `PROJ4` extension for Web Mercator. `v` is what
-/// errors name.
+/// unit), and GDAL's `PROJ4` extension for Web Mercator and Geostationary
+/// Satellite (Sweep X). `v` is the CRS.
 fn projection(
     v: &Value,
     conversion: &Value,
     angle: f64,
     length: f64,
 ) -> Result<(Vec<Arg>, Option<String>), Error> {
-    let code = param_code(&conversion["method"]);
+    let code = crate::methods::method_code(&conversion["method"]);
     let params: Vec<&Value> = conversion["parameters"]
         .as_array()
         .map(|p| p.iter().collect())
@@ -450,7 +457,7 @@ fn projection(
     let value = |c: u32| -> Result<Option<f64>, Error> {
         params
             .iter()
-            .find(|p| param_code(p) == Some(c))
+            .find(|p| parameter_code(p) == Some(c))
             .map(|p| wkt1_value(p, angle, length))
             .transpose()
     };
@@ -490,9 +497,16 @@ fn projection(
         _ => {
             // Mercator (Spherical) on a sphere is Mercator_1SP, and the
             // deprecated Equidistant Cylindrical methods are Equirectangular.
+            // Geostationary Satellite (Sweep X) has no WKT1 name: PROJ writes
+            // Sweep Y's, with the CRS's PROJ string in a `PROJ4` extension.
             let as_code = match code {
                 Some(1026) => Some(9804),
                 Some(9823 | 9842) => Some(1028),
+                Some(proj_codes::GEOSTATIONARY_SATELLITE_SWEEP_X) => {
+                    let text = crate::proj_string::from_projjson(&v.to_string())?;
+                    extension = Some(text.trim_end_matches(" +type=crs").to_owned());
+                    Some(proj_codes::GEOSTATIONARY_SATELLITE_SWEEP_Y)
+                }
                 other => other,
             };
             let method = as_code.and_then(|c| METHODS.iter().find(|m| m.epsg == c));
@@ -509,7 +523,7 @@ fn projection(
                                 c
                             }
                         };
-                        let Some(mapped) = param_code(p)
+                        let Some(mapped) = parameter_code(p)
                             .and_then(|c| m.params.iter().find(|q| q.epsg == as_param(c)))
                         else {
                             continue;

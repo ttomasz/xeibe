@@ -77,8 +77,8 @@ def test_projjson_input() -> None:
         (None, CRSError),
         # Mollweide, which only Esri defines.
         ("ESRI:54009", NotImplementedError),
-        # Robinson, which only PROJ defines.
-        ("+proj=robin", CRSError),
+        # A projection PROJ has no CRS method for.
+        ("+proj=mbt_s", CRSError),
         ('GEOGCS["WGS 84",DATUM["WGS_1984"]]', CRSError),
         ({"proj": "longlat", "datum": "nowhere"}, CRSError),
     ],

@@ -19,6 +19,7 @@ use serde_json::{Map, Value, json};
 use super::names::{GENERIC_READS, METHODS, Method, OTHER_OPERATIONS, PROJECTION_READS, UnitType};
 use super::tokens::{self, DEG_TO_RAD, KeyValue, RAD_TO_DEG, Step};
 use crate::error::Error;
+use crate::methods;
 use crate::proj_tables::{self, Shape};
 use crate::wkt::wkt1::towgs84_bound;
 use crate::wkt::wkt2::num;
@@ -471,7 +472,7 @@ impl Datum {
         o.insert("type".into(), json!("GeodeticReferenceFrame"));
         o.insert("name".into(), json!(self.name));
         o.insert("ellipsoid".into(), self.ellipsoid.json(ids));
-        if !self.pm.is_greenwich() {
+        if !self.pm.is_greenwich() || self.pm.name == "Reference meridian" {
             o.insert("prime_meridian".into(), self.pm.json(ids));
         }
         if let Some(code) = self.id {
@@ -700,20 +701,21 @@ impl Parser<'_> {
         })
     }
 
-    /// `guessBodyName`: only the Earth's ellipsoids are read.
-    fn earth(&self, a: f64) -> Result<(), Error> {
-        if (a - 6375000.0).abs() < 0.2 * 6375000.0 {
-            Ok(())
-        } else {
-            Err(Error::Unsupported {
-                crs: self.text.to_owned(),
-                what: format!("an ellipsoid of another celestial body (a = {a} m)"),
-            })
+    /// `buildDatum`, with `fixupPrimeMeridan`: a datum of another celestial
+    /// body than the Earth (`guessBodyName`: a semi-major axis more than 20%
+    /// from 6375 km) has PROJ's "Reference meridian" instead of Greenwich.
+    /// PROJ also names the body, from its database, but writes the name
+    /// nowhere.
+    fn datum(&self, title: &str) -> Result<Datum, Error> {
+        let mut datum = self.any_datum(title)?;
+        let earth = (datum.ellipsoid.a - 6375000.0).abs() < 0.2 * 6375000.0;
+        if !earth && datum.pm.name == "Greenwich" && datum.pm.degrees == 0.0 {
+            datum.pm.name = "Reference meridian".into();
         }
+        Ok(datum)
     }
 
-    /// `buildDatum`.
-    fn datum(&self, title: &str) -> Result<Datum, Error> {
+    fn any_datum(&self, title: &str) -> Result<Datum, Error> {
         let mut ellps = self.get("ellps").to_owned();
         let datum_name = self.get("datum").to_owned();
         let [r, a_s, b_s, rf_s, f_s, es_s, e_s] =
@@ -767,7 +769,6 @@ impl Parser<'_> {
         };
         if !r.is_empty() {
             let radius = tokens::number(&r).ok_or_else(|| invalid("Invalid R value"))?;
-            self.earth(radius)?;
             let name = if title.is_empty() {
                 format!("unknown{suffix}")
             } else {
@@ -857,7 +858,6 @@ impl Parser<'_> {
             if !b_s.is_empty() {
                 b = tokens::number(&b_s).ok_or_else(|| invalid("Invalid b value"))?;
             }
-            self.earth(a)?;
             return Ok(unknown(
                 title,
                 Ellipsoid::two_axis("unknown", a, b).identify(),
@@ -872,7 +872,6 @@ impl Parser<'_> {
             if !rf_s.is_empty() {
                 rf = tokens::number(&rf_s).ok_or_else(|| invalid("Invalid rf value"))?;
             }
-            self.earth(a)?;
             return Ok(unknown(
                 title,
                 Ellipsoid::flattened("unknown", a, rf, None).identify(),
@@ -881,21 +880,17 @@ impl Parser<'_> {
         }
         if a > 0.0 && !f_s.is_empty() {
             let f = tokens::number(&f_s).ok_or_else(|| invalid("Invalid f value"))?;
-            self.earth(a)?;
             return Ok(unknown(title, flattened(f), pm));
         }
         if a > 0.0 && !e_s.is_empty() {
             let e = tokens::number(&e_s).ok_or_else(|| invalid("Invalid e value"))?;
-            self.earth(a)?;
             return Ok(unknown(title, flattened(1.0 - e.asin().cos()), pm));
         }
         if a > 0.0 && !es_s.is_empty() {
             let es = tokens::number(&es_s).ok_or_else(|| invalid("Invalid es value"))?;
-            self.earth(a)?;
             return Ok(unknown(title, flattened(1.0 - (1.0 - es).sqrt()), pm));
         }
         if a > 0.0 {
-            self.earth(a)?;
             return Ok(unknown(
                 title,
                 Ellipsoid::flattened("unknown", a, 0.0, None),
@@ -1305,6 +1300,14 @@ impl Parser<'_> {
         {
             mapping = Some(spherical_or_ellipsoidal(m, sphere));
         }
+        // Miller and Van der Grinten are always on the authalic sphere, so
+        // `+R_A` says nothing more. PROJ never looks it up and keeps such a
+        // string as an extension, which its PROJJSON has only in the
+        // remarks; the CRS is the same without it.
+        let r_a_remark = mapping.is_some_and(|m| m.aux == Some("R_A"))
+            && self.has("R_A")
+            && mapping.and_then(|m| m.proj) != Some("cea")
+            && mapping.and_then(|m| m.proj) != Some("laea");
         if (self.prime_meridian()?.degrees - datum.pm.degrees).abs()
             > 1e-10 * datum.pm.degrees.abs().max(1.0)
         {
@@ -1494,12 +1497,6 @@ impl Parser<'_> {
                     "+proj={name} (a projection PROJ has no CRS method for: it would be a PROJ-based operation)"
                 )));
             };
-            if m.epsg == 0 {
-                return Err(unsupported(format!(
-                    "+proj={name} ({}, a projection only PROJ defines)",
-                    m.name
-                )));
-            }
             let mut parameters = Vec::new();
             for param in m.params {
                 let key = param.proj.unwrap_or("");
@@ -1551,6 +1548,8 @@ impl Parser<'_> {
                     }
                 } else if param.unit == UnitType::Scale {
                     value = 1.0;
+                } else if name == "peirce_q" && key == "lat_0" {
+                    value = 90.0;
                 }
                 let mut rounded = if param.unit == UnitType::Linear {
                     value / unit.factor
@@ -1562,7 +1561,7 @@ impl Parser<'_> {
                 }
                 let unit_json = match param.unit {
                     UnitType::Angular => json!("degree"),
-                    UnitType::Linear if param.epsg != 0 => unit.without_id(),
+                    UnitType::Linear if methods::is_epsg(param.epsg) => unit.without_id(),
                     UnitType::Linear => unit.json.clone(),
                     UnitType::Scale => json!("unity"),
                     UnitType::None => Value::Null,
@@ -1573,22 +1572,19 @@ impl Parser<'_> {
                 if !unit_json.is_null() {
                     p.insert("unit".into(), unit_json);
                 }
-                if param.epsg != 0 {
-                    p.insert(
-                        "id".into(),
-                        json!({"authority": "EPSG", "code": param.epsg}),
-                    );
+                if let Some(id) = methods::id(param.epsg) {
+                    p.insert("id".into(), id);
                 }
                 parameters.push(Value::Object(p));
             }
             if name == "tmerc" {
                 let _ = self.has("approx");
             }
-            json!({
-                "name": "unknown",
-                "method": {"name": m.name, "id": {"authority": "EPSG", "code": m.epsg}},
-                "parameters": parameters,
-            })
+            let mut method = json!({"name": m.name});
+            if let Some(id) = methods::id(m.epsg) {
+                method["id"] = id;
+            }
+            json!({"name": "unknown", "method": method, "parameters": parameters})
         };
         let [e, n] = self.axes(&unit, false, pole, false)?;
         let mut axes = vec![e, n];
@@ -1624,13 +1620,22 @@ impl Parser<'_> {
         } else {
             &self.title
         };
-        Ok(json!({
+        let mut crs = json!({
             "type": "ProjectedCRS",
             "name": name_json,
             "base_crs": geodetic,
             "conversion": conversion,
             "coordinate_system": cs,
-        }))
+        });
+        if r_a_remark {
+            let text: Vec<&str> = self
+                .text
+                .split(' ')
+                .filter(|t| !t.is_empty() && *t != "+type=crs")
+                .collect();
+            crs["remarks"] = json!(format!("PROJ CRS string: {}", text.join(" ")));
+        }
+        Ok(crs)
     }
 }
 

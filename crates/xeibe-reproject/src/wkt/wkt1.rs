@@ -744,6 +744,67 @@ fn web_mercator_extension(node: &Node) -> bool {
         && text.contains("+nadgrids=@null")
 }
 
+/// The PROJ string of a `PROJCS`'s `EXTENSION["PROJ4", …]` other than
+/// Web Mercator's (which `projected` reads as PROJ does), if it has one.
+/// PROJ reads the string as the CRS's conversion and converts with it, so
+/// one that isn't a `+proj=` string is refused.
+fn proj4_extension(node: &Node) -> Result<Option<&str>, Error> {
+    let Some(e) = node.child(&["EXTENSION"]) else {
+        return Ok(None);
+    };
+    let (key, text) = (e.text(0)?, e.text(1)?);
+    if !key.eq_ignore_ascii_case("PROJ4") || !text.trim_start().starts_with("+proj=") {
+        return Err(unsupported(e, &format!("the EXTENSION {key}")));
+    }
+    Ok(Some(text.trim()))
+}
+
+/// The projected CRS of a PROJ4 extension's string.
+fn extension_crs(node: &Node, text: &str) -> Result<Value, Error> {
+    let with_type = if text.split(' ').any(|t| t == "+type=crs") {
+        text.to_owned()
+    } else {
+        format!("{text} +type=crs")
+    };
+    let crs = crate::proj_string::read::crs(&with_type)?;
+    let crs = if crs["type"] == "BoundCRS" {
+        crs["source_crs"].clone()
+    } else {
+        crs
+    };
+    if crs["type"] != "ProjectedCRS" {
+        return Err(unsupported(
+            node,
+            "a PROJ4 EXTENSION that isn't a projected CRS",
+        ));
+    }
+    Ok(crs)
+}
+
+/// An ellipsoid's semi-major axis and inverse flattening (0 for a sphere),
+/// in metres.
+fn ellipsoid_shape(e: &Value) -> Option<(f64, f64)> {
+    let metres = |v: &Value| match v {
+        Value::Object(o) => Some(
+            o.get("value")?.as_f64()?
+                * o.get("unit")
+                    .and_then(|u| u["conversion_factor"].as_f64())
+                    .unwrap_or(1.0),
+        ),
+        v => v.as_f64(),
+    };
+    if let Some(r) = e.get("radius") {
+        return Some((metres(r)?, 0.0));
+    }
+    let a = metres(&e["semi_major_axis"])?;
+    let rf = match (e["inverse_flattening"].as_f64(), e.get("semi_minor_axis")) {
+        (Some(rf), _) => rf,
+        (None, Some(b)) => a / (a - metres(b)?),
+        _ => return None,
+    };
+    Some((a, rf))
+}
+
 fn parameters(node: &Node) -> Result<Vec<(String, f64)>, Error> {
     node.children(&["PARAMETER"])
         .map(|p| {
@@ -848,6 +909,12 @@ fn conversion(
             _ => extra.push((8801, "Latitude of natural origin", 0.0, Unit::degree())),
         }
     } else if name::equivalent(&wkt1_name, "Polar_Stereographic") {
+        if node.child(&["EXTENSION"]).is_some() {
+            return Err(unsupported(
+                node,
+                "a PROJ4 EXTENSION on Polar_Stereographic",
+            ));
+        }
         let lat0 = param_value(&params, "latitude_of_origin");
         let k = param_value(&params, "scale_factor").unwrap_or(1.0);
         let code = match lat0 {
@@ -859,11 +926,12 @@ fn conversion(
         if code == 9829 {
             params.retain(|(n, _)| !name::equivalent(n, "scale_factor"));
         }
-    } else if node.child(&["EXTENSION"]).is_some() {
-        return Err(unsupported(
-            node,
-            "a PROJ4 EXTENSION other than Web Mercator's",
-        ));
+    } else if let Some(text) = proj4_extension(node)? {
+        // PROJ's `buildProjectionStandard`: the conversion of the projected
+        // CRS the string defines (`projected` checks it against the WKT).
+        let crs = extension_crs(node, text)?;
+        let code = crate::methods::method_code(&crs["conversion"]["method"]);
+        return Ok((crs["conversion"].clone(), code));
     }
     if method.is_none() {
         method = if wkt1_name.to_ascii_lowercase().starts_with("utm zone") {
@@ -926,10 +994,9 @@ fn conversion(
             if method.epsg == 9805 && wkt1.eq_ignore_ascii_case("latitude_of_origin") {
                 None
             } else {
-                method
-                    .params
-                    .iter()
-                    .find(|p| name::equivalent(p.wkt1, wkt1))
+                method.params.iter().find(|p| {
+                    name::equivalent(p.wkt1, wkt1) || esri::equivalent_parameters(p.wkt1, wkt1)
+                })
             };
         let mut p = Obj::new();
         match mapped {
@@ -940,7 +1007,9 @@ fn conversion(
                 if let Some(u) = unit {
                     p.insert("unit".into(), u.json);
                 }
-                p.insert("id".into(), json!({"authority": "EPSG", "code": m.epsg}));
+                if let Some(id) = crate::methods::id(m.epsg) {
+                    p.insert("id".into(), id);
+                }
             }
             // Mercator_2SP's stray latitude of origin is EPSG's latitude of
             // natural origin.
@@ -985,12 +1054,12 @@ fn conversion(
         angle["id"] = json!({"authority": "EPSG", "code": 8814});
         out.push(angle);
     }
+    let mut m = json!({"name": method.name});
+    if let Some(id) = crate::methods::id(method.epsg) {
+        m["id"] = id;
+    }
     Ok((
-        json!({
-            "name": "unnamed",
-            "method": {"name": method.name, "id": {"authority": "EPSG", "code": method.epsg}},
-            "parameters": out,
-        }),
+        json!({"name": "unnamed", "method": m, "parameters": out}),
         Some(method.epsg),
     ))
 }
@@ -1114,6 +1183,42 @@ fn projected(node: &Node, cx: &Dialect) -> Result<Value, Error> {
         && let Some(official) = esri_projected_name(name, &length)
     {
         o.insert("name".into(), json!(official));
+    }
+    // A PROJ4 extension (other than Web Mercator's) gave the conversion.
+    // PROJ converts with the whole string, so its ellipsoid and unit must
+    // be the WKT's; PROJ keeps the string in the remarks.
+    let extension = if web_mercator {
+        None
+    } else {
+        proj4_extension(node)?
+    };
+    if let Some(text) = extension {
+        let ext = extension_crs(node, text)?;
+        let shape = |crs: &Value| {
+            let d = &crs["datum"];
+            let d = if d.is_object() {
+                d
+            } else {
+                &crs["datum_ensemble"]
+            };
+            ellipsoid_shape(&d["ellipsoid"])
+        };
+        let same_shape = match (shape(&ext["base_crs"]), shape(&base)) {
+            (Some((a1, rf1)), Some((a2, rf2))) => {
+                (a1 - a2).abs() <= 1e-9 * a2 && (rf1 - rf2).abs() <= 1e-9 * rf2.max(1.0)
+            }
+            _ => false,
+        };
+        let ext_unit = ext["coordinate_system"]["axis"][0]["unit"]["conversion_factor"]
+            .as_f64()
+            .unwrap_or(1.0);
+        if !same_shape || (ext_unit - factor(&length)).abs() > 1e-12 * factor(&length) {
+            return Err(unsupported(
+                node,
+                "a PROJ4 EXTENSION whose ellipsoid or unit isn't the WKT's",
+            ));
+        }
+        o.insert("remarks".into(), json!(format!("PROJ CRS string: {text}")));
     }
     o.insert("base_crs".into(), base);
     o.insert("conversion".into(), conversion);

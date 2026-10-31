@@ -374,6 +374,20 @@ impl Formatter {
                 target_modifiers = false;
             }
             _ if method_name.starts_with("PROJ ") => return Err(cannot()),
+            _ if equivalent_name(method_name, "Peirce Quincuncial (Square)")
+                || equivalent_name(method_name, "Peirce Quincuncial (Diamond)") =>
+            {
+                if p.find_code(8805).is_some()
+                    && (p.value(8805, UnitType::Scale)? - 1.0).abs() > 1e-10
+                {
+                    return Err(cannot());
+                }
+                if p.find_code(8801).is_some()
+                    && (p.value(8801, UnitType::Angular)? - 90.0).abs() > 1e-10
+                {
+                    return Err(cannot());
+                }
+            }
             _ => {}
         }
         if !done {
@@ -732,7 +746,7 @@ impl Params<'_> {
     }
 
     fn get(&self, param: &super::names::Param) -> Option<ParamValue<'_>> {
-        (if param.epsg != 0 {
+        (if crate::methods::is_epsg(param.epsg) {
             self.find_code(param.epsg)
         } else {
             None
