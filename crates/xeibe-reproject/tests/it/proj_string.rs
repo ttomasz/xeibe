@@ -602,10 +602,7 @@ fn method_conversions(dir: &Path) -> (usize, Vec<String>) {
 }
 
 /// The projections of `methods.jsonl` not yet ported from PROJ.
-const NOT_PORTED: &[&str] = &[
-    "ortho", "eqdc", "nsper", "gnom", "stere", "tcea", "gstmerc", "imw_p", "tpeqd", "omerc",
-    "geos", "qsc", "sch", "peirce_q",
-];
+const NOT_PORTED: &[&str] = &[];
 
 #[test]
 fn proj_methods_convert_as_in_proj() {
@@ -793,4 +790,32 @@ fn proj_methods_wkt_as_in_proj() {
             .collect::<Vec<_>>()
             .join("\n")
     );
+}
+
+/// Mercator (Spherical) (EPSG:1026), which no PROJ string reads into: PROJ
+/// converts it with `merc +R_C`, on the conformal sphere at the equator
+/// whatever the latitude of origin. PROJ 9.8.1's string and results.
+#[test]
+fn mercator_spherical_converts_as_in_proj() {
+    let wkt = r#"PROJCRS["Spherical Mercator test",BASEGEOGCRS["WGS 84",DATUM["World Geodetic System 1984",ELLIPSOID["WGS 84",6378137,298.257223563,LENGTHUNIT["metre",1]]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433]]],CONVERSION["test",METHOD["Mercator (Spherical)",ID["EPSG",1026]],PARAMETER["Latitude of natural origin",30,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8801]],PARAMETER["Longitude of natural origin",10,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8802]],PARAMETER["False easting",1000,LENGTHUNIT["metre",1],ID["EPSG",8806]],PARAMETER["False northing",2000,LENGTHUNIT["metre",1],ID["EPSG",8807]]],CS[Cartesian,2],AXIS["(E)",east,ORDER[1],LENGTHUNIT["metre",1]],AXIS["(N)",north,ORDER[2],LENGTHUNIT["metre",1]]]"#;
+    let json = wkt::to_projjson(wkt).unwrap();
+    assert_eq!(
+        proj_string::from_projjson(&json).unwrap(),
+        "+proj=merc +R_C +lat_0=30 +lon_0=10 +x_0=1000 +y_0=2000 +datum=WGS84 +units=m +no_defs +type=crs"
+    );
+    let value: Value = serde_json::from_str(&json).unwrap();
+    let base = Crs::from_projjson(&value["base_crs"].to_string()).unwrap();
+    let crs = Crs::from_wkt(wkt).unwrap();
+    let t = Transform::new(&base, &crs, AxisOrder::EastFirst).unwrap();
+    for ((lon, lat), (x, y)) in [
+        ((10.0, 30.0), (1000.0, 3493803.1042245994)),
+        ((40.0, 60.0), (3329387.7285204283, 8373575.159040291)),
+        ((-100.0, -45.0), (-12203088.337908238, -5600673.589001055)),
+    ] {
+        let (ox, oy, _) = t.convert(lon, lat, None).unwrap();
+        assert!(
+            (ox - x).abs() < 1e-6 && (oy - y).abs() < 1e-6,
+            "{lon} {lat}: {ox} {oy}"
+        );
+    }
 }

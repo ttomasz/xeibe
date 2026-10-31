@@ -1,9 +1,11 @@
+//! Orthographic (EPSG:9840), its spherical form only PROJ defines, and
 //! Local Orthographic (EPSG:1130).
 //!
 //! Ported from PROJ 9.8.1 `src/projections/ortho.cpp` (MIT, see
-//! PROJ-NOTICE.md). PROJ maps EPSG:1130 to `ortho` with the azimuth as
-//! `alpha` and the scale factor as `k_0`; the ellipsoidal formulas are those
-//! of EPSG guidance note 7.2 §3.3.5, inverted by Newton's method.
+//! PROJ-NOTICE.md). PROJ maps all three to `ortho`: EPSG:1130 with the
+//! azimuth as `alpha` and the scale factor as `k_0`, the spherical form with
+//! `+f=0`, on the sphere of the semi-major axis. The ellipsoidal formulas
+//! are those of EPSG guidance note 7.2 §3.3.5, inverted by Newton's method.
 
 use std::f64::consts::{FRAC_PI_2, PI};
 
@@ -45,13 +47,50 @@ pub(crate) struct LocalOrthographic {
 }
 
 impl LocalOrthographic {
+    /// Local Orthographic (EPSG:1130).
     pub(crate) fn new(params: &Params, ellipsoid: &Ellipsoid) -> Result<Self, BuildError> {
-        let phi0 = params.get(param::LAT_PROJECTION_CENTRE)?;
-        let lon0 = params.get(param::LON_PROJECTION_CENTRE)?;
-        let alpha = params.get(param::AZIMUTH_PROJECTION_CENTRE)?;
-        let k0 = params.get(param::SCALE_PROJECTION_CENTRE)?;
-        let fe = params.get(param::EASTING_PROJECTION_CENTRE)?;
-        let fn_ = params.get(param::NORTHING_PROJECTION_CENTRE)?;
+        Ok(Self::with(
+            params.get(param::LAT_PROJECTION_CENTRE)?,
+            params.get(param::LON_PROJECTION_CENTRE)?,
+            params.get(param::AZIMUTH_PROJECTION_CENTRE)?,
+            params.get(param::SCALE_PROJECTION_CENTRE)?,
+            params.get(param::EASTING_PROJECTION_CENTRE)?,
+            params.get(param::NORTHING_PROJECTION_CENTRE)?,
+            ellipsoid,
+            false,
+        ))
+    }
+
+    /// Orthographic (EPSG:9840), or its spherical form on the sphere of the
+    /// semi-major axis.
+    pub(crate) fn orthographic(
+        params: &Params,
+        ellipsoid: &Ellipsoid,
+        spherical: bool,
+    ) -> Result<Self, BuildError> {
+        Ok(Self::with(
+            params.get(param::LAT_NATURAL_ORIGIN)?,
+            params.get(param::LON_NATURAL_ORIGIN)?,
+            0.0,
+            1.0,
+            params.get(param::FALSE_EASTING)?,
+            params.get(param::FALSE_NORTHING)?,
+            ellipsoid,
+            spherical,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn with(
+        phi0: f64,
+        lon0: f64,
+        alpha: f64,
+        k0: f64,
+        fe: f64,
+        fn_: f64,
+        ellipsoid: &Ellipsoid,
+        sphere: bool,
+    ) -> Self {
         let (sinph0, cosph0) = phi0.sin_cos();
         let mode = if (phi0.abs() - FRAC_PI_2).abs() <= EPS10 {
             if phi0 < 0.0 { Mode::SPole } else { Mode::NPole }
@@ -60,7 +99,7 @@ impl LocalOrthographic {
         } else {
             Mode::Equatorial
         };
-        let es = ellipsoid.es;
+        let es = if sphere { 0.0 } else { ellipsoid.es };
         let spherical = es == 0.0;
         let (mut nu0, mut y_shift, mut y_scale) = (0.0, 0.0, 0.0);
         if !spherical {
@@ -69,7 +108,7 @@ impl LocalOrthographic {
             y_scale = 1.0 / (1.0 - es * cosph0 * cosph0).sqrt();
         }
         let (sinalpha, cosalpha) = alpha.sin_cos();
-        Ok(LocalOrthographic {
+        LocalOrthographic {
             lon0,
             phi0,
             k0,
@@ -88,7 +127,7 @@ impl LocalOrthographic {
             y_scale,
             sinalpha,
             cosalpha,
-        })
+        }
     }
 
     fn forward_s(&self, lam: f64, phi: f64) -> Result<(f64, f64), CoordinateError> {
@@ -289,7 +328,9 @@ impl Projection for LocalOrthographic {
     }
 
     fn inverse(&self, x: f64, y: f64) -> Result<(f64, f64), CoordinateError> {
-        let (x, y) = ((x - self.fe) / self.a, (y - self.fn_) / self.a);
+        // Times 1/a, as PROJ scales: at the horizon the last bit shows.
+        let ra = 1.0 / self.a;
+        let (x, y) = ((x - self.fe) * ra, (y - self.fn_) * ra);
         let (lam, phi) = if self.spherical {
             self.inverse_s(x, y)?
         } else {

@@ -10,7 +10,8 @@
 //! `gn_sinu.cpp` (`sinu`, `eck6`), `urmfps.cpp` (`wag1`), `sts.cpp`
 //! (`qua_aut`), `robin.cpp`, `natearth.cpp`, `natearth2.cpp`,
 //! `patterson.cpp`, `wink1.cpp`, `wink2.cpp`, `loxim.cpp`, `mill.cpp`,
-//! `comill.cpp`, `vandg.cpp` and `aitoff.cpp` (`aitoff`, `wintri`).
+//! `comill.cpp`, `vandg.cpp`, `aitoff.cpp` (`aitoff`, `wintri`) and
+//! `tcea.cpp`.
 
 // PROJ's constants, digit for digit.
 #![allow(clippy::excessive_precision)]
@@ -94,6 +95,10 @@ pub(crate) enum World {
     /// Aitoff, and Winkel Tripel with `cosphi1` (`aitoff.cpp`).
     Aitoff {
         winkel: Option<f64>,
+    },
+    TransverseCylindricalEqualArea {
+        k0: f64,
+        phi0: f64,
     },
 }
 
@@ -186,6 +191,10 @@ impl World {
             c::COMPACT_MILLER => World::CompactMiller,
             c::VAN_DER_GRINTEN => World::VanDerGrinten,
             c::AITOFF => World::Aitoff { winkel: None },
+            c::TRANSVERSE_CYLINDRICAL_EQUAL_AREA => World::TransverseCylindricalEqualArea {
+                k0: params.get(param::SCALE_NATURAL_ORIGIN)?,
+                phi0: params.get(param::LAT_NATURAL_ORIGIN)?,
+            },
             c::WINKEL_TRIPEL => {
                 // 50°28′ (acos(2/π)) when no latitude is given.
                 let cosphi1 = lat_1().map_or(0.636_619_772_367_581_3, f64::cos);
@@ -566,6 +575,10 @@ impl Unit for World {
             }
             World::VanDerGrinten => vandg_fwd(lam, phi)?,
             World::Aitoff { winkel } => aitoff_xy(lam, phi, winkel),
+            World::TransverseCylindricalEqualArea { k0, phi0 } => (
+                phi.cos() * lam.sin() / k0,
+                k0 * (phi.tan().atan2(lam.cos()) - phi0),
+            ),
         })
     }
 
@@ -837,6 +850,12 @@ impl Unit for World {
             }
             World::VanDerGrinten => vandg_inv(x, y)?,
             World::Aitoff { winkel } => aitoff_inv(x, y, winkel)?,
+            World::TransverseCylindricalEqualArea { k0, phi0 } => {
+                let y = y / k0 + phi0;
+                let x = x * k0;
+                let t = (1.0 - x * x).sqrt();
+                (x.atan2(t * y.cos()), (t * y.sin()).asin())
+            }
         })
     }
 }

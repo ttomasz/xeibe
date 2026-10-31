@@ -23,8 +23,12 @@ mod cea;
 mod col_urban;
 mod common;
 mod eqc;
+mod eqdc;
 mod eqearth;
+mod geos;
 mod goode;
+mod gstmerc;
+mod imw_p;
 mod krovak;
 mod labrd;
 mod laea;
@@ -38,13 +42,18 @@ mod mlfn;
 mod nzmg;
 mod omerc;
 mod ortho;
+mod peirce;
+mod perspective;
 mod poly;
 pub(crate) mod proj_codes;
+mod qsc;
+mod sch;
 mod sphere;
 mod stere;
 mod sterea;
 mod tmerc;
 mod tmerc_variants;
+mod tpeqd;
 mod world;
 
 /// Whether a method or parameter code is EPSG's, not this crate's for one
@@ -197,6 +206,9 @@ pub(crate) mod param {
     pub const NORTHING_PROJECTION_CENTRE: u32 = 8817;
     pub const SCALE_PSEUDO_STANDARD_PARALLEL: u32 = 8819;
     pub const LAT_STD_PARALLEL: u32 = 8832;
+    pub const LAT_TOPOCENTRIC_ORIGIN: u32 = 8834;
+    pub const LON_TOPOCENTRIC_ORIGIN: u32 = 8835;
+    pub const VIEWPOINT_HEIGHT: u32 = 8840;
     pub const LON_OF_ORIGIN: u32 = 8833;
     pub const LAT_PSEUDO_STANDARD_PARALLEL: u32 = 8818;
     pub const EVALUATION_POINT_ORDINATE_1: u32 = 8617;
@@ -250,7 +262,7 @@ pub(crate) fn build(
         9804 => Arc::new(merc::Mercator::variant_a(params, ellipsoid)?),
         9805 => Arc::new(merc::Mercator::variant_b(params, ellipsoid)?),
         1024 => Arc::new(merc::Mercator::pseudo(params, ellipsoid)?),
-        9841 => Arc::new(merc::Mercator::spherical(params, ellipsoid)?),
+        9841 | 1026 => Arc::new(merc::Mercator::spherical(params, ellipsoid)?),
         9812 => omerc::ObliqueMercator::variant_a(params, ellipsoid)?,
         9815 => omerc::ObliqueMercator::variant_b(params, ellipsoid)?,
         9813 => Arc::new(labrd::Laborde::new(params, ellipsoid)?),
@@ -277,6 +289,24 @@ pub(crate) fn build(
         1125 | 9832 => Arc::new(aeqd::AzimuthalEquidistant::exact(params, ellipsoid)?),
         9831 => Arc::new(aeqd::AzimuthalEquidistant::guam(params, ellipsoid)?),
         1130 => Arc::new(ortho::LocalOrthographic::new(params, ellipsoid)?),
+        9840 => Arc::new(ortho::LocalOrthographic::orthographic(
+            params, ellipsoid, false,
+        )?),
+        1119 => Arc::new(eqdc::EquidistantConic::new(params, ellipsoid, true)?),
+        9838 => {
+            // On the sphere of the semi-major axis; the origin's height unused.
+            let unit = perspective::NearSidedPerspective::new(
+                params.get(param::LAT_TOPOCENTRIC_ORIGIN)?,
+                params.get(param::VIEWPOINT_HEIGHT)?,
+                ellipsoid.a,
+            )?;
+            Arc::new(sphere::Spherical::with(
+                unit,
+                params.get(param::LON_TOPOCENTRIC_ORIGIN)?,
+                params,
+                ellipsoid.a,
+            )?)
+        }
         _ => return Err(BuildError::UnknownMethod),
     })
 }
@@ -294,6 +324,67 @@ fn proj_method(
         )?));
     }
     match code {
+        c::EQUIDISTANT_CONIC => {
+            return Ok(Arc::new(eqdc::EquidistantConic::new(
+                params, ellipsoid, false,
+            )?));
+        }
+        c::GNOMONIC => return Ok(Arc::new(perspective::Gnomonic::new(params, ellipsoid)?)),
+        c::HOTINE_OBLIQUE_MERCATOR_TWO_POINT_NATURAL_ORIGIN => {
+            return omerc::ObliqueMercator::two_points(params, ellipsoid);
+        }
+        c::STEREOGRAPHIC => {
+            // PROJ's `stere` with its latitude of true scale at the pole: as
+            // variant A, at any latitude of origin.
+            return Ok(Arc::new(stere::Stereographic::variant_a(
+                params, ellipsoid,
+            )?));
+        }
+        c::GAUSS_SCHREIBER_TRANSVERSE_MERCATOR => {
+            return Ok(Arc::new(gstmerc::GaussSchreiber::new(params, ellipsoid)?));
+        }
+        c::INTERNATIONAL_MAP_OF_THE_WORLD_POLYCONIC => {
+            return Ok(Arc::new(imw_p::ImwPolyconic::new(params, ellipsoid)?));
+        }
+        c::TWO_POINT_EQUIDISTANT => {
+            let (unit, lon0) = tpeqd::TwoPointEquidistant::new(params)?;
+            return Ok(Arc::new(sphere::Spherical::with(
+                unit,
+                lon0,
+                params,
+                ellipsoid.a,
+            )?));
+        }
+        c::GEOSTATIONARY_SATELLITE_SWEEP_X | c::GEOSTATIONARY_SATELLITE_SWEEP_Y => {
+            let sweep_x = code == c::GEOSTATIONARY_SATELLITE_SWEEP_X;
+            return Ok(Arc::new(sphere::Spherical::new(
+                geos::Geostationary::new(params, ellipsoid, sweep_x)?,
+                params,
+                ellipsoid,
+            )?));
+        }
+        c::QUADRILATERALIZED_SPHERICAL_CUBE => {
+            let unit = qsc::Qsc::new(
+                params.get(param::LAT_NATURAL_ORIGIN)?,
+                params.get(param::LON_NATURAL_ORIGIN)?,
+                ellipsoid,
+            );
+            return Ok(Arc::new(sphere::Spherical::new(unit, params, ellipsoid)?));
+        }
+        c::SPHERICAL_CROSS_TRACK_HEIGHT => return Ok(Arc::new(sch::Sch::new(params, ellipsoid)?)),
+        c::PEIRCE_QUINCUNCIAL_SQUARE | c::PEIRCE_QUINCUNCIAL_DIAMOND => {
+            let square = code == c::PEIRCE_QUINCUNCIAL_SQUARE;
+            return Ok(Arc::new(sphere::Spherical::new(
+                peirce::Peirce::new(square),
+                params,
+                ellipsoid,
+            )?));
+        }
+        c::ORTHOGRAPHIC_SPHERICAL => {
+            return Ok(Arc::new(ortho::LocalOrthographic::orthographic(
+                params, ellipsoid, true,
+            )?));
+        }
         c::GOODE_HOMOLOSINE => {
             return Ok(Arc::new(sphere::Spherical::new(
                 goode::Goode::new(),

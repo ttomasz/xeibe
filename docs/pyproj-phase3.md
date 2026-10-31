@@ -3,8 +3,8 @@
 > **Status: designed, 2026-10-24; reviewed, 2026-10-31 (decision 8:
 > unknown datums raise; PROJ's own projections and other celestial
 > bodies are in); PROJ strings, 2026-10-31 (steps 1 and 2, see
-> [Order of work](#order-of-work)); PROJ's own methods, in progress
-> (step 2b).** This is phase 3 of
+> [Order of work](#order-of-work)); PROJ's own methods and other
+> celestial bodies, 2026-10-31 (step 2b).** This is phase 3 of
 > [pyproj-compat.md](pyproj-compat.md#phases). Facts about PROJ, pyproj
 > and GeoPandas were checked against PROJ 9.8.1 through pyproj 3.8.0 and
 > GeoPandas 1.2.0, with the oracle database
@@ -341,12 +341,12 @@ Gates:
 **Results of the reader (2026-10-31).** Every one of the 8,838 strings
 PROJ writes for EPSG CRSs reads as PROJ reads it, to 1e-11 relative. Of
 the 369 corpus strings, 115 are no CRS for PROJ either, and we refuse
-them too; 185 read as PROJ reads them; 69 PROJ reads that we refuse, each
-for one of decision 6's reasons: projections only PROJ defines (21: Robinson,
-Mollweide, Geostationary, Peirce Quincuncial, …) or with no CRS method
-(7, `ob_tran`, `mbt_s`), pipelines (16), ellipsoids of other bodies (11),
-`+over` (6), `+geoidgrids` (3), `+lon_wrap`, `+geoc`, `+proj=noop` and
-`topocentric`. The converted points agree to 0.1 mm but for two kinds,
+them too; 216 read as PROJ reads them (185 before PROJ's own methods and
+other bodies were read); 38 PROJ reads that we refuse, each for one of
+decision 6's reasons: projections with no CRS method (7: `ob_tran`,
+`mbt_s`, Peirce Quincuncial's horizontal shape), pipelines (16), `+over`
+(6), `+geoidgrids` (3), a `geos` with a `+lat_0` PROJ keeps as an
+extension, `+lon_wrap`, `+geoc`, `+proj=noop` and `topocentric`. The converted points agree to 0.1 mm but for two kinds,
 skipped or allowed with their reason: `+approx`, PROJ's approximate
 Transverse Mercator, which is converted with the exact one (2 mm apart
 1° from the central meridian), and Krovak at points far outside its area
@@ -427,8 +427,16 @@ back. Gates: every string reads and writes as PROJ reads and writes it;
 WKT2 and WKT1_GDAL are written as PROJ writes them; PROJ's WKT in all
 three versions is read with PROJ's method and parameters and as an
 equivalent CRS; forward points agree to 2 µm and inverse ones to 1e-9°,
-failing exactly where PROJ fails. Methods not yet ported are listed in the
-test (`NOT_PORTED`).
+failing exactly where PROJ fails. A method not yet ported would be listed
+in the test (`NOT_PORTED`), which fails if a listed one builds.
+
+**Results (2026-10-31).** All 50 of PROJ's own methods and the four EPSG
+ones are ported. The 129 strings of `methods.jsonl` read and write as PROJ
+reads and writes them, their WKT is written and read as PROJ does, and all
+11,662 converted points agree, forwards to 2 µm and back to 1e-9°. Like
+PROJ, Mercator (Spherical) is on the conformal sphere at the equator,
+whatever its latitude of origin: PROJ sets up `+R_C`'s sphere before it
+reads `lat_0`.
 
 ## Sub-objects and builders
 
@@ -569,6 +577,9 @@ imports no Arrow library.
    strings").
 2b. **PROJ's own methods and other celestial bodies**
    ([PROJ's own methods](#projs-own-methods)), gated on their vectors.
+   **Done** (2026-10-31): pyproj's suite went to 439 of 963 (its other
+   projection tests use projections PROJ has no CRS method for, such as
+   `hammer`).
 3. **`install_as_pyproj()` and the GeoPandas runner**, gated on GeoPandas'
    suite: every test that passes with pyproj is in the pass list or in
    `known.txt` with a reason.

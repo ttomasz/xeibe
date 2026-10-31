@@ -78,11 +78,12 @@ read and written (its steps 1 and 2).
     EPSG's remarks on CRSs and operations in a file of their own, read on
     first use. The wheel grew from 2.0 to 2.2 MB.
 - **Measured** (see [Testing](#testing)):
-  - pyproj's own suite: 438 of its 963 tests pass: 120 before phase 1's
+  - pyproj's own suite: 439 of its 963 tests pass: 120 before phase 1's
     Rust changes, 129 after, 149 with the WKT part of phase 2, 318 with
     `Geod`, 324 with `Proj`, 335 with `to_2d`/`to_3d`, 348 with
     `get_units_map`, 351 with the selection's options, 356 with
-    `Transformer.to_json` and `to_wkt`, 438 with PROJ strings.
+    `Transformer.to_json` and `to_wkt`, 438 with PROJ strings, 439 with
+    PROJ's own methods and other celestial bodies.
   - Against the oracle `proj.db`, every EPSG CRS reports what PROJ does,
     scopes, area descriptions and remarks included, except four documented
     differences:

@@ -107,15 +107,14 @@ impl Mercator {
         ))
     }
 
-    /// Mercator (1SP) (Spherical) (9841): a sphere of the conformal radius at
-    /// the latitude of natural origin, scale factor 1.
+    /// Mercator (1SP) (Spherical) (9841) and Mercator (Spherical) (1026), as
+    /// PROJ converts them: `merc +R_C`, the sphere of the conformal radius at
+    /// the latitude of origin, scale factor 1. PROJ sets up the sphere before
+    /// it reads `lat_0` (`pj_init`), so the latitude is always the equator's
+    /// and the radius a √(1 − e²); EPSG's CRSs with these methods have their
+    /// origin on the equator anyway.
     pub(crate) fn spherical(params: &Params, ellipsoid: &Ellipsoid) -> Result<Self, BuildError> {
-        let phi0 = params.get(param::LAT_NATURAL_ORIGIN)?;
-        let t = 1.0 - ellipsoid.es * phi0.sin().powi(2);
-        if t == 0.0 {
-            return Err(BuildError::Invalid("invalid eccentricity".to_owned()));
-        }
-        let a = ellipsoid.a * (1.0 - ellipsoid.es).sqrt() / t;
+        let a = ellipsoid.a * (1.0 - ellipsoid.es).sqrt();
         Ok(Self::with(
             a,
             0.0,

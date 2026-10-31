@@ -1,10 +1,13 @@
-//! Hotine Oblique Mercator, variant A (EPSG:9812) and variant B (EPSG:9815).
+//! Hotine Oblique Mercator, variant A (EPSG:9812) and variant B (EPSG:9815),
+//! and PROJ's own form through two points.
 //!
 //! Ported from PROJ 9.8.1 `src/projections/omerc.cpp` (MIT, see
 //! PROJ-NOTICE.md), set up with `alpha`, `gamma` and `lonc` as PROJ maps the
 //! EPSG parameters. Variant A is `omerc` with `no_uoff`: the false easting and
 //! northing apply at the natural origin, where the initial line crosses the
-//! equator of the aposphere. Variant B places them at the projection centre.
+//! equator of the aposphere. Variant B places them at the projection centre,
+//! as does the two-point form, whose initial line passes through two points
+//! (`lat_1`, `lon_1`, `lat_2`, `lon_2`).
 //!
 //! When the azimuth and the angle to the skew grid are both 90° (within
 //! 1e-4°), PROJ does not use `omerc` but `somerc`, the Swiss Oblique Mercator
@@ -15,7 +18,7 @@ use std::f64::consts::{FRAC_PI_2, FRAC_PI_4};
 use std::sync::Arc;
 
 use super::common::{phi2, tsfn};
-use super::{BuildError, Params, Projection, adjlon, param};
+use super::{BuildError, Params, Projection, adjlon, param, proj_codes};
 use crate::ellipsoid::Ellipsoid;
 use crate::error::CoordinateError;
 
@@ -68,6 +71,17 @@ impl ObliqueMercator {
         Ok(Arc::new(Self::new(params, ellipsoid, false, fe, fn_)?))
     }
 
+    /// The initial line through two points, the false origin at the
+    /// projection centre.
+    pub(crate) fn two_points(
+        params: &Params,
+        ellipsoid: &Ellipsoid,
+    ) -> Result<Arc<dyn Projection>, BuildError> {
+        let fe = params.get(param::EASTING_PROJECTION_CENTRE)?;
+        let fn_ = params.get(param::NORTHING_PROJECTION_CENTRE)?;
+        Ok(Arc::new(Self::new(params, ellipsoid, false, fe, fn_)?))
+    }
+
     fn new(
         params: &Params,
         ellipsoid: &Ellipsoid,
@@ -77,14 +91,36 @@ impl ObliqueMercator {
     ) -> Result<Self, BuildError> {
         let invalid = |m: &str| BuildError::Invalid(m.to_owned());
         let phi0 = params.get(param::LAT_PROJECTION_CENTRE)?;
-        let lamc = params.get(param::LON_PROJECTION_CENTRE)?;
-        let alpha_c = params.get(param::AZIMUTH_PROJECTION_CENTRE)?;
-        let gamma = params.get(param::ANGLE_TO_SKEW_GRID)?;
+        // Two points, or EPSG's azimuth and skew angle.
+        let points = params.get(proj_codes::LATITUDE_OF_1ST_POINT).is_ok();
         let k0 = params.get(param::SCALE_PROJECTION_CENTRE)?;
         let es = ellipsoid.es;
         let e = ellipsoid.e;
         let one_es = 1.0 - es;
 
+        let (mut phi1, mut lam1, mut phi2, mut lam2) = (0.0, 0.0, 0.0, 0.0);
+        if points {
+            phi1 = params.get(proj_codes::LATITUDE_OF_1ST_POINT)?;
+            lam1 = params.get(proj_codes::LONGITUDE_OF_1ST_POINT)?;
+            phi2 = params.get(proj_codes::LATITUDE_OF_2ND_POINT)?;
+            lam2 = params.get(proj_codes::LONGITUDE_OF_2ND_POINT)?;
+            if phi1.abs() > FRAC_PI_2 - TOL {
+                return Err(invalid("Invalid value for lat_1: |lat_1| should be < 90°"));
+            }
+            if phi2.abs() > FRAC_PI_2 - TOL {
+                return Err(invalid("Invalid value for lat_2: |lat_2| should be < 90°"));
+            }
+            if (phi1 - phi2).abs() <= TOL {
+                return Err(invalid(
+                    "Invalid value for lat_1/lat_2: lat_1 should be different from lat_2",
+                ));
+            }
+            if phi1.abs() <= TOL {
+                return Err(invalid(
+                    "Invalid value for lat_1: lat_1 should be different from 0",
+                ));
+            }
+        }
         if (phi0.abs() - FRAC_PI_2).abs() <= TOL {
             return Err(invalid("|latitude of projection centre| must be < 90°"));
         }
@@ -124,10 +160,42 @@ impl ObliqueMercator {
             }
             Ok(v.clamp(-1.0, 1.0).asin())
         };
-        // EPSG always gives both azimuth and skew angle, as PROJ's `alpha`
-        // and `gamma`: the azimuth fixes the aposphere's initial line.
-        let gamma0 = aasin(alpha_c.sin() / d)?;
-        let lam0 = lamc - aasin(0.5 * (f - 1.0 / f) * gamma0.tan())? / b;
+        let (gamma0, lam0, gamma, alpha_c) = if points {
+            let h = tsfn(phi1, phi1.sin(), e).powf(b);
+            let l = tsfn(phi2, phi2.sin(), e).powf(b);
+            let f = e_ / h;
+            let p = (l - h) / (l + h);
+            if p == 0.0 {
+                return Err(invalid("Invalid value for eccentricity"));
+            }
+            let j = e_ * e_;
+            let j = (j - l * h) / (j + l * h);
+            let con = lam1 - lam2;
+            if con < -std::f64::consts::PI {
+                lam2 -= std::f64::consts::TAU;
+            } else if con > std::f64::consts::PI {
+                lam2 += std::f64::consts::TAU;
+            }
+            let lam0 =
+                adjlon(0.5 * (lam1 + lam2) - (j * (0.5 * b * (lam1 - lam2)).tan() / p).atan() / b);
+            let denom = f - 1.0 / f;
+            if denom == 0.0 {
+                return Err(invalid("Invalid value for eccentricity"));
+            }
+            let gamma0 = (2.0 * (b * adjlon(lam1 - lam0)).sin() / denom).atan();
+            let alpha_c = aasin(d * gamma0.sin())?;
+            (gamma0, lam0, alpha_c, alpha_c)
+        } else {
+            // EPSG always gives both azimuth and skew angle, as PROJ's
+            // `alpha` and `gamma`: the azimuth fixes the aposphere's initial
+            // line.
+            let lamc = params.get(param::LON_PROJECTION_CENTRE)?;
+            let alpha_c = params.get(param::AZIMUTH_PROJECTION_CENTRE)?;
+            let gamma = params.get(param::ANGLE_TO_SKEW_GRID)?;
+            let gamma0 = aasin(alpha_c.sin() / d)?;
+            let lam0 = lamc - aasin(0.5 * (f - 1.0 / f) * gamma0.tan())? / b;
+            (gamma0, lam0, gamma, alpha_c)
+        };
 
         let singam = gamma0.sin();
         let cosgam = gamma0.cos();

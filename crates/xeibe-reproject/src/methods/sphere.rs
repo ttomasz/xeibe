@@ -104,6 +104,17 @@ pub(crate) fn aasin(v: f64) -> Result<f64, CoordinateError> {
     Ok(v.asin())
 }
 
+/// acos, with |v| slightly over 1 taken as 1 (PROJ's `aacos`).
+pub(crate) fn aacos(v: f64) -> Result<f64, CoordinateError> {
+    if v.abs() >= 1.0 {
+        if v.abs() > ONE_TOL {
+            return Err(CoordinateError::OutsideDomain);
+        }
+        return Ok(if v < 0.0 { PI } else { 0.0 });
+    }
+    Ok(v.acos())
+}
+
 /// √v, 0 for v ≤ 0 (PROJ's `asqrt`).
 pub(crate) fn asqrt(v: f64) -> f64 {
     if v <= 0.0 { 0.0 } else { v.sqrt() }

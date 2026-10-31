@@ -28,6 +28,7 @@ test.crs.test_crs::test_datum_unknown
 test.crs.test_crs::test_derived_projected_crs
 test.crs.test_crs::test_dunder_str
 test.crs.test_crs::test_ellipsoid
+test.crs.test_crs::test_ellipsoid__semi_minor_not_computed
 test.crs.test_crs::test_empty_json
 test.crs.test_crs::test_epsg
 test.crs.test_crs::test_epsg__no_code_available
