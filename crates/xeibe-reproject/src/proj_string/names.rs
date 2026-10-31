@@ -808,7 +808,7 @@ pub(crate) static PROJECTION_READS: &[(&str, &[&str])] = &[
     ("sinu", &["n", "m"]),
     ("som", &["asc_lon", "inc_angle", "ps_rev", "path", "lsat"]),
     ("somerc", &[]),
-    ("spilhaus", &["", "lon_0", "lat_0"]),
+    ("spilhaus", &["lon_0", "lat_0", "azi", "rot"]),
     ("stere", &["lat_ts", "south"]),
     ("sterea", &[]),
     ("tcc", &[]),

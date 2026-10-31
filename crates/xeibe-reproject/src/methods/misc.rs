@@ -794,3 +794,63 @@ fn vandg4(lam: f64, phi: f64) -> (f64, f64) {
     }
     (x, y)
 }
+
+/// Bertin 1953 (`bertin1953.cpp`): Hammer of the sphere turned, with
+/// Bertin's adjustments before and after. PROJ fixes the central meridian
+/// at 0 and has no inverse.
+#[derive(Debug)]
+pub(crate) struct Bertin1953 {
+    cos_delta_phi: f64,
+    sin_delta_phi: f64,
+}
+
+impl Bertin1953 {
+    pub(crate) fn new() -> Self {
+        let (sin_delta_phi, cos_delta_phi) = (-42f64).to_radians().sin_cos();
+        Bertin1953 {
+            cos_delta_phi,
+            sin_delta_phi,
+        }
+    }
+}
+
+impl Unit for Bertin1953 {
+    fn fwd(&self, lam: f64, phi: f64) -> Result<(f64, f64), CoordinateError> {
+        const FU: f64 = 1.4;
+        const K: f64 = 12.0;
+        const W: f64 = 1.68;
+        // Rotate; PROJ's delta gamma is 0.
+        let lam = lam + (-16.5f64).to_radians();
+        let cosphi = phi.cos();
+        let x = lam.cos() * cosphi;
+        let y = lam.sin() * cosphi;
+        let z = phi.sin();
+        let z0 = z * self.cos_delta_phi + x * self.sin_delta_phi;
+        let mut lam = adjlon(y.atan2(x * self.cos_delta_phi - z * self.sin_delta_phi));
+        let mut phi = z0.asin();
+        // Adjust before projecting.
+        if lam + phi < -FU {
+            let d = (lam - phi + 1.6) * (lam + phi + FU) / 8.0;
+            lam += d;
+            phi -= 0.8 * d * (phi + FRAC_PI_2).sin();
+        }
+        // Hammer (1.68, 2).
+        let cosphi = phi.cos();
+        let d = (2.0 / (1.0 + cosphi * (lam / 2.0).cos())).sqrt();
+        let mut x = W * d * cosphi * (lam / 2.0).sin();
+        let mut y = d * phi.sin();
+        // Adjust after.
+        let d = (1.0 - (lam * phi).cos()) / K;
+        if y < 0.0 {
+            x *= 1.0 + d;
+        }
+        if y > 0.0 {
+            y *= 1.0 + d / 1.5 * x * x;
+        }
+        Ok((x, y))
+    }
+
+    fn inv(&self, _x: f64, _y: f64) -> Result<(f64, f64), CoordinateError> {
+        Err(OUTSIDE)
+    }
+}

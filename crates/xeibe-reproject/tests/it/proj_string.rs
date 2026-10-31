@@ -610,21 +610,7 @@ fn method_conversions(path: &Path, not_ported: &[&str]) -> (usize, Vec<String>) 
 const NOT_PORTED: &[&str] = &[];
 
 /// The projections of `custom.jsonl` not yet ported from PROJ.
-const CUSTOM_NOT_PORTED: &[&str] = &[
-    "airocean",
-    "bertin1953",
-    "healpix",
-    "rhealpix",
-    "imoll",
-    "imoll_o",
-    "isea",
-    "calcofi",
-    "s2",
-    "spilhaus",
-    "lsat",
-    "misrsom",
-    "som",
-];
+const CUSTOM_NOT_PORTED: &[&str] = &[];
 
 /// The projections PROJ has no CRS method for (`custom.jsonl`), as
 /// `methods.jsonl`'s.

@@ -149,8 +149,14 @@ def projection_reads(sources: dict[str, str]) -> dict[str, list[str]]:
         keys = []
         for m in PARAM_CALL.finditer(src):
             name = m.group(2)[1:] if m.group(1) == "pj_param" else m.group(2)
-            if name not in keys:
+            if name and name not in keys:
                 keys.append(name)
+        # Keys a helper lambda looks up by its argument: `spilhaus.cpp`'s
+        # `param_rad("azi", ...)`, which calls pj_param with "t" + name.
+        for lam in re.findall(r"auto\s+(\w+)\s*=\s*\[[^\]]*\]\s*\(\s*const std::string &", src):
+            for name in re.findall(rf'\b{lam}\(\s*"(\w+)"', src):
+                if name not in keys:
+                    keys.append(name)
         # Keys built at run time: `chamb.cpp`'s "rlat_%d" for its three
         # control points.
         for m in re.finditer(r'snprintf\([^"]*"\w(\w+_)%d"', src):

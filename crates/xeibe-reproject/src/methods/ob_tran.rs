@@ -6,11 +6,15 @@
 //! Ported from PROJ 9.8.1 `src/projections/ob_tran.cpp` (MIT, see
 //! PROJ-NOTICE.md). PROJ builds the inner projection from the same keys
 //! with `o_proj` as its `proj`, and calls its formulas alone: without its
-//! central meridian or false origin, which are the outer one's.
+//! central meridian or false origin, which are the outer one's, and scaled
+//! by the outer semi-major axis, not by the radius the inner set-up may
+//! put in its place (HEALPix's authalic one).
 
 use std::f64::consts::FRAC_PI_2;
 use std::sync::Arc;
 
+use super::authalic_q::Authalic;
+use super::mod_ster::ModifiedStereographic;
 use super::sphere::{aasin, aatan2};
 use super::{BuildError, Params, Projection, adjlon};
 use crate::crs::{Crs, Kind};
@@ -30,6 +34,9 @@ pub(crate) struct ObliqueTransformation {
     /// The projection turned, without its central meridian and false
     /// origin; `None` for longitude and latitude.
     inner: Option<Arc<dyn Projection>>,
+    /// The outer semi-major axis over the inner projection's radius,
+    /// forwards and backwards.
+    scale: (f64, f64),
     lamp: f64,
     /// sin and cos of the new pole's latitude, `None` for a transverse
     /// aspect (the pole on the equator).
@@ -92,11 +99,13 @@ impl ObliqueTransformation {
         } else {
             Some(inner(o_proj, params, ellipsoid)?)
         };
+        let (forward, backward) = inner_radii(o_proj, ellipsoid);
         Ok(ObliqueTransformation {
             lon0: key("lon_0"),
             fe: key("x_0"),
             fn_: key("y_0"),
             inner,
+            scale: (ellipsoid.a / forward, ellipsoid.a / backward),
             lamp,
             oblique: (phip.abs() > TOL).then(|| phip.sin_cos()),
         })
@@ -108,6 +117,23 @@ impl ObliqueTransformation {
             .flag("o_proj")
             .and_then(crate::proj_string::read::reads)
             .unwrap_or(&[])
+    }
+}
+
+/// The radii the inner projection scales by, forwards and backwards,
+/// where its PROJ set-up replaces the semi-major axis.
+fn inner_radii(o_proj: &str, ellipsoid: &Ellipsoid) -> (f64, f64) {
+    let a = ellipsoid.a;
+    match o_proj {
+        "healpix" | "rhealpix" if ellipsoid.es != 0.0 => {
+            let r = a * (0.5 * Authalic::new(ellipsoid).qp).sqrt();
+            (r, r)
+        }
+        "calcofi" => (1.0, 1.0),
+        _ => match ModifiedStereographic::of(o_proj, ellipsoid.e).and_then(|(_, f)| f.a) {
+            Some(forward) => (forward, a),
+            None => (a, a),
+        },
     }
 }
 
@@ -181,7 +207,7 @@ impl Projection for ObliqueTransformation {
         match &self.inner {
             Some(inner) => {
                 let (x, y) = inner.forward(lam, phi)?;
-                Ok((x + self.fe, y + self.fn_))
+                Ok((x * self.scale.0 + self.fe, y * self.scale.0 + self.fn_))
             }
             // Longitude and latitude, in radians and without a false origin.
             None => Ok((lam, phi)),
@@ -190,7 +216,9 @@ impl Projection for ObliqueTransformation {
 
     fn inverse(&self, x: f64, y: f64) -> Result<(f64, f64), CoordinateError> {
         let (lam, phi) = match &self.inner {
-            Some(inner) => inner.inverse(x - self.fe, y - self.fn_)?,
+            Some(inner) => {
+                inner.inverse((x - self.fe) / self.scale.1, (y - self.fn_) / self.scale.1)?
+            }
             None => (x, y),
         };
         let (lam, phi) = match self.oblique {

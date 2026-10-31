@@ -1,7 +1,8 @@
 //! Authalic latitude helpers for the equal-area projections.
 //!
 //! Ported from PROJ 9.8.1 `src/latitudes.cpp` (`pj_authalic_lat_q`,
-//! `pj_authalic_lat_compute_coeffs`, `pj_authalic_lat_inverse`; MIT, see
+//! `pj_authalic_lat_compute_coeffs`, `pj_authalic_lat`,
+//! `pj_authalic_lat_inverse`; MIT, see
 //! PROJ-NOTICE.md).
 
 use super::auxlat::{self, AuxLat, ORDER};
@@ -23,6 +24,7 @@ pub(crate) struct Authalic {
     /// q at the pole.
     pub(crate) qp: f64,
     xi_to_phi: [f64; ORDER],
+    phi_to_xi: [f64; ORDER],
 }
 
 impl Authalic {
@@ -34,6 +36,7 @@ impl Authalic {
             n: ellipsoid.n,
             qp: 0.0,
             xi_to_phi: auxlat::coeffs(ellipsoid.n, AuxLat::Authalic, AuxLat::Geographic),
+            phi_to_xi: auxlat::coeffs(ellipsoid.n, AuxLat::Geographic, AuxLat::Authalic),
         };
         s.qp = s.q(1.0);
         s
@@ -50,6 +53,23 @@ impl Authalic {
             self.one_es * (sinphi / d + e_sinphi.atanh() / self.e)
         } else {
             2.0 * sinphi
+        }
+    }
+
+    /// The authalic latitude β of a geographic latitude: by the series
+    /// where they are accurate, else from q.
+    pub(crate) fn forward(&self, phi: f64) -> f64 {
+        let (sinphi, cosphi) = phi.sin_cos();
+        if series_valid(self.n) {
+            return auxlat::convert_sc(phi, sinphi, cosphi, &self.phi_to_xi);
+        }
+        // Ill-conditioned near the poles, hence the series where they hold.
+        let ratio = self.q(sinphi) / self.qp;
+        // Rounding error.
+        if ratio.abs() > 1.0 {
+            ratio.signum().asin()
+        } else {
+            ratio.asin()
         }
     }
 

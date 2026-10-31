@@ -440,7 +440,9 @@ does `xeibe-reproject`:
 - `ob_tran` turns another projection (`o_proj`) to a new pole. Its inner
   projection is built from the same keys and ellipsoid through the PROJ
   string reader, without its central meridian and false origin, which
-  PROJ doesn't apply to it. With `o_proj=longlat` PROJ makes a derived
+  PROJ doesn't apply to it, and scaled by the outer semi-major axis
+  rather than by a radius the inner set-up puts in its place (HEALPix's
+  authalic one, CalCOFI's 1). With `o_proj=longlat` PROJ makes a derived
   geographic CRS, a rotated pole: `Crs` holds it as a projection whose
   output is the turned longitude and latitude, on an ellipsoidal
   coordinate system, and WKT2 writes and reads it as `GEOGCRS` with
@@ -470,10 +472,29 @@ listed one builds.
 **Results (2026-10-31).** All 50 of PROJ's own methods and the four EPSG
 ones are ported. The 129 strings of `methods.jsonl` read and write as PROJ
 reads and writes them, their WKT is written and read as PROJ does, and all
-11,662 converted points agree, forwards to 2 µm and back to 1e-9°. Like
+13,040 converted points agree, forwards to 2 µm and back to 1e-9°. Like
 PROJ, Mercator (Spherical) is on the conformal sphere at the equator,
 whatever its latitude of origin: PROJ sets up `+R_C`'s sphere before it
 reads `lat_0`.
+
+All of PROJ's projections without a CRS method are ported too, so a PROJ
+string of any of PROJ's projections converts. The 187 strings of
+`custom.jsonl` read, write and convert as in PROJ: 16,673 points. The
+ports keep PROJ's quirks, where its results are what a user of it gets:
+
+- ISEA's forward is on the sphere of the semi-major axis with the
+  geodetic latitude, its inverse on the authalic sphere. The inverse
+  exists only for the plane with PROJ's default grid, in the ISEA or the
+  polar orientation. `lon_0` and `lat_0` turn the icosahedron and are
+  the central meridian and origin as well.
+- S2 and CalCOFI aren't scaled by the radius: S2 gives the cube face's s
+  and t, CalCOFI the line and station numbers. S2's central meridian only
+  picks the face, and CalCOFI ignores the false origin.
+- Space Oblique Mercator reads `ps_rev` as a plain number, though PROJ
+  writes it in degrees. HEALPix and rHEALPix on an ellipsoid use the
+  authalic radius.
+- Bertin 1953 fixes its central meridian at 0. Interrupted Mollweide's
+  inverse keeps PROJ's lopsided test at the south pole.
 
 ## Sub-objects and builders
 

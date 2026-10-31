@@ -14,15 +14,23 @@ use std::sync::Arc;
 
 use super::adams::Adams;
 use super::aea::AlbersEqualArea;
+use super::airocean::Airocean;
 use super::bipc::Bipolar;
+use super::calcofi::Calcofi;
 use super::conic::{CentralConic, Lcca, Simple, k0};
-use super::misc::Misc;
+use super::healpix::Healpix;
+use super::imoll::InterruptedMollweide;
+use super::isea::Isea;
+use super::misc::{Bertin1953, Misc};
 use super::mod_ster::ModifiedStereographic;
 use super::ob_tran::ObliqueTransformation;
 use super::pcyl::Pcyl;
 use super::perspective::NearSidedPerspective;
 use super::rouss::Roussilhe;
+use super::s2::S2;
+use super::som::SpaceObliqueMercator;
 use super::sphere::Spherical;
+use super::spilhaus::Spilhaus;
 use super::stere::Stereographic;
 use super::world::World;
 use super::{BuildError, Params, Projection};
@@ -78,6 +86,12 @@ pub(crate) fn build(
     if let Some(p) = Simple::of(proj, params)? {
         return Ok(Arc::new(Spherical::from_keys(p, params, a)));
     }
+    if let Some(p) = SpaceObliqueMercator::of(proj, params, ellipsoid)? {
+        return Ok(Arc::new(p));
+    }
+    if let Some(p) = Healpix::of(proj, params, ellipsoid)? {
+        return Ok(Arc::new(p));
+    }
     let key = |k: &str| params.key(k).unwrap_or(0.0);
     match proj {
         "leac" => Ok(Arc::new(AlbersEqualArea::leac(params, ellipsoid)?)),
@@ -108,6 +122,26 @@ pub(crate) fn build(
             if let Some(a) = fixed.a {
                 s.forward_radius(a);
             }
+            Ok(Arc::new(s))
+        }
+        "imoll" => Ok(Arc::new(Spherical::from_keys(
+            InterruptedMollweide::new(false),
+            params,
+            a,
+        ))),
+        "imoll_o" => Ok(Arc::new(Spherical::from_keys(
+            InterruptedMollweide::new(true),
+            params,
+            a,
+        ))),
+        "spilhaus" => Ok(Arc::new(Spilhaus::build(params, a, ellipsoid.e)?)),
+        "s2" => Ok(Arc::new(S2::new(params, ellipsoid)?)),
+        "airocean" => Ok(Arc::new(Airocean::new(params, ellipsoid)?)),
+        "isea" => Ok(Arc::new(Isea::new(params, ellipsoid)?)),
+        "calcofi" => Ok(Arc::new(Calcofi::new(ellipsoid.e))),
+        "bertin1953" => {
+            let mut s = Spherical::from_keys(Bertin1953::new(), params, a);
+            s.set_lon0(0.0);
             Ok(Arc::new(s))
         }
         "ob_tran" => Ok(Arc::new(ObliqueTransformation::new(params, ellipsoid)?)),
