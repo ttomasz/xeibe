@@ -798,34 +798,61 @@ fn vertical_grid_selection_matches_proj() {
     fail_on(&failures);
 }
 
-/// A Helmert of zeros between GRS 1980 and WGS 84 runs through geocentric
-/// coordinates, as EPSG defines the method, whether it is EPSG's "NAD83 to
-/// WGS 84 (1)" or a zero `TOWGS84`; PROJ leaves it out, 0.1 mm away here
-/// (docs/reprojection.md, deviations).
+/// A Helmert of zeros between GRS 1980 and WGS 84 keeps the coordinates,
+/// whether it is EPSG's "NAD83 to WGS 84 (1)" or a zero `TOWGS84`: NAD83 /
+/// UTM zone 18N to WGS 84 is the inverse projection only, as in PROJ
+/// (docs/reprojection.md, deviations). Between ellipsoids further apart the
+/// zeros still change the ellipsoid.
 #[test]
-fn a_zero_helmert_changes_the_ellipsoid() {
+fn a_zero_helmert_keeps_the_coordinates() {
     let wgs84 = Crs::from_epsg(4326).unwrap();
-    let bound = Crs::from_wkt(
-        r#"PROJCS["NAD83 / UTM zone 18N",GEOGCS["NAD83",DATUM["North_American_Datum_1983",
-        SPHEROID["GRS 1980",6378137,298.257222101],TOWGS84[0,0,0,0,0,0,0]],
-        PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],
-        PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],
-        PARAMETER["central_meridian",-75],PARAMETER["scale_factor",0.9996],
-        PARAMETER["false_easting",500000],PARAMETER["false_northing",0],
-        UNIT["metre",1]]"#,
-    )
-    .unwrap();
+    const GRS80: &str = r#"SPHEROID["GRS 1980",6378137,298.257222101]"#;
+    const BESSEL: &str = r#"SPHEROID["Bessel 1841",6377397.155,299.1528128]"#;
+    const ZEROS: &str = ",TOWGS84[0,0,0,0,0,0,0]";
+    let geogcs = |spheroid: &str, towgs84: &str| {
+        format!(
+            r#"GEOGCS["NAD83",DATUM["North_American_Datum_1983",{spheroid}{towgs84}],
+            PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]"#
+        )
+    };
+    let utm18 = |spheroid: &str, towgs84: &str| {
+        Crs::from_wkt(&format!(
+            r#"PROJCS["NAD83 / UTM zone 18N",{},
+            PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],
+            PARAMETER["central_meridian",-75],PARAMETER["scale_factor",0.9996],
+            PARAMETER["false_easting",500000],PARAMETER["false_northing",0],
+            UNIT["metre",1]]"#,
+            geogcs(spheroid, towgs84)
+        ))
+        .unwrap()
+    };
     let (x, y) = (-1683723.0, 6689139.0);
-    let mut results = Vec::new();
-    for src in [Crs::from_epsg(26918).unwrap(), bound] {
+    for src in [Crs::from_epsg(26918).unwrap(), utm18(GRS80, ZEROS)] {
         let t = Transform::new(&src, &wgs84, AxisOrder::EastFirst).unwrap();
-        let (lon, lat, _) = t.convert(x, y, None).unwrap();
         // PROJ 9.8.1, longitude first: the inverse projection alone.
+        let (lon, lat, _) = t.convert(x, y, None).unwrap();
         assert!((lon + 110.13999006451226).abs() < 1e-11, "{lon}");
-        assert!((lat - 55.13500107016813).abs() > 5e-10, "{lat}");
-        results.push((lon, lat));
+        assert!((lat - 55.13500107016813).abs() < 1e-11, "{lat}");
+        let (x, y, _) = t
+            .inverse()
+            .unwrap()
+            .convert(-110.1399901, 55.1350011, None)
+            .unwrap();
+        assert!((x + 1683723.000316157).abs() < 1e-6, "{x}");
+        assert!((y - 6689139.004242781).abs() < 1e-6, "{y}");
     }
-    assert!((results[0].1 - results[1].1).abs() < 1e-13, "{results:?}");
+    // Bessel 1841 to WGS 84: the latitude moves 60 m from the inverse
+    // projection's.
+    let projected = |towgs84: &str, dst: &Crs| {
+        Transform::new(&utm18(BESSEL, towgs84), dst, AxisOrder::EastFirst)
+            .unwrap()
+            .convert(x, y, None)
+            .unwrap()
+            .1
+    };
+    let own = projected("", &Crs::from_wkt(&geogcs(BESSEL, "")).unwrap());
+    let shifted = projected(ZEROS, &wgs84);
+    assert!((shifted - own).abs() > 1e-4, "{own} {shifted}");
 }
 
 /// `scripts/gen_transformation_vectors.py --all` first.

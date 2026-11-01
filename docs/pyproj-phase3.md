@@ -160,23 +160,24 @@ also checks that the finder takes precedence.
 
 **Results** (2026-11-01). With pyproj 1,827 of GeoPandas' tests pass (167
 fail and 845 skip without pyogrio, as they do with the shim). Through the
-shim 1,813 of those pass. The other 14 are in `known.txt`:
+shim 1,823 of those pass. The other four are in `known.txt`:
 
 - three give `IGNF:` CRSs, another authority;
 - `test_concat_axis0_crs_wkt_mismatch` expects two equal CRSs whose WKT
   differs in an area name to hash differently, as pyproj's hash of the WKT
-  text does. Equal xeibe_proj CRSs hash equal, as Python's hash requires;
-- ten cases of `test_transform2` convert EPSG:26918 to WGS 84 and back
-  through `+proj=utm +zone=18 +datum=NAD83 +nadgrids=null`, and come back
-  0.1 mm off, over the tolerance of GeoPandas' comparison. "NAD83 to
-  WGS 84 (1)" is a geocentric translation of zeros between GRS 1980 and
-  WGS 84, which xeibe runs as EPSG defines it, through geocentric
-  coordinates on each ellipsoid, and PROJ's pipeline optimiser leaves out
-  ([reprojection.md](reprojection.md#deviations-from-proj-documented-deliberate)).
-  The grid of zeros back changes nothing in either.
+  text does. Equal xeibe_proj CRSs hash equal, as Python's hash requires.
 
 None of the expected failures from raising on failed coordinates or from
-text that differs showed.
+text that differs showed. The run found one difference of our own:
+`test_transform2` converts EPSG:26918 to WGS 84 and back through
+`+proj=utm +zone=18 +datum=NAD83 +nadgrids=null`, and came back 0.1 mm
+off, over the tolerance of GeoPandas' comparison. "NAD83 to WGS 84 (1)" is
+a geocentric translation of zeros between GRS 1980 and WGS 84, which
+`xeibe-reproject` ran through geocentric coordinates on each ellipsoid;
+PROJ's pipeline optimiser leaves it out. A Helmert of zeros between those
+ellipsoids now keeps the coordinates
+([reprojection.md](reprojection.md#deviations-from-proj-documented-deliberate)),
+and the ten `test_transform2` cases pass.
 
 ## PROJ strings
 
@@ -691,7 +692,7 @@ imports no Arrow library.
    `hammer`).
 3. **`install_as_pyproj()` and the GeoPandas runner**, gated on GeoPandas'
    suite: every test that passes with pyproj is in the pass list or in
-   `known.txt` with a reason. **Done** (2026-11-01): 1,813 of the 1,827
+   `known.txt` with a reason. **Done** (2026-11-01): 1,823 of the 1,827
    tests that pass with pyproj pass with the shim
    ([the results](#geopandas)).
 4. **The objects table and the sub-objects' constructors**, with

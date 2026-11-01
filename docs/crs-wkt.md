@@ -412,10 +412,11 @@ PROJ's rules (`createOperationsBoundToGeog`, `createOperationsBoundToBound`):
 
 Two of PROJ's pipeline optimisations change results. One is followed:
 between two geog2D-domain Helmert steps (two Bound CRSs on one hub) the
-height the first produces flows into the second. The other isn't: PROJ
-leaves out a Helmert of zeros between GRS 1980 and WGS 84 standing alone
-(a zero `TOWGS84` on ETRS89 to WGS 84), which xeibe runs as EPSG defines
-it, 0.1 mm away ([reprojection.md](reprojection.md#deviations-from-proj-documented-deliberate)).
+height the first produces flows into the second. The other is
+generalised: PROJ leaves out a Helmert of zeros between GRS 1980 and
+WGS 84 standing alone (a zero `TOWGS84` on ETRS89 to WGS 84), and xeibe
+leaves it out wherever it is, 0.1 mm from PROJ next to another Helmert
+([reprojection.md](reprojection.md#deviations-from-proj-documented-deliberate)).
 
 ## Writing
 

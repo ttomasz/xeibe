@@ -1497,7 +1497,10 @@ fn towgs84_transforms_as_proj_does() {
     // A Bound CRS is no EPSG CRS, as in PROJ.
     assert_eq!(crs.identify(), []);
     assert!(!crs.equivalent(&Crs::from_epsg(4284).unwrap(), false));
-    // PROJ 9.8.1's results, longitude first.
+    // PROJ 9.8.1's results, longitude first, but for ETRS89: there PROJ
+    // keeps the geocentric round trip of "ETRS89 to WGS 84 (1)" next to the
+    // Bound CRS's Helmert, 0.1 mm north at 54.999919367708564, where its
+    // zeros keep the coordinates (docs/reprojection.md, deviations).
     for (target, x, y, name) in [
         (
             4326,
@@ -1508,7 +1511,7 @@ fn towgs84_transforms_as_proj_does() {
         (
             4258,
             29.998122530511566,
-            54.999919367708564,
+            54.99991936682272,
             "Transformation from Pulkovo 1942 to WGS84 + Inverse of ETRS89 to WGS 84 (1)",
         ),
         (

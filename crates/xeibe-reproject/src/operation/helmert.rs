@@ -9,6 +9,13 @@
 //! applies the Helmert step and comes back on the target ellipsoid. In the
 //! geog2D domain the height is carried through unchanged (PROJ's
 //! `push`/`pop +v_3`).
+//!
+//! A geographic-domain Helmert of zeros between ellipsoids within
+//! [`SAME_ELLIPSOID_M`] of each other, on one prime meridian, changes the CRS
+//! only: "ETRS89 to WGS 84 (1)", "NAD83 to WGS 84 (1)" and a zero `TOWGS84`
+//! state that the two datums coincide, and through geocentric coordinates
+//! they would move latitude and height by the 0.1 mm between GRS 1980 and
+//! WGS 84 (`docs/reprojection.md`, deviations).
 
 use std::sync::Arc;
 
@@ -17,7 +24,13 @@ use crate::crs::{Crs, Kind};
 use crate::ellipsoid::Ellipsoid;
 use crate::error::CoordinateError;
 use crate::geocentric::{cartesian, geodetic};
-use crate::registry::Operation;
+use crate::registry::{Operation, ParamValue};
+
+/// How far apart, in each semi-axis, two ellipsoids may be for a Helmert of
+/// zeros between them to keep the coordinates. Of EPSG's ellipsoids only
+/// GRS 1980 and CGCS2000 against WGS 84 and GEM 10C are this close and not
+/// equal (0.105 mm); next are the Clarke 1880 (Arc) and (RGS) at 0.19 mm.
+pub(crate) const SAME_ELLIPSOID_M: f64 = 1.5e-4;
 
 /// EPSG method codes handled here.
 pub(super) const METHODS: &[u32] = &[
@@ -207,6 +220,15 @@ struct HelmertOperation {
     /// domains.
     src: Option<(Ellipsoid, f64)>,
     dst: Option<(Ellipsoid, f64)>,
+    /// Zeros between two geographic CRSs that [`same_place`] holds for:
+    /// the coordinates go through unchanged.
+    relabel: bool,
+}
+
+/// Whether two geographic CRSs' ellipsoids and prime meridians are one for
+/// a Helmert of zeros between them.
+fn same_place((a, pa): (Ellipsoid, f64), (b, pb): (Ellipsoid, f64)) -> bool {
+    pa == pb && (a.a - b.a).abs() <= SAME_ELLIPSOID_M && (a.b - b.b).abs() <= SAME_ELLIPSOID_M
 }
 
 pub(super) fn build(op: &Operation, src: &Crs, dst: &Crs) -> Result<Arc<dyn Method>, MethodError> {
@@ -250,11 +272,14 @@ pub(super) fn build(op: &Operation, src: &Crs, dst: &Crs) -> Result<Arc<dyn Meth
         }
         Domain::Geog2d | Domain::Geog3d => (Some(geographic(src)?), Some(geographic(dst)?)),
     };
+    let zeros = op.params.iter().all(|(_, v)| *v == ParamValue::Number(0.0));
+    let relabel = zeros && src.zip(dst).is_some_and(|(s, d)| same_place(s, d));
     Ok(Arc::new(HelmertOperation {
         helmert,
         domain,
         src,
         dst,
+        relabel,
     }))
 }
 
@@ -283,6 +308,9 @@ impl HelmertOperation {
         inverse: bool,
         keep_height: bool,
     ) -> Result<[f64; 3], CoordinateError> {
+        if self.relabel {
+            return Ok(c);
+        }
         match (self.src, self.dst, inverse) {
             (Some(from), Some(to), false) => {
                 self.through_geocentric(c, from, to, |x| self.helmert.forward(x), keep_height)
