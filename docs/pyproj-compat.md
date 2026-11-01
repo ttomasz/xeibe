@@ -69,7 +69,7 @@ read and written (its steps 1 and 2), and as of 2026-11-01
   - `CRS.to_2d`, `to_3d` and `get_non_deprecated`
     ([pyproj-phase2.md](pyproj-phase2.md#to_2d-to_3d-get_non_deprecated)).
   - `xeibe_proj.compat.install_as_pyproj()`, under which GeoPandas 1.2.0
-    passes its tests but four ([pyproj-phase3.md](pyproj-phase3.md#geopandas)).
+    passes its tests but 14 ([pyproj-phase3.md](pyproj-phase3.md#geopandas)).
 - **The Rust changes phase 1 needed are made**:
   - `Transform::operation_info`, `operation_index_for` and
     `with_operation_index` for the metadata and the group;
@@ -498,7 +498,9 @@ These are documented in the package README and in its `NotImplementedError` and
    and their grids fetched. Results can therefore differ from a default
    pyproj install, which skips those operations. Each grid use is logged.
 4. **Operation choice** follows [reprojection.md](reprojection.md#deviations-from-proj-documented-deliberate),
-   which picks a different operation from PROJ at 38 of 21,132 test points.
+   which picks a different operation from PROJ at 38 of 21,132 test points,
+   and runs a Helmert of zeros between GRS 1980 and WGS 84 ("NAD83 to
+   WGS 84 (1)") as EPSG defines it, where PROJ leaves it out: 0.1 mm.
 5. **A newer EPSG.** CRS names, supersessions and the operations available
    can differ from those in pyproj's bundled `proj.db`.
 6. **Only EPSG** (and the three OGC CRSs) as an authority, and only the

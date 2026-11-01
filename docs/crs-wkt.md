@@ -410,12 +410,12 @@ PROJ's rules (`createOperationsBoundToGeog`, `createOperationsBoundToBound`):
 - WKT2's abridged transformation has fixed units: metres, arc-seconds and
   the scale difference as a factor (1 + ppm × 10⁻⁶).
 
-Two of PROJ's pipeline optimisations change results, and are followed:
+Two of PROJ's pipeline optimisations change results. One is followed:
 between two geog2D-domain Helmert steps (two Bound CRSs on one hub) the
-height the first produces flows into the second; and a Helmert of zeros
-between GRS 1980 and WGS 84 standing alone (a zero `TOWGS84` on ETRS89 to
-WGS 84) is no step at all, where next to another geocentric step it isn't
-(as on EPSG's routes, [reprojection.md](reprojection.md)).
+height the first produces flows into the second. The other isn't: PROJ
+leaves out a Helmert of zeros between GRS 1980 and WGS 84 standing alone
+(a zero `TOWGS84` on ETRS89 to WGS 84), which xeibe runs as EPSG defines
+it, 0.1 mm away ([reprojection.md](reprojection.md#deviations-from-proj-documented-deliberate)).
 
 ## Writing
 

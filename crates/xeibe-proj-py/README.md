@@ -82,8 +82,10 @@ xeibe_proj.CRS`. `pyproj.__version__` is `"3.8.0"`, the pyproj release
 whose API is followed. The rest of pyproj's modules raise
 `ModuleNotFoundError` with the reason. `importlib.metadata.version("pyproj")`
 still reads the installed distributions. Of GeoPandas 1.2.0's tests that
-pass with pyproj, all but four pass this way: three use `IGNF:` CRSs, and
-one expects equal CRSs to hash differently.
+pass with pyproj, all but 14 pass this way: three use `IGNF:` CRSs, one
+expects equal CRSs to hash differently, and ten compare a round trip more
+tightly than the 0.1 mm a zero datum shift between GRS 1980 and WGS 84
+makes here (PROJ leaves the shift out).
 
 ## Differences from pyproj
 

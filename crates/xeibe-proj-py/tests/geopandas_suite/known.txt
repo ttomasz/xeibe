@@ -7,3 +7,19 @@ geopandas.tests.test_geoseries::test_geoseries_crs
 # differently, which the test expects. Equal xeibe_proj CRSs hash equal, as
 # Python's hash requires.
 geopandas.tests.test_merge.TestMerging::test_concat_axis0_crs_wkt_mismatch
+
+# A Helmert of zeros between GRS 1980 and WGS 84 ("NAD83 to WGS 84 (1)")
+# runs through geocentric coordinates, as EPSG defines it, and changes the
+# latitude by 0.1 mm; PROJ leaves it out. To WGS 84 by EPSG's operation and
+# back through +nadgrids=null (no change) misses the comparison's tolerance
+# by that (docs/reprojection.md, deviations).
+geopandas.tests.test_crs::test_transform2[epsg_dict-proj4_dict]
+geopandas.tests.test_crs::test_transform2[epsg_dict-proj4_string]
+geopandas.tests.test_crs::test_transform2[epsg_number-proj4_dict]
+geopandas.tests.test_crs::test_transform2[epsg_number-proj4_string]
+geopandas.tests.test_crs::test_transform2[epsg_string-proj4_dict]
+geopandas.tests.test_crs::test_transform2[epsg_string-proj4_string]
+geopandas.tests.test_crs::test_transform2[proj4_dict-proj4_dict]
+geopandas.tests.test_crs::test_transform2[proj4_dict-proj4_string]
+geopandas.tests.test_crs::test_transform2[proj4_string-proj4_dict]
+geopandas.tests.test_crs::test_transform2[proj4_string-proj4_string]

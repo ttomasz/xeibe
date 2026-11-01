@@ -338,12 +338,7 @@ Details that turned out to matter, each found by the differential:
 - **PROJ's pipeline optimiser.** Between consecutive geog2D-domain operations
   the transformed height carries over (PROJ drops the `pop`/`push` pair), and a
   Helmert followed by its own inverse cancels exactly. Run step by step, both
-  leave millimetres. A Helmert of zeros between GRS 1980 and WGS 84 ("NAD83
-  to WGS 84 (1)", "ETRS89 to WGS 84 (1)") is no step at all when nothing
-  geocentric is next to it, so the coordinates keep their latitude; next to
-  another Helmert, a Bound CRS's included, its geocentric round trip cancels
-  against that one's, and running it gives the same. Through geocentric
-  coordinates alone it would change the ellipsoid, 0.1 mm.
+  leave millimetres.
 - **What PROJ can run.** Time-specific Helmert methods (1065, 1066) have no
   PROJ pipeline and never compete; time-dependent ones run at their reference
   epoch when coordinates have no epoch, as in PROJ.
@@ -493,6 +488,18 @@ Details that turned out to matter, each found by the differential:
   operations plus ESRI, IGNF, NKG and NRCAN ones that xeibe doesn't have.
 - **The inverse transform chooses again** for the opposite direction, rather
   than inverting the chosen list.
+- **A Helmert of zeros between GRS 1980 and WGS 84 runs as EPSG defines
+  it**: to geocentric coordinates on the source ellipsoid, the translation,
+  and back on the target ellipsoid. "NAD83 to WGS 84 (1)", "ETRS89 to
+  WGS 84 (1)" and a zero `TOWGS84` on such a datum keep the point where it
+  is in space, so its latitude and ellipsoidal height change by up to
+  0.1 mm, the difference of the two ellipsoids. PROJ's pipeline optimiser
+  takes the two as one ellipsoid ("differences of the order of 1e-14 deg")
+  and leaves the step out when nothing geocentric is next to it, so the
+  coordinates stay. The transformations are stated to 1–4 m; following
+  PROJ here took a rule over the steps' neighbours and the Bound CRSs'
+  legs, for the 0.1 mm. `+nadgrids=@null` is a grid of zeros, and keeps
+  the coordinates in both.
 
 ### Validation
 
