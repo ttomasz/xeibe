@@ -3,17 +3,19 @@
 //! Kept narrow (`docs/pyproj-compat.md`, Naming and layout): EPSG records and
 //! PROJJSON from `xeibe-crs`, `xeibe-reproject`'s transforms, WKT and
 //! identification, and Esri's old codes from `xeibe-esri`. The
-//! pyproj-shaped API is Python over PROJJSON. Conversion works in place on
-//! float64 buffers the Python side has already copied, and releases the GIL.
-//! Errors are `xeibe_proj.exceptions`' classes.
+//! pyproj-shaped API is Python over PROJJSON. Conversion takes plain
+//! numbers, or works in place on float64 buffers the Python side has
+//! already copied and releases the GIL (`convert`). Errors are
+//! `xeibe_proj.exceptions`' classes.
 
+mod convert;
 mod geod;
 mod proj;
 
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyBytes, PyTuple};
 use xeibe_reproject::wkt::{self, AxisRule, Version};
 use xeibe_reproject::{AxisOrder, Crs, Error, Grids};
 
@@ -411,19 +413,52 @@ impl From<xeibe_reproject::OperationInfo> for OperationInfo {
 #[pyclass(frozen, module = "xeibe_proj._native")]
 struct Transform {
     inner: xeibe_reproject::Transform,
+    calls: convert::Calls,
+}
+
+impl Transform {
+    fn with(inner: xeibe_reproject::Transform, degrees: (bool, bool)) -> Transform {
+        let grids = !inner.grids().is_empty();
+        Transform {
+            inner,
+            calls: convert::Calls::new(degrees, grids),
+        }
+    }
+}
+
+impl convert::Convert for xeibe_reproject::Transform {
+    fn convert_xy(&self, x: &mut [f64], y: &mut [f64]) -> Result<(), Error> {
+        xeibe_reproject::Transform::convert_xy(self, x, y)
+    }
+
+    fn convert_xyz(&self, x: &mut [f64], y: &mut [f64], z: &mut [f64]) -> Result<(), Error> {
+        xeibe_reproject::Transform::convert_xyz(self, x, y, z)
+    }
+
+    fn convert_bounds(&self, bounds: [f64; 4], densify: usize) -> Result<[f64; 4], Error> {
+        xeibe_reproject::Transform::convert_bounds(self, bounds, densify)
+    }
+
+    fn grids_missing(&self, bounds: Option<[f64; 4]>) -> bool {
+        !self.grid_requests(bounds).is_empty()
+    }
 }
 
 #[pymethods]
 impl Transform {
     /// `Transform(source, target, always_xy, grids, local=None,
-    /// area_of_interest=None, accuracy=None)`: the CRSs as PROJJSON or WKT
-    /// text. `grids=True` may use PROJ-data's grids on the CDN; with
-    /// `False`, only those in `local` (PROJ-data's file names), or none.
+    /// area_of_interest=None, accuracy=None, degrees=(False, False))`: the
+    /// CRSs as PROJJSON or WKT text. `always_xy` takes and gives the values
+    /// easting first (PROJ's `mustAxisOrderBeSwitchedForVisualization`).
+    /// `grids=True` may use PROJ-data's grids on the CDN; with `False`, only
+    /// those in `local` (PROJ-data's file names), or none.
     /// `area_of_interest` (west, south, east, north in degrees) and
-    /// `accuracy` (metres) limit the operations, as PROJ's do.
+    /// `accuracy` (metres) limit the operations, as PROJ's do. `degrees`
+    /// says which sides `radians=True` applies to: the source and the
+    /// target when geographic in degrees.
     #[new]
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (source, target, always_xy, grids, local = None, area_of_interest = None, accuracy = None))]
+    #[pyo3(signature = (source, target, always_xy, grids, local = None, area_of_interest = None, accuracy = None, degrees = (false, false)))]
     fn new(
         py: Python<'_>,
         source: &str,
@@ -433,6 +468,7 @@ impl Transform {
         local: Option<Vec<String>>,
         area_of_interest: Option<[f64; 4]>,
         accuracy: Option<f64>,
+        degrees: (bool, bool),
     ) -> PyResult<Self> {
         let order = if always_xy {
             AxisOrder::EastFirst
@@ -455,7 +491,7 @@ impl Transform {
                 xeibe_reproject::Transform::with_selection(&src, &dst, order, grids, selection)
             })
             .map_err(|e| error(py, e))?;
-        Ok(Transform { inner })
+        Ok(Transform::with(inner, degrees))
     }
 
     /// The conversion the other way.
@@ -463,7 +499,19 @@ impl Transform {
         let inner = py
             .detach(|| self.inner.inverse())
             .map_err(|e| error(py, e))?;
-        Ok(Transform { inner })
+        let (into, out) = self.calls.degrees;
+        Ok(Transform::with(inner, (out, into)))
+    }
+
+    /// Whether `always_xy` swaps the source's and the target's first two
+    /// values.
+    #[getter]
+    fn swaps(&self) -> (bool, bool) {
+        let east_first = self.inner.order() == AxisOrder::EastFirst;
+        (
+            east_first && self.inner.source().swapped_east_first(),
+            east_first && self.inner.target().swapped_east_first(),
+        )
     }
 
     /// Names of the candidate operations, best first; empty on one datum.
@@ -502,7 +550,7 @@ impl Transform {
     fn with_operation_index(&self, py: Python<'_>, index: usize) -> PyResult<Option<Transform>> {
         match self.inner.with_operation_index(index) {
             None => Ok(None),
-            Some(Ok(inner)) => Ok(Some(Transform { inner })),
+            Some(Ok(inner)) => Ok(Some(Transform::with(inner, self.calls.degrees))),
             Some(Err(e)) => Err(error(py, e)),
         }
     }
@@ -538,99 +586,80 @@ impl Transform {
             .map_err(|e| error(py, e))
     }
 
+    /// `Transformer.transform` for plain numbers (`float` or `int`): the
+    /// converted `(x, y)`, with `z` and `t` when given; `None` for anything
+    /// else. `GridsNeeded` when grid data is missing (with `check_grids`).
+    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (xx, yy, zz = None, tt = None, radians = false, check_grids = true))]
+    fn transform<'py>(
+        &self,
+        py: Python<'py>,
+        xx: &Bound<'py, PyAny>,
+        yy: &Bound<'py, PyAny>,
+        zz: Option<&Bound<'py, PyAny>>,
+        tt: Option<&Bound<'py, PyAny>>,
+        radians: bool,
+        check_grids: bool,
+    ) -> PyResult<Option<Bound<'py, PyTuple>>> {
+        convert::transform(
+            &self.inner,
+            &self.calls,
+            py,
+            xx,
+            yy,
+            zz,
+            tt,
+            radians,
+            check_grids,
+        )
+    }
+
     /// Convert coordinates in place: `x`, `y` and optionally `z` are
-    /// writable float64 buffers of one length. `radians_in` takes x and y
-    /// in radians for a source CRS in degrees; `radians_out` returns them in
-    /// radians for a target CRS in degrees. Stops at the first coordinate
-    /// that fails, with a `ProjError` naming it.
-    #[pyo3(signature = (x, y, z = None, radians_in = false, radians_out = false))]
+    /// writable float64 buffers of one length. `radians` takes and gives
+    /// the sides in degrees in radians. Stops at the first coordinate that
+    /// fails, with a `ProjError` naming it; `GridsNeeded` when grid data is
+    /// missing (with `check_grids`).
+    #[pyo3(signature = (x, y, z = None, radians = false, check_grids = true))]
     fn convert(
         &self,
         py: Python<'_>,
         x: &Bound<'_, PyAny>,
         y: &Bound<'_, PyAny>,
         z: Option<&Bound<'_, PyAny>>,
-        radians_in: bool,
-        radians_out: bool,
+        radians: bool,
+        check_grids: bool,
     ) -> PyResult<()> {
-        let bx = PyBuffer::<f64>::get(x)?;
-        let by = PyBuffer::<f64>::get(y)?;
-        let bz = z.map(PyBuffer::<f64>::get).transpose()?;
-        let rx = writable(&bx, "x")?;
-        let ry = writable(&by, "y")?;
-        let rz = bz.as_ref().map(|b| writable(b, "z")).transpose()?;
-        if rx.1 != ry.1 || rz.is_some_and(|rz| rz.1 != rx.1) {
-            return Err(PyValueError::new_err(
-                "the coordinate arrays differ in length",
-            ));
-        }
-        if rx.0 == ry.0 || rz.is_some_and(|rz| rz.0 == rx.0 || rz.0 == ry.0) {
-            return Err(PyValueError::new_err("the coordinate arrays share memory"));
-        }
-        py.detach(|| {
-            // SAFETY: the buffers are held until this returns, and they don't
-            // overlap (checked above for the starts; each is its own copy).
-            let (xs, ys) = unsafe { (slice(rx), slice(ry)) };
-            if radians_in {
-                scale(xs, 180.0 / std::f64::consts::PI);
-                scale(ys, 180.0 / std::f64::consts::PI);
-            }
-            match rz {
-                Some(rz) => self.inner.convert_xyz(xs, ys, unsafe { slice(rz) })?,
-                None => self.inner.convert_xy(xs, ys)?,
-            }
-            if radians_out {
-                scale(xs, std::f64::consts::PI / 180.0);
-                scale(ys, std::f64::consts::PI / 180.0);
-            }
-            Ok(())
-        })
-        .map_err(|e| error(py, e))
+        convert::convert(&self.inner, &self.calls, py, x, y, z, radians, check_grids)
     }
 
     /// Convert a box (`Transform::convert_bounds`): `(min_x, min_y, max_x,
     /// max_y)` in, the outermost box of its densified edges out.
+    #[pyo3(signature = (bounds, densify, radians = false, check_grids = true))]
     fn convert_bounds(
         &self,
         py: Python<'_>,
         bounds: [f64; 4],
         densify: usize,
+        radians: bool,
+        check_grids: bool,
     ) -> PyResult<(f64, f64, f64, f64)> {
-        let [a, b, c, d] = py
-            .detach(|| self.inner.convert_bounds(bounds, densify))
-            .map_err(|e| error(py, e))?;
-        Ok((a, b, c, d))
+        convert::convert_bounds(
+            &self.inner,
+            &self.calls,
+            py,
+            bounds,
+            densify,
+            radians,
+            check_grids,
+        )
     }
-}
 
-/// The box around the finite coordinates of two float64 buffers, or `None`
-/// when there is none: what grid loading asks for.
-#[pyfunction]
-fn extent(
-    py: Python<'_>,
-    x: &Bound<'_, PyAny>,
-    y: &Bound<'_, PyAny>,
-) -> PyResult<Option<(f64, f64, f64, f64)>> {
-    let bx = PyBuffer::<f64>::get(x)?;
-    let by = PyBuffer::<f64>::get(y)?;
-    let (Some(xs), Some(ys)) = (bx.as_slice(py), by.as_slice(py)) else {
-        return Err(PyTypeError::new_err("the buffers are not C-contiguous"));
-    };
-    let mut out = [
-        f64::INFINITY,
-        f64::INFINITY,
-        f64::NEG_INFINITY,
-        f64::NEG_INFINITY,
-    ];
-    for (x, y) in xs.iter().zip(ys) {
-        let (x, y) = (x.get(), y.get());
-        if x.is_finite() && y.is_finite() {
-            out = [out[0].min(x), out[1].min(y), out[2].max(x), out[3].max(y)];
-        }
+    /// The last point this thread converted: `(stamp, x, y, z)`, x and y in
+    /// degrees for a side in degrees, the stamp ordering it among all
+    /// conversions' last points.
+    fn last_point(&self) -> Option<(u64, f64, f64, Option<f64>)> {
+        self.calls.last_point()
     }
-    Ok(out[0]
-        .is_finite()
-        .then_some((out[0], out[1], out[2], out[3])))
 }
 
 #[pymodule]
@@ -650,8 +679,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(to_wkt, m)?)?;
     m.add_function(wrap_pyfunction!(proj_string_to_projjson, m)?)?;
     m.add_function(wrap_pyfunction!(to_proj4, m)?)?;
-    m.add_function(wrap_pyfunction!(extent, m)?)?;
     m.add_class::<Transform>()?;
+    m.add("GridsNeeded", m.py().get_type::<convert::GridsNeeded>())?;
     m.add_class::<OperationInfo>()?;
     m.add_class::<ParsedCrs>()?;
     m.add_class::<geod::Geodesic>()?;

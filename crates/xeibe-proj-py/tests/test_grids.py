@@ -109,6 +109,20 @@ def test_fetched_cached_and_logged(cdn: list[str], caplog: pytest.LogCaptureFixt
     assert any("from the cache" in r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG)
 
 
+def test_single_points_and_boxes_fetch_their_grids(cdn: list[str]) -> None:
+    # Plain numbers and boxes are converted in Rust, which asks for the
+    # grids it finds missing (GridsNeeded) and is called again.
+    t = Transformer.from_crs(4138, 4269)
+    xs, ys, want = _vectors()
+    for x, y, w in zip(xs, ys, want, strict=True):
+        if w is not None:
+            assert t.transform(x, y) == pytest.approx(w, abs=1e-9)
+    assert cdn, "nothing was fetched"
+    _native.clear_grids()
+    box = t.transform_bounds(min(xs), min(ys), max(xs), max(ys))
+    assert box[0] < box[2] and box[1] < box[3]
+
+
 def test_logged_once_per_transformer(cdn: list[str], caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.INFO, logger="xeibe_proj.grids")
     t = Transformer.from_crs(4138, 4269)

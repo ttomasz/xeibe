@@ -4,6 +4,7 @@ __all__ = [
     "Crs",
     "Geodesic",
     "GeodesicLine",
+    "GridsNeeded",
     "OperationInfo",
     "Projection",
     "Transform",
@@ -15,7 +16,6 @@ __all__ = [
     "epsg_date",
     "epsg_version",
     "esri_code",
-    "extent",
     "operation_remarks",
     "operations_json",
     "prime_meridians",
@@ -39,7 +39,6 @@ def crs_records() -> list[
 def clear_grids() -> None: ...
 def crs_remarks(code: int) -> str | None: ...
 def operation_remarks(code: int) -> str | None: ...
-def extent(x: Any, y: Any) -> tuple[float, float, float, float] | None: ...
 def esri_code(code: int) -> int | None: ...
 def replacements(code: int) -> list[int]: ...
 def operations_json() -> str: ...
@@ -47,6 +46,9 @@ def wkt_to_projjson(text: str) -> str: ...
 def to_wkt(projjson: str, version: str, pretty: bool = False, axes: bool | None = None) -> str: ...
 def proj_string_to_projjson(text: str) -> str: ...
 def to_proj4(projjson: str) -> str: ...
+class GridsNeeded(Exception):
+    args: tuple[tuple[float, float, float, float] | None]
+
 @final
 class Crs:
     def __new__(cls, text: str) -> Crs: ...
@@ -93,8 +95,11 @@ class Transform:
         local: list[str] | None = None,
         area_of_interest: tuple[float, float, float, float] | None = None,
         accuracy: float | None = None,
+        degrees: tuple[bool, bool] = ...,
     ) -> Transform: ...
     def inverse(self) -> Transform: ...
+    @property
+    def swaps(self) -> tuple[bool, bool]: ...
     def operation_info(self) -> list[OperationInfo]: ...
     def operation_index_for(self, x: float, y: float, z: float | None = None) -> int | None: ...
     def with_operation_index(self, index: int) -> Transform | None: ...
@@ -105,17 +110,31 @@ class Transform:
         self, bounds: tuple[float, float, float, float] | None = None
     ) -> list[tuple[str, int, int | None]]: ...
     def add_grid_data(self, file: str, offset: int, data: bytes) -> None: ...
+    def transform(
+        self,
+        xx: Any,
+        yy: Any,
+        zz: Any | None = None,
+        tt: Any | None = None,
+        radians: bool = False,
+        check_grids: bool = True,
+    ) -> tuple[float, ...] | None: ...
     def convert(
         self,
         x: Any,
         y: Any,
         z: Any | None = None,
-        radians_in: bool = False,
-        radians_out: bool = False,
+        radians: bool = False,
+        check_grids: bool = True,
     ) -> None: ...
     def convert_bounds(
-        self, bounds: tuple[float, float, float, float], densify: int
+        self,
+        bounds: tuple[float, float, float, float],
+        densify: int,
+        radians: bool = False,
+        check_grids: bool = True,
     ) -> tuple[float, float, float, float]: ...
+    def last_point(self) -> tuple[int, float, float, float | None] | None: ...
 
 @final
 class Geodesic:
@@ -162,14 +181,28 @@ class Projection:
     def add_grid_data(self, file: str, offset: int, data: bytes) -> None: ...
     def operation_index_for(self, x: float, y: float, z: float | None = None) -> int | None: ...
     def with_operation_index(self, index: int) -> Projection | None: ...
+    def transform(
+        self,
+        xx: Any,
+        yy: Any,
+        zz: Any | None = None,
+        tt: Any | None = None,
+        radians: bool = False,
+        check_grids: bool = True,
+    ) -> tuple[float, ...] | None: ...
     def convert(
         self,
         x: Any,
         y: Any,
         z: Any | None = None,
-        radians_in: bool = False,
-        radians_out: bool = False,
+        radians: bool = False,
+        check_grids: bool = True,
     ) -> None: ...
     def convert_bounds(
-        self, bounds: tuple[float, float, float, float], densify: int
+        self,
+        bounds: tuple[float, float, float, float],
+        densify: int,
+        radians: bool = False,
+        check_grids: bool = True,
     ) -> tuple[float, float, float, float]: ...
+    def last_point(self) -> tuple[int, float, float, float | None] | None: ...

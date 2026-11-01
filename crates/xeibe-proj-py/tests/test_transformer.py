@@ -109,6 +109,88 @@ def test_nan_passes_through() -> None:
 
 
 @pytest.mark.parametrize(
+    ("src", "dst", "point", "z"),
+    [(4326, 2180, (52.0, 19.0), None), (2180, 4326, (459309.2, 500000.0), None), (4326, 4978, (52.0, 21.0), 100.0)],
+)
+@pytest.mark.parametrize("always_xy", [False, True])
+@pytest.mark.parametrize("direction", ["FORWARD", "INVERSE", "IDENT"])
+@pytest.mark.parametrize("radians", [False, True])
+def test_plain_numbers_convert_as_buffers_do(
+    src: int, dst: int, point: tuple[float, float], z: float | None, always_xy: bool, direction: str, radians: bool
+) -> None:
+    # Plain numbers are converted in Rust, everything else in buffers: the
+    # same values, and the same last point.
+    t = Transformer.from_crs(src, dst, always_xy=always_xy)
+    x, y = point[::-1] if always_xy and pyproj.CRS(src).axis_info[0].direction == "north" else point
+    if direction == "INVERSE":
+        x, y = t.transform(x, y)
+    if radians:
+        x, y = math.radians(x), math.radians(y)
+    args = (x, y) if z is None else (x, y, z)
+    one = t.transform(*args, direction=direction, radians=radians)
+    lists = t.transform(*([v] for v in args), direction=direction, radians=radians)
+    assert all(type(v) is float for v in one)
+    assert one == tuple(v[0] for v in lists)
+    if direction != "IDENT":
+        after_lists = t.get_last_used_operation().description
+        t.transform(*args, direction=direction, radians=radians)
+        assert t.get_last_used_operation().description == after_lists
+
+
+def test_other_scalars_go_through_containers() -> None:
+    t = Transformer.from_crs(4326, 3857)
+    want = t.transform([1.0], [0.0])
+    assert t.transform(True, False) == (want[0][0], want[1][0])
+    x, y = t.transform(np.float64(52.0), np.array(21.0))
+    assert type(x) is float and type(y) is float and (x, y) == t.transform(52.0, 21.0)
+
+
+def test_always_xy_with_a_bound_crs_matches_pyproj() -> None:
+    # A Bound CRS's base CRS decides the axis order, as in PROJ.
+    ed50 = (
+        'BOUNDCRS[SOURCECRS[GEOGCRS["ED50",DATUM["European Datum 1950",'
+        'ELLIPSOID["International 1924",6378388,297]],CS[ellipsoidal,2],'
+        'AXIS["latitude",north,ANGLEUNIT["degree",0.0174532925199433]],'
+        'AXIS["longitude",east,ANGLEUNIT["degree",0.0174532925199433]]]],'
+        'TARGETCRS[GEOGCRS["WGS 84",DATUM["World Geodetic System 1984",'
+        'ELLIPSOID["WGS 84",6378137,298.257223563]],CS[ellipsoidal,2],'
+        'AXIS["latitude",north,ANGLEUNIT["degree",0.0174532925199433]],'
+        'AXIS["longitude",east,ANGLEUNIT["degree",0.0174532925199433]]]],'
+        'ABRIDGEDTRANSFORMATION["ED50 to WGS 84",METHOD["Geocentric translations (geog2D domain)"],'
+        'PARAMETER["X-axis translation",-87],PARAMETER["Y-axis translation",-98],'
+        'PARAMETER["Z-axis translation",-121]]]'
+    )
+    for always_xy in (False, True):
+        point = (10.0, 50.0) if always_xy else (50.0, 10.0)
+        ours = Transformer.from_crs(ed50, 4326, always_xy=always_xy).transform(*point)
+        theirs = pyproj.Transformer.from_crs(ed50, 4326, always_xy=always_xy).transform(*point)
+        assert ours == pytest.approx(theirs, abs=1e-9)
+
+
+def test_last_used_operation_follows_the_last_direction() -> None:
+    import threading
+
+    t = Transformer.from_crs(4326, 2180)
+    x, y = t.transform(52.0, 19.0)
+    assert t.get_last_used_operation().description == "Inverse of ETRS89 to WGS 84 (1) + Poland CS92"
+    t.transform(x, y, direction="INVERSE")
+    assert t.get_last_used_operation().description == "Inverse of Poland CS92 + ETRS89 to WGS 84 (1)"
+    # Per thread: another thread has converted nothing yet.
+    errors: list[BaseException] = []
+
+    def other() -> None:
+        try:
+            t.get_last_used_operation()
+        except ProjError as e:
+            errors.append(e)
+
+    thread = threading.Thread(target=other)
+    thread.start()
+    thread.join()
+    assert len(errors) == 1
+
+
+@pytest.mark.parametrize(
     "kwargs",
     [{"errcheck": True}, {"errcheck": False}, {"inplace": True}, {"inplace": False}],
 )

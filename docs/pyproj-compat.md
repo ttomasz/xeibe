@@ -124,8 +124,16 @@ read and written (its steps 1 and 2), and as of 2026-11-01
   and South (N,E) and RSPS2000 are swapped. `xeibe-reproject`'s own
   east-first order swapped whenever the first axis pointed north and
   differed on EASE-Grid 2.0 and SCAR IMW CRSs; it follows the same rule
-  since 2026-10-26 ([reprojection.md](reprojection.md#validation)), but
-  this module still applies `always_xy` itself.
+  since 2026-10-26 ([reprojection.md](reprojection.md#validation)), and
+  since 2026-11-01 this module uses it rather than applying `always_xy`
+  itself. Its own copy missed WKT2 Bound CRSs, whose base CRS's axes
+  decide in PROJ: a latitude-first one stayed unswapped. One difference
+  remains: the east-first order also swaps a north-first engineering CRS
+  (EPSG:5801 to 5816, local grids), as `xeibe`'s GML reader writes those
+  east first, where PROJ's rule leaves engineering CRSs alone. It shows
+  only between two CRSs on one engineering datum with their axes in
+  different orders, which no pair in EPSG has: Barcelona Grid B1 and B2,
+  and Maracaibo Cross Grid M4 and M5, share datums with the same axes.
 - **Interim.**
   - The first-use log message names the grids a transformer may read, not
     the operation that read them.

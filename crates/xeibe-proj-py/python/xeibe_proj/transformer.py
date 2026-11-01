@@ -14,8 +14,6 @@ Differences from pyproj (``docs/pyproj-compat.md``):
 from __future__ import annotations
 
 import json
-import math
-import threading
 import warnings
 from array import array
 from collections.abc import Iterable, Iterator, Sequence
@@ -25,7 +23,7 @@ from typing import TYPE_CHECKING, Any, overload
 from xeibe_proj import _containers, _grids, _native, _operation_json, _wkt
 from xeibe_proj._grids import download as _download_resource_file
 from xeibe_proj._epsg import OGC_CRS
-from xeibe_proj._json import as_dict, get_dict, get_dicts, ident
+from xeibe_proj._json import ident
 from xeibe_proj._unsupported import out
 from xeibe_proj.aoi import AreaOfInterest, AreaOfUse
 from xeibe_proj.crs import CRS, CoordinateOperation, Grid
@@ -40,6 +38,9 @@ if TYPE_CHECKING:
 __all__ = ["AreaOfInterest", "Transformer", "TransformerGroup", "itransform", "transform"]
 
 _FORWARD = TransformDirection.FORWARD
+
+# The default of the pyproj arguments transform() rejects when given.
+_UNSET: Any = object()
 
 # The options of the search for operations: the area of interest (west,
 # south, east, north in degrees), the accuracy in metres, and only_best.
@@ -83,43 +84,6 @@ def _degrees(crs: CRS) -> bool:
     return bool(axes) and all(a.unit_name == "degree" for a in axes)
 
 
-def _meridian(axis: dict[str, Any]) -> float | None:
-    """The longitude, in degrees, of the meridian a polar axis runs along."""
-    meridian = as_dict(axis.get("meridian"))
-    if meridian is None:
-        return None
-    longitude = meridian.get("longitude")
-    value = as_dict(longitude)
-    return float(value["value"] if value is not None else longitude)  # type: ignore[arg-type]
-
-
-def _swapped_for_xy(crs: CRS) -> bool:
-    """Whether ``always_xy`` swaps the first two values of this CRS: PROJ's
-    ``mustAxisOrderBeSwitchedForVisualization`` (src/iso19111/crs.cpp).
-    Northing-easting axes are swapped, and of the polar CRSs with both axes
-    along meridians only UPS North and South (N,E) and RSPS2000.
-    ``xeibe-reproject``'s ``AxisOrder::EastFirst`` follows the same rule."""
-    if crs.is_compound:
-        components = crs.sub_crs_list
-        return bool(components) and _swapped_for_xy(components[0])
-    if not (crs.is_geographic or crs.is_projected):
-        return False
-    axes = get_dicts(get_dict(crs.to_json_dict(), "coordinate_system"), "axis")
-    if len(axes) < 2:
-        return False
-    d0, d1 = (str(a.get("direction", "")).lower() for a in axes[:2])
-    if (d0, d1) == ("north", "east"):
-        return True
-    m0, m1 = _meridian(axes[0]), _meridian(axes[1])
-    if m0 is None or m1 is None:
-        return False
-    if (d0, d1) == ("south", "south"):
-        return abs(m0 - 180) < 1e-10 and abs(m1 - 90) < 1e-10
-    if (d0, d1) == ("north", "north"):
-        return (abs(m0) < 1e-10 and abs(m1 - 90) < 1e-10) or (abs(m0 - 180) < 1e-10 and abs(m1 + 90) < 1e-10)
-    return False
-
-
 def _native_json(crs: CRS) -> str:
     """What Rust reads the CRS from: an OGC CRS as its EPSG twin with its
     own axes, so that EPSG's transformations apply to it, and a CRS made
@@ -131,12 +95,6 @@ def _native_json(crs: CRS) -> str:
         projjson["id"] = {"authority": "EPSG", "code": twin[0]}
         return json.dumps(projjson)
     return crs._native_input()  # pyright: ignore[reportPrivateUsage]
-
-
-def _last_value(buffer: Any) -> float | None:
-    """The last value of a C-contiguous float64 buffer, or ``None``."""
-    view = memoryview(buffer).cast("B").cast("d")
-    return float(view[-1]) if len(view) else None
 
 
 def _operation(info: _native.OperationInfo, available: bool) -> CoordinateOperation:
@@ -184,18 +142,18 @@ class Transformer:
     _target: CRS
     _always_xy: bool
     _network: bool
-    # Whether always_xy swaps the source's and the target's first two values.
-    _swap: tuple[bool, bool]
-    # Both in the CRSs' own axis order: always_xy is applied in Python.
+    # Both take and give the values in the order always_xy asks for, and
+    # record the last point each thread converted.
     _forward: _native.Transform | _native.Projection
     _backward: _native.Transform | _native.Projection | None
+    # The native conversion for each direction argument used (None for
+    # IDENT): transform() looks it up before anything else.
+    _natives: dict[Any, _native.Transform | _native.Projection | None]
     # The directions (True: forward) whose grid use has been logged.
     _logged: set[bool]
     # For a transformer through one operation (a TransformerGroup member,
     # get_last_used_operation): that operation's name.
     _member: str | None
-    # Per thread: the last coordinate converted, for get_last_used_operation.
-    _last: threading.local
     # The search's options (from_crs's area_of_interest, accuracy, only_best).
     _options: _Options
 
@@ -216,15 +174,16 @@ class Transformer:
         network = is_network_enabled()
         area, accuracy, only_best = options
         src, dst = _native_json(source), _native_json(target)
+        degrees = (_degrees(source), _degrees(target))
         if member is None:
             # With the network off, the grids in the data directories. With
             # only_best, every candidate PROJ-data has grids for, as PROJ
             # keeps them: a coordinate whose best one has its grid missing
             # is then an error, not a fallback.
             local = None if network else _grids.local_files()
-            native = _native.Transform(src, dst, False, network or only_best, local, area, accuracy)
+            native = _native.Transform(src, dst, always_xy, network or only_best, local, area, accuracy, degrees)
         else:
-            everything = _native.Transform(src, dst, False, True, None, area, accuracy)
+            everything = _native.Transform(src, dst, always_xy, True, None, area, accuracy, degrees)
             names = [o.name for o in everything.operation_info()]
             only = everything.with_operation_index(names.index(member)) if member in names else None
             if only is None:
@@ -249,12 +208,11 @@ class Transformer:
         self._target = target
         self._always_xy = always_xy
         self._network = network
-        self._swap = (_swapped_for_xy(source), _swapped_for_xy(target)) if always_xy else (False, False)
         self._forward = native
         self._member = member
         self._backward = None
+        self._natives = {}
         self._logged = set()
-        self._last = threading.local()
         self._options = _NO_OPTIONS
         return self
 
@@ -404,10 +362,15 @@ class Transformer:
     def get_last_used_operation(self) -> Transformer:
         """The transformer through the operation the last coordinate
         converted in this thread went through."""
-        last = getattr(self._last, "value", None)
+        # Of the two directions, the one this thread converted with last.
+        last: tuple[tuple[int, float, float, float | None], Any, bool] | None = None
+        for candidate, way in ((self._forward, True), (self._backward, False)):
+            point = None if candidate is None else candidate.last_point()
+            if point is not None and (last is None or point[0] > last[0][0]):
+                last = (point, candidate, way)
         if last is None:
             raise ProjError("Last used operation not found. This is likely due to not initiating a transform.")
-        native, forward, x, y, z = last
+        (_, x, y, z), native, forward = last
         source, target = (self._source, self._target) if forward else (self._target, self._source)
         if not native.operation_info():
             return self if forward else Transformer._make(source, target, self._always_xy, options=self._options)
@@ -458,81 +421,61 @@ class Transformer:
 
     # Conversion ---------------------------------------------------------------
 
-    def _angular(self, forward: bool) -> tuple[bool, bool]:
-        """Whether the values going in and coming out are angles in degrees,
-        which ``radians=True`` gives and takes in radians."""
-        source, target = (self._source, self._target) if forward else (self._target, self._source)
-        return _degrees(source), _degrees(target)
-
-    def _plan(
-        self, direction: Direction
-    ) -> tuple[_native.Transform | _native.Projection | None, CRS, CRS, tuple[bool, bool]]:
-        """The native transform for ``direction`` (``None`` for IDENT), the
-        CRSs coordinates come from and go to, and whether always_xy swaps
-        the values going in and coming out."""
+    def _native_for(self, direction: Direction) -> _native.Transform | _native.Projection | None:
+        """The native conversion for ``direction`` (``None`` for IDENT),
+        with its grid use logged on the first call for each direction."""
+        try:
+            return self._natives[direction]
+        except (KeyError, TypeError):  # TypeError: an unhashable direction
+            pass
         d = TransformDirection.create(direction)
+        native: _native.Transform | _native.Projection | None
         if d is TransformDirection.IDENT:
-            return None, self._source, self._source, (False, False)
-        if d is TransformDirection.FORWARD:
-            return self._forward, self._source, self._target, self._swap
-        if self._backward is None:
-            self._backward = self._forward.inverse()
-        return self._backward, self._target, self._source, (self._swap[1], self._swap[0])
+            native = None
+        elif d is TransformDirection.FORWARD:
+            native = self._forward
+        else:
+            if self._backward is None:
+                self._backward = self._forward.inverse()
+            native = self._backward
+        if native is not None:
+            self._log_grids(native, d is TransformDirection.FORWARD)
+        try:
+            self._natives[direction] = native
+        except TypeError:
+            pass
+        return native
 
-    def _load_grids(
-        self,
-        native: _native.Transform | _native.Projection,
-        forward: bool,
-        bounds: tuple[float, float, float, float] | None,
-    ) -> None:
+    def _log_grids(self, native: _native.Transform | _native.Projection, forward: bool) -> None:
+        """Log, once for each direction, the grids it may read."""
+        if forward in self._logged:
+            return
         files = native.grids()
         if not files:
             return
-        if forward not in self._logged:
-            self._logged.add(forward)
-            source, target = (self._source, self._target) if forward else (self._target, self._source)
-            _grids.LOGGER.info(
-                "%s to %s may use grids: %s",
-                source.to_string(),
-                target.to_string(),
-                ", ".join(files),
-                extra={"grids": files, "source": source.to_string(), "target": target.to_string()},
-            )
+        self._logged.add(forward)
+        source, target = (self._source, self._target) if forward else (self._target, self._source)
+        _grids.LOGGER.info(
+            "%s to %s may use grids: %s",
+            source.to_string(),
+            target.to_string(),
+            ", ".join(files),
+            extra={"grids": files, "source": source.to_string(), "target": target.to_string()},
+        )
+
+    def _fetch_grids(self, native: _native.Transform | _native.Projection, needed: _native.GridsNeeded) -> None:
+        """Load the grid data a conversion found missing."""
         # only_best with the network off: the grids to hand, and an error for
         # a coordinate whose best operation needs another (PROJ's ONLY_BEST).
-        _grids.load(native, bounds, missing_ok=self._options[2] and not self._network)
+        _grids.load(native, needed.args[0], missing_ok=self._options[2] and not self._network)
 
-    def _convert(
-        self,
-        native: _native.Transform | _native.Projection,
-        forward: bool,
-        x: Any,
-        y: Any,
-        z: Any,
-        radians_in: bool,
-        radians_out: bool,
-        swap: tuple[bool, bool],
-    ) -> tuple[Any, Any]:
-        """Convert in place; the buffers holding the first and second values
-        out. A swap only exchanges which buffer is which."""
-        if swap[0]:
-            x, y = y, x
-        extent = _native.extent(x, y)
-        if extent is not None and radians_in:
-            extent = (
-                math.degrees(extent[0]),
-                math.degrees(extent[1]),
-                math.degrees(extent[2]),
-                math.degrees(extent[3]),
-            )
-        self._load_grids(native, forward, extent)
-        last = _last_value(x), _last_value(y), None if z is None else _last_value(z)
-        native.convert(x, y, z, radians_in, radians_out)
-        if last[0] is not None and last[1] is not None:
-            # In degrees, as the coordinates went in.
-            scale = (180 / math.pi) if radians_in else 1.0
-            self._last.value = (native, forward, last[0] * scale, last[1] * scale, last[2])
-        return (y, x) if swap[1] else (x, y)
+    def _convert(self, native: _native.Transform | _native.Projection, x: Any, y: Any, z: Any, radians: bool) -> None:
+        """Convert buffers in place, loading the grid data they need."""
+        try:
+            native.convert(x, y, z, radians)
+        except _native.GridsNeeded as needed:
+            self._fetch_grids(native, needed)
+            native.convert(x, y, z, radians, False)
 
     @overload
     def transform(
@@ -598,7 +541,8 @@ class Transformer:
         radians: bool = False,
         *args: Any,
         direction: Direction = _FORWARD,
-        **kwargs: Any,
+        errcheck: Any = _UNSET,
+        inplace: Any = _UNSET,
     ) -> tuple[Any, ...]:
         """Convert coordinates: scalars, lists, tuples, ``array.array``,
         numpy arrays, or anything with ``__array__`` (which gives numpy
@@ -606,18 +550,29 @@ class Transformer:
         through unchanged. ``radians=True`` takes and returns geographic
         coordinates in radians. Raises ``ProjError`` at the first coordinate
         that can't be converted."""
-        if args or kwargs:
-            _reject("transform", args, kwargs)
-        native, _, _, swap = self._plan(direction)
+        if args or errcheck is not _UNSET or inplace is not _UNSET:
+            given = {"errcheck": errcheck, "inplace": inplace}
+            _reject("transform", args, {k: v for k, v in given.items() if v is not _UNSET})
+        try:
+            native = self._natives[direction]
+        except (KeyError, TypeError):
+            native = self._native_for(direction)
+        if native is not None:
+            # Plain numbers are converted without containers.
+            try:
+                point = native.transform(xx, yy, zz, tt, radians)
+            except _native.GridsNeeded as needed:
+                self._fetch_grids(native, needed)
+                point = native.transform(xx, yy, zz, tt, radians, False)
+            if point is not None:
+                return point
         bx, kx = _containers.to_buffer(xx)
         by, ky = _containers.to_buffer(yy)
         bz = kz = None
         if zz is not None:
             bz, kz = _containers.to_buffer(zz)
         if native is not None:
-            forward = TransformDirection.create(direction) is TransformDirection.FORWARD
-            angular_in, angular_out = self._angular(forward)
-            bx, by = self._convert(native, forward, bx, by, bz, radians and angular_in, radians and angular_out, swap)
+            self._convert(native, bx, by, bz, radians)
         result: tuple[Any, ...] = (_containers.from_buffer(kx, bx), _containers.from_buffer(ky, by))
         if bz is not None and kz is not None:
             result += (_containers.from_buffer(kz, bz),)
@@ -641,9 +596,6 @@ class Transformer:
         a third value as a time, which passes through."""
         if args or kwargs:
             _reject("itransform", args, kwargs)
-        native, _, _, swap = self._plan(direction)
-        forward = TransformDirection.create(direction) is TransformDirection.FORWARD
-        angular_in, angular_out = self._angular(forward)
         it = iter(points)
         try:
             first = next(it)
@@ -655,6 +607,7 @@ class Transformer:
         if time_3rd and stride != 3:
             raise ValueError("'time_3rd' is only valid for 3 coordinates.")
         has_z = stride >= 3 and not time_3rd
+        native = self._native_for(direction)
         values = chain(first, (p[i] for p in it for i in range(stride)))
         while True:
             chunk = array("d", islice(values, 64 * stride))
@@ -664,7 +617,7 @@ class Transformer:
             x, y = chunk[a::stride], chunk[b::stride]
             z = chunk[2::stride] if has_z else None
             if native is not None:
-                x, y = self._convert(native, forward, x, y, z, radians and angular_in, radians and angular_out, swap)
+                self._convert(native, x, y, z, radians)
             chunk[a::stride], chunk[b::stride] = x, y
             if z is not None:
                 chunk[2::stride] = z
@@ -688,23 +641,15 @@ class Transformer:
             _reject("transform_bounds", args, kwargs)
         if densify_pts < 0:
             raise ProjError("densify_pts must be positive")
-        native, _, _, swap = self._plan(direction)
+        native = self._native_for(direction)
         bounds = (float(left), float(bottom), float(right), float(top))
         if native is None:
             return bounds
-        forward = TransformDirection.create(direction) is TransformDirection.FORWARD
-        angular_in, angular_out = self._angular(forward)
-        if swap[0]:
-            bounds = (bounds[1], bounds[0], bounds[3], bounds[2])
-        if radians and angular_in:
-            bounds = (math.degrees(bounds[0]), math.degrees(bounds[1]), math.degrees(bounds[2]), math.degrees(bounds[3]))
-        self._load_grids(native, forward, bounds)
-        result = native.convert_bounds(bounds, densify_pts)
-        if radians and angular_out:
-            result = (math.radians(result[0]), math.radians(result[1]), math.radians(result[2]), math.radians(result[3]))
-        if swap[1]:
-            result = (result[1], result[0], result[3], result[2])
-        return result
+        try:
+            return native.convert_bounds(bounds, densify_pts, radians)
+        except _native.GridsNeeded as needed:
+            self._fetch_grids(native, needed)
+            return native.convert_bounds(bounds, densify_pts, radians, False)
 
     # Identity -----------------------------------------------------------------
 
@@ -783,7 +728,10 @@ class TransformerGroup:
         self._transformers: list[Transformer] = []
         self._unavailable: list[CoordinateOperation] = []
         try:
-            everything = _native.Transform(_native_json(source), _native_json(target), False, True, None, area, desired)
+            degrees = (_degrees(source), _degrees(target))
+            everything = _native.Transform(
+                _native_json(source), _native_json(target), always_xy, True, None, area, desired, degrees
+            )
         except CRSError:
             raise
         except ProjError:

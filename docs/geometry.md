@@ -583,6 +583,9 @@ first axis (the CRS's "authority" axis order).
   meridians only UPS North and South (N,E) and RSPS2000. EPSG:3031's "E" points
   north along 90°E and its "N" north along 0°E, so it is easting first, as GDAL
   reads it. Northing then westing (Faroe Lambert) is reported, not swapped.
+  The directions decide for every kind of CRS: the north-first engineering
+  grids (EPSG:5801 to 5816) are northing first here, where PROJ's rule leaves
+  engineering CRSs as written.
 - A user-supplied table for extra codes and other authorities
   (`CrsTable::with_user_entries`, passed as `AxisOrderOptions::crs_table`). User
   entries win over built-in ones. It can be set from code only, not from the

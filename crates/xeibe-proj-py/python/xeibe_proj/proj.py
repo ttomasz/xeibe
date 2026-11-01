@@ -20,7 +20,6 @@ Differences from pyproj (``docs/pyproj-compat.md``):
 
 from __future__ import annotations
 
-import threading
 import warnings
 from typing import Any
 
@@ -68,12 +67,11 @@ class Proj(Transformer):
         self._target = self.crs
         self._always_xy = True
         self._network = is_network_enabled()
-        self._swap = (False, False)
         self._forward = native
         self._member = None
         self._backward = None
+        self._natives = {}
         self._logged = set()
-        self._last = threading.local()
 
     def __call__(
         self,
@@ -90,13 +88,6 @@ class Proj(Transformer):
             _reject("Proj.__call__", args, kwargs)
         x, y = self.transform(longitude, latitude, radians=radians, direction="INVERSE" if inverse else "FORWARD")
         return x, y
-
-    def _angular(self, forward: bool) -> tuple[bool, bool]:
-        # Degrees on the geographic side, and on the CRS's when it is
-        # geographic, as PROJ's angular input and output.
-        native = self._forward
-        crs = isinstance(native, _native.Projection) and native.crs_is_angular
-        return (True, crs) if forward else (crs, True)
 
     # pyproj's Proj is a transformer from a PROJ pipeline, without CRSs.
     @property

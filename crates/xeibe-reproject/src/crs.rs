@@ -672,6 +672,13 @@ impl Crs {
         self.axes.dimension()
     }
 
+    /// Whether [`AxisOrder::EastFirst`](crate::AxisOrder::EastFirst) swaps
+    /// the CRS's first two values: PROJ's
+    /// `mustAxisOrderBeSwitchedForVisualization`.
+    pub fn swapped_east_first(&self) -> bool {
+        self.axes.first_is_northing()
+    }
+
     /// EPSG's name for the projection method, for a projected CRS (or a
     /// compound CRS whose horizontal part is one).
     pub fn method(&self) -> Option<&str> {

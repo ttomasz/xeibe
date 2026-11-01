@@ -516,7 +516,10 @@ def first_axis(axes: list[dict]) -> int:
     `crs.cpp`): northing-easting, and of the polar axes along meridians only
     UPS North and South (N,E) and RSPS2000. The other polar CRSs, whose axes
     both point north (or south) along meridians, are as written: EPSG:3031's
-    "E" points north along 90°E, its "N" north along 0°E."""
+    "E" points north along 90°E, its "N" north along 0°E. By directions
+    alone, for every kind of CRS: PROJ's rule leaves engineering CRSs as
+    written, where this marks the north-first local grids (EPSG:5801 to
+    5816) northing first, so that GML in them is read easting first too."""
     if not axes:
         return AXIS_OTHER
     d0 = axes[0]["direction"]
