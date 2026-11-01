@@ -363,7 +363,7 @@ impl Candidates {
             if !filter::is_exportable(&c) {
                 continue;
             }
-            let Ok(steps) = executable(&c, &mut builder) else {
+            let Ok(steps) = executable(&c, dst, &mut builder) else {
                 continue;
             };
             let index = operations;
@@ -534,12 +534,12 @@ impl Candidates {
                 what: "its method".into(),
             });
         }
-        Candidates::one(c, src)
+        Candidates::one(c, src, dst)
     }
 
     /// One candidate, run for every coordinate whatever its area.
-    fn one(c: Candidate, src: &Crs) -> Result<Candidates, Error> {
-        let steps = executable(&c, &mut CrsBuilder::default())?;
+    fn one(c: Candidate, src: &Crs, dst: &Crs) -> Result<Candidates, Error> {
+        let steps = executable(&c, dst, &mut CrsBuilder::default())?;
         let info = Arc::new(OperationInfo::of(&c, &steps));
         let list = vec![Prepared::everywhere(Arc::new(c), steps, info)];
         Ok(Candidates {
@@ -553,16 +553,21 @@ impl Candidates {
 
     /// Candidate `index` only (see [`Candidates::info`]), for every
     /// coordinate: one member of PROJ's `TransformerGroup`.
-    pub(crate) fn only(&self, index: usize, src: &Crs) -> Option<Result<Candidates, Error>> {
+    pub(crate) fn only(
+        &self,
+        index: usize,
+        src: &Crs,
+        dst: &Crs,
+    ) -> Option<Result<Candidates, Error>> {
         let p = self.list.iter().find(|p| p.index == index)?;
-        Some(Candidates::one((*p.candidate).clone(), src))
+        Some(Candidates::one((*p.candidate).clone(), src, dst))
     }
 
     /// The first candidate the other way, for every coordinate: the
-    /// inverse of [`Candidates::only`]. `src` is the inverse's source.
-    pub(crate) fn inverse_of_first(&self, src: &Crs) -> Result<Candidates, Error> {
+    /// inverse of [`Candidates::only`]. `src` and `dst` are the inverse's.
+    pub(crate) fn inverse_of_first(&self, src: &Crs, dst: &Crs) -> Result<Candidates, Error> {
         let inverse = self.list[0].candidate.inverse(&mut CrsCache::default());
-        Candidates::one(inverse, src)
+        Candidates::one(inverse, src, dst)
     }
 
     /// Names of the candidates, best first.
@@ -1064,8 +1069,8 @@ fn same_math(a: &crate::registry::Operation, b: &crate::registry::Operation) -> 
     a.method == b.method && file(a).is_some() && file(a) == file(b)
 }
 
-/// The runnable steps of a candidate.
-fn executable(c: &Candidate, builder: &mut CrsBuilder) -> Result<Vec<Exec>, Error> {
+/// The runnable steps of a candidate that ends in `dst`.
+fn executable(c: &Candidate, dst: &Crs, builder: &mut CrsBuilder) -> Result<Vec<Exec>, Error> {
     let mut steps = Vec::new();
     let mut flat = Vec::new();
     flatten(&c.steps, &mut flat);
@@ -1119,6 +1124,14 @@ fn executable(c: &Candidate, builder: &mut CrsBuilder) -> Result<Vec<Exec>, Erro
             }
             SingleKind::Composite { .. } => unreachable!("flattened"),
         }
+    }
+    // A last conversion into the target CRS, as the registry has it, is the
+    // one `run` ends with anyway: kept, every coordinate would be projected
+    // into it, back to geographic and into it again.
+    if let Some(Exec::Convert(to)) = steps.last()
+        && to.equivalent(dst, false)
+    {
+        steps.pop();
     }
     Ok(steps)
 }

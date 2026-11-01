@@ -470,7 +470,7 @@ impl Transform {
                 })),
             }));
         }
-        let only = self.candidates()?.only(index, &self.src)?;
+        let only = self.candidates()?.only(index, &self.src, &self.dst)?;
         Some(only.map(|c| Transform {
             src: self.src.clone(),
             dst: self.dst.clone(),
@@ -525,7 +525,7 @@ impl Transform {
                 order: self.order,
                 grids: self.grids.clone(),
                 selection: self.selection.clone(),
-                plan: Plan::Only(Arc::new(c.inverse_of_first(&self.dst)?)),
+                plan: Plan::Only(Arc::new(c.inverse_of_first(&self.dst, &self.src)?)),
             }),
         }
     }
