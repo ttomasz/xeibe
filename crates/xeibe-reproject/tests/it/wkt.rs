@@ -1542,6 +1542,40 @@ fn towgs84_transforms_as_proj_does() {
     }
 }
 
+/// WKT2's abridged transformation names its parameters; their `ID`s are
+/// optional.
+#[test]
+fn abridged_transformation_parameters_without_ids() {
+    let wkt2 = Crs::from_wkt(
+        r#"BOUNDCRS[SOURCECRS[GEOGCRS["ED50",DATUM["European Datum 1950",
+        ELLIPSOID["International 1924",6378388,297]],CS[ellipsoidal,2],
+        AXIS["latitude",north,ANGLEUNIT["degree",0.0174532925199433]],
+        AXIS["longitude",east,ANGLEUNIT["degree",0.0174532925199433]]]],
+        TARGETCRS[GEOGCRS["WGS 84",DATUM["World Geodetic System 1984",
+        ELLIPSOID["WGS 84",6378137,298.257223563]],CS[ellipsoidal,2],
+        AXIS["latitude",north,ANGLEUNIT["degree",0.0174532925199433]],
+        AXIS["longitude",east,ANGLEUNIT["degree",0.0174532925199433]]]],
+        ABRIDGEDTRANSFORMATION["ED50 to WGS 84",METHOD["Geocentric translations (geog2D domain)"],
+        PARAMETER["X-axis translation",-87],PARAMETER["Y-axis translation",-98],
+        PARAMETER["Z-axis translation",-121]]]"#,
+    )
+    .unwrap();
+    let wkt1 = Crs::from_wkt(
+        r#"GEOGCS["ED50",DATUM["European_Datum_1950",SPHEROID["International 1924",6378388,297],
+        TOWGS84[-87,-98,-121,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],
+        AXIS["Latitude",NORTH],AXIS["Longitude",EAST]]"#,
+    )
+    .unwrap();
+    let wgs84 = Crs::from_epsg(4326).unwrap();
+    let convert = |src: &Crs| {
+        Transform::new(src, &wgs84, AxisOrder::Authority)
+            .unwrap()
+            .convert(50.0, 10.0, None)
+            .unwrap()
+    };
+    assert_eq!(convert(&wkt2), convert(&wkt1));
+}
+
 /// Where a Bound CRS on these EPSG CRSs knowingly converts otherwise than
 /// in PROJ.
 const KNOWN_BOUND: &[(&[u32], &str)] = &[

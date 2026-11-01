@@ -1023,7 +1023,10 @@ fn bound(node: &Node) -> Result<Value, Error> {
         }
         ids(p, &mut po)?;
         let value = p.number(1)?;
-        let code = po["id"]["code"].as_u64().map(|c| c as u32);
+        let code = po
+            .get("id")
+            .and_then(|id| id["code"].as_u64())
+            .map(|c| c as u32);
         let abridged = helmert
             .iter()
             .find(|(c, n)| code == Some(*c) || crate::name::equivalent(name, n));
