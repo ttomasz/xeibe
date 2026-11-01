@@ -363,7 +363,7 @@ impl Candidates {
             if !filter::is_exportable(&c) {
                 continue;
             }
-            let Ok(steps) = executable(&c, dst, &mut builder) else {
+            let Ok(steps) = executable(&c, src, dst, &mut builder) else {
                 continue;
             };
             let index = operations;
@@ -539,7 +539,7 @@ impl Candidates {
 
     /// One candidate, run for every coordinate whatever its area.
     fn one(c: Candidate, src: &Crs, dst: &Crs) -> Result<Candidates, Error> {
-        let steps = executable(&c, dst, &mut CrsBuilder::default())?;
+        let steps = executable(&c, src, dst, &mut CrsBuilder::default())?;
         let info = Arc::new(OperationInfo::of(&c, &steps));
         let list = vec![Prepared::everywhere(Arc::new(c), steps, info)];
         Ok(Candidates {
@@ -1069,8 +1069,13 @@ fn same_math(a: &crate::registry::Operation, b: &crate::registry::Operation) -> 
     a.method == b.method && file(a).is_some() && file(a) == file(b)
 }
 
-/// The runnable steps of a candidate that ends in `dst`.
-fn executable(c: &Candidate, dst: &Crs, builder: &mut CrsBuilder) -> Result<Vec<Exec>, Error> {
+/// The runnable steps of a candidate from `src` to `dst`.
+fn executable(
+    c: &Candidate,
+    src: &Crs,
+    dst: &Crs,
+    builder: &mut CrsBuilder,
+) -> Result<Vec<Exec>, Error> {
     let mut steps = Vec::new();
     let mut flat = Vec::new();
     flatten(&c.steps, &mut flat);
@@ -1133,7 +1138,50 @@ fn executable(c: &Candidate, dst: &Crs, builder: &mut CrsBuilder) -> Result<Vec<
     {
         steps.pop();
     }
+    drop_identities(&mut steps, src);
     Ok(steps)
+}
+
+/// Leaves out the steps that change nothing from a geographic CRS on:
+/// conversions between geographic CRSs, and operations that are
+/// identities between two (a Helmert of zeros between near-equal
+/// ellipsoids). Internally both CRSs hold the same longitude, latitude and
+/// height, and the next conversion out of a geographic CRS checks them
+/// as the one left out did.
+fn drop_identities(steps: &mut Vec<Exec>, src: &Crs) {
+    let geographic = |c: &Crs| matches!(c.kind, Kind::Geographic { .. });
+    // Whether the coordinates are in a geographic CRS before each step, as
+    // `run` moves them; `run`'s horizontal stack, for a restore.
+    let mut on_geographic = geographic(src);
+    let mut saved = Vec::new();
+    steps.retain(|step| {
+        let keep = match step {
+            Exec::Convert(to) => !(on_geographic && geographic(to)),
+            Exec::Apply {
+                method, from, to, ..
+            } => !(on_geographic && method.is_identity() && geographic(from) && geographic(to)),
+            Exec::SaveHorizontal | Exec::RestoreHorizontal => true,
+        };
+        match step {
+            Exec::Convert(to) if !is_vertical(to) => on_geographic = geographic(to),
+            Exec::Apply {
+                from, to, inverse, ..
+            } => {
+                let output = if *inverse { from } else { to };
+                if !is_vertical(output) {
+                    on_geographic = geographic(output);
+                }
+            }
+            Exec::SaveHorizontal => saved.push(on_geographic),
+            Exec::RestoreHorizontal => {
+                if let Some(g) = saved.pop() {
+                    on_geographic = g;
+                }
+            }
+            Exec::Convert(_) => {}
+        }
+        keep
+    });
 }
 
 /// Coordinates of one CRS to another on the same datum, or, after a pair of

@@ -50,6 +50,11 @@ pub(crate) trait Method: Send + Sync + std::fmt::Debug {
     fn grid_files(&self) -> Vec<Arc<GridFile>> {
         Vec::new()
     }
+
+    /// Every coordinate comes back as it went in, the height included.
+    fn is_identity(&self) -> bool {
+        false
+    }
 }
 
 /// Why an operation can't be set up.

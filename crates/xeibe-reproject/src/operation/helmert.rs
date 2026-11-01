@@ -344,4 +344,8 @@ impl Method for HelmertOperation {
     fn inverse_3d(&self, c: [f64; 3]) -> Result<[f64; 3], CoordinateError> {
         self.apply(c, true, false)
     }
+
+    fn is_identity(&self) -> bool {
+        self.relabel
+    }
 }
