@@ -95,6 +95,30 @@ def test_wkt_versions() -> None:
         CRS(4979).to_wkt("WKT1_GDAL")
 
 
+def test_wkt_is_kept_per_crs() -> None:
+    # Equal CRSs with different names keep their own WKT, and each set of
+    # arguments its own.
+    crs = CRS(4326)
+    renamed = CRS({**crs.to_json_dict(), "name": "Renamed"})
+    assert crs == renamed
+    assert crs.to_wkt() == crs.to_wkt() and 'GEOGCRS["WGS 84"' in crs.to_wkt()
+    assert 'GEOGCRS["Renamed"' in renamed.to_wkt()
+    assert crs.to_wkt(pretty=True) != crs.to_wkt()
+    assert crs.to_wkt(output_axis_rule=False) != crs.to_wkt()
+    assert crs.to_wkt("WKT1_GDAL").startswith('GEOGCS["WGS 84"')
+    # Errors aren't kept, and arguments that can't be keys still work.
+    for _ in range(2):
+        with pytest.raises(CRSError):
+            CRS(4979).to_wkt("WKT1_GDAL")
+    with pytest.raises(ValueError):
+        crs.to_wkt(["WKT2_2019"])
+    ellipsoid, cs = crs.ellipsoid, crs.coordinate_system
+    assert ellipsoid is not None and cs is not None
+    assert ellipsoid.to_wkt() == ellipsoid.to_wkt() == pyproj.CRS(4326).ellipsoid.to_wkt()
+    assert cs.to_wkt("WKT1_GDAL") == cs.to_wkt("WKT1_GDAL") == ""
+    assert cs.to_wkt().startswith("CS[ellipsoidal,2]")
+
+
 def test_from_wkt() -> None:
     wkt = CRS(2180).to_wkt()
     assert CRS.from_wkt(wkt) == CRS(2180)

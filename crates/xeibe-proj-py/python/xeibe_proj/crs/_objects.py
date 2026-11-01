@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Any
 
 from xeibe_proj import _wkt
@@ -97,6 +98,24 @@ class _JsonObject:
         where PROJ writes nothing (a transformation in WKT1_GDAL).
         WKT2_2019 and WKT1_GDAL are written; other versions raise
         ``NotImplementedError``."""
+        # Kept by the arguments, as CRS.to_wkt does.
+        key = (version, pretty, output_axis_rule)
+        try:
+            return self._wkts[key]
+        except (KeyError, TypeError):
+            pass
+        wkt = self._write(version, pretty, output_axis_rule)
+        try:
+            self._wkts[key] = wkt
+        except TypeError:
+            pass
+        return wkt
+
+    @cached_property
+    def _wkts(self) -> dict[tuple[Any, Any, Any], str | None]:
+        return {}
+
+    def _write(self, version: Any, pretty: bool, output_axis_rule: bool | None) -> str | None:
         try:
             return _wkt.write(self.to_json_dict(), version, pretty, output_axis_rule)
         except CRSError:
@@ -169,12 +188,12 @@ class CoordinateSystem(_JsonObject):
     def axis_list(self) -> list[AxisInfo]:
         return [axis_from_json(a) for a in get_dicts(self._json, "axis")]
 
-    def to_wkt(self, version: Any = "WKT2_2019", pretty: bool = False, output_axis_rule: bool | None = None) -> str | None:
+    def _write(self, version: Any, pretty: bool, output_axis_rule: bool | None) -> str | None:
         """The ``CS`` and ``AXIS`` nodes; empty in WKT1_GDAL, which has no
         coordinate system on its own, as in PROJ."""
         if _wkt.version_name(version) == "WKT1_GDAL":
             return ""
-        return super().to_wkt(version, pretty, output_axis_rule)
+        return super()._write(version, pretty, output_axis_rule)
 
 
 class Ellipsoid(_JsonObject):

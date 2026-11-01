@@ -765,14 +765,31 @@ class CRS:
         (``False``), or PROJ's choice for the version (``None``). A
         ``CRSError`` when the version can't express the CRS (a geographic
         3D CRS in WKT1_GDAL)."""
+        key = (version, pretty, output_axis_rule)
+        try:
+            return self._wkts[key]
+        except (KeyError, TypeError):
+            pass
         name = _wkt.version_name(version)
         try:
-            return _wkt.write(self._projjson, name, pretty, output_axis_rule)
+            wkt = _wkt.write(self._projjson, name, pretty, output_axis_rule)
         except CRSError as e:
             raise CRSError(
                 f"CRS cannot be converted to a WKT string of a '{version}' version. "
                 f"Select a different version of a WKT string or edit your CRS. ({e})"
             ) from None
+        try:
+            self._wkts[key] = wkt
+        except TypeError:
+            pass
+        return wkt
+
+    @cached_property
+    def _wkts(self) -> dict[tuple[Any, Any, Any], str]:
+        """``to_wkt``'s results by its arguments: a CRS doesn't change, and
+        the cache goes with it. Not by the CRS, whose ``__eq__`` and
+        ``__hash__`` match CRSs whose WKT differs, as ``lru_cache`` would."""
+        return {}
 
     def to_proj4(self, version: Any = 5) -> str:
         """The CRS as a PROJ string, as PROJ writes it, with pyproj's
