@@ -78,11 +78,14 @@ impl<U: Unit> Spherical<U> {
         }
     }
 
-    /// The radius forwards, where PROJ's set-up replaces the semi-major
-    /// axis after it has taken 1/a for the inverse (`gs48`, `alsk`,
-    /// `gs50`): the inverse keeps the CRS's own.
-    pub(crate) fn forward_radius(&mut self, a: f64) {
+    /// The radius, where the projection fixes its own (`gs48`, `alsk`,
+    /// `gs50`), both ways. PROJ's set-up replaces the semi-major axis after
+    /// it has taken 1/a for the inverse, which then doesn't invert the
+    /// forward on another sphere; we don't (divergence in
+    /// `docs/pyproj-compat.md`).
+    pub(crate) fn set_radius(&mut self, a: f64) {
         self.a = a;
+        self.ra = 1.0 / a;
     }
 
     /// The central meridian, where PROJ's set-up replaces `lon_0`.

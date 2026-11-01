@@ -6,18 +6,30 @@
 //! Ported from PROJ 9.8.1 `src/projections/isea.cpp` (MIT, see
 //! PROJ-NOTICE.md, which also has geogrid's licence): the forward from
 //! Nathan Wagner's public-domain code, the inverse from Franz-Benjamin
-//! Mocnik's MIT geogrid by Jérôme Jacovella-St-Louis. As in PROJ, the
-//! forward works on the sphere of the semi-major axis with the geodetic
-//! latitude, while the inverse works on the authalic sphere and only
-//! exists for the plane with PROJ's default grid, in the ISEA or polar
-//! orientation. `lon_0` and `lat_0` set the icosahedron's orientation, and
-//! `lon_0` is also the central meridian.
+//! Mocnik's MIT geogrid by Jérôme Jacovella-St-Louis.
+//!
+//! Where PROJ's results are wrong, we differ (divergences in
+//! `docs/pyproj-compat.md`):
+//!
+//! - On an ellipsoid both ways are on the authalic sphere, with the
+//!   authalic latitude, so that the projection is equal-area and the
+//!   inverse inverts the forward. PROJ's forward is on the sphere of the
+//!   semi-major axis with the geodetic latitude (a TODO in its source), its
+//!   inverse on the authalic sphere: 9 km apart on WGS 84.
+//! - `lon_0` and `lat_0` only turn the icosahedron. PROJ also takes `lon_0`
+//!   as the central meridian, so the forward turns by it twice.
+//! - The inverse exists for the plane in any orientation and azimuth, with
+//!   the orientation the forward's. PROJ's exists only for its default grid
+//!   in the ISEA or the polar orientation, with the ISEA one's latitude
+//!   rounded to 1e-9° (`90 - 58.282525589`), which the forward doesn't
+//!   round.
 
 // PROJ's constants, digit for digit.
 #![allow(clippy::excessive_precision)]
 
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
+use super::authalic_q::Authalic;
 use super::{BuildError, Params, Projection, adjlon};
 use crate::ellipsoid::Ellipsoid;
 use crate::error::CoordinateError;
@@ -91,6 +103,7 @@ enum Output {
 /// `ISEAPlanarProjection`).
 #[derive(Debug)]
 struct Planar {
+    /// The colatitude of the icosahedron's pole and minus its longitude.
     orientation: (f64, f64),
     cos_orientation_lat: f64,
     sin_orientation_lat: f64,
@@ -109,10 +122,11 @@ struct Planar {
 
 #[derive(Debug)]
 pub(crate) struct Isea {
-    lon0: f64,
     fe: f64,
     fn_: f64,
-    a: f64,
+    /// The radius: the sphere's, or the ellipsoid's authalic one.
+    r: f64,
+    authalic: Option<Authalic>,
     o_lat: f64,
     o_lon: f64,
     o_az: f64,
@@ -188,27 +202,16 @@ impl Isea {
         // pj_param's integers.
         let resolution = params.key("resolution").map_or(4, |r| r as i32);
         let aperture = params.key("aperture").map_or(3, |a| a as i32);
-        let orientation =
-            if output == Output::Plane && o_az == 0.0 && aperture == 3 && resolution == 4 {
-                if o_lat == ISEA_STD_LAT && o_lon == ISEA_STD_LONG {
-                    Some(((E_RAD + F_RAD) / 2.0, DEG * -11.25))
-                } else if o_lat == FRAC_PI_2 && o_lon == 0.0 {
-                    Some((0.0, 0.0))
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-        let planar = orientation.map(|orientation| {
-            let e = ellipsoid.e;
-            let r2 = if e > 0.0 {
-                let (a2, c2) = (ellipsoid.a * ellipsoid.a, ellipsoid.b * ellipsoid.b);
-                let s = PI * (2.0 * a2 + c2 / e * ((1.0 + e) / (1.0 - e)).ln());
-                s / (4.0 * PI)
-            } else {
-                ellipsoid.a * ellipsoid.a
-            };
+        let e = ellipsoid.e;
+        let (r2, authalic) = if e > 0.0 {
+            let (a2, c2) = (ellipsoid.a * ellipsoid.a, ellipsoid.b * ellipsoid.b);
+            let s = PI * (2.0 * a2 + c2 / e * ((1.0 + e) / (1.0 - e)).ln());
+            (s / (4.0 * PI), Some(Authalic::new(ellipsoid)))
+        } else {
+            (ellipsoid.a * ellipsoid.a, None)
+        };
+        let planar = (output == Output::Plane).then(|| {
+            let orientation = (FRAC_PI_2 - o_lat, -o_lon);
             let rprime = RPRIME_OVER_R * r2.sqrt();
             let rprime_tang = rprime * TANG;
             let center_to_base = rprime_tang / 2.0;
@@ -232,10 +235,10 @@ impl Isea {
         });
         let key = |k: &str| params.key(k).unwrap_or(0.0);
         Ok(Isea {
-            lon0: key("lon_0"),
             fe: key("x_0"),
             fn_: key("y_0"),
-            a: ellipsoid.a,
+            r: r2.sqrt(),
+            authalic,
             o_lat,
             o_lon,
             o_az,
@@ -573,15 +576,10 @@ impl Isea {
         let lat = safe_asin(sin_lat0 * cos_z + cos_lat0_sin_z * az_earth.cos());
         let lon = centre_lon(face)
             + (az_earth.sin() * cos_lat0_sin_z).atan2(cos_z - sin_lat0 * lat.sin());
-        // Back from the orientation.
-        let precision_per_definition = DEG * 1e-5;
-        let lon = if lat < DEG * -90.0 + precision_per_definition
-            || lat > DEG * 90.0 - precision_per_definition
-        {
-            0.0
-        } else {
-            lon
-        };
+        // Back from the azimuth and the orientation. PROJ also sets the
+        // longitude to 0 within 1e-5° of the icosahedron's poles, which
+        // moves those points by up to a metre; we don't.
+        let lon = lon - self.o_az;
         if p.orientation.0 != 0.0 || p.orientation.1 != 0.0 {
             let (sin_lat, cos_lat) = lat.sin_cos();
             let (sin_lon, cos_lon) = lon.sin_cos();
@@ -684,18 +682,18 @@ fn hexbin2(width: f64, x: f64, y: f64) -> Result<(i64, i64), CoordinateError> {
 
 impl Projection for Isea {
     fn forward(&self, lon: f64, lat: f64) -> Result<(f64, f64), CoordinateError> {
-        let lam = adjlon(lon - self.lon0);
-        let (x, y) = self.isea_forward(lat, lam)?;
-        Ok((self.a * x + self.fe, self.a * y + self.fn_))
+        let lat = self.authalic.as_ref().map_or(lat, |au| au.forward(lat));
+        let (x, y) = self.isea_forward(lat, adjlon(lon))?;
+        Ok((self.r * x + self.fe, self.r * y + self.fn_))
     }
 
     fn inverse(&self, x: f64, y: f64) -> Result<(f64, f64), CoordinateError> {
         let Some(p) = &self.planar else {
             return Err(OUTSIDE);
         };
-        // PROJ's 1/a and a cancel.
         let (x, y) = (x - self.fe + p.xo, y - self.fn_ + p.yo);
         let (lat, lon) = self.cartesian_to_geo(p, x, y)?;
-        Ok((adjlon(lon + self.lon0), lat))
+        let lat = self.authalic.as_ref().map_or(lat, |au| au.inverse(lat));
+        Ok((adjlon(lon), lat))
     }
 }

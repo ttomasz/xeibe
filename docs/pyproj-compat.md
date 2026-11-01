@@ -505,6 +505,38 @@ These are documented in the package README and in its `NotImplementedError` and
    character for character.
 8. **Error messages** differ. Exception types match.
 9. **No PROJ version.** `proj_version_str` and `PROJ_VERSION*` don't exist.
+10. **PROJ's mistakes in a few projections are fixed**, where its results
+    are wrong rather than a choice; everywhere else the projections convert
+    as PROJ's. Each was found by PROJ's inverse not taking its own forward
+    back to the point, and the tests allow ours to differ from PROJ's only
+    where ours does, closer (`DIVERGES` in `tests/it/proj_string.rs`):
+    - **ISEA** on an ellipsoid is on the authalic sphere both ways, with
+      the authalic latitude, and so equal-area. PROJ's forward is on the
+      sphere of the semi-major axis with the geodetic latitude, its
+      inverse on the authalic sphere: 9 km apart on WGS 84. `lon_0` and
+      `lat_0` only turn the icosahedron, where PROJ also takes `lon_0` as
+      the central meridian and turns by it twice. The inverse exists for
+      the plane in any orientation and azimuth, where PROJ's exists only
+      for its default grid in two orientations, and inverts the forward
+      to 1e-14° where PROJ's rounded orientation leaves 1.5e-9°.
+    - **Bipolar Oblique Conic** (`bipc`): PROJ's forward leaves the
+      tangent out of Snyder's angle where the two cones meet, which its
+      inverse has, and puts that band up to 240 km off (80°W 10°N). The
+      inverse goes on to 1e-13 of the radius, where PROJ stops at 1e-10
+      (0.6 mm). An acos argument a hair over 1 gives 0 or π, where PROJ
+      takes ±1 as the angle.
+    - **GS48, GS50 and Alaska** use their fixed sphere or ellipsoid both
+      ways. PROJ's inverse uses the CRS's own, 1.7 km off for GS48 on
+      WGS 84.
+    - **S2** refuses a point on the far side of its face, which PROJ
+      projects onto the face as if it were the antipode.
+    - **Mercator (Spherical)** (EPSG 1026 and 9841, `merc +R_C`) is on the
+      conformal sphere at the latitude of origin, as EPSG's guidance note
+      7-2 has it. PROJ sets its sphere up before it reads `lat_0`, so it
+      always takes the equator's (0.17% larger at 30°). EPSG's CRSs with
+      these methods have their origin on the equator, where the two agree.
+    - **Interrupted Mollweide and Goode Homolosine** invert the south pole,
+      which PROJ's test (`-y90 + EPSLN`) refuses.
 
 ## Testing
 

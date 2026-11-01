@@ -87,6 +87,12 @@ there is no zero datum shift, as PROJ's ballpark would apply.
   full-precision parameters, EPSG's prime meridians and the CRS's own
   datum. Results differ by up to 0.35 mm (kilometres for EASE-Grid). `srs`
   is the CRS's, not a PROJ string.
+- **PROJ's mistakes in a few projections are fixed**: ISEA on an
+  ellipsoid (equal-area, 9 km from PROJ's on WGS 84) and with `lon_0`, the
+  Bipolar Oblique Conic where its cones meet (240 km), GS48's, GS50's and
+  Alaska's inverse, S2 on the far side of its face, and Mercator
+  (Spherical) with a latitude of origin. In each PROJ's inverse doesn't
+  take its own forward back; ours does.
 - **Other authorities** than EPSG and OGC (`ESRI:`, `IGNF:`, …) are not
   known, apart from Esri's old codes of EPSG CRSs.
 

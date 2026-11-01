@@ -147,6 +147,7 @@ impl Report {
 /// many were compared, and the failures. Skipped: strings whose method
 /// isn't implemented here, and `+approx`, PROJ's approximate Transverse
 /// Mercator, which is converted with the exact one (2 mm apart here).
+/// Mercator (Spherical) is compared after `r_c_scale`.
 fn coordinates(dir: &Path) -> (usize, Vec<String>) {
     let (mut compared, mut failed) = (0, Vec::new());
     for r in records(&dir.join("corpus.jsonl")) {
@@ -175,6 +176,7 @@ fn coordinates(dir: &Path) -> (usize, Vec<String>) {
             continue;
         };
         let t = Transform::new(&base, &projected, AxisOrder::EastFirst).unwrap();
+        let (scale, fe, fn_) = r_c_scale(crs);
         for (p, want) in points.iter().zip(r["converted"].as_array().unwrap()) {
             let (lon, lat) = (p[0].as_f64().unwrap(), p[1].as_f64().unwrap());
             let Some(want) = want.as_array() else {
@@ -182,6 +184,7 @@ fn coordinates(dir: &Path) -> (usize, Vec<String>) {
             };
             compared += 1;
             let (wx, wy) = (want[0].as_f64().unwrap(), want[1].as_f64().unwrap());
+            let (wx, wy) = (fe + (wx - fe) * scale, fn_ + (wy - fn_) * scale);
             match t.convert(lon, lat, None) {
                 Ok((x, y, _)) if (x - wx).abs() < 1e-4 && (y - wy).abs() < 1e-4 => {}
                 other => failed.push(format!(
@@ -191,6 +194,35 @@ fn coordinates(dir: &Path) -> (usize, Vec<String>) {
         }
     }
     (compared, failed)
+}
+
+/// What PROJ's Mercator (Spherical) (`+R_C`) results are scaled by about
+/// the false origin to be ours, and that origin: PROJ takes the conformal
+/// sphere at the equator whatever the latitude of origin, we take it at the
+/// latitude of origin (`docs/pyproj-compat.md`, divergence 10). 1 for
+/// another CRS.
+fn r_c_scale(crs: &Value) -> (f64, f64, f64) {
+    let conversion = &crs["conversion"];
+    if !matches!(
+        conversion["method"]["id"]["code"].as_u64(),
+        Some(1026 | 9841)
+    ) {
+        return (1.0, 0.0, 0.0);
+    }
+    let param = |code: u64| {
+        conversion["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["id"]["code"].as_u64() == Some(code))
+            .map_or(0.0, |p| p["value"].as_f64().unwrap())
+    };
+    let ellipsoid = &crs["base_crs"]["datum"]["ellipsoid"];
+    let es = ellipsoid["inverse_flattening"]
+        .as_f64()
+        .map_or(0.0, |rf| (2.0 - 1.0 / rf) / rf);
+    let sin = param(8801).to_radians().sin();
+    (1.0 / (1.0 - es * sin * sin), param(8806), param(8807))
 }
 
 fn check(dir: &Path) -> Report {
@@ -517,13 +549,29 @@ fn every_proj_string_is_identified_as_proj_identifies_it() {
     assert!(failed.is_empty());
 }
 
+/// The projections where we differ from PROJ on purpose, because PROJ's
+/// results are wrong there (`docs/pyproj-compat.md`, divergence 10): ISEA
+/// on an ellipsoid and with `lon_0`, and its inverse; GS48's, GS50's and
+/// Alaska's inverse; S2 on the far side of its face; the bipolar conic
+/// where its cones meet. A point of theirs may differ from PROJ's only where our
+/// inverse takes our forward back to the point (to 1e-9°) closer than
+/// PROJ's takes its own, or where PROJ's comes back more than 1° away, out
+/// of the projection's domain, as it must where we refuse a point.
+const DIVERGES: &[&str] = &["isea", "gs48", "gs50", "alsk", "s2", "bipc"];
+
+/// How far apart two longitudes and latitudes are, in degrees of arc
+/// (near enough).
+fn off((l1, p1): (f64, f64), (l2, p2): (f64, f64)) -> f64 {
+    let dl = (l1 - l2 + 540.0).rem_euclid(360.0) - 180.0;
+    (p1 - p2).abs().max(dl.abs() * p2.to_radians().cos())
+}
+
 /// The projections EPSG has no CRS for and those only PROJ defines
 /// (`methods.jsonl`): points over the whole globe converted from each
 /// string's geodetic CRS and back, against PROJ's (forwards to 2 µm, PROJ's
 /// results being rounded to 1 µm; back to 1e-9°, from PROJ's forward
-/// results). Every string must build a CRS here, but those of `NOT_PORTED`,
-/// which must not.
-fn method_conversions(path: &Path, not_ported: &[&str]) -> (usize, Vec<String>) {
+/// results), but where `DIVERGES` lets them differ.
+fn method_conversions(path: &Path) -> (usize, Vec<String>) {
     let (mut compared, mut failed) = (0, Vec::new());
     for r in records(path) {
         let srs = r["srs"].as_str().unwrap();
@@ -532,7 +580,7 @@ fn method_conversions(path: &Path, not_ported: &[&str]) -> (usize, Vec<String>) 
         };
         let json: Value = serde_json::from_str(&proj_string::to_projjson(srs).unwrap()).unwrap();
         let proj = srs.split(' ').next().unwrap().trim_start_matches("+proj=");
-        let not_ported = not_ported.contains(&proj);
+        let diverges = DIVERGES.contains(&proj);
         let base = if json["type"] == "ProjectedCRS" || json["type"] == "DerivedGeographicCRS" {
             &json["base_crs"]
         } else {
@@ -542,12 +590,7 @@ fn method_conversions(path: &Path, not_ported: &[&str]) -> (usize, Vec<String>) 
             Crs::from_projjson(&base.to_string()),
             Crs::from_projjson(&json.to_string()),
         ) {
-            (Ok(_), Ok(_)) if not_ported => {
-                failed.push(format!("{srs}: builds, but {proj} is in NOT_PORTED"));
-                continue;
-            }
             (Ok(b), Ok(c)) => (b, c),
-            (_, Err(Error::Unsupported { .. })) if not_ported => continue,
             (b, c) => {
                 failed.push(format!("{srs}: {:?}", b.err().or(c.err())));
                 continue;
@@ -562,41 +605,67 @@ fn method_conversions(path: &Path, not_ported: &[&str]) -> (usize, Vec<String>) 
             .enumerate()
         {
             let (lon, lat) = (p[0].as_f64().unwrap(), p[1].as_f64().unwrap());
-            compared += 1;
             let ours = forward.convert(lon, lat, None);
-            let Some(want) = want.as_array() else {
-                if let Ok(ours) = ours {
+            let want = want
+                .as_array()
+                .map(|w| (w[0].as_f64().unwrap(), w[1].as_f64().unwrap()));
+            let back = inverse
+                .and_then(|v| v[i].as_array())
+                .map(|b| (b[0].as_f64().unwrap(), b[1].as_f64().unwrap()));
+            // How far each round trip comes back from the point, ours from
+            // our forward result, PROJ's from its own.
+            let ours_off = match (&ours, &backward) {
+                (Ok((x, y, _)), Some(backward)) => backward
+                    .convert(*x, *y, None)
+                    .map_or(f64::INFINITY, |(l, p, _)| off((l, p), (lon, lat))),
+                _ => f64::INFINITY,
+            };
+            let proj_off = back.map_or(f64::INFINITY, |b| off(b, (lon, lat)));
+            let better = diverges && ours_off < 1e-9 && ours_off < proj_off;
+            compared += 1;
+            let Some((wx, wy)) = want else {
+                if let Ok(ours) = ours
+                    && !better
+                {
                     failed.push(format!("{srs} at ({lon}, {lat}): {ours:?}, PROJ fails"));
                 }
                 continue;
             };
-            let (wx, wy) = (want[0].as_f64().unwrap(), want[1].as_f64().unwrap());
             match ours {
                 Ok((x, y, _)) if (x - wx).abs() < 2e-6 && (y - wy).abs() < 2e-6 => {}
-                other => failed.push(format!(
-                    "{srs} at ({lon}, {lat}): {other:?}, PROJ ({wx}, {wy})"
-                )),
+                Ok(_) if better => continue,
+                Err(_) if diverges && proj_off > 1.0 => continue,
+                other => {
+                    failed.push(format!(
+                        "{srs} at ({lon}, {lat}): {other:?}, PROJ ({wx}, {wy})"
+                    ));
+                    continue;
+                }
             }
-            let (Some(backward), Some(back)) = (&backward, inverse.map(|v| &v[i])) else {
+            let Some(backward) = &backward else {
                 continue;
             };
             compared += 1;
             let ours = backward.convert(wx, wy, None);
-            let Some(back) = back.as_array() else {
-                if let Ok(ours) = ours {
+            let Some((blon, blat)) = back else {
+                if let Ok(ours) = ours
+                    && !better
+                {
                     failed.push(format!(
                         "{srs} back from ({wx}, {wy}): {ours:?}, PROJ fails"
                     ));
                 }
                 continue;
             };
-            let (blon, blat) = (back[0].as_f64().unwrap(), back[1].as_f64().unwrap());
             let close = |(l, p): (f64, f64)| {
                 let dl = (l - blon + 540.0).rem_euclid(360.0) - 180.0;
                 (p - blat).abs() < 1e-9 && (dl.abs() < 1e-9 || blat.abs() > 89.999999)
             };
             match ours {
                 Ok((l, p, _)) if close((l, p)) => {}
+                // Ours inverts our forward, closer than PROJ's inverts its
+                // own; or the point is outside where PROJ's inverts at all.
+                _ if better || (diverges && proj_off > 1.0) => {}
                 other => failed.push(format!(
                     "{srs} back from ({wx}, {wy}): {other:?}, PROJ ({blon}, {blat})"
                 )),
@@ -606,20 +675,12 @@ fn method_conversions(path: &Path, not_ported: &[&str]) -> (usize, Vec<String>) 
     (compared, failed)
 }
 
-/// The projections of `methods.jsonl` not yet ported from PROJ.
-const NOT_PORTED: &[&str] = &[];
-
-/// The projections of `custom.jsonl` not yet ported from PROJ.
-const CUSTOM_NOT_PORTED: &[&str] = &[];
-
 /// The projections PROJ has no CRS method for (`custom.jsonl`), as
 /// `methods.jsonl`'s.
 #[test]
 fn custom_proj_methods_convert_as_in_proj() {
-    let (compared, failed) = method_conversions(
-        &xeibe_testkit::data_dir().join("proj-string/custom.jsonl"),
-        CUSTOM_NOT_PORTED,
-    );
+    let (compared, failed) =
+        method_conversions(&xeibe_testkit::data_dir().join("proj-string/custom.jsonl"));
     assert!(compared > 500, "{compared}");
     assert!(
         failed.is_empty(),
@@ -641,10 +702,8 @@ fn custom_proj_methods_convert_as_in_proj() {
 
 #[test]
 fn proj_methods_convert_as_in_proj() {
-    let (compared, failed) = method_conversions(
-        &xeibe_testkit::data_dir().join("proj-string/methods.jsonl"),
-        NOT_PORTED,
-    );
+    let (compared, failed) =
+        method_conversions(&xeibe_testkit::data_dir().join("proj-string/methods.jsonl"));
     assert!(
         failed.is_empty(),
         "{} of {compared}:\n{}",
@@ -833,10 +892,12 @@ fn proj_methods_wkt_as_in_proj() {
 }
 
 /// Mercator (Spherical) (EPSG:1026), which no PROJ string reads into: PROJ
-/// converts it with `merc +R_C`, on the conformal sphere at the equator
-/// whatever the latitude of origin. PROJ 9.8.1's string and results.
+/// writes it as `merc +R_C` and converts it on the conformal sphere at the
+/// equator whatever the latitude of origin; we convert it on the one at the
+/// latitude of origin, as EPSG has it. PROJ 9.8.1's string, and its results
+/// scaled to that sphere (`r_c_scale`).
 #[test]
-fn mercator_spherical_converts_as_in_proj() {
+fn mercator_spherical_converts_on_the_sphere_of_its_origin() {
     let wkt = r#"PROJCRS["Spherical Mercator test",BASEGEOGCRS["WGS 84",DATUM["World Geodetic System 1984",ELLIPSOID["WGS 84",6378137,298.257223563,LENGTHUNIT["metre",1]]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433]]],CONVERSION["test",METHOD["Mercator (Spherical)",ID["EPSG",1026]],PARAMETER["Latitude of natural origin",30,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8801]],PARAMETER["Longitude of natural origin",10,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8802]],PARAMETER["False easting",1000,LENGTHUNIT["metre",1],ID["EPSG",8806]],PARAMETER["False northing",2000,LENGTHUNIT["metre",1],ID["EPSG",8807]]],CS[Cartesian,2],AXIS["(E)",east,ORDER[1],LENGTHUNIT["metre",1]],AXIS["(N)",north,ORDER[2],LENGTHUNIT["metre",1]]]"#;
     let json = wkt::to_projjson(wkt).unwrap();
     assert_eq!(
@@ -847,15 +908,107 @@ fn mercator_spherical_converts_as_in_proj() {
     let base = Crs::from_projjson(&value["base_crs"].to_string()).unwrap();
     let crs = Crs::from_wkt(wkt).unwrap();
     let t = Transform::new(&base, &crs, AxisOrder::EastFirst).unwrap();
+    let (scale, fe, fn_) = r_c_scale(&value);
+    assert!((scale - 1.0 / (1.0 - 0.00669437999014 * 0.25)).abs() < 1e-12);
     for ((lon, lat), (x, y)) in [
         ((10.0, 30.0), (1000.0, 3493803.1042245994)),
         ((40.0, 60.0), (3329387.7285204283, 8373575.159040291)),
         ((-100.0, -45.0), (-12203088.337908238, -5600673.589001055)),
     ] {
+        let (x, y) = (fe + (x - fe) * scale, fn_ + (y - fn_) * scale);
         let (ox, oy, _) = t.convert(lon, lat, None).unwrap();
         assert!(
             (ox - x).abs() < 1e-6 && (oy - y).abs() < 1e-6,
             "{lon} {lat}: {ox} {oy}"
         );
     }
+}
+
+/// A PROJ string's CRS's forward and inverse, from its geodetic CRS.
+fn transforms(srs: &str) -> (Transform, Transform) {
+    let json = proj_string::to_projjson(srs).unwrap();
+    let value: Value = serde_json::from_str(&json).unwrap();
+    let base = Crs::from_projjson(&value["base_crs"].to_string()).unwrap();
+    let crs = Crs::from_projjson(&json).unwrap();
+    (
+        Transform::new(&base, &crs, AxisOrder::EastFirst).unwrap(),
+        Transform::new(&crs, &base, AxisOrder::EastFirst).unwrap(),
+    )
+}
+
+/// Where we differ from PROJ (`DIVERGES`), our inverse inverts our
+/// forward, where PROJ's doesn't: ISEA on an ellipsoid and in any
+/// orientation, GS48 and Alaska on another sphere or ellipsoid, the
+/// bipolar conic where its cones meet (PROJ is 240 km off at 80°W 10°N).
+#[test]
+fn diverging_projections_invert_their_forward() {
+    for (srs, points) in [
+        (
+            "+proj=isea +ellps=WGS84",
+            &[(10.0, 45.0), (-60.0, -20.0), (179.0, 89.0), (0.0, -89.5)][..],
+        ),
+        (
+            "+proj=isea +lat_0=40 +lon_0=-30 +azi=15 +ellps=GRS80",
+            &[(10.0, 45.0), (-60.0, -20.0), (150.0, 5.0)],
+        ),
+        (
+            "+proj=isea +orient=pole +R=6371000",
+            &[(10.0, 45.0), (-170.0, -70.0)],
+        ),
+        (
+            "+proj=isea +aperture=4 +resolution=6 +R=6371000",
+            &[(10.0, 45.0)],
+        ),
+        ("+proj=gs48 +ellps=WGS84", &[(-100.0, 40.0), (-80.0, 35.0)]),
+        ("+proj=gs50 +R=6371000", &[(-100.0, 40.0), (-150.0, 60.0)]),
+        ("+proj=alsk +ellps=WGS84", &[(-150.0, 60.0)]),
+        (
+            "+proj=bipc +R=6371000",
+            &[(-80.0, 10.0), (-100.0, 40.0), (-60.0, -10.0), (-85.0, 5.0)],
+        ),
+        (
+            "+proj=bipc +ns +ellps=WGS84",
+            &[(-80.0, 10.0), (-75.0, 15.0)],
+        ),
+    ] {
+        let (forward, inverse) = transforms(&format!("{srs} +type=crs"));
+        for &(lon, lat) in points {
+            let (x, y, _) = forward.convert(lon, lat, None).unwrap();
+            let (l, p, _) = inverse.convert(x, y, None).unwrap();
+            assert!(
+                off((l, p), (lon, lat)) < 1e-9,
+                "{srs} at ({lon}, {lat}): ({x}, {y}) back to ({l}, {p})"
+            );
+        }
+    }
+}
+
+/// ISEA's `lon_0` only turns the icosahedron: a point moved with it lands
+/// where it did. PROJ also subtracts it as a central meridian.
+#[test]
+fn isea_lon_0_turns_the_icosahedron_once() {
+    // PROJ's default, ISEA_STD_LONG, in degrees.
+    let standard = 11.25;
+    let (plain, _) = transforms("+proj=isea +R=6371000 +type=crs");
+    let (turned, _) = transforms("+proj=isea +lon_0=40 +R=6371000 +type=crs");
+    for (lon, lat) in [(10.0, 45.0), (-60.0, -20.0), (100.0, 70.0)] {
+        let (x0, y0, _) = plain.convert(lon, lat, None).unwrap();
+        let (x1, y1, _) = turned.convert(lon + 40.0 - standard, lat, None).unwrap();
+        assert!(
+            (x1 - x0).abs() < 1e-6 && (y1 - y0).abs() < 1e-6,
+            "({lon}, {lat}): ({x0}, {y0}) and ({x1}, {y1})"
+        );
+    }
+}
+
+/// S2 refuses a point on the far side of its face, which PROJ projects onto
+/// the face as if it were the antipode.
+#[test]
+fn s2_refuses_the_far_side_of_its_face() {
+    let (forward, _) = transforms("+proj=s2 +R=6371000 +type=crs");
+    assert!(forward.convert(30.0, 20.0, None).is_ok());
+    assert!(forward.convert(150.0, -20.0, None).is_err());
+    let (forward, _) = transforms("+proj=s2 +lat_0=90 +R=6371000 +type=crs");
+    assert!(forward.convert(30.0, 60.0, None).is_ok());
+    assert!(forward.convert(30.0, -1.0, None).is_err());
 }

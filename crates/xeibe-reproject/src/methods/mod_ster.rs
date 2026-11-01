@@ -3,8 +3,9 @@
 //!
 //! Ported from PROJ 9.8.1 `src/projections/mod_ster.cpp` and
 //! `src/zpoly1.cpp` (MIT, see PROJ-NOTICE.md). Each fixes its own origin;
-//! GS48, GS50 and Alaska fix their sphere or ellipsoid too, of which PROJ's
-//! inverse keeps the scale of the CRS's own (`Spherical::forward_radius`).
+//! GS48, GS50 and Alaska fix their sphere or ellipsoid too, which we use
+//! both ways where PROJ's inverse keeps the scale of the CRS's own
+//! (`Spherical::set_radius`).
 
 use std::f64::consts::FRAC_PI_2;
 

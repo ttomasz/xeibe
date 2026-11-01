@@ -465,36 +465,61 @@ equivalent CRS; forward points agree to 2 µm and inverse ones to 1e-9°,
 failing exactly where PROJ fails. `custom.jsonl` does the same for the
 projections without a CRS method (a string of each, on a sphere and on an
 ellipsoid, and with its keys), forwards from pyproj's `Proj` where PROJ
-has no inverse to build a transformation from. A method not yet ported is
-listed in the tests (`NOT_PORTED`, `CUSTOM_NOT_PORTED`), which fail if a
-listed one builds.
+has no inverse to build a transformation from. Where we fix one of PROJ's
+mistakes (`DIVERGES` in the tests), a point may differ from PROJ's only
+where our inverse takes our forward back to it, to 1e-9° and closer than
+PROJ's takes its own, or where PROJ's comes back more than 1° away.
 
 **Results (2026-10-31).** All 50 of PROJ's own methods and the four EPSG
 ones are ported. The 129 strings of `methods.jsonl` read and write as PROJ
 reads and writes them, their WKT is written and read as PROJ does, and all
-13,040 converted points agree, forwards to 2 µm and back to 1e-9°. Like
-PROJ, Mercator (Spherical) is on the conformal sphere at the equator,
-whatever its latitude of origin: PROJ sets up `+R_C`'s sphere before it
-reads `lat_0`.
+13,040 converted points agree, forwards to 2 µm and back to 1e-9°.
 
 All of PROJ's projections without a CRS method are ported too, so a PROJ
 string of any of PROJ's projections converts. The 187 strings of
-`custom.jsonl` read, write and convert as in PROJ: 16,673 points. The
-ports keep PROJ's quirks, where its results are what a user of it gets:
+`custom.jsonl` read and write as in PROJ, and their 16,673 points convert
+as in PROJ but where we fix its mistakes.
 
-- ISEA's forward is on the sphere of the semi-major axis with the
-  geodetic latitude, its inverse on the authalic sphere. The inverse
-  exists only for the plane with PROJ's default grid, in the ISEA or the
-  polar orientation. `lon_0` and `lat_0` turn the icosahedron and are
-  the central meridian and origin as well.
-- S2 and CalCOFI aren't scaled by the radius: S2 gives the cube face's s
-  and t, CalCOFI the line and station numbers. S2's central meridian only
-  picks the face, and CalCOFI ignores the false origin.
-- Space Oblique Mercator reads `ps_rev` as a plain number, though PROJ
-  writes it in degrees. HEALPix and rHEALPix on an ellipsoid use the
-  authalic radius.
-- Bertin 1953 fixes its central meridian at 0. Interrupted Mollweide's
-  inverse keeps PROJ's lopsided test at the south pole.
+**PROJ's mistakes, fixed.** We don't copy PROJ where its results are
+wrong rather than a choice. A round trip through PROJ, its inverse of
+its own forward, found each, and our inverse takes our forward back to
+the point. They are divergence 10 of
+[pyproj-compat.md](pyproj-compat.md#deliberate-divergences-from-pyproj):
+
+- ISEA on an ellipsoid. PROJ's forward is on the sphere of the
+  semi-major axis with the geodetic latitude (a TODO in its source), its
+  inverse on the authalic sphere, 9 km apart on WGS 84. Ours is on the
+  authalic sphere with the authalic latitude both ways, so equal-area.
+- ISEA's `lon_0`, which PROJ takes both as the icosahedron's orientation
+  and as the central meridian, turning by it twice. Ours only turns the
+  icosahedron. Its inverse, which PROJ has only for the plane with its
+  default grid in the ISEA or polar orientation, with the ISEA latitude
+  rounded to 1e-9°, exists for the plane in any orientation and azimuth.
+- The Bipolar Oblique Conic. PROJ's forward leaves the tangent out of
+  Snyder's angle where the cones meet, (tanⁿ(z/2) + tanⁿ((104° − z)/2))
+  / T, which its inverse has. That band is up to 240 km off (80°W
+  10°N): 2,042 of a 1° grid's 4,900 points from 10°S to 60°N and 110°W
+  to 40°W don't come back through PROJ's own inverse, 2 through ours. Its
+  inverse stops at 1e-10 of the radius (0.6 mm), ours at 1e-13, and an
+  acos argument a hair over 1 is ±1 as an angle in PROJ, 0 or π in ours.
+- GS48, GS50 and Alaska: PROJ's inverse uses the CRS's sphere or
+  ellipsoid, its forward the projection's fixed one (1.7 km for GS48 on
+  WGS 84). Ours uses the fixed one both ways.
+- S2 on the far side of a face, which PROJ projects onto the face as if
+  it were the antipode. Ours refuses it.
+- Mercator (Spherical) with a latitude of origin: PROJ sets up `+R_C`'s
+  conformal sphere before it reads `lat_0`, so it is always the equator's.
+  Ours is at the latitude of origin, as EPSG has it.
+- Interrupted Mollweide and Goode Homolosine, whose inverse in PROJ
+  refuses the south pole (`-y90 + EPSLN`).
+
+**PROJ's choices, kept.** S2 and CalCOFI aren't scaled by the radius: S2
+gives the cube face's s and t, CalCOFI the line and station numbers. S2's
+central meridian only picks the face, and CalCOFI ignores the false
+origin. HEALPix and rHEALPix on an ellipsoid use the authalic radius.
+Bertin 1953 fixes its central meridian at 0. Space Oblique Mercator reads
+`ps_rev` (days per revolution) as a plain number, though PROJ writes it in
+degrees in PROJJSON and WKT, which we copy so that the text stays PROJ's.
 
 ## Sub-objects and builders
 

@@ -191,10 +191,12 @@ Geostationary Satellite, …) and the four EPSG methods no EPSG CRS uses
 (Orthographic, Equidistant Conic, Vertical Perspective, Mercator
 (Spherical)) are implemented as well, each a port of PROJ's code checked
 against PROJ over the whole globe, forwards and back
-([pyproj-phase3.md](pyproj-phase3.md#projs-own-methods)). Like PROJ,
-Mercator (Spherical) and Mercator (1SP) (Spherical) are on the conformal
-sphere at the equator (`merc +R_C`, which PROJ sets up before reading
-`lat_0`), whatever their latitude of origin.
+([pyproj-phase3.md](pyproj-phase3.md#projs-own-methods)). Mercator
+(Spherical) and Mercator (1SP) (Spherical) are on the conformal sphere at
+the latitude of origin, as EPSG has it; PROJ (`merc +R_C`) sets its sphere
+up before it reads `lat_0`, so it always takes the equator's
+([pyproj-compat.md](pyproj-compat.md#deliberate-divergences-from-pyproj),
+divergence 10).
 
 ## Level 2: datum shifts with automatic selection
 

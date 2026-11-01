@@ -5,6 +5,9 @@
 //! PROJ-NOTICE.md). The output is neither scaled by the radius nor turned
 //! to the central meridian, which only picks the face; the false origin
 //! still applies. On an ellipsoid the latitude goes to the geocentric one.
+//! A point on the far side of the face's plane, which PROJ projects
+//! through the centre onto the face as if it were its antipode, is refused
+//! (divergence in `docs/pyproj-compat.md`).
 
 use std::f64::consts::{FRAC_1_PI, FRAC_PI_2, FRAC_PI_4};
 
@@ -120,6 +123,18 @@ impl Projection for S2 {
         let (sinlat, coslat) = lat.sin_cos();
         let (sinlon, coslon) = lam.sin_cos();
         let (x, y, z) = (coslat * coslon, coslat * sinlon, sinlat);
+        // The face's own coordinate must point towards it (`FaceXYZtoUV`).
+        let towards = match self.face {
+            0 => x > 0.0,
+            1 => y > 0.0,
+            2 => z > 0.0,
+            3 => x < 0.0,
+            4 => y < 0.0,
+            _ => z < 0.0,
+        };
+        if !towards {
+            return Err(CoordinateError::OutsideDomain);
+        }
         let (u, v) = match self.face {
             0 => (y / x, z / x),
             1 => (-x / y, z / y),

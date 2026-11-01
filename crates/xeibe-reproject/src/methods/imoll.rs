@@ -129,8 +129,9 @@ impl Unit for InterruptedMollweide {
     }
 
     fn inv(&self, x: f64, y: f64) -> Result<(f64, f64), CoordinateError> {
-        // PROJ's test, lopsided by its slack.
-        if y > SQRT_2 + EPSLN || y < -SQRT_2 + EPSLN {
+        // Beyond the poles, with slack both ways: PROJ's `-y90 + EPSLN`
+        // refuses the south pole itself.
+        if y.abs() > SQRT_2 + EPSLN {
             return Err(CoordinateError::OutsideDomain);
         }
         let n_north = self.north.len();

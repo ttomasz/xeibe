@@ -131,7 +131,7 @@ fn inner_radii(o_proj: &str, ellipsoid: &Ellipsoid) -> (f64, f64) {
         }
         "calcofi" => (1.0, 1.0),
         _ => match ModifiedStereographic::of(o_proj, ellipsoid.e).and_then(|(_, f)| f.a) {
-            Some(forward) => (forward, a),
+            Some(fixed) => (fixed, fixed),
             None => (a, a),
         },
     }

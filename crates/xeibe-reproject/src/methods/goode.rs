@@ -215,7 +215,9 @@ impl Unit for Interrupted {
     fn inv(&self, x: f64, y: f64) -> Result<(f64, f64), CoordinateError> {
         // Latitude 90° is at y = dy0 + √2.
         let y90 = self.dy0 + std::f64::consts::SQRT_2;
-        if y > y90 + EPSLN || y < -y90 + EPSLN {
+        // With slack both ways: PROJ's `-y90 + EPSLN` refuses the south
+        // pole itself.
+        if y.abs() > y90 + EPSLN {
             return Err(OUTSIDE);
         }
         let n = self.zone(x, y);

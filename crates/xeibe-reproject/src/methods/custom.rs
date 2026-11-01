@@ -120,7 +120,7 @@ pub(crate) fn build(
             let mut s = Spherical::from_keys(unit, params, a);
             s.set_lon0(fixed.lam0);
             if let Some(a) = fixed.a {
-                s.forward_radius(a);
+                s.set_radius(a);
             }
             Ok(Arc::new(s))
         }
