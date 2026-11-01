@@ -22,7 +22,7 @@ files in `tests/data`.
 | `crates/<crate>/tests/it/` | One integration-test binary per crate, with a module per topic and a `support` module. Everything goes through the public API |
 | `crates/<crate>/tests/it/samples.rs` | The same crate tested against the real samples in `tests/data` |
 | `crates/xeibe-py/tests/*.py` | The Python package, run against a built wheel: `smoke.py` (`scan`, `read`, settings, options) and `sedona.py` (`xeibe.sedona` in SedonaDB). Not part of `cargo test`; see below |
-| `crates/xeibe-proj-py/tests/` | The pyproj-compatible package, with pytest against a built wheel: CRSs and transformations compared with pyproj (also on the oracle `proj.db`), the container rules, grids from a local HTTP server, a bare import without numpy. `tests/typing/` holds `assert_type` checks for mypy and pyright, `tests/pyproj_suite/` runs pyproj's own tests. Not part of `cargo test`; see below |
+| `crates/xeibe-proj-py/tests/` | The pyproj-compatible package, with pytest against a built wheel: CRSs and transformations compared with pyproj (also on the oracle `proj.db`), the container rules, grids from a local HTTP server, a bare import without numpy. `tests/typing/` holds `assert_type` checks for mypy and pyright, `tests/pyproj_suite/` runs pyproj's own tests, `tests/geopandas_suite/` GeoPandas' through the shim. Not part of `cargo test`; see below |
 | `crates/xeibe-wasm/tests/it/` | The web page's session run natively: scan, read, the map's buffers, grids loaded from `tests/data/reprojection/grids`, the table's rows. The JavaScript in `web/` has no automated tests yet: `npm run check` type-checks it |
 
 The Python tests are PEP 723 scripts. Build the wheel first, then run each
@@ -53,11 +53,15 @@ it) compares with pyproj on `target/proj-oracle/proj.db` and is skipped
 without it. pyproj's own test suite runs against a built wheel with
 `crates/xeibe-proj-py/tests/pyproj_suite/run.py` (`--update` to record new
 passes in its `pass-list.txt`); see [pyproj-compat.md](pyproj-compat.md#testing).
+GeoPandas' test suite runs with pyproj and through `install_as_pyproj()`
+with `crates/xeibe-proj-py/tests/geopandas_suite/run.py`, which takes the
+same `--wheel` and `--update` and keeps its environment in
+`target/geopandas-suite/` ([pyproj-phase3.md](pyproj-phase3.md#geopandas)).
 `.github/workflows/proj-py.yml` runs all of this on changes to the package,
 `xeibe-crs` or `xeibe-reproject`. It builds and tests the wheel on Linux,
 macOS and Windows, and checks a bare install on Python 3.11 with no numpy.
-The type checks and pyproj's suite run on Linux only. The oracle tests skip
-there.
+The type checks, pyproj's suite and GeoPandas' run on Linux only. The
+oracle tests skip there.
 
 Each test module names the section of the design docs it comes from. A test
 that deviates from a document deliberately says why in a comment (see the GDAL

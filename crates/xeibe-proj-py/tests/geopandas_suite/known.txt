@@ -1,0 +1,9 @@
+# Other authorities stay out: IGNF: CRSs raise NotImplementedError.
+geopandas.tests.test_geodataframe::test_geodataframe_crs
+geopandas.tests.test_geodataframe::test_geodataframe_crs_nonrepresentable_json[IGNF:WGS84]
+geopandas.tests.test_geoseries::test_geoseries_crs
+
+# pyproj hashes a CRS's WKT text, so two equal CRSs whose WKT differs hash
+# differently, which the test expects. Equal xeibe_proj CRSs hash equal, as
+# Python's hash requires.
+geopandas.tests.test_merge.TestMerging::test_concat_axis0_crs_wkt_mismatch

@@ -38,7 +38,8 @@ as of 2026-10-24 all of it is done: the geodesic port, `Geod`, `Proj`,
 `area_of_interest`, `accuracy` and `only_best`, `Transformer.to_json` and
 `to_wkt`, and `download_grids`. Phase 3 is designed in
 [pyproj-phase3.md](pyproj-phase3.md); as of 2026-10-31 PROJ strings are
-read and written (its steps 1 and 2).
+read and written (its steps 1 and 2), and as of 2026-11-01
+`install_as_pyproj()` runs GeoPandas (step 3).
 
 - **Done.**
   - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
@@ -67,6 +68,8 @@ read and written (its steps 1 and 2).
   - `Proj` for EPSG and WKT input ([pyproj-phase2.md](pyproj-phase2.md#proj)).
   - `CRS.to_2d`, `to_3d` and `get_non_deprecated`
     ([pyproj-phase2.md](pyproj-phase2.md#to_2d-to_3d-get_non_deprecated)).
+  - `xeibe_proj.compat.install_as_pyproj()`, under which GeoPandas 1.2.0
+    passes its tests but four ([pyproj-phase3.md](pyproj-phase3.md#geopandas)).
 - **The Rust changes phase 1 needed are made**:
   - `Transform::operation_info`, `operation_index_for` and
     `with_operation_index` for the metadata and the group;
@@ -396,6 +399,7 @@ becomes the package's status tracker.
 | `__version__`, `EPSG_VERSION`, `show_versions` | 1 | The package's own version and the EPSG version (see [Versioning](#versioning)). |
 | `proj_version_str`, `PROJ_VERSION`, `PROJ_VERSION_STR` | Out | There is no PROJ to report. A module `__getattr__` raises `AttributeError` with that reason. GeoPandas' `show_versions` reads `proj_version_str`, so under the shim that one call fails. |
 | `set_use_global_context` | 1 | No-op. |
+| `xeibe_proj.compat.install_as_pyproj()` (not in pyproj) | 3 | `import pyproj` gives xeibe_proj, for libraries that import pyproj themselves. **Done** ([pyproj-phase3.md](pyproj-phase3.md#install_as_pyproj)). |
 | `pyproj.sync`, `projsync`, `python -m pyproj`, `get_proj_operations_map`, `pj_list` | Out | |
 
 ## Grids
@@ -574,9 +578,11 @@ These are documented in the package README and in its `NotImplementedError` and
 - **Bare install**: the job described under
   [Dependencies](#dependencies-and-extras), with no extras and `numpy` absent
   from `sys.modules`.
-- **GeoPandas** (phase 3): a slice of GeoPandas' tests (`to_crs`,
-  `estimate_utm_crs`, CRS equality, GeoParquet CRS metadata) with the shim
-  installed.
+- **GeoPandas' own test suite** (phase 3), run by
+  `tests/geopandas_suite/run.py` with pyproj and then through
+  `install_as_pyproj()`. Each test that passes with pyproj is in its
+  `pass-list.txt` or in `known.txt` with the reason
+  ([pyproj-phase3.md](pyproj-phase3.md#geopandas)).
 
 ## Phases
 

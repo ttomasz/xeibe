@@ -63,6 +63,28 @@ an error.
 string with `+ellps` but no `+datum`) converts only to CRSs on that datum:
 there is no zero datum shift, as PROJ's ballpark would apply.
 
+## Libraries that import pyproj
+
+`install_as_pyproj()` makes `import pyproj` give this package, for
+libraries such as GeoPandas that import pyproj themselves. Call it before
+anything imports pyproj; it raises `RuntimeError` if something already has.
+It is experimental: importing `xeibe_proj` directly stays the recommended way.
+
+```python
+import xeibe_proj.compat
+xeibe_proj.compat.install_as_pyproj()
+
+import geopandas  # gets xeibe_proj as pyproj
+```
+
+Each `pyproj.X` module is `xeibe_proj.X` itself, so `pyproj.CRS is
+xeibe_proj.CRS`. `pyproj.__version__` is `"3.8.0"`, the pyproj release
+whose API is followed. The rest of pyproj's modules raise
+`ModuleNotFoundError` with the reason. `importlib.metadata.version("pyproj")`
+still reads the installed distributions. Of GeoPandas 1.2.0's tests that
+pass with pyproj, all but four pass this way: three use `IGNF:` CRSs, and
+one expects equal CRSs to hash differently.
+
 ## Differences from pyproj
 
 - **Failed coordinates raise** `ProjError`, which names the coordinate.

@@ -4,7 +4,8 @@
 > unknown datums raise; PROJ's own projections and other celestial
 > bodies are in); PROJ strings, 2026-10-31 (steps 1 and 2, see
 > [Order of work](#order-of-work)); PROJ's own methods and other
-> celestial bodies, 2026-10-31 (step 2b).** This is phase 3 of
+> celestial bodies, 2026-10-31 (step 2b); `install_as_pyproj()` and
+> GeoPandas, 2026-11-01 (step 3).** This is phase 3 of
 > [pyproj-compat.md](pyproj-compat.md#phases). Facts about PROJ, pyproj
 > and GeoPandas were checked against PROJ 9.8.1 through pyproj 3.8.0 and
 > GeoPandas 1.2.0, with the oracle database
@@ -88,14 +89,19 @@ For `pyproj.X` it returns `xeibe_proj.X`, for every module in pyproj
 `proj`, `transformer`, and with this phase `crs.coordinate_operation`,
 `crs.coordinate_system`, `crs.datum`, `crs.enums` and `utils`. The other
 modules (`pyproj.sync`, `pyproj._crs`, …) raise `ModuleNotFoundError`
-with the reason. The finder takes precedence over an installed pyproj.
-Calling it twice is harmless.
+with the reason, and so do pyproj's private modules (`pyproj._crs`), which
+are never mapped to xeibe_proj's own private ones. The finder takes
+precedence over an installed pyproj. Calling it twice is harmless; calling
+it once pyproj is imported raises `RuntimeError` (decision 3).
 
 The top-level `pyproj` module forwards every attribute to `xeibe_proj`, and
 adds:
 
 - `__version__ = "3.8.0"`, the pyproj release whose API is followed;
-- `__xeibe_proj_version__`, the package's own version.
+- `__xeibe_proj_version__`, the package's own version;
+- its modules as attributes before they are imported (`pyproj.datadir`,
+  which GeoPandas' `show_versions` reads), since pyproj's `__init__`
+  imports them.
 
 `proj_version_str` still raises `AttributeError`. GeoPandas'
 `show_versions` catches that and prints `None`.
@@ -147,7 +153,31 @@ Expected reasons:
 
 The dependencies are GeoPandas' own required ones plus pyarrow. pyogrio
 and matplotlib are left out, so the file and plotting tests are skipped in
-both runs.
+both runs. GeoPandas requires pyogrio, so the runner sets up its own
+virtual environment in `target/geopandas-suite/` and installs GeoPandas
+without its dependencies. pyproj stays installed for the shim's run, which
+also checks that the finder takes precedence.
+
+**Results** (2026-11-01). With pyproj 1,827 of GeoPandas' tests pass (167
+fail and 845 skip without pyogrio, as they do with the shim). Through the
+shim 1,823 of those pass. The other four are in `known.txt`:
+
+- three give `IGNF:` CRSs, another authority;
+- `test_concat_axis0_crs_wkt_mismatch` expects two equal CRSs whose WKT
+  differs in an area name to hash differently, as pyproj's hash of the WKT
+  text does. Equal xeibe_proj CRSs hash equal, as Python's hash requires.
+
+None of the expected failures from raising on failed coordinates or from
+text that differs showed. The run found one difference of our own:
+`test_transform2` converts EPSG:26918 to WGS 84 and back through
+`+proj=utm +zone=18 +datum=NAD83 +nadgrids=null`, and came back 0.1 mm
+off, over the tolerance of GeoPandas' comparison. "NAD83 to WGS 84 (1)" is
+a geocentric translation of zeros between GRS 1980 and WGS 84. PROJ's
+pipeline optimiser leaves it out when nothing geocentric is next to it, as
+`xeibe-reproject` already did for a Bound CRS's `TOWGS84`, but on EPSG's
+routes it went through geocentric coordinates and changed the ellipsoid.
+It now follows PROJ there too ([reprojection.md](reprojection.md)), and
+the ten `test_transform2` cases pass.
 
 ## PROJ strings
 
@@ -662,7 +692,9 @@ imports no Arrow library.
    `hammer`).
 3. **`install_as_pyproj()` and the GeoPandas runner**, gated on GeoPandas'
    suite: every test that passes with pyproj is in the pass list or in
-   `known.txt` with a reason.
+   `known.txt` with a reason. **Done** (2026-11-01): 1,823 of the 1,827
+   tests that pass with pyproj pass with the shim
+   ([the results](#geopandas)).
 4. **The objects table and the sub-objects' constructors**, with
    `query_geodetic_crs_from_datum`, gated on pyproj over every EPSG
    object.

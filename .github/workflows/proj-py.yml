@@ -106,3 +106,9 @@ jobs:
       - name: pyproj's own suite
         if: runner.os == 'Linux'
         run: crates/xeibe-proj-py/tests/pyproj_suite/run.py --wheel target/proj-py-wheels/xeibe_proj-*.whl
+
+      # Fails when a test on pass-list.txt no longer passes, or one that
+      # passes with pyproj fails with the shim and isn't in known.txt.
+      - name: GeoPandas' suite through install_as_pyproj()
+        if: runner.os == 'Linux'
+        run: crates/xeibe-proj-py/tests/geopandas_suite/run.py --wheel target/proj-py-wheels/xeibe_proj-*.whl
