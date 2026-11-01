@@ -554,14 +554,15 @@ const DATUMS: &[(&str, &str, u32, &str, u32, f64, f64)] = &[
 /// The conversion code of each EPSG projected CRS.
 fn conversion_codes() -> &'static HashMap<u32, u32> {
     static CODES: OnceLock<HashMap<u32, u32>> = OnceLock::new();
+    // Only `projections`: serde skips the rest of the document without
+    // building it.
+    #[derive(serde::Deserialize)]
+    struct Doc {
+        projections: Vec<(u32, u32)>,
+    }
     CODES.get_or_init(|| {
-        let v: Value = serde_json::from_str(xeibe_crs::operations_json()).expect("operations JSON");
-        v["projections"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|p| Some((p[0].as_u64()? as u32, p[1].as_u64()? as u32)))
-            .collect()
+        let doc: Doc = serde_json::from_str(xeibe_crs::operations_json()).expect("operations JSON");
+        doc.projections.into_iter().collect()
     })
 }
 

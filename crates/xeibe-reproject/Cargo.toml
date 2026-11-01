@@ -23,6 +23,7 @@ esri = ["dep:xeibe-esri"]
 xeibe-crs.workspace = true
 xeibe-esri = { workspace = true, optional = true }
 flate2.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 

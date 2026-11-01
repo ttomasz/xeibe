@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use serde_json::Value;
+use serde::Deserialize;
 
 use crate::extent::Extent;
 
@@ -185,10 +185,129 @@ pub(crate) struct Registry {
 pub(crate) fn registry() -> &'static Registry {
     static REGISTRY: OnceLock<Registry> = OnceLock::new();
     REGISTRY.get_or_init(|| {
-        let doc: Value = serde_json::from_str(xeibe_crs::operations_json())
+        let doc: Doc = serde_json::from_str(xeibe_crs::operations_json())
             .expect("xeibe-crs ships valid operations JSON");
-        Registry::from_json(&doc)
+        Registry::from_doc(doc)
     })
+}
+
+// The parts of `xeibe_crs::operations_json` the registry reads, as
+// `scripts/gen_crs_tables.py` writes them; serde skips the rest. Read straight
+// into these rather than through a `serde_json::Value` tree, which took most
+// of the registry's start-up time to build and free. Rows other than
+// operations are arrays, which serde reads into a struct in field order.
+
+#[derive(Deserialize)]
+struct Doc {
+    operations: Vec<OperationRow>,
+    geodetic_crs: Vec<GeodeticRow>,
+    vertical_crs: Vec<VerticalRow>,
+    datums: Vec<DatumRow>,
+    extents: Vec<ExtentRow>,
+    crs_extent: Vec<(u32, Vec<u32>)>,
+}
+
+#[derive(Deserialize)]
+struct OperationRow {
+    code: u32,
+    name: String,
+    table: String,
+    method: Option<u32>,
+    src: Option<u32>,
+    dst: Option<u32>,
+    accuracy: Option<f64>,
+    scope: Option<String>,
+    #[serde(default)]
+    variant: u32,
+    #[serde(default)]
+    deprecated: bool,
+    #[serde(default)]
+    replaced: bool,
+    #[serde(default)]
+    emulates: Vec<u32>,
+    #[serde(default)]
+    extents: Vec<u32>,
+    #[serde(default)]
+    params: Vec<(u32, ParamValue)>,
+    #[serde(default)]
+    steps: Vec<u32>,
+    #[serde(default)]
+    superseded_by: Vec<(u32, bool, String)>,
+}
+
+/// A number, a grid file name, or null for a value EPSG leaves out.
+impl<'de> Deserialize<'de> for ParamValue {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Visitor;
+        impl serde::de::Visitor<'_> for Visitor {
+            type Value = ParamValue;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a number, a file name or null")
+            }
+            fn visit_f64<E>(self, v: f64) -> Result<ParamValue, E> {
+                Ok(ParamValue::Number(v))
+            }
+            fn visit_u64<E>(self, v: u64) -> Result<ParamValue, E> {
+                Ok(ParamValue::Number(v as f64))
+            }
+            fn visit_i64<E>(self, v: i64) -> Result<ParamValue, E> {
+                Ok(ParamValue::Number(v as f64))
+            }
+            fn visit_str<E>(self, v: &str) -> Result<ParamValue, E> {
+                Ok(ParamValue::File(v.to_owned()))
+            }
+            fn visit_string<E>(self, v: String) -> Result<ParamValue, E> {
+                Ok(ParamValue::File(v))
+            }
+            fn visit_unit<E>(self) -> Result<ParamValue, E> {
+                Ok(ParamValue::Missing)
+            }
+        }
+        deserializer.deserialize_any(Visitor)
+    }
+}
+
+#[derive(Deserialize)]
+struct GeodeticRow {
+    code: u32,
+    name: String,
+    kind: String,
+    datum: u32,
+    deprecated: u8,
+}
+
+#[derive(Deserialize)]
+struct VerticalRow {
+    code: u32,
+    name: String,
+    datum: u32,
+    deprecated: u8,
+}
+
+#[derive(Deserialize)]
+struct DatumRow {
+    code: u32,
+    name: String,
+    publication_date: Option<String>,
+    ellipsoid: Option<u32>,
+    prime_meridian: Option<u32>,
+    members: Option<Vec<u32>>,
+    deprecated: u8,
+    dynamic: bool,
+    ensemble_accuracy: Option<f64>,
+    anchor_epoch: Option<f64>,
+    vertical: bool,
+    published: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ExtentRow {
+    code: u32,
+    name: Option<String>,
+    south: Option<f64>,
+    west: Option<f64>,
+    north: Option<f64>,
+    east: Option<f64>,
 }
 
 fn table(name: &str) -> Table {
@@ -201,64 +320,34 @@ fn table(name: &str) -> Table {
     }
 }
 
-fn code(v: &Value) -> Option<u32> {
-    v.as_u64().and_then(|c| u32::try_from(c).ok())
-}
-
-fn codes(v: &Value) -> Vec<u32> {
-    v.as_array()
-        .map(|a| a.iter().filter_map(code).collect())
-        .unwrap_or_default()
-}
-
 impl Registry {
-    fn from_json(doc: &Value) -> Registry {
+    fn from_doc(doc: Doc) -> Registry {
         let mut ops = HashMap::new();
         let mut by_crs: HashMap<u32, Vec<u32>> = HashMap::new();
-        for o in doc["operations"].as_array().into_iter().flatten() {
-            let params = o["params"]
-                .as_array()
+        for o in doc.operations {
+            let superseded_by = o
+                .superseded_by
                 .into_iter()
-                .flatten()
-                .map(|p| {
-                    let value = match &p[1] {
-                        Value::Number(n) => ParamValue::Number(n.as_f64().unwrap_or(f64::NAN)),
-                        Value::String(s) => ParamValue::File(s.clone()),
-                        _ => ParamValue::Missing,
-                    };
-                    (code(&p[0]).unwrap_or(0), value)
-                })
-                .collect();
-            let superseded_by = o["superseded_by"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|s| {
-                    (
-                        code(&s[0]).unwrap_or(0),
-                        s[1].as_bool().unwrap_or(false),
-                        table(s[2].as_str().unwrap_or("")),
-                    )
-                })
+                .map(|(code, same, name)| (code, same, table(&name)))
                 .collect();
             let op = Operation {
-                code: code(&o["code"]).unwrap_or(0),
-                name: o["name"].as_str().unwrap_or("").to_owned(),
-                table: table(o["table"].as_str().unwrap_or("")),
-                method: code(&o["method"]).unwrap_or(0),
-                src: code(&o["src"]),
-                dst: code(&o["dst"]),
+                code: o.code,
+                name: o.name,
+                table: table(&o.table),
+                method: o.method.unwrap_or(0),
+                src: o.src,
+                dst: o.dst,
                 // EPSG's 999 means unknown; PROJ's factory reads it so.
-                accuracy: o["accuracy"].as_f64().filter(|&a| a != 999.0),
-                scope: o["scope"].as_str().map(str::to_owned),
-                variant: code(&o["variant"]).unwrap_or(0),
-                deprecated: o["deprecated"].as_bool().unwrap_or(false),
-                replaced: o["replaced"].as_bool().unwrap_or(false),
-                emulates: codes(&o["emulates"]),
-                extents: codes(&o["extents"]),
+                accuracy: o.accuracy.filter(|&a| a != 999.0),
+                scope: o.scope,
+                variant: o.variant,
+                deprecated: o.deprecated,
+                replaced: o.replaced,
+                emulates: o.emulates,
+                extents: o.extents,
                 area: None,
-                params,
-                steps: codes(&o["steps"]),
+                params: o.params,
+                steps: o.steps,
                 superseded_by,
             };
             for crs in [op.src, op.dst].into_iter().flatten() {
@@ -272,18 +361,18 @@ impl Registry {
 
         let mut geodetic = HashMap::new();
         let mut crs_by_datum: HashMap<u32, Vec<u32>> = HashMap::new();
-        for g in doc["geodetic_crs"].as_array().into_iter().flatten() {
-            let kind = match g[2].as_str() {
-                Some("geographic 3D") => GeodeticKind::Geographic3d,
-                Some("geocentric") => GeodeticKind::Geocentric,
+        for g in doc.geodetic_crs {
+            let kind = match g.kind.as_str() {
+                "geographic 3D" => GeodeticKind::Geographic3d,
+                "geocentric" => GeodeticKind::Geocentric,
                 _ => GeodeticKind::Geographic2d,
             };
             let crs = GeodeticCrs {
-                code: code(&g[0]).unwrap_or(0),
-                name: g[1].as_str().unwrap_or("").to_owned(),
+                code: g.code,
+                name: g.name,
                 kind,
-                datum: code(&g[3]).unwrap_or(0),
-                deprecated: g[4].as_u64() == Some(1) || g[4].as_bool() == Some(true),
+                datum: g.datum,
+                deprecated: g.deprecated == 1,
             };
             if !crs.deprecated {
                 crs_by_datum.entry(crs.datum).or_default().push(crs.code);
@@ -296,12 +385,12 @@ impl Registry {
 
         let mut vertical = HashMap::new();
         let mut vertical_by_datum: HashMap<u32, Vec<u32>> = HashMap::new();
-        for v in doc["vertical_crs"].as_array().into_iter().flatten() {
+        for v in doc.vertical_crs {
             let crs = VerticalCrs {
-                code: code(&v[0]).unwrap_or(0),
-                name: v[1].as_str().unwrap_or("").to_owned(),
-                datum: code(&v[2]).unwrap_or(0),
-                deprecated: v[3].as_u64() == Some(1) || v[3].as_bool() == Some(true),
+                code: v.code,
+                name: v.name,
+                datum: v.datum,
+                deprecated: v.deprecated == 1,
             };
             if !crs.deprecated {
                 vertical_by_datum
@@ -316,50 +405,46 @@ impl Registry {
         }
 
         let mut datums = HashMap::new();
-        for d in doc["datums"].as_array().into_iter().flatten() {
+        for d in doc.datums {
             let datum = Datum {
-                code: code(&d[0]).unwrap_or(0),
-                name: d[1].as_str().unwrap_or("").to_owned(),
-                publication_date: d[2].as_str().map(str::to_owned),
-                ellipsoid: code(&d[3]).unwrap_or(0),
-                prime_meridian: code(&d[4]).unwrap_or(0),
-                members: d[5].as_array().map(|_| codes(&d[5])),
-                deprecated: d[6].as_u64() == Some(1) || d[6].as_bool() == Some(true),
-                dynamic: d[7].as_bool().unwrap_or(false),
-                ensemble_accuracy: d[8].as_f64(),
-                anchor_epoch: d[9].as_f64(),
-                vertical: d[10].as_bool().unwrap_or(false),
-                published: d[11].as_str().map(str::to_owned),
+                code: d.code,
+                name: d.name,
+                publication_date: d.publication_date,
+                ellipsoid: d.ellipsoid.unwrap_or(0),
+                prime_meridian: d.prime_meridian.unwrap_or(0),
+                members: d.members,
+                deprecated: d.deprecated == 1,
+                dynamic: d.dynamic,
+                ensemble_accuracy: d.ensemble_accuracy,
+                anchor_epoch: d.anchor_epoch,
+                vertical: d.vertical,
+                published: d.published,
             };
             datums.insert(datum.code, datum);
         }
 
         let mut extents = HashMap::new();
-        for x in doc["extents"].as_array().into_iter().flatten() {
+        for x in doc.extents {
             let extent = Extent::new(
-                x[1].as_str().map(str::to_owned),
-                x[3].as_f64().unwrap_or(-180.0),
-                x[2].as_f64().unwrap_or(-90.0),
-                x[5].as_f64().unwrap_or(180.0),
-                x[4].as_f64().unwrap_or(90.0),
+                x.name,
+                x.west.unwrap_or(-180.0),
+                x.south.unwrap_or(-90.0),
+                x.east.unwrap_or(180.0),
+                x.north.unwrap_or(90.0),
             );
-            if let Some(code) = code(&x[0]) {
-                extents.insert(code, extent);
-            }
+            extents.insert(x.code, extent);
         }
         for op in ops.values_mut() {
             let areas: Vec<&Extent> = op.extents.iter().filter_map(|x| extents.get(x)).collect();
             op.area = Extent::covering(&areas);
         }
 
-        let crs_extent = doc["crs_extent"]
-            .as_array()
+        let crs_extent = doc
+            .crs_extent
             .into_iter()
-            .flatten()
-            .filter_map(|p| {
-                let areas: Vec<&Extent> =
-                    codes(&p[1]).iter().filter_map(|x| extents.get(x)).collect();
-                Some((code(&p[0])?, Extent::covering(&areas)?))
+            .filter_map(|(code, codes)| {
+                let areas: Vec<&Extent> = codes.iter().filter_map(|x| extents.get(x)).collect();
+                Some((code, Extent::covering(&areas)?))
             })
             .collect();
 
