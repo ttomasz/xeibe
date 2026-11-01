@@ -798,6 +798,33 @@ fn vertical_grid_selection_matches_proj() {
     fail_on(&failures);
 }
 
+/// "NAD83 to WGS 84 (1)" is a geocentric translation of zeros between
+/// GRS 1980 and WGS 84, which PROJ's pipeline leaves out when nothing
+/// geocentric is next to it: NAD83 / UTM zone 18N to WGS 84 is the inverse
+/// projection only. Going through geocentric coordinates would move the
+/// latitude by 0.1 mm here, which GeoPandas' round trip in
+/// `test_transform2` notices.
+#[test]
+fn a_zero_helmert_alone_is_no_step() {
+    // PROJ 9.8.1's results, longitude first.
+    let t = Transform::new(
+        &Crs::from_epsg(26918).unwrap(),
+        &Crs::from_epsg(4326).unwrap(),
+        AxisOrder::EastFirst,
+    )
+    .unwrap();
+    let (lon, lat, _) = t.convert(-1683723.0, 6689139.0, None).unwrap();
+    assert!((lon + 110.13999006451226).abs() < 1e-11, "{lon}");
+    assert!((lat - 55.13500107016813).abs() < 1e-11, "{lat}");
+    let (x, y, _) = t
+        .inverse()
+        .unwrap()
+        .convert(-110.1399901, 55.1350011, None)
+        .unwrap();
+    assert!((x + 1683723.000316157).abs() < 1e-6, "{x}");
+    assert!((y - 6689139.004242781).abs() < 1e-6, "{y}");
+}
+
 /// `scripts/gen_transformation_vectors.py --all` first.
 #[test]
 #[ignore = "needs target/reprojection/operations.jsonl"]

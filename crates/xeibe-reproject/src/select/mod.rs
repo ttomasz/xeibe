@@ -46,6 +46,9 @@ enum Exec {
         to: Box<Crs>,
         inverse: bool,
         height: Height,
+        /// A Helmert of zeros PROJ's pipeline has no step for
+        /// ([`no_step_alone`]): the coordinates only change CRS.
+        skip: bool,
     },
 }
 
@@ -808,6 +811,30 @@ impl Candidates {
         self.run_with(src, dst, internal).map(|(out, _)| out)
     }
 
+    /// Runs the Helmert of zeros at the start or the end of each candidate
+    /// that [`no_step_alone`] left out, for a route with a Helmert step of
+    /// its own next to that end (a Bound CRS's): PROJ's pipeline then keeps
+    /// its geocentric round trip.
+    pub(crate) fn keep_zero_helmert_at(&mut self, start: bool, end: bool) {
+        // Past changes between geographic CRSs on one datum, no PROJ step.
+        fn keep<'a>(mut steps: impl Iterator<Item = &'a mut Exec>) {
+            let edge = steps.find(
+                |e| !matches!(e, Exec::Convert(to) if matches!(to.kind, Kind::Geographic { .. })),
+            );
+            if let Some(Exec::Apply { skip, .. }) = edge {
+                *skip = false;
+            }
+        }
+        for p in &mut self.list {
+            if start {
+                keep(p.steps.iter_mut());
+            }
+            if end {
+                keep(p.steps.iter_mut().rev());
+            }
+        }
+    }
+
     /// Name of the candidate a coordinate goes through.
     pub(crate) fn used(&self, src: &Crs, dst: &Crs, internal: [f64; 3]) -> Option<&str> {
         self.run_with(src, dst, internal)
@@ -1069,7 +1096,9 @@ fn executable(c: &Candidate, builder: &mut CrsBuilder) -> Result<Vec<Exec>, Erro
     let mut steps = Vec::new();
     let mut flat = Vec::new();
     flatten(&c.steps, &mut flat);
-    for f in cancel_inverse_pairs(flat) {
+    let flat = cancel_inverse_pairs(flat);
+    let alone = no_step_alone(&flat);
+    for (f, alone) in flat.into_iter().zip(alone) {
         let s = match f {
             Flat::Step(s) => s,
             Flat::Save => {
@@ -1102,12 +1131,18 @@ fn executable(c: &Candidate, builder: &mut CrsBuilder) -> Result<Vec<Exec>, Erro
                 } else {
                     Height::Changed
                 };
+                let skip = alone
+                    && operation::helmert::no_step_alone(op, &from, &to)
+                    && [&from, &to]
+                        .iter()
+                        .all(|c| matches!(c.kind, Kind::Geographic { .. }));
                 steps.push(Exec::Apply {
                     method,
                     from: Box::new(from),
                     to: Box::new(to),
                     inverse: *inverse,
                     height,
+                    skip,
                 });
             }
             SingleKind::Projection { .. }
@@ -1121,6 +1156,40 @@ fn executable(c: &Candidate, builder: &mut CrsBuilder) -> Result<Vec<Exec>, Erro
         }
     }
     Ok(steps)
+}
+
+/// For each step, whether no geocentric step is next to it (past changes
+/// between geographic CRSs on one datum, which PROJ writes as no step). A
+/// Helmert of zeros between GRS 1980 and WGS 84 is then no step at all in
+/// PROJ's pipeline (`operation::helmert::no_step_alone`); next to another
+/// Helmert its geocentric round trip cancels against that one's instead.
+fn no_step_alone(flat: &[Flat]) -> Vec<bool> {
+    let r = registry();
+    let geographic = |c: CrsRef| {
+        matches!(
+            r.geodetic.get(&c.code()).map(|g| g.kind),
+            Some(crate::registry::GeodeticKind::Geographic2d)
+                | Some(crate::registry::GeodeticKind::Geographic3d)
+        )
+    };
+    let skipped = |f: &Flat| matches!(f, Flat::Step(s) if s.kind == SingleKind::SameDatum && geographic(s.src) && geographic(s.dst));
+    let geocentric = |f: &Flat| match f {
+        Flat::Step(s) => match s.kind {
+            SingleKind::Registry { code, .. } => {
+                operation::helmert::is_helmert(r.ops[&code].method)
+            }
+            SingleKind::SameDatum => !(geographic(s.src) && geographic(s.dst)),
+            _ => false,
+        },
+        Flat::Save | Flat::Restore => false,
+    };
+    (0..flat.len())
+        .map(|i| {
+            let before = flat[..i].iter().rev().find(|f| !skipped(f));
+            let after = flat[i + 1..].iter().find(|f| !skipped(f));
+            !before.is_some_and(geocentric) && !after.is_some_and(geocentric)
+        })
+        .collect()
 }
 
 /// Coordinates of one CRS to another on the same datum, or, after a pair of
@@ -1141,6 +1210,8 @@ fn next_keeps_height(steps: &[Exec], i: usize, ellipsoidal: bool) -> bool {
                     return false;
                 }
             }
+            // Between geographic CRSs, like a conversion.
+            Exec::Apply { skip: true, .. } => {}
             Exec::Apply {
                 from,
                 to,
@@ -1198,11 +1269,23 @@ fn run(
                 }
             }
             Exec::Apply {
+                from,
+                to,
+                inverse,
+                skip: true,
+                ..
+            } => {
+                let output = if *inverse { from } else { to };
+                c = convert(cur, output, c)?;
+                cur = output;
+            }
+            Exec::Apply {
                 method,
                 from,
                 to,
                 inverse,
                 height,
+                skip: false,
             } => {
                 let (input, output) = if *inverse { (to, from) } else { (from, to) };
                 let keeps_height = height.keeps(input, ellipsoidal);

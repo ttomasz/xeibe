@@ -77,6 +77,8 @@ struct Leg {
     /// pipeline leaves out when nothing geocentric is next to it
     /// (`operation::helmert::no_step_alone`).
     no_step_alone: bool,
+    /// Whether it is a Helmert step, geocentric in PROJ's pipeline.
+    helmert: bool,
 }
 
 impl Leg {
@@ -107,6 +109,7 @@ impl Leg {
             method,
             name,
             no_step_alone: crate::operation::helmert::no_step_alone(&bound.operation, &via, hub),
+            helmert: crate::operation::helmert::is_helmert(bound.operation.method),
         })
     }
 
@@ -288,7 +291,8 @@ impl Transform {
             let from = src.bound.as_ref().map_or(src_base, |b| b.hub.clone());
             let to = dst.bound.as_ref().map_or(dst_base, |b| b.hub.clone());
             let middle =
-                Transform::with_selection(&from, &to, order, grids.clone(), selection.clone())?;
+                Transform::with_selection(&from, &to, order, grids.clone(), selection.clone())?
+                    .next_to_legs(&first, &last);
             let join = |middle: Option<&str>| {
                 let first = first.as_ref().map(|l| l.name.clone());
                 let last = last.as_ref().map(|l| format!("Inverse of {}", l.name));
@@ -464,7 +468,7 @@ impl Transform {
     pub fn with_operation_index(&self, index: usize) -> Option<Result<Transform, Error>> {
         if let Plan::Bound(b) = &self.plan {
             let middle = match b.middle.with_operation_index(index)? {
-                Ok(m) => m,
+                Ok(m) => m.next_to_legs(&b.first, &b.last),
                 Err(e) => return Some(Err(e)),
             };
             let names = vec![b.names.get(index)?.clone()];
@@ -562,6 +566,20 @@ impl Transform {
         // A 2D target has no height of its own: hand back what came in.
         let z = z.map(|z| if self.dst.axes.dimension() == 3 { h } else { z });
         Ok((x, y, z))
+    }
+
+    /// The transform between a Bound CRS's legs: a Helmert of zeros next
+    /// to a leg that is a Helmert step too runs (see
+    /// `select::Candidates::keep_zero_helmert_at`).
+    fn next_to_legs(mut self, first: &Option<Leg>, last: &Option<Leg>) -> Transform {
+        let helmert = |leg: &Option<Leg>| leg.as_ref().is_some_and(|l| l.helmert);
+        let (start, end) = (helmert(first), helmert(last));
+        if let Plan::Operations(c) | Plan::Via(_, c) | Plan::Only(c) = &mut self.plan
+            && (start || end)
+        {
+            Arc::make_mut(c).keep_zero_helmert_at(start, end);
+        }
+        self
     }
 
     /// Internal coordinates of the source CRS to the target's.

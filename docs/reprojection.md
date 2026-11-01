@@ -338,7 +338,12 @@ Details that turned out to matter, each found by the differential:
 - **PROJ's pipeline optimiser.** Between consecutive geog2D-domain operations
   the transformed height carries over (PROJ drops the `pop`/`push` pair), and a
   Helmert followed by its own inverse cancels exactly. Run step by step, both
-  leave millimetres.
+  leave millimetres. A Helmert of zeros between GRS 1980 and WGS 84 ("NAD83
+  to WGS 84 (1)", "ETRS89 to WGS 84 (1)") is no step at all when nothing
+  geocentric is next to it, so the coordinates keep their latitude; next to
+  another Helmert, a Bound CRS's included, its geocentric round trip cancels
+  against that one's, and running it gives the same. Through geocentric
+  coordinates alone it would change the ellipsoid, 0.1 mm.
 - **What PROJ can run.** Time-specific Helmert methods (1065, 1066) have no
   PROJ pipeline and never compete; time-dependent ones run at their reference
   epoch when coordinates have no epoch, as in PROJ.

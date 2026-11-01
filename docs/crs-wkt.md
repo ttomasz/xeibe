@@ -414,7 +414,8 @@ Two of PROJ's pipeline optimisations change results, and are followed:
 between two geog2D-domain Helmert steps (two Bound CRSs on one hub) the
 height the first produces flows into the second; and a Helmert of zeros
 between GRS 1980 and WGS 84 standing alone (a zero `TOWGS84` on ETRS89 to
-WGS 84) is no step at all, where next to another geocentric step it isn't.
+WGS 84) is no step at all, where next to another geocentric step it isn't
+(as on EPSG's routes, [reprojection.md](reprojection.md)).
 
 ## Writing
 
