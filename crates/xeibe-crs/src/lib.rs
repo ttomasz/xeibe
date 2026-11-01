@@ -30,7 +30,7 @@
 //! No PROJ, GDAL or network access is involved, at build time or at run time.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 
 // Generated data: bbox longitudes such as 3.14 are not π.
 mod aliases;
@@ -345,11 +345,12 @@ fn header() -> &'static Header {
     })
 }
 
-type ShardCache = Mutex<HashMap<usize, &'static [String]>>;
-
-fn shard_cache() -> &'static ShardCache {
-    static CACHE: OnceLock<ShardCache> = OnceLock::new();
-    CACHE.get_or_init(Default::default)
+/// One slot per shard, each filled on first use. A cached shard costs an
+/// atomic load to read, so threads don't contend, and decompressing one shard
+/// doesn't hold up readers of the others.
+fn shards() -> &'static [OnceLock<&'static [String]>] {
+    static SHARDS: OnceLock<Box<[OnceLock<&'static [String]>]>> = OnceLock::new();
+    SHARDS.get_or_init(|| (0..header().shards).map(|_| OnceLock::new()).collect())
 }
 
 /// PROJJSON for one EPSG code, as a JSON string, with the CRS's areas of
@@ -362,30 +363,22 @@ fn shard_cache() -> &'static ShardCache {
 pub fn projjson(code: u32) -> Option<&'static str> {
     let header = header();
     let (shard, line) = header.find(code)?;
-
-    let mut cache = shard_cache()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let lines = match cache.get(&shard) {
-        Some(lines) => *lines,
-        None => {
-            let (offset, compressed_len, raw_len) = header.shard(shard);
-            let start = header.blob_start() + offset;
-            let frame = &PROJJSON_BLOB[start..start + compressed_len];
-            let raw = zstd::bulk::decompress(frame, raw_len).ok()?;
-            let text = String::from_utf8(raw).ok()?;
-            // Leaked deliberately: shards are immutable, bounded (one per 64
-            // CRSs) and shared, so a `&'static` beats handing out clones.
-            let lines: &'static [String] = Box::leak(
-                text.lines()
-                    .map(with_usages)
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
-            );
-            cache.insert(shard, lines);
-            lines
-        }
-    };
+    let lines = shards()[shard].get_or_init(|| {
+        let (offset, compressed_len, raw_len) = header.shard(shard);
+        let start = header.blob_start() + offset;
+        let frame = &PROJJSON_BLOB[start..start + compressed_len];
+        let raw = zstd::bulk::decompress(frame, raw_len)
+            .expect("data/projjson.bin holds valid zstd frames");
+        let text = String::from_utf8(raw).expect("data/projjson.bin is UTF-8");
+        // Leaked deliberately: shards are immutable, bounded (one per 64
+        // CRSs) and shared, so a `&'static` beats handing out clones.
+        Box::leak(
+            text.lines()
+                .map(with_usages)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        )
+    });
     lines.get(line).map(String::as_str)
 }
 
