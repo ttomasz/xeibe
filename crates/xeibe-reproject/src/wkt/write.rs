@@ -102,7 +102,7 @@ fn write_node(node: &Node, pretty: bool, depth: usize, out: &mut String) {
                 out.push_str(&s.replace('"', "\"\""));
                 out.push('"');
             }
-            Arg::Number(v) => out.push_str(&number(*v)),
+            Arg::Number(v) => push_number(out, *v),
             Arg::Word(w) => out.push_str(w),
         }
         first = false;
@@ -110,29 +110,23 @@ fn write_node(node: &Node, pretty: bool, depth: usize, out: &mut String) {
     out.push(']');
 }
 
-/// C's `%.15g`, as PROJ formats numbers: 15 significant digits, trailing
-/// zeros dropped, an exponent below 1e-4 and from 1e15.
+/// PROJ's `WKTFormatter::add(double)`: `internal::toString`, with `E`
+/// for the exponent and `0` for either zero.
 pub(crate) fn number(v: f64) -> String {
-    if v == 0.0 {
-        return "0".into();
-    }
-    let sci = format!("{v:.14e}");
-    let (mantissa, exp) = sci.split_once('e').unwrap_or((&sci, "0"));
-    let exp: i32 = exp.parse().unwrap_or(0);
-    if !(-5..15).contains(&exp) {
-        let mantissa = trim_zeros(mantissa);
-        let sign = if exp < 0 { '-' } else { '+' };
-        return format!("{mantissa}e{sign}{:02}", exp.abs());
-    }
-    let decimals = (14 - exp).max(0) as usize;
-    trim_zeros(&format!("{v:.decimals$}")).to_owned()
+    let mut out = String::new();
+    push_number(&mut out, v);
+    out
 }
 
-fn trim_zeros(s: &str) -> &str {
-    if s.contains('.') {
-        s.trim_end_matches('0').trim_end_matches('.')
-    } else {
-        s
+fn push_number(out: &mut String, v: f64) {
+    if v == 0.0 {
+        out.push('0');
+        return;
+    }
+    let start = out.len();
+    crate::number::write(out, v);
+    if let Some(e) = out[start..].find('e') {
+        out.replace_range(start + e..start + e + 1, "E");
     }
 }
 
@@ -972,14 +966,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn numbers_as_percent_15g() {
+    fn numbers_as_proj_writes_them() {
         assert_eq!(number(6378137.0), "6378137");
         assert_eq!(number(0.017_453_292_519_943_295), "0.0174532925199433");
         assert_eq!(number(40.166_666_666_666_67), "40.1666666666667");
         assert_eq!(number(-5_300_000.0), "-5300000");
-        assert_eq!(number(1.193845912e-7), "1.193845912e-07");
+        assert_eq!(number(1.193845912e-7), "1.193845912E-07");
+        assert_eq!(number(1e-5), "1E-05");
+        assert_eq!(number(2.99999999999999), "3");
         assert_eq!(number(0.0001), "0.0001");
-        assert_eq!(number(1e15), "1e+15");
+        assert_eq!(number(1e15), "1E+15");
         assert_eq!(number(2010.0), "2010");
         assert_eq!(number(-0.0), "0");
     }

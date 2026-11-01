@@ -596,7 +596,7 @@ fn number(v: f64) -> String {
     } else {
         v
     };
-    super::to_string(v)
+    crate::number::to_string(v)
 }
 
 fn unit_name(factor: f64) -> Option<&'static str> {

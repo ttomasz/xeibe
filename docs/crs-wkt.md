@@ -440,7 +440,10 @@ From a PROJJSON value:
   - Vertical Perspective's false easting and northing, and Equidistant
     Cylindrical's latitude of natural origin, only when not zero;
   - the PROJJSON's usages and remarks for the outermost CRS only;
-  - numbers as `%.15g`, and an ensemble's accuracy as its text (`2.0`).
+  - numbers as PROJ's `internal::toString` writes them, `%.15g` or
+    `%.14g` where that shows a run of ten nines (`3`, not
+    `2.99999999999999`), with `E` for the exponent (`1E-06`), and an
+    ensemble's accuracy as its text (`2.0`).
 - **WKT1_GDAL** is the WKT1 table in reverse. Web Mercator gets GDAL's
   `PROJ4` extension back, and Geostationary Satellite (Sweep X), which
   WKT1 has no name for, is written as Sweep Y's `Geostationary_Satellite`

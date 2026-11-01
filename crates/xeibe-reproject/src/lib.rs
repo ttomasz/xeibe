@@ -54,6 +54,7 @@ mod grid;
 mod identify;
 mod methods;
 mod name;
+mod number;
 mod operation;
 pub mod proj_string;
 pub mod proj_tables;
