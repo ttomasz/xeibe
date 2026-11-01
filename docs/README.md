@@ -51,6 +51,7 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 | [pyproj-phase2.md](pyproj-phase2.md) | The rest of `xeibe_proj`'s phase 2: the full geodesic port and `Geod`, `Proj`, `to_2d`/`to_3d`, units, selection options, operation JSON/WKT, grid downloads (designed) |
 | [pyproj-phase3.md](pyproj-phase3.md) | `xeibe_proj`'s phase 3: `install_as_pyproj()` and GeoPandas, PROJ strings, builders, CF, GeoArrow, Pyodide (designed) |
 | [web.md](web.md) | Browser page on WebAssembly: layout, map views, inputs, network limits, building it (first version built) |
+| [web-reproject.md](web-reproject.md) | The page split into a landing page, the GML page and a reproject page: two wasm builds, coordinate input, operation metadata, why an operation is chosen (proposed) |
 | [support-matrix.md](support-matrix.md) | Supported, planned and out-of-scope GML/WFS features (progress tracker) |
 | [testing.md](testing.md) | How the test suites are organized: synthetic tests, the samples, the GDAL reference |
 | [releasing.md](releasing.md) | Versions, tags and the release workflow: crates.io, CLI binaries, PyPI, licences in the artifacts |
