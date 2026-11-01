@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["zstandard>=0.23", "pyproj==3.8.0"]
+# dependencies = ["lz4>=4", "pyproj==3.8.0"]
 # ///
 """Generate datum-transformation test vectors for `crates/xeibe-reproject`
 (`docs/reprojection.md`, levels 2 and 3), with PROJ as the oracle.
@@ -54,7 +54,7 @@ import warnings
 from pathlib import Path
 
 import pyproj
-import zstandard
+import lz4.block
 from pyproj.transformer import TransformerGroup
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -122,7 +122,7 @@ def load_registry() -> dict:
     blob = OPERATIONS_BIN.read_bytes()
     assert blob[:4] == b"XOP1"
     raw_len = struct.unpack("<I", blob[4:8])[0]
-    return json.loads(zstandard.ZstdDecompressor().decompress(blob[8:], max_output_size=raw_len))
+    return json.loads(lz4.block.decompress(blob[8:], uncompressed_size=raw_len))
 
 
 def clean(values) -> list[float] | None:

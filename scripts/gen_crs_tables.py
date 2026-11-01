@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["zstandard>=0.23"]
+# dependencies = ["lz4==4.4.5"]
 # ///
 """Generate `crates/xeibe-crs` from an official EPSG Dataset release.
 
@@ -22,10 +22,10 @@ Outputs (all committed):
     crates/xeibe-crs/src/aliases.rs    EPSG's aliases that name one CRS, for srsName lookup
     crates/xeibe-crs/src/deprecations.rs  EPSG's replacements of deprecated CRSs
     crates/xeibe-crs/src/units.rs      EPSG's units of measure with their factors
-    crates/xeibe-crs/data/projjson.bin zstd-sharded PROJJSON, addressed by code
+    crates/xeibe-crs/data/projjson.bin LZ4-sharded PROJJSON, addressed by code
     crates/xeibe-crs/data/operations.bin coordinate operations, geodetic CRSs, datums
                                        and areas of use, as PROJ imports them (one
-                                       zstd frame of JSON)
+                                       LZ4 block of JSON)
     crates/xeibe-crs/EPSG-NOTICE.md    provenance and EPSG terms (regenerated)
 """
 
@@ -43,7 +43,7 @@ from collections import Counter, defaultdict
 from decimal import Decimal
 from pathlib import Path
 
-import zstandard as zstd
+import lz4.block
 
 REPO = Path(__file__).resolve().parent.parent
 CRATE = REPO / "crates" / "xeibe-crs"
@@ -626,26 +626,34 @@ def datum_and_method(doc: dict) -> tuple[int | None, int | None]:
 # Emitting
 # --------------------------------------------------------------------------
 
-SHARD = 64  # CRSs per zstd frame: ~115 KiB decompressed, ~700 KiB total
+SHARD = 64  # CRSs per LZ4 block: ~100 KiB decompressed, ~640 KiB in all
 PROJJSON_MAGIC = b"XPJ1"
 
 
-def pack_projjson(docs: dict[int, dict]) -> bytes:
-    """A flat container: a code index, then zstd frames of newline-joined docs.
+def lz4_block(raw: bytes) -> bytes:
+    """One LZ4 block (no frame, no stored size: the containers record the
+    raw length). On first use LZ4 decodes faster than zstd did (1.2 ms
+    rather than 1.9 ms for operations.bin) and is pure Rust on the reading
+    side, for blobs about half as big again; HC's top level costs nothing at
+    decode time. The bytes depend on the liblz4 the pinned `lz4` bundles."""
+    return lz4.block.compress(raw, mode="high_compression", compression=12, store_size=False)
 
-    Looking one CRS up decompresses a single frame, not the whole 14 MB.
+
+def pack_projjson(docs: dict[int, dict]) -> bytes:
+    """A flat container: a code index, then LZ4 blocks of newline-joined docs.
+
+    Looking one CRS up decompresses a single block, not the whole 14 MB.
     """
     codes = sorted(docs)
-    compressor = zstd.ZstdCompressor(level=19)
     shards, index, blob = [], [], bytearray()
     for start in range(0, len(codes), SHARD):
         group = codes[start : start + SHARD]
         raw = b"\n".join(json.dumps(docs[c], separators=(",", ":"), ensure_ascii=False).encode() for c in group)
-        frame = compressor.compress(raw)
-        shards.append((len(blob), len(frame), len(raw)))
+        block = lz4_block(raw)
+        shards.append((len(blob), len(block), len(raw)))
         for line, c in enumerate(group):
             index.append((c, start // SHARD, line))
-        blob += frame
+        blob += block
 
     out = bytearray()
     out += PROJJSON_MAGIC
@@ -1279,7 +1287,7 @@ def pack_usages(e: Epsg, crs_codes: set[int]) -> bytes:
     them out ("scope", "area", "bbox", or "usages"), and EPSG's long area
     descriptions repeated per CRS would cost three times as much.
 
-    A magic, the raw length, and one zstd frame of: the extents (u32 count;
+    A magic, the raw length, and one LZ4 block of: the extents (u32 count;
     each u32 code, four f64 LE south, west, north, east, NaN when missing,
     u16 length and UTF-8 description), the scopes (u32 count; each u32 code,
     u16 length, UTF-8 text), and the usages in EPSG's order (u32 count; each
@@ -1329,8 +1337,7 @@ def pack_usages(e: Epsg, crs_codes: set[int]) -> bytes:
             extent_index.get(r["extent_code"], 0xFFFF),
             scope_index.get(r["scope_code"], 0xFFFF),
         )
-    frame = zstd.ZstdCompressor(level=19).compress(bytes(raw))
-    return USAGES_MAGIC + struct.pack("<I", len(raw)) + frame
+    return USAGES_MAGIC + struct.pack("<I", len(raw)) + lz4_block(bytes(raw))
 
 
 REMARKS_MAGIC = b"XRM1"
@@ -1340,7 +1347,7 @@ REMARK_KINDS = {"crs": b"c", "operation": b"o"}
 def pack_remarks(e: Epsg, crs_codes: set[int], op_codes: set[int]) -> bytes:
     """EPSG's remarks on the CRSs and operations written, in their own file
     so that only code asking for one reads it: a magic, the raw length, and
-    one zstd frame of records (kind byte, code and length as u32 LE, UTF-8)."""
+    one LZ4 block of records (kind byte, code and length as u32 LE, UTF-8)."""
     raw = bytearray()
     sources = [
         ("crs", "select coord_ref_sys_code, remarks from epsg_coordinatereferencesystem", crs_codes),
@@ -1351,15 +1358,13 @@ def pack_remarks(e: Epsg, crs_codes: set[int], op_codes: set[int]) -> bytes:
             if code in wanted and text:
                 data = plain_text(text).encode()
                 raw += REMARK_KINDS[kind] + struct.pack("<II", code, len(data)) + data
-    frame = zstd.ZstdCompressor(level=19).compress(bytes(raw))
-    return REMARKS_MAGIC + struct.pack("<I", len(raw)) + frame
+    return REMARKS_MAGIC + struct.pack("<I", len(raw)) + lz4_block(bytes(raw))
 
 
 def pack_operations(doc: dict) -> bytes:
-    """One zstd frame of the registry's JSON, after a magic and its raw length."""
+    """One LZ4 block of the registry's JSON, after a magic and its raw length."""
     raw = json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode()
-    frame = zstd.ZstdCompressor(level=19).compress(raw)
-    return OPERATIONS_MAGIC + struct.pack("<I", len(raw)) + frame
+    return OPERATIONS_MAGIC + struct.pack("<I", len(raw)) + lz4_block(raw)
 
 
 # --------------------------------------------------------------------------

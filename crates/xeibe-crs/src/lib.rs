@@ -16,7 +16,7 @@
 //!   sorted `static` array: no decompression, no allocation, no lazy init.
 //! * PROJJSON is needed once per geometry column, only when writing GeoArrow or
 //!   GeoParquet metadata, and is far too big to hold uncompressed. It lives in
-//!   a zstd-sharded blob that [`projjson`] decompresses one shard at a time.
+//!   an LZ4-sharded blob that [`projjson`] decompresses one shard at a time.
 //!   Each root CRS's areas of use and scopes are in it, as PROJ writes them.
 //!
 //! EPSG's coordinate operations ([`operations_json`]) and its remarks on CRSs
@@ -295,7 +295,7 @@ impl Header {
         (read(at), read(at + 4), read(at + 8))
     }
 
-    /// Byte offset of the first zstd frame.
+    /// Byte offset of the first LZ4 block.
     fn blob_start(&self) -> usize {
         12 + self.shards * SHARD_ENTRY + self.entries * INDEX_ENTRY
     }
@@ -356,7 +356,7 @@ fn shards() -> &'static [OnceLock<&'static [String]>] {
 /// PROJJSON for one EPSG code, as a JSON string, with the CRS's areas of
 /// use and scopes as PROJ writes them ([`usages`]).
 ///
-/// Decompresses one shard (~115 KiB) on first use and keeps it, so looking up
+/// Decompresses one shard (~100 KiB) on first use and keeps it, so looking up
 /// many CRSs from the same region of the code space costs one decompression.
 /// Returns `None` for codes EPSG does not define, and for the handful it
 /// defines only as worked examples.
@@ -366,9 +366,9 @@ pub fn projjson(code: u32) -> Option<&'static str> {
     let lines = shards()[shard].get_or_init(|| {
         let (offset, compressed_len, raw_len) = header.shard(shard);
         let start = header.blob_start() + offset;
-        let frame = &PROJJSON_BLOB[start..start + compressed_len];
-        let raw = zstd::bulk::decompress(frame, raw_len)
-            .expect("data/projjson.bin holds valid zstd frames");
+        let block = &PROJJSON_BLOB[start..start + compressed_len];
+        let raw = lz4_flex::block::decompress(block, raw_len)
+            .expect("data/projjson.bin holds valid LZ4 blocks");
         let text = String::from_utf8(raw).expect("data/projjson.bin is UTF-8");
         // Leaked deliberately: shards are immutable, bounded (one per 64
         // CRSs) and shared, so a `&'static` beats handing out clones.
@@ -387,11 +387,11 @@ pub fn projjson(code: u32) -> Option<&'static str> {
 // -------------------------------------------------------------------------
 
 /// `scripts/gen_crs_tables.py` writes this: a magic, the raw length, then one
-/// zstd frame of JSON.
+/// LZ4 block of JSON.
 static OPERATIONS_BLOB: &[u8] = include_bytes!("../data/operations.bin");
 
 /// EPSG's coordinate operations, as one JSON document, decompressed on first
-/// use (about 1.5 MB) and kept.
+/// use (about 2.1 MB) and kept.
 ///
 /// It holds what choosing and running a datum transformation needs, the way
 /// PROJ imports it from the same EPSG release (`docs/reprojection.md`,
@@ -415,8 +415,8 @@ pub fn operations_json() -> &'static str {
             "data/operations.bin is not an operations blob"
         );
         let raw_len = u32::from_le_bytes(OPERATIONS_BLOB[4..8].try_into().unwrap()) as usize;
-        let raw = zstd::bulk::decompress(&OPERATIONS_BLOB[8..], raw_len)
-            .expect("data/operations.bin is a valid zstd frame");
+        let raw = lz4_flex::block::decompress(&OPERATIONS_BLOB[8..], raw_len)
+            .expect("data/operations.bin is a valid LZ4 block");
         String::from_utf8(raw).expect("data/operations.bin is UTF-8")
     })
 }
@@ -426,13 +426,13 @@ pub fn operations_json() -> &'static str {
 // -------------------------------------------------------------------------
 
 /// `scripts/gen_crs_tables.py` writes this: a magic, the raw length, then one
-/// zstd frame of records (a kind byte, `c` or `o`; the code and the text's
+/// LZ4 block of records (a kind byte, `c` or `o`; the code and the text's
 /// length as u32 little-endian; the UTF-8 text). In its own file so that
 /// code which never asks for a remark doesn't carry it: the linker leaves
 /// the data out with the functions below.
 static REMARKS_BLOB: &[u8] = include_bytes!("../data/remarks.bin");
 
-/// The remarks by kind and code, decompressed on first use (about 1.6 MB).
+/// The remarks by kind and code, decompressed on first use (about 1.4 MB).
 fn remarks() -> &'static HashMap<(u8, u32), &'static str> {
     static REMARKS: OnceLock<HashMap<(u8, u32), &'static str>> = OnceLock::new();
     REMARKS.get_or_init(|| {
@@ -442,8 +442,8 @@ fn remarks() -> &'static HashMap<(u8, u32), &'static str> {
             "data/remarks.bin is not a remarks blob"
         );
         let raw_len = u32::from_le_bytes(REMARKS_BLOB[4..8].try_into().unwrap()) as usize;
-        let raw = zstd::bulk::decompress(&REMARKS_BLOB[8..], raw_len)
-            .expect("data/remarks.bin is a valid zstd frame");
+        let raw = lz4_flex::block::decompress(&REMARKS_BLOB[8..], raw_len)
+            .expect("data/remarks.bin is a valid LZ4 block");
         let bytes: &'static [u8] = raw.leak();
         let mut out = HashMap::new();
         let mut at = 0;
@@ -491,7 +491,7 @@ pub struct Usage {
 }
 
 /// `scripts/gen_crs_tables.py` writes this: a magic, the raw length, then one
-/// zstd frame of the extents, the scopes, and each CRS's usages referring to
+/// LZ4 block of the extents, the scopes, and each CRS's usages referring to
 /// them (`pack_usages` there describes the layout).
 static USAGES_BLOB: &[u8] = include_bytes!("../data/usages.bin");
 
@@ -532,8 +532,8 @@ fn usage_table() -> &'static HashMap<u32, Vec<Usage>> {
             "data/usages.bin is not a usages blob"
         );
         let raw_len = u32::from_le_bytes(USAGES_BLOB[4..8].try_into().unwrap()) as usize;
-        let raw = zstd::bulk::decompress(&USAGES_BLOB[8..], raw_len)
-            .expect("data/usages.bin is a valid zstd frame");
+        let raw = lz4_flex::block::decompress(&USAGES_BLOB[8..], raw_len)
+            .expect("data/usages.bin is a valid LZ4 block");
         let mut c = Cursor {
             bytes: raw.leak(),
             at: 0,

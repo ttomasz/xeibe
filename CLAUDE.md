@@ -124,9 +124,10 @@ sources, but their contents haven't been checked against the local copies:
   decimal literals, and SQLite 3.45 (Ubuntu's, which the EPSG workflow's
   system Python uses) rounds `100.38109386` one step off, so a local run
   with uv's managed Python (newer SQLite) changes EPSG:25311's longitude
-  of origin by 2e-14° in `data/projjson.bin`. The unpinned `zstandard`
-  can also change the compressed bytes. Both are harmless: restore the file
-  with `git checkout` unless EPSG's data changed. Running it with the system
+  of origin by 2e-14° in `data/projjson.bin`. That is harmless: restore the
+  file with `git checkout` unless EPSG's data changed. The `lz4` that
+  compresses the blobs is pinned, because its bytes depend on the liblz4 it
+  bundles. Running it with the system
   Python (`uv run --python /usr/bin/python3 scripts/gen_crs_tables.py`,
   SQLite 3.45 on Ubuntu 24.04) reproduces the committed bytes.
 - `scripts/fetch_epsg_dataset.py` signs in to epsg.org and downloads the

@@ -9,8 +9,8 @@
 # builds both.
 #
 # Needs the wasm32-unknown-unknown target (rust-toolchain.toml has rustup add
-# it), clang (zstd's C code) and wasm-bindgen-cli at the version Cargo.toml
-# pins wasm-bindgen to.
+# it), clang (zstd's C code, which xeibe-core brings into the GML page) and
+# wasm-bindgen-cli at the version Cargo.toml pins wasm-bindgen to.
 set -eu
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"

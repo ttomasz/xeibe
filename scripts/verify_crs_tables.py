@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["zstandard>=0.23", "jsonschema>=4", "pyproj==3.8.0"]
+# dependencies = ["lz4>=4", "jsonschema>=4", "pyproj==3.8.0"]
 # ///
 """Verify `crates/xeibe-crs` beyond what the generator's own gate covers.
 
@@ -46,7 +46,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-import zstandard as zstd
+import lz4.block
 
 REPO = Path(__file__).resolve().parent.parent
 CRATE = REPO / "crates" / "xeibe-crs"
@@ -123,15 +123,14 @@ def read_committed_blob() -> dict[int, dict]:
     shard_dir = [struct.unpack_from("<III", raw, 12 + i * 12) for i in range(shards)]
     index_at = 12 + shards * 12
     blob_at = index_at + entries * 8
-    decompressor = zstd.ZstdDecompressor()
     cache: dict[int, list[str]] = {}
     out = {}
     for i in range(entries):
         code, shard, line = struct.unpack_from("<IHH", raw, index_at + i * 8)
         if shard not in cache:
             offset, comp_len, raw_len = shard_dir[shard]
-            frame = raw[blob_at + offset : blob_at + offset + comp_len]
-            cache[shard] = decompressor.decompress(frame, max_output_size=raw_len).decode().split("\n")
+            block = raw[blob_at + offset : blob_at + offset + comp_len]
+            cache[shard] = lz4.block.decompress(block, uncompressed_size=raw_len).decode().split("\n")
         out[code] = json.loads(cache[shard][line])
     return out
 

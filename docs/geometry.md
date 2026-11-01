@@ -667,9 +667,9 @@ fallback when no PROJJSON is available (a code EPSG doesn't have).
    `example_data/SOURCES.md` and the terms in `crates/xeibe-crs/EPSG-NOTICE.md`.
 4. ~~**Where PROJJSON comes from.**~~ **Resolved.** It is generated for every
    EPSG CRS by the same script, from the same relational tables, and shipped in
-   `crates/xeibe-crs/data/projjson.bin`: zstd frames of 64 CRSs each, addressed
-   by code, so one lookup decompresses ~115 KiB rather than the 14 MB whole.
-   All 8,299 CRSs cost **424 KiB**, which made the "ship only a subset" and
+   `crates/xeibe-crs/data/projjson.bin`: LZ4 blocks of 64 CRSs each, addressed
+   by code, so one lookup decompresses ~100 KiB rather than the 14 MB whole.
+   All 9,176 CRSs cost **640 KiB**, which made the "ship only a subset" and
    "optional PROJ feature flag" options pointless. The CRS facts table is
    separate and uncompressed (a sorted `static`), because it is on the
    axis-decision hot path. Each CRS's areas of use and scopes are stored by

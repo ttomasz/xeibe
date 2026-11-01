@@ -172,9 +172,9 @@ Nothing else is recalculated, re-fitted or reprojected.
 |  | `src/table.rs` | `data/projjson.bin` |
 |---|---|---|
 | Used | on the axis-order hot path | once per geometry column, only when writing metadata |
-| Size | 2.3 MB of Rust source | 424 KiB for all 8,299 CRSs |
-| Form | sorted `static` array | 130 zstd frames of 64 CRSs |
-| Cost | binary search, no allocation or lazy init | one frame (~98 KiB) decompressed and cached |
+| Size | 2.8 MB of Rust source | 640 KiB for all 9,176 CRSs |
+| Form | sorted `static` array | 144 LZ4 blocks of 64 CRSs |
+| Cost | binary search, no allocation or lazy init | one block (~100 KiB) decompressed and cached |
 
 `table.rs` is generated Rust rather than a binary blob because it is small
 enough to stay readable and reviewable in diffs, needs no parsing code, and is

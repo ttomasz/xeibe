@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["zstandard>=0.23", "pyproj==3.8.0"]
+# dependencies = ["lz4>=4", "pyproj==3.8.0"]
 # ///
 """Generate test vectors for `crates/xeibe-reproject` with PROJ as the oracle.
 
@@ -48,7 +48,7 @@ import sys
 from pathlib import Path
 
 import pyproj
-import zstandard
+import lz4.block
 
 ROOT = Path(__file__).resolve().parent.parent
 BLOB = ROOT / "crates/xeibe-crs/data/projjson.bin"
@@ -87,9 +87,8 @@ def read_projjson() -> dict[int, dict]:
     base = 12 + shards * 12
     index = [struct.unpack_from("<IHH", blob, base + i * 8) for i in range(entries)]
     start = base + entries * 8
-    dctx = zstandard.ZstdDecompressor()
     texts = [
-        dctx.decompress(blob[start + off : start + off + clen], max_output_size=rlen)
+        lz4.block.decompress(blob[start + off : start + off + clen], uncompressed_size=rlen)
         .decode()
         .split("\n")
         for off, clen, rlen in shard_table

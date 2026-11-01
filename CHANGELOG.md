@@ -9,3 +9,10 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
 ## Unreleased
 
 - First release.
+- `xeibe-crs` 0.4.1: the embedded EPSG data is LZ4-compressed (pure-Rust
+  `lz4_flex`) instead of zstd. The first lookup of each blob is up to a third
+  faster (`operations_json()` 1.2 ms rather than 1.9 ms), and `xeibe-crs`
+  no longer needs zstd's C code, so the `xeibe-proj` wheels and the reproject
+  page build without it. The data is 1.5 MB rather than 1.0 MB; artifacts
+  that link zstd anyway (the CLI, the `xeibe` wheels, the GML page) grow by
+  about 540 KB. Every lookup returns the same bytes as before.
