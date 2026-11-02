@@ -14,7 +14,7 @@ use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyFloat, PyInt, PyTuple};
-use xeibe_reproject::Error;
+use xeibe_reproject::{CoordinateError, Error};
 
 use crate::{error, scale, slice, writable};
 
@@ -128,6 +128,8 @@ fn plain_number(value: &Bound<'_, PyAny>) -> bool {
 /// `Transformer.transform` for plain numbers: `(x, y)`, with `z` and `t`
 /// when given, as floats. `None` for anything else, which the Python side
 /// converts in buffers.
+/// `GridsNeeded` (with `check_grids`) when the point needs grid data that
+/// isn't loaded.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn transform<'py, C: Convert>(
     c: &C,
@@ -155,20 +157,26 @@ pub(crate) fn transform<'py, C: Convert>(
         scale(&mut x, f);
         scale(&mut y, f);
     }
-    if check_grids {
-        calls
-            .check_grids(c, extent(&x, &y))
-            .map_err(Missing::into_err)?;
-    }
     let went_in = (x[0], y[0], z);
-    let z = match z {
+    let converted = match z {
         Some(z) => {
             let mut zs = [z];
             c.convert_xyz(&mut x, &mut y, &mut zs).map(|()| Some(zs[0]))
         }
         None => c.convert_xy(&mut x, &mut y).map(|()| None),
-    }
-    .map_err(|e| error(py, e))?;
+    };
+    // Converted first and checked only when that fails: asking for the
+    // grid requests of the point every time took most of a call once the
+    // grids were loaded. A failed point is left as it went in.
+    let z = match converted {
+        Err(Error::Coordinate {
+            reason: CoordinateError::GridNotLoaded,
+            ..
+        }) if check_grids => {
+            return Err(Missing(extent(&x, &y)).into_err());
+        }
+        converted => converted.map_err(|e| error(py, e))?,
+    };
     calls.record(went_in.0, went_in.1, went_in.2);
     if let Some(f) = out {
         scale(&mut x, f);

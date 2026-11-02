@@ -427,7 +427,10 @@ use of a grid is logged:
   into `xeibe-reproject`. Before converting, `transform` asks the native
   transform for `grid_requests` covering the coordinates' extent, fetches the
   missing ranges from `cdn.proj.org` with `urllib` range requests, hands them
-  over, and converts. Fetched ranges are cached under the user cache
+  over, and converts. A single point is converted first instead, and only
+  one that fails for want of grid data asks for its requests, so loaded
+  grids cost it nothing. `transform_bounds` keeps the check up front: it
+  skips the points that fail, so a missing grid would only shrink the box. Fetched ranges are cached under the user cache
   directory (`$XDG_CACHE_HOME/xeibe-proj`, `~/Library/Caches/xeibe-proj`,
   `%LOCALAPPDATA%\xeibe-proj`) keyed by file and offset. A failed download
   raises `ProjError` with the URL. It does not fall back to another

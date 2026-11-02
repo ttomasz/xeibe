@@ -473,13 +473,11 @@ impl Candidates {
                 b[0] <= x1 && b[2] >= x0 && b[1] <= y1 && b[3] >= y0
             })
         };
-        let near: Vec<Prepared> = self
-            .list
-            .iter()
-            .filter(|p| meets(&p.area) || in_box(&p.bbox))
-            .cloned()
-            .collect();
-        grid_files(&near)
+        grid_files(
+            self.list
+                .iter()
+                .filter(|p| meets(&p.area) || in_box(&p.bbox)),
+        )
     }
 
     /// One registry operation, forced (`docs/reprojection.md`: the optional
@@ -937,7 +935,7 @@ fn reproject_bbox(crs: &Crs, west: f64, south: f64, east: f64, north: f64) -> [f
     out
 }
 
-fn grid_files(list: &[Prepared]) -> Vec<Arc<GridFile>> {
+fn grid_files<'a>(list: impl IntoIterator<Item = &'a Prepared>) -> Vec<Arc<GridFile>> {
     let mut out: Vec<Arc<GridFile>> = Vec::new();
     for p in list {
         for step in &p.steps {
