@@ -96,27 +96,19 @@ def shared_code(projjson: JsonDict) -> int | None:
     return code if _shared.get(code) is projjson else None
 
 
-def text(code: int) -> str:
-    """The PROJJSON text of an EPSG CRS whose shared dict has been read:
-    what Rust reads it from, the dict not dumped again."""
-    out = _native.projjson(code)
-    assert out is not None, code
-    return out
-
-
 # A few KB each, kept for the codes used most recently.
 @lru_cache(maxsize=256)
 def wkt(code: int, version: str, pretty: bool, axes: bool | None) -> str:
     """``_native.to_wkt`` of an EPSG CRS: the same for every ``CRS`` of
     the code, which ``CRS.to_wkt`` keeps per instance."""
-    return _native.to_wkt(text(code), version, pretty, axes)
+    return _native.to_wkt(_shared[code], version, pretty, axes)
 
 
 @lru_cache(maxsize=256)
 def parsed(code: int) -> _native.Crs:
     """The EPSG CRS as ``xeibe-reproject`` reads it, shared by every
     ``CRS`` of the code (``_native.Crs`` is immutable)."""
-    return _native.Crs(text(code))
+    return _native.Crs(_shared[code])
 
 
 # OGC's longitude-first variants of three EPSG CRSs: code, EPSG twin, name.

@@ -10,6 +10,7 @@
 
 mod convert;
 mod geod;
+mod json;
 mod proj;
 
 use pyo3::buffer::PyBuffer;
@@ -18,6 +19,8 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyTuple};
 use xeibe_reproject::wkt::{self, AxisRule, Version};
 use xeibe_reproject::{AxisOrder, Crs, Error, Grids};
+
+use crate::json::Source;
 
 /// `xeibe_proj.exceptions.<name>(message)`.
 fn exception(py: Python<'_>, name: &str, message: String) -> PyErr {
@@ -94,13 +97,14 @@ fn wkt_to_projjson(py: Python<'_>, text: &str) -> PyResult<String> {
     wkt::to_projjson(text).map_err(|e| error(py, e))
 }
 
-/// A CRS's PROJJSON, or a part's, as WKT: `version` `"WKT2_2019"` or
-/// `"WKT1_GDAL"`, `axes` pyproj's `output_axis_rule`.
+/// A CRS's PROJJSON, or a part's, as a dict or text ([`Source`]), as WKT:
+/// `version` `"WKT2_2019"` or `"WKT1_GDAL"`, `axes` pyproj's
+/// `output_axis_rule`.
 #[pyfunction]
 #[pyo3(signature = (projjson, version, pretty = false, axes = None))]
 fn to_wkt(
     py: Python<'_>,
-    projjson: &str,
+    projjson: Source,
     version: &str,
     pretty: bool,
     axes: Option<bool>,
@@ -115,7 +119,11 @@ fn to_wkt(
         Some(true) => AxisRule::Always,
         Some(false) => AxisRule::Never,
     };
-    wkt::from_projjson_with(projjson, version, pretty, axes).map_err(|e| error(py, e))
+    match projjson {
+        Source::Value(v) => wkt::from_projjson_value(&v, version, pretty, axes),
+        Source::Text(t) => wkt::from_projjson_with(&t, version, pretty, axes),
+    }
+    .map_err(|e| error(py, e))
 }
 
 /// The PROJJSON of a CRS given as a PROJ string, as pyproj prepares it
@@ -125,15 +133,24 @@ fn proj_string_to_projjson(py: Python<'_>, text: &str) -> PyResult<String> {
     xeibe_reproject::proj_string::to_projjson(text).map_err(|e| error(py, e))
 }
 
-/// A CRS's PROJJSON as a PROJ string, as PROJ writes it.
+/// A CRS's PROJJSON, as a dict or text ([`Source`]), as a PROJ string, as
+/// PROJ writes it.
 #[pyfunction]
-fn to_proj4(py: Python<'_>, projjson: &str) -> PyResult<String> {
-    xeibe_reproject::proj_string::from_projjson(projjson).map_err(|e| error(py, e))
+fn to_proj4(py: Python<'_>, projjson: Source) -> PyResult<String> {
+    match projjson {
+        Source::Value(v) => xeibe_reproject::proj_string::from_projjson_value(&v),
+        Source::Text(t) => xeibe_reproject::proj_string::from_projjson(&t),
+    }
+    .map_err(|e| error(py, e))
 }
 
-/// A CRS from PROJJSON, from a PROJ string (`proj=` or `init=`, as pyproj
-/// prepares one), or else from WKT.
-fn read_crs(text: &str) -> Result<Crs, Error> {
+/// A CRS from a PROJJSON dict, or text: PROJJSON, a PROJ string (`proj=`
+/// or `init=`, as pyproj prepares one), or else WKT.
+fn read_crs(source: &Source) -> Result<Crs, Error> {
+    let text = match source {
+        Source::Value(v) => return Crs::from_projjson_value(v),
+        Source::Text(t) => &**t,
+    };
     let s = text.trim_start();
     if s.starts_with('{') {
         Crs::from_projjson(text)
@@ -300,12 +317,12 @@ struct ParsedCrs {
 
 #[pymethods]
 impl ParsedCrs {
-    /// `Crs(text)`, PROJJSON or WKT; a `CRSError` when `xeibe-reproject`
-    /// can't read it. WKT1 without `AXIS` is identified by its axes' unit
+    /// `Crs(text)`, PROJJSON as a dict or text ([`Source`]), or WKT; a
+    /// `CRSError` when `xeibe-reproject` can't read it. WKT1 without `AXIS` is identified by its axes' unit
     /// only, which reading the PROJJSON made from it can't know.
     #[new]
-    fn new(py: Python<'_>, text: &str) -> PyResult<Self> {
-        let inner = read_crs(text).map_err(|e| error(py, e))?;
+    fn new(py: Python<'_>, text: Source) -> PyResult<Self> {
+        let inner = read_crs(&text).map_err(|e| error(py, e))?;
         Ok(ParsedCrs { inner })
     }
 
@@ -448,7 +465,7 @@ impl convert::Convert for xeibe_reproject::Transform {
 impl Transform {
     /// `Transform(source, target, always_xy, grids, local=None,
     /// area_of_interest=None, accuracy=None, degrees=(False, False))`: the
-    /// CRSs as PROJJSON or WKT text. `always_xy` takes and gives the values
+    /// CRSs as PROJJSON, a dict or text ([`Source`]), or WKT. `always_xy` takes and gives the values
     /// easting first (PROJ's `mustAxisOrderBeSwitchedForVisualization`).
     /// `grids=True` may use PROJ-data's grids on the CDN; with `False`, only
     /// those in `local` (PROJ-data's file names), or none.
@@ -461,8 +478,8 @@ impl Transform {
     #[pyo3(signature = (source, target, always_xy, grids, local = None, area_of_interest = None, accuracy = None, degrees = (false, false)))]
     fn new(
         py: Python<'_>,
-        source: &str,
-        target: &str,
+        source: Source,
+        target: Source,
         always_xy: bool,
         grids: bool,
         local: Option<Vec<String>>,
@@ -482,8 +499,8 @@ impl Transform {
         };
         let inner = py
             .detach(|| {
-                let src = read_crs(source)?;
-                let dst = read_crs(target)?;
+                let src = read_crs(&source)?;
+                let dst = read_crs(&target)?;
                 let selection = xeibe_reproject::Selection {
                     area_of_interest,
                     accuracy,

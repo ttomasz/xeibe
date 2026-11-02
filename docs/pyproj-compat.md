@@ -203,10 +203,11 @@ transformer construction and conversion, bounds, operation metadata, grid
 requests and loading, geodesics, and the text-format converters. Most of
 pyproj's surface (CRS properties, `repr`, sub-objects, enums, the database
 queries' filtering) is plain Python over the PROJJSON dict, so it costs no
-native code. An EPSG CRS whose dict is the one `_epsg` read for its code,
-not a copy, goes to Rust as `xeibe-crs`'s own text instead of the dict
-dumped again. Its WKT and its parsed CRS are kept per code, for every `CRS`
-of that code.
+native code. The native functions take the PROJJSON dict as it is: Rust
+reads the Python objects into its JSON value (`src/json.rs`), without the
+text `json.dumps` would make and Rust would parse again. An EPSG CRS whose
+dict is the one `_epsg` read for its code, not a copy, has its WKT and its
+parsed CRS kept per code, for every `CRS` of that code.
 
 ```mermaid
 flowchart TD

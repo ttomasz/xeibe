@@ -62,7 +62,8 @@ Not everything that looks like one family is one datum, though:
 
 ### API
 
-`Crs::from_epsg(code)` or `Crs::from_projjson(json)`, then
+`Crs::from_epsg(code)` or `Crs::from_projjson(json)` (or
+`Crs::from_projjson_value` for PROJJSON already parsed), then
 `Transform::new(&src, &dst, AxisOrder::EastFirst)` and `convert`,
 `convert_xy`, `convert_xyz` or `convert_interleaved` on GeoArrow-shaped buffers,
 in place. Heights take part when a CRS has them: a geographic 3D or compound

@@ -395,6 +395,12 @@ impl Crs {
         Self::from_value(&value)
     }
 
+    /// [`Crs::from_projjson`] for PROJJSON already parsed, by `serde_json`
+    /// or from another language's objects.
+    pub fn from_projjson_value(value: &Value) -> Result<Self, Error> {
+        Self::from_value(value)
+    }
+
     /// A CRS from WKT: see [`crate::wkt`] for what is read.
     pub fn from_wkt(text: &str) -> Result<Self, Error> {
         let (value, implicit_axes) = crate::wkt::read(text)?;

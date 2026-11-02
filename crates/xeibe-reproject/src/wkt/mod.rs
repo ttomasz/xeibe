@@ -124,13 +124,24 @@ pub fn from_projjson_with(
         crs: "PROJJSON".into(),
         message: e.to_string(),
     })?;
+    from_projjson_value(&value, version, pretty, axes)
+}
+
+/// [`from_projjson_with`] for PROJJSON already parsed, by `serde_json` or
+/// from another language's objects.
+pub fn from_projjson_value(
+    value: &Value,
+    version: Version,
+    pretty: bool,
+    axes: AxisRule,
+) -> Result<String, Error> {
     let wkt1 = version == Version::Wkt1Gdal;
     let crs = value["type"].as_str().is_some_and(|t| t.ends_with("CRS"));
     let mut nodes = match (crs, wkt1) {
-        (true, false) => vec![write::crs(&value)?],
-        (true, true) => vec![write1::crs(&value, axes)?],
-        (false, false) => write::object(&value)?,
-        (false, true) => write1::object(&value)?,
+        (true, false) => vec![write::crs(value)?],
+        (true, true) => vec![write1::crs(value, axes)?],
+        (false, false) => write::object(value)?,
+        (false, true) => write1::object(value)?,
     };
     if axes == AxisRule::Never {
         for n in &mut nodes {

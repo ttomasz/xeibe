@@ -13,7 +13,6 @@ Differences from pyproj (``docs/pyproj-compat.md``):
 
 from __future__ import annotations
 
-import json
 import warnings
 from array import array
 from collections.abc import Iterable, Iterator, Sequence
@@ -23,7 +22,7 @@ from typing import TYPE_CHECKING, Any, overload
 from xeibe_proj import _containers, _grids, _native, _operation_json, _wkt
 from xeibe_proj._grids import download as _download_resource_file
 from xeibe_proj._epsg import OGC_CRS
-from xeibe_proj._json import dumps, ident
+from xeibe_proj._json import JsonDict, dumps, ident
 from xeibe_proj._unsupported import out
 from xeibe_proj.aoi import AreaOfInterest, AreaOfUse
 from xeibe_proj.crs import CRS, CoordinateOperation, Grid
@@ -84,7 +83,7 @@ def _degrees(crs: CRS) -> bool:
     return bool(axes) and all(a.unit_name == "degree" for a in axes)
 
 
-def _native_json(crs: CRS) -> str:
+def _native_json(crs: CRS) -> str | JsonDict:
     """What Rust reads the CRS from: an OGC CRS as its EPSG twin with its
     own axes, so that EPSG's transformations apply to it, and otherwise
     ``CRS._native_input``."""
@@ -93,7 +92,7 @@ def _native_json(crs: CRS) -> str:
     if twin is not None:
         projjson = crs.to_json_dict()
         projjson["id"] = {"authority": "EPSG", "code": twin[0]}
-        return json.dumps(projjson)
+        return projjson
     return crs._native_input()  # pyright: ignore[reportPrivateUsage]
 
 

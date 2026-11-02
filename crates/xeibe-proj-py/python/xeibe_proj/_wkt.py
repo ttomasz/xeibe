@@ -7,7 +7,6 @@ written, in Rust (``docs/crs-wkt.md``, Writing); the other versions raise
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from xeibe_proj import _native
@@ -37,4 +36,4 @@ def write(projjson: JsonDict, version: Any, pretty: bool, output_axis_rule: bool
     """The WKT of a CRS's or a part's PROJJSON; a ``CRSError`` when it
     can't be written in that version."""
     name = version_name(version)
-    return _native.to_wkt(json.dumps(projjson), name, pretty, output_axis_rule)
+    return _native.to_wkt(projjson, name, pretty, output_axis_rule)

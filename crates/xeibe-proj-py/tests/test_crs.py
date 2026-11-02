@@ -68,10 +68,9 @@ def test_projjson_input() -> None:
     assert anonymous.to_epsg() == 2180
 
 
-def test_epsg_crs_goes_to_rust_as_its_text() -> None:
-    # A CRS with an EPSG CRS's shared PROJJSON goes to Rust as xeibe-crs's
-    # text, with its results kept per code; any other, an equal copy
-    # included, as its PROJJSON dumped, with the same results.
+def test_epsg_results_are_kept_per_code() -> None:
+    # A CRS with an EPSG CRS's shared PROJJSON has its results kept per
+    # code; any other, an equal copy included, its own, the same.
     import warnings
 
     assert CRS(2180)._shared_code == CRS("EPSG:2180")._shared_code == 2180
@@ -81,7 +80,7 @@ def test_epsg_crs_goes_to_rust_as_its_text() -> None:
         assert crs is not None and crs._shared_code is None
     for code in [2180, 4326, 4979, 5773, 9707, 27700, 4267]:
         crs, copy = CRS(code), CRS(CRS(code).to_json_dict())
-        assert crs._native_input() == _native.projjson(code) != copy._native_input()
+        assert crs._native_input() is crs._projjson and copy._native_input() is copy._projjson
         assert crs.to_wkt() == copy.to_wkt()
         assert crs.to_wkt(pretty=True, output_axis_rule=True) == copy.to_wkt(pretty=True, output_axis_rule=True)
         with warnings.catch_warnings():
@@ -98,6 +97,34 @@ def test_epsg_crs_goes_to_rust_as_its_text() -> None:
                 copy.to_wkt("WKT1_GDAL")
         assert json.loads(crs.to_json()) == json.loads(copy.to_json())
         assert crs == copy and crs.to_epsg() == copy.to_epsg() == code
+
+
+def test_rust_reads_projjson_dicts() -> None:
+    # As the text json.dumps would make: the same results, and its errors.
+    for code in [2180, 4326, 9707]:
+        d = CRS(code).to_json_dict()
+        assert _native.to_wkt(d, "WKT2_2019") == _native.to_wkt(json.dumps(d), "WKT2_2019")
+        assert _native.Crs(d).equivalent(_native.Crs(json.dumps(d)))
+    d = CRS(4326).to_json_dict()
+    d["coordinate_system"]["axis"] = tuple(d["coordinate_system"]["axis"])
+    assert _native.to_wkt(d, "WKT2_2019") == CRS(4326).to_wkt()
+    big = {**d, "id": {"authority": "EPSG", "code": 2**70}}
+    assert _native.to_wkt(big, "WKT2_2019") == _native.to_wkt(json.dumps(big), "WKT2_2019")
+    with pytest.raises(CRSError):
+        _native.Crs({**d, "coordinate_system": {**d["coordinate_system"], "axis": [float("nan")]}})
+    with pytest.raises(TypeError, match="set is not JSON serializable"):
+        _native.Crs({**d, "name": {"WGS 84"}})
+    with pytest.raises(TypeError, match="keys must be strings"):
+        _native.Crs({**d, 1: "x"})
+
+
+def test_srs_of_a_dict_is_its_json() -> None:
+    # Dumped only when asked for, and kept through pickling.
+    geodetic = CRS(2180).geodetic_crs
+    assert geodetic is not None and geodetic._srs is None
+    assert json.loads(geodetic.srs) == geodetic.to_json_dict() and str(geodetic) == geodetic.srs
+    copy = pickle.loads(pickle.dumps(geodetic))
+    assert copy.is_exact_same(geodetic) and copy.srs == geodetic.srs
 
 
 def test_to_json_as_proj_writes_it() -> None:

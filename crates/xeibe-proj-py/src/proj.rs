@@ -7,6 +7,7 @@ use pyo3::types::PyTuple;
 use xeibe_reproject::Error;
 
 use crate::convert;
+use crate::json::Source;
 use crate::{error, read_crs};
 
 /// A CRS's projection, forwards or backwards.
@@ -54,12 +55,13 @@ impl convert::Convert for xeibe_reproject::Projection {
 
 #[pymethods]
 impl Projection {
-    /// The projection of the CRS given as PROJJSON or WKT, with lengths
+    /// The projection of the CRS given as PROJJSON, a dict or text
+    /// ([`Source`]), or WKT, with lengths
     /// in metres when `metres`.
     #[new]
     #[pyo3(signature = (text, metres = false))]
-    fn new(py: Python<'_>, text: &str, metres: bool) -> PyResult<Self> {
-        let crs = read_crs(text).map_err(|e| error(py, e))?;
+    fn new(py: Python<'_>, text: Source, metres: bool) -> PyResult<Self> {
+        let crs = read_crs(&text).map_err(|e| error(py, e))?;
         let inner = xeibe_reproject::Projection::new(&crs).map_err(|e| error(py, e))?;
         Ok(Projection::with(if metres {
             inner.in_metres()

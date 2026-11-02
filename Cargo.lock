@@ -4219,6 +4219,7 @@ name = "xeibe-proj-py"
 version = "0.1.0"
 dependencies = [
  "pyo3",
+ "serde_json",
  "xeibe-crs",
  "xeibe-esri",
  "xeibe-reproject",

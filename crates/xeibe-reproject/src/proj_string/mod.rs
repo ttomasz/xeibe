@@ -58,5 +58,11 @@ pub fn from_projjson(json: &str) -> Result<String, Error> {
         crs: "PROJJSON".into(),
         message: e.to_string(),
     })?;
-    write::crs(&value)
+    from_projjson_value(&value)
+}
+
+/// [`from_projjson`] for PROJJSON already parsed, by `serde_json` or from
+/// another language's objects.
+pub fn from_projjson_value(value: &serde_json::Value) -> Result<String, Error> {
+    write::crs(value)
 }

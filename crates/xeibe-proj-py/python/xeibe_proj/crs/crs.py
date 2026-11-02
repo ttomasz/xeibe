@@ -292,7 +292,8 @@ class CRS:
     """
 
     _projjson: JsonDict
-    _srs: str
+    # The text the CRS was made from, or None for a dict (``srs``).
+    _srs: str | None
 
     def __init__(self, projparams: Any = None, **kwargs: Any) -> None:
         if kwargs:
@@ -312,11 +313,11 @@ class CRS:
     def _from_projjson(cls, projjson: JsonDict, srs: str | None = None) -> Self:
         crs = cls.__new__(cls)
         crs._projjson = projjson
-        crs._srs = json.dumps(projjson) if srs is None else srs
+        crs._srs = srs
         return crs
 
     @classmethod
-    def _restore(cls, srs: str, projjson: str) -> Self:
+    def _restore(cls, srs: str | None, projjson: str) -> Self:
         """Unpickle a CRS."""
         return cls._from_projjson(json.loads(projjson), srs)
 
@@ -397,8 +398,9 @@ class CRS:
 
     @property
     def srs(self) -> str:
-        """The input the CRS was made from."""
-        return self._srs
+        """The input the CRS was made from: its text, or the PROJJSON of a
+        dict as text."""
+        return json.dumps(self._projjson) if self._srs is None else self._srs
 
     @property
     def name(self) -> str:
@@ -464,7 +466,7 @@ class CRS:
         if ident is None and not self.is_bound:
             for code, (_, name) in _epsg.OGC_CRS.items():
                 ogc = _epsg.ogc_projjson(code)
-                if ogc is not None and parsed.equivalent(_native.Crs(json.dumps(ogc))):
+                if ogc is not None and parsed.equivalent(_native.Crs(ogc)):
                     found.append(AuthorityMatchInfo("OGC", code, 100 if self.name == name else 70))
         # Stable: EPSG first among equals.
         return sorted(found, key=lambda m: -m.confidence)
@@ -810,7 +812,7 @@ class CRS:
         )
         ProjVersion.create(version)
         try:
-            return _native.to_proj4(self._json_text())
+            return _native.to_proj4(self._projjson)
         except CRSError:
             raise CRSError("CRS cannot be converted to a PROJ string.") from None
 
@@ -898,19 +900,15 @@ class CRS:
         except CRSError:
             return None
 
-    def _native_input(self) -> str:
+    def _native_input(self) -> str | JsonDict:
         """What ``xeibe-reproject`` reads the CRS from: its WKT or PROJ
         string when it was made from one (their axes are implicit, which
-        identification compares leniently, as in PROJ), else its PROJJSON."""
-        if _WKT.match(self._srs) or _is_proj_string(self._srs):
-            return self._srs
-        return self._json_text()
-
-    def _json_text(self) -> str:
-        """The PROJJSON as text for Rust: an EPSG CRS's as ``xeibe-crs``
-        has it, without dumping the shared dict again."""
-        code = self._shared_code
-        return json.dumps(self._projjson) if code is None else _epsg.text(code)
+        identification compares leniently, as in PROJ), else its PROJJSON
+        dict, which Rust reads as it is."""
+        srs = self._srs
+        if srs is not None and (_WKT.match(srs) or _is_proj_string(srs)):
+            return srs
+        return self._projjson
 
     @cached_property
     def _shared_code(self) -> int | None:
@@ -952,7 +950,7 @@ class CRS:
             return False
         return self._projjson == other_crs._projjson
 
-    def __reduce__(self) -> tuple[Any, tuple[str, str]]:
+    def __reduce__(self) -> tuple[Any, tuple[str | None, str]]:
         return CRS._restore, (self._srs, self.to_json())
 
     def __str__(self) -> str:

@@ -25,3 +25,4 @@ xeibe-crs.workspace = true
 xeibe-esri.workspace = true
 xeibe-reproject = { workspace = true, features = ["esri"] }
 pyo3.workspace = true
+serde_json.workspace = true
