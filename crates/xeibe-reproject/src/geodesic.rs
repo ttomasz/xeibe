@@ -217,8 +217,15 @@ fn sumx(u: f64, v: f64) -> (f64, f64) {
     (s, t)
 }
 
+// The series helpers below are always inlined, as the C library's static
+// functions are: with their tables and sizes known where they are used,
+// the loops unroll and the divisions by the tables' powers of two become
+// multiplications (exact, so the results are the same). Left to LLVM,
+// they weren't, for about 8% of an inverse problem.
+
 /// Σ p\[i\] xⁱ with p\[0\] the highest power (the C library's `polyvalx`);
 /// uses `n + 1` coefficients.
+#[inline(always)]
 fn polyvalx(n: usize, p: &[f64], x: f64) -> f64 {
     p[..=n].iter().fold(0.0, |y, &c| y * x + c)
 }
@@ -306,6 +313,7 @@ fn atan2dx(y: f64, x: f64) -> f64 {
 
 /// y = Σ c\[i\] sin(2 i x) (sinp, i = 1..n) or Σ c\[i\] cos((2 i + 1) x)
 /// (i = 0..n−1) by Clenshaw summation.
+#[inline(always)]
 fn sin_cos_series(sinp: bool, sinx: f64, cosx: f64, c: &[f64], n: usize) -> f64 {
     let mut idx = n + sinp as usize;
     let ar = 2.0 * (cosx - sinx) * (cosx + sinx);
@@ -329,6 +337,7 @@ fn sin_cos_series(sinp: bool, sinx: f64, cosx: f64, c: &[f64], n: usize) -> f64 
     }
 }
 
+#[inline(always)]
 fn a1m1f(eps: f64) -> f64 {
     const COEFF: [f64; 5] = [1.0, 4.0, 64.0, 0.0, 256.0];
     let m = NC1 / 2;
@@ -336,6 +345,7 @@ fn a1m1f(eps: f64) -> f64 {
     (t + eps) / (1.0 - eps)
 }
 
+#[inline(always)]
 fn a2m1f(eps: f64) -> f64 {
     const COEFF: [f64; 5] = [-11.0, -28.0, -192.0, 0.0, 256.0];
     let m = NC2 / 2;
@@ -344,7 +354,8 @@ fn a2m1f(eps: f64) -> f64 {
 }
 
 /// The Fourier coefficients c\[1..=6\] from a table of polynomials in ε².
-fn fourier_c(eps: f64, coeff: &[f64]) -> [f64; NC] {
+#[inline(always)]
+fn fourier_c(eps: f64, coeff: &[f64; 18]) -> [f64; NC] {
     let mut c = [0.0; NC];
     let eps2 = sq(eps);
     let mut d = eps;
@@ -358,6 +369,7 @@ fn fourier_c(eps: f64, coeff: &[f64]) -> [f64; NC] {
     c
 }
 
+#[inline(always)]
 fn c1f(eps: f64) -> [f64; NC] {
     const COEFF: [f64; 18] = [
         -1.0, 6.0, -16.0, 32.0, -9.0, 64.0, -128.0, 2048.0, 9.0, -16.0, 768.0, 3.0, -5.0, 512.0,
@@ -366,6 +378,7 @@ fn c1f(eps: f64) -> [f64; NC] {
     fourier_c(eps, &COEFF)
 }
 
+#[inline(always)]
 fn c1pf(eps: f64) -> [f64; NC] {
     const COEFF: [f64; 18] = [
         205.0, -432.0, 768.0, 1536.0, 4005.0, -4736.0, 3840.0, 12288.0, -225.0, 116.0, 384.0,
@@ -374,6 +387,7 @@ fn c1pf(eps: f64) -> [f64; NC] {
     fourier_c(eps, &COEFF)
 }
 
+#[inline(always)]
 fn c2f(eps: f64) -> [f64; NC] {
     const COEFF: [f64; 18] = [
         1.0, 2.0, 16.0, 32.0, 35.0, 64.0, 384.0, 2048.0, 15.0, 80.0, 768.0, 7.0, 35.0, 512.0, 63.0,
@@ -533,11 +547,13 @@ impl Geodesic {
         }
     }
 
+    #[inline(always)]
     fn a3f(&self, eps: f64) -> f64 {
         polyvalx(NA3 - 1, &self.a3x, eps)
     }
 
     /// C3\[1..=5\].
+    #[inline(always)]
     fn c3f(&self, eps: f64) -> [f64; NC] {
         let mut c = [0.0; NC];
         let mut mult = 1.0;
@@ -552,6 +568,7 @@ impl Geodesic {
     }
 
     /// C4\[0..=5\].
+    #[inline(always)]
     fn c4f(&self, eps: f64) -> [f64; NC] {
         let mut c = [0.0; NC];
         let mut mult = 1.0;
