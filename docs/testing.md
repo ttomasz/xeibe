@@ -58,8 +58,11 @@ without it. pyproj's own test suite runs against a built wheel with
 passes in its `pass-list.txt`); see [pyproj-compat.md](pyproj-compat.md#testing).
 GeoPandas' test suite runs with pyproj and through `install_as_pyproj()`
 with `crates/xeibe-proj-py/tests/geopandas_suite/run.py`, which takes the
-same `--wheel` and `--update` and keeps its environment in
-`target/geopandas-suite/` ([pyproj-phase3.md](pyproj-phase3.md#geopandas)).
+same `--wheel` and `--update` and runs pytest in the environment
+`pytest_env.py` declares, which uv keeps in its cache
+([pyproj-phase3.md](pyproj-phase3.md#geopandas)). Nothing it needs between
+runs is kept under `target/`: CI's rust-cache deletes the files of
+whatever there isn't Cargo's.
 `.github/workflows/proj-py.yml` runs all of this on changes to the package,
 `xeibe-crs` or `xeibe-reproject`. It builds and tests the wheel on Linux,
 macOS and Windows, and checks a bare install on Python 3.11 with no numpy.

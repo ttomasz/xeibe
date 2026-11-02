@@ -153,10 +153,13 @@ Expected reasons:
 
 The dependencies are GeoPandas' own required ones plus pyarrow. pyogrio
 and matplotlib are left out, so the file and plotting tests are skipped in
-both runs. GeoPandas requires pyogrio, so the runner sets up its own
-virtual environment in `target/geopandas-suite/` and installs GeoPandas
-without its dependencies. pyproj stays installed for the shim's run, which
-also checks that the finder takes precedence.
+both runs. GeoPandas requires pyogrio, so the runner runs pytest through
+`pytest_env.py`, a PEP 723 script whose metadata declares the environment
+and excludes pyogrio (uv's `exclude-dependencies`); uv builds it with the
+wheel added and keeps it in its own cache. It used to be a virtual
+environment in `target/geopandas-suite/`, which CI's rust-cache emptied of
+its files. pyproj stays installed for the shim's run, which also checks
+that the finder takes precedence.
 
 **Results** (2026-11-01). With pyproj 1,827 of GeoPandas' tests pass (167
 fail and 845 skip without pyogrio, as they do with the shim). Through the
