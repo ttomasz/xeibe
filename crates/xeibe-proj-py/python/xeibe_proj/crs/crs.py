@@ -20,7 +20,7 @@ from collections.abc import Sequence
 from typing import Any, NamedTuple, Self, cast
 
 from xeibe_proj import _epsg, _native, _wkt
-from xeibe_proj._json import JsonDict, as_dict, as_list, get_dict, get_dicts, ident
+from xeibe_proj._json import JsonDict, as_dict, as_list, dumps, get_dict, get_dicts, ident
 from xeibe_proj._unsupported import not_yet, out
 from xeibe_proj.aoi import AreaOfUse
 from xeibe_proj.crs import _dimension
@@ -754,8 +754,8 @@ class CRS:
         return out_
 
     def to_json(self, pretty: bool = False, indentation: int = 2) -> str:
-        """The PROJJSON as text."""
-        return json.dumps(self._projjson, indent=indentation if pretty else None)
+        """The PROJJSON as text, as PROJ writes it (``_json.dumps``)."""
+        return dumps(self._projjson, pretty, indentation)
 
     def to_wkt(self, version: Any = "WKT2_2019", pretty: bool = False, output_axis_rule: bool | None = None) -> str:
         """The CRS as WKT, written as PROJ writes it: ``WKT2_2019`` (or
@@ -771,8 +771,12 @@ class CRS:
         except (KeyError, TypeError):
             pass
         name = _wkt.version_name(version)
+        code = self._shared_code
         try:
-            wkt = _wkt.write(self._projjson, name, pretty, output_axis_rule)
+            if code is None:
+                wkt = _wkt.write(self._projjson, name, pretty, output_axis_rule)
+            else:
+                wkt = _epsg.wkt(code, name, pretty, output_axis_rule)
         except CRSError as e:
             raise CRSError(
                 f"CRS cannot be converted to a WKT string of a '{version}' version. "
@@ -806,7 +810,7 @@ class CRS:
         )
         ProjVersion.create(version)
         try:
-            return _native.to_proj4(json.dumps(self._projjson))
+            return _native.to_proj4(self._json_text())
         except CRSError:
             raise CRSError("CRS cannot be converted to a PROJ string.") from None
 
@@ -886,10 +890,11 @@ class CRS:
     @cached_property
     def _parsed(self) -> _native.Crs | None:
         """The CRS as ``xeibe-reproject`` reads it, or ``None`` when it
-        can't: from the WKT it was made from, which says whether WKT1's
-        axes were stated, else from its PROJJSON."""
+        can't: from ``_native_input``, or for an EPSG CRS the one every
+        ``CRS`` of its code shares (``_epsg.parsed``)."""
+        code = self._shared_code
         try:
-            return _native.Crs(self._native_input())
+            return _native.Crs(self._native_input()) if code is None else _epsg.parsed(code)
         except CRSError:
             return None
 
@@ -899,7 +904,19 @@ class CRS:
         identification compares leniently, as in PROJ), else its PROJJSON."""
         if _WKT.match(self._srs) or _is_proj_string(self._srs):
             return self._srs
-        return json.dumps(self._projjson)
+        return self._json_text()
+
+    def _json_text(self) -> str:
+        """The PROJJSON as text for Rust: an EPSG CRS's as ``xeibe-crs``
+        has it, without dumping the shared dict again."""
+        code = self._shared_code
+        return json.dumps(self._projjson) if code is None else _epsg.text(code)
+
+    @cached_property
+    def _shared_code(self) -> int | None:
+        """The code when the PROJJSON is an EPSG CRS's shared one
+        (``_epsg.shared_code``), whose results are kept per code."""
+        return _epsg.shared_code(self._projjson)
 
     def equals(self, other: Any, ignore_axis_order: bool = False) -> bool:
         """Whether both CRSs define the same coordinates, as PROJ's

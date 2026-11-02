@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, cast
 
 JsonDict = dict[str, Any]
+
+
+def dumps(d: JsonDict, pretty: bool, indentation: int) -> str:
+    """PROJJSON as text, as PROJ writes it: without spaces, or indented by
+    ``indentation`` when ``pretty``, and with UTF-8 as it is."""
+    if pretty:
+        return json.dumps(d, indent=indentation, ensure_ascii=False)
+    return json.dumps(d, separators=(",", ":"), ensure_ascii=False)
 
 
 def as_dict(value: object) -> JsonDict | None:

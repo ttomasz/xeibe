@@ -203,7 +203,10 @@ transformer construction and conversion, bounds, operation metadata, grid
 requests and loading, geodesics, and the text-format converters. Most of
 pyproj's surface (CRS properties, `repr`, sub-objects, enums, the database
 queries' filtering) is plain Python over the PROJJSON dict, so it costs no
-native code.
+native code. An EPSG CRS whose dict is the one `_epsg` read for its code,
+not a copy, goes to Rust as `xeibe-crs`'s own text instead of the dict
+dumped again. Its WKT and its parsed CRS are kept per code, for every `CRS`
+of that code.
 
 ```mermaid
 flowchart TD
@@ -355,7 +358,7 @@ becomes the package's status tracker.
 | `from_json`, `from_json_dict`, PROJJSON dict input | 1 | The subset `xeibe-reproject` reads, plus any PROJJSON kept as is for its metadata. |
 | `name`, `type_name`, `is_geographic` / `is_projected` / `is_geocentric` / `is_vertical` / `is_compound` / `is_engineering` / `is_derived` / `is_bound`, `is_deprecated`, `utm_zone`, `remarks`, `scope` | 1 | From PROJJSON and `CrsRecord`. |
 | `axis_info`, `area_of_use`, `datum`, `ellipsoid`, `prime_meridian`, `coordinate_system`, `coordinate_operation`, `geodetic_crs`, `sub_crs_list`, `source_crs`, `target_crs` | 1 | Sub-objects built from PROJJSON with pyproj's attribute names (`AxisInfo.unit_conversion_factor`, `Ellipsoid.semi_major_metre`, …). |
-| `to_json`, `to_json_dict` | 1 | Our PROJJSON. GeoPandas writes this into GeoParquet. |
+| `to_json`, `to_json_dict` | 1 | Our PROJJSON, written as PROJ writes it: without spaces (indented with `pretty`), UTF-8 as is. GeoPandas writes this into GeoParquet. |
 | `to_epsg`, `to_authority`, `list_authority`, `get_non_deprecated` | 1 / 2 | Phase 1: CRSs that carry an EPSG id. Phase 2: identifying a CRS read from WKT against the EPSG table, with PROJ's confidence levels ([crs-wkt.md](crs-wkt.md#identification)), and EPSG's replacements of deprecated CRSs ([pyproj-phase2.md](pyproj-phase2.md#to_2d-to_3d-get_non_deprecated)). **Done.** |
 | `equals(ignore_axis_order=)`, `__eq__`, `is_exact_same`, `__hash__` | 1 | Equivalence on the parsed definition (datum, ellipsoid, method, parameters, axes), not on names, as PROJ's `proj_is_equivalent_to` does. Hash on the normalised definition. |
 | `repr`, `str`, `srs`, pickling | 1 | pyproj's multi-line summary. Pickles as PROJJSON, which dask and multiprocessing need. |

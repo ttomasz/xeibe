@@ -11,7 +11,7 @@ from functools import cached_property
 from typing import Any
 
 from xeibe_proj import _wkt
-from xeibe_proj._json import JsonDict, as_dict, get_dict, get_dicts, ident
+from xeibe_proj._json import JsonDict, as_dict, dumps, get_dict, get_dicts, ident
 from xeibe_proj.aoi import AreaOfUse
 from xeibe_proj.exceptions import CRSError
 
@@ -91,7 +91,7 @@ class _JsonObject:
 
     def to_json(self, pretty: bool = False, indentation: int = 2) -> str:
         """The PROJJSON as text."""
-        return json.dumps(self.to_json_dict(), indent=indentation if pretty else None)
+        return dumps(self.to_json_dict(), pretty, indentation)
 
     def to_wkt(self, version: Any = "WKT2_2019", pretty: bool = False, output_axis_rule: bool | None = None) -> str | None:
         """The WKT of this part on its own, as PROJ writes it, or ``None``

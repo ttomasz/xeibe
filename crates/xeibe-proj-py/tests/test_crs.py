@@ -11,7 +11,7 @@ import pickle
 
 import pytest
 
-from xeibe_proj import CRS
+from xeibe_proj import CRS, _native
 from xeibe_proj.crs import AxisInfo
 from xeibe_proj.exceptions import CRSError, ProjError
 
@@ -66,6 +66,49 @@ def test_projjson_input() -> None:
     assert not anonymous.is_exact_same(CRS(2180))
     # Identified by its name and definition.
     assert anonymous.to_epsg() == 2180
+
+
+def test_epsg_crs_goes_to_rust_as_its_text() -> None:
+    # A CRS with an EPSG CRS's shared PROJJSON goes to Rust as xeibe-crs's
+    # text, with its results kept per code; any other, an equal copy
+    # included, as its PROJJSON dumped, with the same results.
+    import warnings
+
+    assert CRS(2180)._shared_code == CRS("EPSG:2180")._shared_code == 2180
+    assert CRS(CRS(2180))._shared_code == 2180
+    assert CRS(4979).to_2d()._shared_code == 4326
+    for crs in [CRS(CRS(2180).to_json_dict()), CRS("OGC:CRS84"), CRS(2180).geodetic_crs]:
+        assert crs is not None and crs._shared_code is None
+    for code in [2180, 4326, 4979, 5773, 9707, 27700, 4267]:
+        crs, copy = CRS(code), CRS(CRS(code).to_json_dict())
+        assert crs._native_input() == _native.projjson(code) != copy._native_input()
+        assert crs.to_wkt() == copy.to_wkt()
+        assert crs.to_wkt(pretty=True, output_axis_rule=True) == copy.to_wkt(pretty=True, output_axis_rule=True)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            try:
+                assert crs.to_proj4() == copy.to_proj4()
+            except CRSError:
+                with pytest.raises(CRSError):
+                    copy.to_proj4()
+        try:
+            assert crs.to_wkt("WKT1_GDAL") == copy.to_wkt("WKT1_GDAL")
+        except CRSError:
+            with pytest.raises(CRSError):
+                copy.to_wkt("WKT1_GDAL")
+        assert json.loads(crs.to_json()) == json.loads(copy.to_json())
+        assert crs == copy and crs.to_epsg() == copy.to_epsg() == code
+
+
+def test_to_json_as_proj_writes_it() -> None:
+    # Without spaces, and with UTF-8 as it is, as PROJ writes it.
+    named = CRS({**CRS(4326).to_json_dict(), "name": "Łódź"})
+    for crs in [CRS(4326), named]:
+        text = crs.to_json()
+        assert text == json.dumps(json.loads(text), separators=(",", ":"), ensure_ascii=False)
+    assert '"name":"Łódź"' in named.to_json()
+    assert '"name": "Łódź"' in named.to_json(pretty=True)
+    assert json.loads(CRS(2180).to_json(pretty=True, indentation=4)) == CRS(2180).to_json_dict()
 
 
 @pytest.mark.parametrize(

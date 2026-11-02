@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from functools import cache
+from functools import cache, lru_cache
 from typing import Any, NamedTuple
 
 from xeibe_proj import _native
@@ -68,15 +68,55 @@ def code_for_name(name: str) -> int | None:
     return code
 
 
-@cache
-def _projjson(code: int) -> JsonDict | None:
-    text = _native.projjson(code)
-    return None if text is None else json.loads(text)
+# The PROJJSON of each EPSG CRS read so far.
+_shared: dict[int, JsonDict] = {}
 
 
 def projjson(code: int) -> JsonDict | None:
     """The PROJJSON of an EPSG CRS. Shared: never modify it."""
-    return _projjson(code)
+    out = _shared.get(code)
+    if out is None:
+        text = _native.projjson(code)
+        if text is None:
+            return None
+        # The first one read stays, should two threads read it at once.
+        out = _shared.setdefault(code, json.loads(text))
+    return out
+
+
+def shared_code(projjson: JsonDict) -> int | None:
+    """The code of the EPSG CRS whose shared PROJJSON this is: that very
+    dict, not an equal one, so that Rust can read the CRS from its own
+    text, which the dict was read from and still holds. ``None`` for any
+    other dict, even an unchanged copy."""
+    i = ident(projjson)
+    if i is None or i[0] != "EPSG" or not i[1].isdigit():
+        return None
+    code = int(i[1])
+    return code if _shared.get(code) is projjson else None
+
+
+def text(code: int) -> str:
+    """The PROJJSON text of an EPSG CRS whose shared dict has been read:
+    what Rust reads it from, the dict not dumped again."""
+    out = _native.projjson(code)
+    assert out is not None, code
+    return out
+
+
+# A few KB each, kept for the codes used most recently.
+@lru_cache(maxsize=256)
+def wkt(code: int, version: str, pretty: bool, axes: bool | None) -> str:
+    """``_native.to_wkt`` of an EPSG CRS: the same for every ``CRS`` of
+    the code, which ``CRS.to_wkt`` keeps per instance."""
+    return _native.to_wkt(text(code), version, pretty, axes)
+
+
+@lru_cache(maxsize=256)
+def parsed(code: int) -> _native.Crs:
+    """The EPSG CRS as ``xeibe-reproject`` reads it, shared by every
+    ``CRS`` of the code (``_native.Crs`` is immutable)."""
+    return _native.Crs(text(code))
 
 
 # OGC's longitude-first variants of three EPSG CRSs: code, EPSG twin, name.

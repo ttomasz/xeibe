@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, overload
 from xeibe_proj import _containers, _grids, _native, _operation_json, _wkt
 from xeibe_proj._grids import download as _download_resource_file
 from xeibe_proj._epsg import OGC_CRS
-from xeibe_proj._json import ident
+from xeibe_proj._json import dumps, ident
 from xeibe_proj._unsupported import out
 from xeibe_proj.aoi import AreaOfInterest, AreaOfUse
 from xeibe_proj.crs import CRS, CoordinateOperation, Grid
@@ -86,12 +86,12 @@ def _degrees(crs: CRS) -> bool:
 
 def _native_json(crs: CRS) -> str:
     """What Rust reads the CRS from: an OGC CRS as its EPSG twin with its
-    own axes, so that EPSG's transformations apply to it, and a CRS made
-    from WKT as that WKT (whose WKT1 axes may be unstated)."""
-    projjson = crs.to_json_dict()
-    auth, code = ident(projjson) or ("", "")
+    own axes, so that EPSG's transformations apply to it, and otherwise
+    ``CRS._native_input``."""
+    auth, code = ident(crs._projjson) or ("", "")  # pyright: ignore[reportPrivateUsage]
     twin = OGC_CRS.get(code.upper()) if auth == "OGC" else None
     if twin is not None:
+        projjson = crs.to_json_dict()
         projjson["id"] = {"authority": "EPSG", "code": twin[0]}
         return json.dumps(projjson)
     return crs._native_input()  # pyright: ignore[reportPrivateUsage]
@@ -406,7 +406,7 @@ class Transformer:
         d = self._operation_json()
         if d is None:
             return None
-        return json.dumps(d, indent=indentation if pretty else None)
+        return dumps(d, pretty, indentation)
 
     def to_wkt(self, version: Any = "WKT2_2019", pretty: bool = False) -> str | None:
         """The operation as WKT2 2019, or ``None`` while it is chosen per
