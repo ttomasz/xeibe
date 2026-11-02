@@ -36,5 +36,15 @@ bytes.workspace = true
 parquet.workspace = true
 serde_json.workspace = true
 arrow-ipc.workspace = true
-# The tests cover every format.
+# The tests and benchmarks cover every format.
 xeibe-export = { path = ".", features = ["parquet", "ipc"] }
+criterion.workspace = true
+
+# The benchmarks are Criterion's (docs/benchmarks.md); the library has none
+# of libtest's, which would reject Criterion's flags.
+[lib]
+bench = false
+
+[[bench]]
+name = "export"
+harness = false

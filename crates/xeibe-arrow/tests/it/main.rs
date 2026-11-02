@@ -10,3 +10,4 @@ mod reproject;
 mod samples;
 mod settings;
 mod support;
+mod synth;
