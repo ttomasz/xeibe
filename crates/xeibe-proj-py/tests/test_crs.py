@@ -272,6 +272,15 @@ def test_axis_info_is_frozen() -> None:
         axis.name = "x"  # type: ignore[misc]
 
 
+def test_axis_info_is_a_new_list_each_time() -> None:
+    # Kept once per CRS, handed out as pyproj hands it out.
+    crs = CRS(4326)
+    axes = crs.axis_info
+    assert axes is not crs.axis_info and axes == crs.axis_info
+    axes.reverse()
+    assert [a.abbrev for a in crs.axis_info] == ["Lat", "Lon"]
+
+
 def test_every_crs_equals_itself_without_ids() -> None:
     """Equality compares definitions (Crs::equivalent), not identifiers."""
     from xeibe_proj import _epsg

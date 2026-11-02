@@ -667,11 +667,18 @@ class CRS:
 
     @property
     def axis_info(self) -> list[AxisInfo]:
+        # A new list each time, as pyproj gives: changing it leaves the CRS
+        # alone. The axes are frozen, so they are shared.
+        return list(self._axes)
+
+    @cached_property
+    def _axes(self) -> tuple[AxisInfo, ...]:
+        """``axis_info``, made once: ``__hash__`` asks for it too."""
         if (source := self._source()) is not None:
-            return source.axis_info
+            return source._axes
         if self.is_compound:
-            return [a for c in self._components() for a in c.axis_info]
-        return [axis_from_json(a) for a in self._cs_axes()]
+            return tuple(a for c in self._components() for a in c._axes)
+        return tuple(axis_from_json(a) for a in self._cs_axes())
 
     def _usage(self) -> JsonDict | None:
         """The first of the PROJJSON's usages (scope, area, bbox), as PROJ
@@ -940,7 +947,7 @@ class CRS:
     def __hash__(self) -> int:
         # Equal CRSs may differ in their numbers by PROJ's tolerance, so the
         # hash only takes what equal CRSs always share.
-        return hash((self.type_name, len(self.axis_info)))
+        return hash((self.type_name, len(self._axes)))
 
     def is_exact_same(self, other: Any) -> bool:
         """Whether both have the same PROJJSON, identifiers and names included."""
