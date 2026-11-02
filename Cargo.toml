@@ -130,6 +130,10 @@ pyo3 = { version = "0.29", features = ["extension-module", "abi3-py311"] }
 # No `buffer_protocol`: xeibe hands no buffers to Python.
 pyo3-arrow = { version = "0.19", default-features = false }
 
+# Benchmarks only (`cargo bench`, docs/benchmarks.md). Without plotters and
+# rayon: the reports are text, and a dev-dependency stays quick to build.
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+
 # Everyday builds and benchmarks. Line tables give readable profiler stacks at
 # no runtime cost.
 [profile.release]

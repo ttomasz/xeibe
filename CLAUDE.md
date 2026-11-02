@@ -35,6 +35,9 @@ expected to pass. See `docs/testing.md`. `.github/workflows/ci.yml` runs
 rustfmt, clippy with `-D warnings`, the suites, the MSRV check
 (`cargo +1.95 check`) and the Python tests on every pull request.
 
+Benchmarks: `cargo bench --bench '*'` (Criterion, synthetic inputs from
+`xeibe_testkit::synth`, no corpus needed); see `docs/benchmarks.md`.
+
 ## Releases
 
 `v*` tags release the workspace crates (crates.io), the CLI binaries and the

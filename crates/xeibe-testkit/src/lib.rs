@@ -10,11 +10,13 @@
 //!   canonicalization used when comparing against GDAL, and approximate comparison;
 //! - [`wkb`]: an ISO WKB reader (curve types included) used to check what the
 //!   library writes;
-//! - [`gml`]: builders for synthetic GML documents.
+//! - [`gml`]: builders for synthetic GML documents;
+//! - [`synth`]: synthetic datasets of any size, for the benchmarks.
 
 pub mod gdal;
 pub mod gml;
 pub mod samples;
+pub mod synth;
 pub mod wkb;
 pub mod wkt;
 

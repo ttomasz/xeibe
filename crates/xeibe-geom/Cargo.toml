@@ -23,3 +23,13 @@ thiserror.workspace = true
 
 [dev-dependencies]
 xeibe-testkit.workspace = true
+criterion.workspace = true
+
+# The benchmarks are Criterion's (docs/benchmarks.md); the library has none
+# of libtest's, which would reject Criterion's flags.
+[lib]
+bench = false
+
+[[bench]]
+name = "geom"
+harness = false

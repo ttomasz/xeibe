@@ -54,6 +54,7 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 | [web-reproject.md](web-reproject.md) | The page split into a landing page, the GML page and a reproject page: two wasm builds, coordinate input, operation metadata, why an operation is chosen (proposed) |
 | [support-matrix.md](support-matrix.md) | Supported, planned and out-of-scope GML/WFS features (progress tracker) |
 | [testing.md](testing.md) | How the test suites are organized: synthetic tests, the samples, the GDAL reference |
+| [benchmarks.md](benchmarks.md) | `cargo bench`: synthetic datasets, what each crate's benchmarks measure, comparing runs, reference numbers |
 | [releasing.md](releasing.md) | Versions, tags and the release workflow: crates.io, CLI binaries, PyPI, licences in the artifacts |
 | [links.md](links.md) | External resources for testing, including GDAL's GML autotests |
 

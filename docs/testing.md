@@ -14,11 +14,14 @@ cargo test -p xeibe-geom parse_curves::   # one module
 `xeibe-testkit`'s own tests check the test oracles themselves against the
 files in `tests/data`.
 
+Benchmarks are separate: `cargo bench`, on synthetic data from
+`xeibe_testkit::synth` ([benchmarks.md](benchmarks.md)).
+
 ## Layout
 
 | Where | Contents |
 |---|---|
-| `crates/xeibe-testkit` | Test support: the sample manifest, GDAL reference output, independent WKT and WKB readers, builders for synthetic GML documents. Depends on no other crate of the project, so it stays an independent oracle |
+| `crates/xeibe-testkit` | Test support: the sample manifest, GDAL reference output, independent WKT and WKB readers, builders for synthetic GML documents, synthetic datasets of any size for the benchmarks. Depends on no other crate of the project, so it stays an independent oracle |
 | `crates/<crate>/tests/it/` | One integration-test binary per crate, with a module per topic and a `support` module. Everything goes through the public API |
 | `crates/<crate>/tests/it/samples.rs` | The same crate tested against the real samples in `tests/data` |
 | `crates/xeibe-py/tests/*.py` | The Python package, run against a built wheel: `smoke.py` (`scan`, `read`, settings, options) and `sedona.py` (`xeibe.sedona` in SedonaDB). Not part of `cargo test`; see below |
