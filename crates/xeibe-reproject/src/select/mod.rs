@@ -1226,6 +1226,11 @@ fn run(
     dst: &Crs,
     internal: [f64; 3],
 ) -> Result<[f64; 3], CoordinateError> {
+    // All of them left out (`drop_identities`): what the loop would end
+    // with, without setting it up for every coordinate.
+    if steps.is_empty() {
+        return convert(src, dst, internal);
+    }
     let mut cur = src;
     let mut c = internal;
     // The height `push +v_3` saved, while a run of geog2D-domain operations

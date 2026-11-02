@@ -348,6 +348,20 @@ impl Axes {
     /// Values in this CRS's axis order to the internal order, in SI units.
     /// A 2D CRS passes the third value through.
     pub(crate) fn to_internal(&self, values: [f64; 3]) -> [f64; 3] {
+        // Two horizontal axes, the common case, without the loop below:
+        // the same arithmetic, a few nanoseconds less for every coordinate.
+        if let [a, b] = self.axes.as_slice()
+            && a.vertical == 0.0
+            && b.vertical == 0.0
+        {
+            let horizontal = [values[0] * a.factor, values[1] * b.factor];
+            let m = self.inverse;
+            return [
+                m[0][0] * horizontal[0] + m[0][1] * horizontal[1],
+                m[1][0] * horizontal[0] + m[1][1] * horizontal[1],
+                values[2],
+            ];
+        }
         let mut horizontal = [0.0; 2];
         let mut out = [0.0, 0.0, values[2]];
         let mut h = 0;
@@ -367,6 +381,17 @@ impl Axes {
 
     /// The reverse of [`Axes::to_internal`].
     pub(crate) fn to_crs(&self, v: [f64; 3]) -> [f64; 3] {
+        // As in `to_internal`.
+        if let [a, b] = self.axes.as_slice()
+            && a.vertical == 0.0
+            && b.vertical == 0.0
+        {
+            return [
+                (a.along[0] * v[0] + a.along[1] * v[1]) / a.factor,
+                (b.along[0] * v[0] + b.along[1] * v[1]) / b.factor,
+                v[2],
+            ];
+        }
         let mut out = [0.0, 0.0, v[2]];
         for (i, axis) in self.axes.iter().enumerate() {
             out[i] = if axis.vertical != 0.0 {
