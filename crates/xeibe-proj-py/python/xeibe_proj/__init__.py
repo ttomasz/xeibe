@@ -8,12 +8,11 @@ repository. Imports only the standard library and the native module.
 
 from __future__ import annotations
 
-import platform
 import sys
-from importlib.metadata import PackageNotFoundError, version
 
 from xeibe_proj import network
 from xeibe_proj._native import epsg_version as _epsg_version
+from xeibe_proj._native import version as _version
 from xeibe_proj.crs import CRS
 from xeibe_proj.database import get_authorities, get_codes, get_units_map
 from xeibe_proj.exceptions import DataDirError, ProjError
@@ -46,10 +45,7 @@ __all__ = [
     "transform",
 ]
 
-try:
-    __version__ = version("xeibe-proj")
-except PackageNotFoundError:  # pragma: no cover - running from a source tree
-    __version__ = "unknown"
+__version__: str = _version()
 
 #: The EPSG Dataset release of the tables, e.g. ``"13.106"``.
 EPSG_VERSION: str = _epsg_version()
@@ -78,6 +74,8 @@ def set_use_global_context(active: bool | None = None) -> None:
 
 def show_versions() -> None:
     """Print the versions of this package, its EPSG data and Python."""
+    import platform
+
     print("xeibe-proj:")
     print(f"  version: {__version__}")
     print(f"     EPSG: {EPSG_VERSION}")

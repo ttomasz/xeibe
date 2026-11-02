@@ -47,6 +47,14 @@ fn error(py: Python<'_>, error: Error) -> PyErr {
     exception(py, class, error.to_string())
 }
 
+/// The package's version: the crate's, which maturin gives the wheel.
+/// Read here, not through `importlib.metadata`, which takes about half of
+/// `import xeibe_proj` (22 ms) to import.
+#[pyfunction]
+fn version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
 /// The EPSG Dataset version of the tables, e.g. `"13.106"`.
 #[pyfunction]
 fn epsg_version() -> &'static str {
@@ -681,6 +689,7 @@ impl Transform {
 
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_function(wrap_pyfunction!(epsg_version, m)?)?;
     m.add_function(wrap_pyfunction!(epsg_date, m)?)?;
     m.add_function(wrap_pyfunction!(projjson, m)?)?;

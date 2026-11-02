@@ -24,14 +24,11 @@ from __future__ import annotations
 import logging
 import os
 import shutil
-import ssl
 import tempfile
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Protocol
 
-from xeibe_proj import datadir, network
+from xeibe_proj import _native, datadir, network
 from xeibe_proj.exceptions import ProjError
 
 __all__ = ["CDN", "LOGGER", "download", "load", "local_files"]
@@ -103,11 +100,17 @@ def _write_cache(path: Path, data: bytes) -> None:
 
 
 def _fetch(file: str, offset: int, length: int | None) -> bytes:
+    # Here, not at the top: urllib.request and ssl take about half of
+    # `import xeibe_proj`, for what only fetching a grid needs.
+    import ssl
+    import urllib.error
+    import urllib.request
+
     url = CDN + file
     end = "" if length is None else str(offset + length - 1)
     request = urllib.request.Request(
         url,
-        headers={"Range": f"bytes={offset}-{end}", "User-Agent": f"xeibe-proj/{_version()}"},
+        headers={"Range": f"bytes={offset}-{end}", "User-Agent": f"xeibe-proj/{_native.version()}"},
     )
     cafile = network.ca_bundle_path()
     context = ssl.create_default_context(cafile=cafile)
@@ -136,6 +139,10 @@ def download(file_url: str, short_name: str, directory: str | Path, verbose: boo
     ``_download_resource_file``: through ``<name>.part``, renamed when
     complete. A file of that name already there is kept; ``verbose``
     prints the URL of each download."""
+    import ssl
+    import urllib.error
+    import urllib.request
+
     target = Path(directory, short_name)
     if target.is_file():
         LOGGER.debug("grid %s is already in %s", short_name, directory, extra={"grid": short_name, "path": str(target)})
@@ -144,7 +151,7 @@ def download(file_url: str, short_name: str, directory: str | Path, verbose: boo
         print(f"Downloading: {file_url}")
     target.parent.mkdir(parents=True, exist_ok=True)
     part = Path(directory, f"{short_name}.part")
-    request = urllib.request.Request(file_url, headers={"User-Agent": f"xeibe-proj/{_version()}"})
+    request = urllib.request.Request(file_url, headers={"User-Agent": f"xeibe-proj/{_native.version()}"})
     context = ssl.create_default_context(cafile=network.ca_bundle_path())
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT, context=context) as response, part.open("wb") as f:
@@ -212,11 +219,3 @@ def load(transform: _Transform, bounds: tuple[float, float, float, float] | None
                 continue
             transform.add_grid_data(file, offset, data)
 
-
-def _version() -> str:
-    from importlib.metadata import PackageNotFoundError, version
-
-    try:
-        return version("xeibe-proj")
-    except PackageNotFoundError:
-        return "unknown"
