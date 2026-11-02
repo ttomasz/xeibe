@@ -116,6 +116,28 @@ def test_fwd_and_inv_match_pyproj(kwargs: dict[str, Any], radians: bool, back: b
     assert all(close(o, t) for o, t in zip(fwd, their_fwd, strict=True))
 
 
+@pytest.mark.parametrize("radians", [False, True])
+@pytest.mark.parametrize("back", [True, False])
+def test_plain_numbers_as_in_buffers(radians: bool, back: bool) -> None:
+    # Plain numbers take the point functions, numpy's scalars and bools the
+    # buffers: the same values either way.
+    g = Geod(ellps="WGS84")
+    lons1, lats1 = random_points(50, 3)
+    lons2, lats2 = random_points(50, 4)
+    if radians:
+        lons1, lats1, lons2, lats2 = ([math.radians(v) for v in vs] for vs in (lons1, lats1, lons2, lats2))
+    azis, backs, dists = g.inv(lons1, lats1, lons2, lats2, radians, return_back_azimuth=back)
+    ends = g.fwd(lons1, lats1, azis, dists, radians, return_back_azimuth=back)
+    for i in range(50):
+        point = (lons1[i], lats1[i], lons2[i], lats2[i])
+        assert g.inv(*point, radians, return_back_azimuth=back) == (azis[i], backs[i], dists[i])
+        assert g.inv(*map(np.float64, point), radians, return_back_azimuth=back) == (azis[i], backs[i], dists[i])
+        start = (lons1[i], lats1[i], azis[i], dists[i])
+        assert g.fwd(*start, radians, return_back_azimuth=back) == tuple(e[i] for e in ends)
+    assert g.inv(1, True, 3, 4) == g.inv(1.0, 1.0, 3.0, 4.0)
+    assert all(type(v) is float for v in g.fwd(1, 2, 3, 4))
+
+
 def test_containers_keep_their_types() -> None:
     g = Geod(ellps="WGS84")
     scalar = g.inv(0.0, 0.0, 10.0, 10.0)

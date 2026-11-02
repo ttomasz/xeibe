@@ -212,6 +212,10 @@ class Geod:
             from ``lons``, ``lats`` along ``az`` for ``dist`` metres."""
             if args or kwargs:
                 _reject("fwd", args, kwargs)
+            # Plain numbers are solved without containers.
+            point = self._geod.fwd_point(lons, lats, az, dist, radians, return_back_azimuth)
+            if point is not None:
+                return point
             inx, x_kind = _containers.to_buffer(lons)
             iny, y_kind = _containers.to_buffer(lats)
             inz, z_kind = _containers.to_buffer(az)
@@ -239,6 +243,9 @@ class Geod:
             points."""
             if args or kwargs:
                 _reject("inv", args, kwargs)
+            point = self._geod.inv_point(lons1, lats1, lons2, lats2, radians, return_back_azimuth)
+            if point is not None:
+                return point
             inx, x_kind = _containers.to_buffer(lons1)
             iny, y_kind = _containers.to_buffer(lats1)
             inz, z_kind = _containers.to_buffer(lons2)

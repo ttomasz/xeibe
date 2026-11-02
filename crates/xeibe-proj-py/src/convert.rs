@@ -121,7 +121,7 @@ fn extent(xs: &[f64], ys: &[f64]) -> Option<[f64; 4]> {
 
 /// A Python `float` or `int`, not a subclass: other values (`bool`, numpy's
 /// scalars) go through the containers, which decide what comes back.
-fn plain_number(value: &Bound<'_, PyAny>) -> bool {
+pub(crate) fn plain_number(value: &Bound<'_, PyAny>) -> bool {
     value.is_exact_instance_of::<PyFloat>() || value.is_exact_instance_of::<PyInt>()
 }
 

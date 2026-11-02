@@ -1,6 +1,7 @@
 //! Geodesics for `xeibe_proj.geod` (`docs/pyproj-phase2.md`, Geodesics):
 //! pyproj's `_geod.pyx` loops over `xeibe_reproject::geodesic`, in place on
-//! float64 buffers the Python side has already copied, without the GIL.
+//! float64 buffers the Python side has already copied, without the GIL, and
+//! its point functions for plain numbers.
 
 use std::f64::consts::PI;
 
@@ -10,6 +11,7 @@ use pyo3::prelude::*;
 use xeibe_reproject::geodesic::{self, Mask};
 use xeibe_reproject::proj_tables::{self, Shape};
 
+use crate::convert::plain_number;
 use crate::{exception, slice, writable};
 
 const RAD2DG: f64 = 180.0 / PI;
@@ -60,6 +62,54 @@ pub(crate) struct Geodesic {
     inner: geodesic::Geodesic,
 }
 
+impl Geodesic {
+    /// One direct problem as `fwd` solves it: the longitude, latitude and
+    /// azimuth at the end, turned by 180° with `back_azimuth`, in radians
+    /// with `radians`.
+    fn direct(
+        &self,
+        lon: f64,
+        lat: f64,
+        azi: f64,
+        dist: f64,
+        radians: bool,
+        back_azimuth: bool,
+    ) -> (f64, f64, f64) {
+        let k = if radians { RAD2DG } else { 1.0 };
+        let (lat2, lon2, azi2) = self.inner.direct(k * lat, k * lon, k * azi, dist);
+        let azi2 = if back_azimuth {
+            reverse(azi2, 180.0)
+        } else {
+            azi2
+        };
+        let k = if radians { DG2RAD } else { 1.0 };
+        (k * lon2, k * lat2, k * azi2)
+    }
+
+    /// One inverse problem as `inv` solves it: the forward azimuth, the
+    /// azimuth at the end (turned by 180° with `back_azimuth`) and the
+    /// distance.
+    fn inverse(
+        &self,
+        lon1: f64,
+        lat1: f64,
+        lon2: f64,
+        lat2: f64,
+        radians: bool,
+        back_azimuth: bool,
+    ) -> (f64, f64, f64) {
+        let k = if radians { RAD2DG } else { 1.0 };
+        let (s12, azi1, azi2) = self.inner.inverse(k * lat1, k * lon1, k * lat2, k * lon2);
+        let azi2 = if back_azimuth {
+            reverse(azi2, 180.0)
+        } else {
+            azi2
+        };
+        let k = if radians { DG2RAD } else { 1.0 };
+        (k * azi1, k * azi2, s12)
+    }
+}
+
 #[pymethods]
 impl Geodesic {
     #[new]
@@ -89,19 +139,8 @@ impl Geodesic {
             // its own copy.
             let [lons, lats, azis, dists] = raw.map(|r| unsafe { slice(r) });
             for i in 0..lons.len() {
-                let k = if radians { RAD2DG } else { 1.0 };
-                let (lat2, lon2, azi2) =
-                    self.inner
-                        .direct(k * lats[i], k * lons[i], k * azis[i], dists[i]);
-                let azi2 = if back_azimuth {
-                    reverse(azi2, 180.0)
-                } else {
-                    azi2
-                };
-                let k = if radians { DG2RAD } else { 1.0 };
-                lons[i] = k * lon2;
-                lats[i] = k * lat2;
-                azis[i] = k * azi2;
+                (lons[i], lats[i], azis[i]) =
+                    self.direct(lons[i], lats[i], azis[i], dists[i], radians, back_azimuth);
             }
         });
         Ok(())
@@ -126,22 +165,66 @@ impl Geodesic {
             // SAFETY: as in `fwd`.
             let [lons1, lats1, lons2, lats2] = raw.map(|r| unsafe { slice(r) });
             for i in 0..lons1.len() {
-                let k = if radians { RAD2DG } else { 1.0 };
-                let (s12, azi1, azi2) =
-                    self.inner
-                        .inverse(k * lats1[i], k * lons1[i], k * lats2[i], k * lons2[i]);
-                let azi2 = if back_azimuth {
-                    reverse(azi2, 180.0)
-                } else {
-                    azi2
-                };
-                let k = if radians { DG2RAD } else { 1.0 };
-                lons1[i] = k * azi1;
-                lats1[i] = k * azi2;
-                lons2[i] = s12;
+                (lons1[i], lats1[i], lons2[i]) = self.inverse(
+                    lons1[i],
+                    lats1[i],
+                    lons2[i],
+                    lats2[i],
+                    radians,
+                    back_azimuth,
+                );
             }
         });
         Ok(())
+    }
+
+    /// `Geod.fwd` for plain numbers (pyproj's `_fwd_point`): `fwd`'s
+    /// three results as floats, or `None` for anything else, which the
+    /// Python side solves in buffers.
+    fn fwd_point(
+        &self,
+        lon: &Bound<'_, PyAny>,
+        lat: &Bound<'_, PyAny>,
+        azi: &Bound<'_, PyAny>,
+        dist: &Bound<'_, PyAny>,
+        radians: bool,
+        back_azimuth: bool,
+    ) -> PyResult<Option<(f64, f64, f64)>> {
+        if ![lon, lat, azi, dist].into_iter().all(plain_number) {
+            return Ok(None);
+        }
+        Ok(Some(self.direct(
+            lon.extract()?,
+            lat.extract()?,
+            azi.extract()?,
+            dist.extract()?,
+            radians,
+            back_azimuth,
+        )))
+    }
+
+    /// `Geod.inv` for plain numbers (pyproj's `_inv_point`), as
+    /// [`Geodesic::fwd_point`] is for `fwd`.
+    fn inv_point(
+        &self,
+        lon1: &Bound<'_, PyAny>,
+        lat1: &Bound<'_, PyAny>,
+        lon2: &Bound<'_, PyAny>,
+        lat2: &Bound<'_, PyAny>,
+        radians: bool,
+        back_azimuth: bool,
+    ) -> PyResult<Option<(f64, f64, f64)>> {
+        if ![lon1, lat1, lon2, lat2].into_iter().all(plain_number) {
+            return Ok(None);
+        }
+        Ok(Some(self.inverse(
+            lon1.extract()?,
+            lat1.extract()?,
+            lon2.extract()?,
+            lat2.extract()?,
+            radians,
+            back_azimuth,
+        )))
     }
 
     /// The geodesic line from (`lat1`, `lon1`) along `azi1`, in degrees
