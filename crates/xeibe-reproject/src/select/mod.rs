@@ -235,13 +235,13 @@ impl OperationInfo {
                 .extent
                 .as_ref()
                 .map(|e| [e.west, e.south, e.east, e.north]),
-            area_name: c.extent.as_ref().and_then(|e| e.name.clone()),
+            area_name: c.extent.as_ref().and_then(|e| e.name.map(str::to_owned)),
             grids,
             time_dependent: c.requires_time,
             scope: c
                 .registry
                 .and_then(|(code, _)| registry().ops.get(&code))
-                .and_then(|op| op.scope.clone()),
+                .and_then(|op| op.scope.map(str::to_owned)),
             chain: {
                 let mut out = Vec::new();
                 chain(&c.steps, &mut out);
@@ -374,7 +374,7 @@ impl Candidates {
                 first = Some((c.clone(), steps.clone(), info.clone()));
             }
             let extent = c.extent.clone().unwrap_or_else(crate::extent::world);
-            let area_name = extent.name.clone().unwrap_or_default();
+            let area_name = extent.name.unwrap_or_default();
             let parts = if extent.west <= extent.east {
                 vec![(extent.west, extent.east)]
             } else {

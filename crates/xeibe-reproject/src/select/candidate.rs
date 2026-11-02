@@ -175,7 +175,7 @@ impl Candidate {
         } else if let Some((code, inverse)) = self.registry {
             // A registered concatenation: "Inverse of X", and back to X.
             if inverse {
-                registry().ops[&code].name.clone()
+                registry().ops[&code].name.to_string()
             } else {
                 invert_name(&self.name, false)
             }
@@ -255,7 +255,7 @@ impl Single {
                 if *inverse {
                     // Back to the forward operation.
                     match &self.kind {
-                        SingleKind::Registry { .. } => registry().ops[code].name.clone(),
+                        SingleKind::Registry { .. } => registry().ops[code].name.to_string(),
                         _ => self
                             .name
                             .strip_prefix(INVERSE_OF)
@@ -372,7 +372,7 @@ pub(crate) fn registry_single(code: u32, inverse: bool) -> Single {
         },
         src,
         dst,
-        name: op.name.clone(),
+        name: op.name.to_string(),
         accuracy: if is_conversion {
             0.0
         } else {
@@ -443,7 +443,7 @@ pub(crate) fn registry_candidate(
                     kind: SingleKind::VerticalConversion,
                     src: cur,
                     dst: target,
-                    name: s.name.clone(),
+                    name: s.name.to_string(),
                     accuracy: 0.0,
                     extent: Some(world()),
                     is_conversion: true,
@@ -513,7 +513,7 @@ pub(crate) fn registry_candidate(
         None => steps_accuracy(&steps, crs),
     };
     let forward = Candidate {
-        name: op.name.clone(),
+        name: op.name.to_string(),
         src: CrsRef::Epsg(op.src?),
         dst,
         identified: true,

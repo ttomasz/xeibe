@@ -225,7 +225,7 @@ fn look_up(crs: CrsRef) -> Option<CrsFacts> {
                 .map(|a| (a.factor, c.height_direction()))
         });
         return Some(CrsFacts {
-            name: v.name.clone(),
+            name: v.name.to_owned(),
             kind: CrsKind::Vertical,
             datum: None,
             base: None,
@@ -244,7 +244,7 @@ fn look_up(crs: CrsRef) -> Option<CrsFacts> {
             (_, GeodeticKind::Geocentric) => CrsKind::Geocentric,
         };
         return Some(CrsFacts {
-            name: g.name.clone(),
+            name: g.name.to_owned(),
             kind,
             datum: Some(g.datum),
             base: None,

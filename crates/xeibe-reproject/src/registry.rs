@@ -4,6 +4,7 @@
 //! applies PROJ's import rules), because the choice of operation follows
 //! PROJ's (`docs/reprojection.md`, level 2).
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
@@ -32,7 +33,8 @@ pub(crate) enum ParamValue {
 #[derive(Debug, Clone)]
 pub(crate) struct Operation {
     pub(crate) code: u32,
-    pub(crate) name: String,
+    /// EPSG's, borrowed from `xeibe_crs`'s text, or a bound CRS's own.
+    pub(crate) name: Cow<'static, str>,
     pub(crate) table: Table,
     pub(crate) method: u32,
     pub(crate) src: Option<u32>,
@@ -40,7 +42,7 @@ pub(crate) struct Operation {
     pub(crate) accuracy: Option<f64>,
     /// EPSG's scope of its first usage, e.g. "Transformation of GNSS
     /// coordinates…".
-    pub(crate) scope: Option<String>,
+    pub(crate) scope: Option<&'static str>,
     /// EPSG's variant number: the operations between two CRSs are numbered
     /// in the order EPSG added them. 0 when it has none.
     pub(crate) variant: u32,
@@ -113,7 +115,7 @@ impl Operation {
 #[derive(Debug, Clone)]
 pub(crate) struct GeodeticCrs {
     pub(crate) code: u32,
-    pub(crate) name: String,
+    pub(crate) name: &'static str,
     pub(crate) kind: GeodeticKind,
     pub(crate) datum: u32,
     pub(crate) deprecated: bool,
@@ -124,7 +126,7 @@ pub(crate) struct GeodeticCrs {
 #[derive(Debug, Clone)]
 pub(crate) struct VerticalCrs {
     pub(crate) code: u32,
-    pub(crate) name: String,
+    pub(crate) name: &'static str,
     pub(crate) datum: u32,
     pub(crate) deprecated: bool,
 }
@@ -141,10 +143,10 @@ pub(crate) enum GeodeticKind {
 #[derive(Debug, Clone)]
 pub(crate) struct Datum {
     pub(crate) code: u32,
-    pub(crate) name: String,
+    pub(crate) name: &'static str,
     /// As PROJ derives it: the frame reference epoch, else the publication
     /// date, as `YYYY-MM-DD`. None for ensembles.
-    pub(crate) publication_date: Option<String>,
+    pub(crate) publication_date: Option<&'static str>,
     pub(crate) ellipsoid: u32,
     pub(crate) prime_meridian: u32,
     /// Members, for a datum ensemble.
@@ -161,7 +163,7 @@ pub(crate) struct Datum {
     /// EPSG's publication date, as `YYYY-MM-DD`: when this realization was
     /// published (`publication_date` gives every ETRF 1989, its frame
     /// reference epoch). None for ensembles.
-    pub(crate) published: Option<String>,
+    pub(crate) published: Option<&'static str>,
 }
 
 #[derive(Debug)]
@@ -196,27 +198,36 @@ pub(crate) fn registry() -> &'static Registry {
 // into these rather than through a `serde_json::Value` tree, which took most
 // of the registry's start-up time to build and free. Rows other than
 // operations are arrays, which serde reads into a struct in field order.
+// Their text is borrowed from the JSON, which `xeibe_crs` keeps for the life
+// of the program ([`kept`]).
 
 #[derive(Deserialize)]
-struct Doc {
-    operations: Vec<OperationRow>,
-    geodetic_crs: Vec<GeodeticRow>,
-    vertical_crs: Vec<VerticalRow>,
-    datums: Vec<DatumRow>,
-    extents: Vec<ExtentRow>,
+struct Doc<'a> {
+    #[serde(borrow)]
+    operations: Vec<OperationRow<'a>>,
+    #[serde(borrow)]
+    geodetic_crs: Vec<GeodeticRow<'a>>,
+    #[serde(borrow)]
+    vertical_crs: Vec<VerticalRow<'a>>,
+    #[serde(borrow)]
+    datums: Vec<DatumRow<'a>>,
+    #[serde(borrow)]
+    extents: Vec<ExtentRow<'a>>,
     crs_extent: Vec<(u32, Vec<u32>)>,
 }
 
 #[derive(Deserialize)]
-struct OperationRow {
+struct OperationRow<'a> {
     code: u32,
-    name: String,
-    table: String,
+    #[serde(borrow)]
+    name: Cow<'a, str>,
+    table: &'a str,
     method: Option<u32>,
     src: Option<u32>,
     dst: Option<u32>,
     accuracy: Option<f64>,
-    scope: Option<String>,
+    #[serde(borrow)]
+    scope: Option<Cow<'a, str>>,
     #[serde(default)]
     variant: u32,
     #[serde(default)]
@@ -231,8 +242,8 @@ struct OperationRow {
     params: Vec<(u32, ParamValue)>,
     #[serde(default)]
     steps: Vec<u32>,
-    #[serde(default)]
-    superseded_by: Vec<(u32, bool, String)>,
+    #[serde(default, borrow)]
+    superseded_by: Vec<(u32, bool, &'a str)>,
 }
 
 /// A number, a grid file name, or null for a value EPSG leaves out.
@@ -268,27 +279,30 @@ impl<'de> Deserialize<'de> for ParamValue {
 }
 
 #[derive(Deserialize)]
-struct GeodeticRow {
+struct GeodeticRow<'a> {
     code: u32,
-    name: String,
-    kind: String,
+    #[serde(borrow)]
+    name: Cow<'a, str>,
+    kind: &'a str,
     datum: u32,
     deprecated: u8,
 }
 
 #[derive(Deserialize)]
-struct VerticalRow {
+struct VerticalRow<'a> {
     code: u32,
-    name: String,
+    #[serde(borrow)]
+    name: Cow<'a, str>,
     datum: u32,
     deprecated: u8,
 }
 
 #[derive(Deserialize)]
-struct DatumRow {
+struct DatumRow<'a> {
     code: u32,
-    name: String,
-    publication_date: Option<String>,
+    #[serde(borrow)]
+    name: Cow<'a, str>,
+    publication_date: Option<&'a str>,
     ellipsoid: Option<u32>,
     prime_meridian: Option<u32>,
     members: Option<Vec<u32>>,
@@ -297,17 +311,28 @@ struct DatumRow {
     ensemble_accuracy: Option<f64>,
     anchor_epoch: Option<f64>,
     vertical: bool,
-    published: Option<String>,
+    published: Option<&'a str>,
 }
 
 #[derive(Deserialize)]
-struct ExtentRow {
+struct ExtentRow<'a> {
     code: u32,
-    name: Option<String>,
+    #[serde(borrow)]
+    name: Option<Cow<'a, str>>,
     south: Option<f64>,
     west: Option<f64>,
     north: Option<f64>,
     east: Option<f64>,
+}
+
+/// A string of the operations JSON: borrowed, or for the few with escapes
+/// (13 of 67,000: `\"`, `\r\n`) unescaped once and kept, as the registry
+/// keeps everything else.
+fn kept(text: Cow<'static, str>) -> &'static str {
+    match text {
+        Cow::Borrowed(text) => text,
+        Cow::Owned(text) => Box::leak(text.into_boxed_str()),
+    }
 }
 
 fn table(name: &str) -> Table {
@@ -321,25 +346,25 @@ fn table(name: &str) -> Table {
 }
 
 impl Registry {
-    fn from_doc(doc: Doc) -> Registry {
+    fn from_doc(doc: Doc<'static>) -> Registry {
         let mut ops = HashMap::new();
         let mut by_crs: HashMap<u32, Vec<u32>> = HashMap::new();
         for o in doc.operations {
             let superseded_by = o
                 .superseded_by
                 .into_iter()
-                .map(|(code, same, name)| (code, same, table(&name)))
+                .map(|(code, same, name)| (code, same, table(name)))
                 .collect();
             let op = Operation {
                 code: o.code,
-                name: o.name,
-                table: table(&o.table),
+                name: Cow::Borrowed(kept(o.name)),
+                table: table(o.table),
                 method: o.method.unwrap_or(0),
                 src: o.src,
                 dst: o.dst,
                 // EPSG's 999 means unknown; PROJ's factory reads it so.
                 accuracy: o.accuracy.filter(|&a| a != 999.0),
-                scope: o.scope,
+                scope: o.scope.map(kept),
                 variant: o.variant,
                 deprecated: o.deprecated,
                 replaced: o.replaced,
@@ -362,14 +387,14 @@ impl Registry {
         let mut geodetic = HashMap::new();
         let mut crs_by_datum: HashMap<u32, Vec<u32>> = HashMap::new();
         for g in doc.geodetic_crs {
-            let kind = match g.kind.as_str() {
+            let kind = match g.kind {
                 "geographic 3D" => GeodeticKind::Geographic3d,
                 "geocentric" => GeodeticKind::Geocentric,
                 _ => GeodeticKind::Geographic2d,
             };
             let crs = GeodeticCrs {
                 code: g.code,
-                name: g.name,
+                name: kept(g.name),
                 kind,
                 datum: g.datum,
                 deprecated: g.deprecated == 1,
@@ -388,7 +413,7 @@ impl Registry {
         for v in doc.vertical_crs {
             let crs = VerticalCrs {
                 code: v.code,
-                name: v.name,
+                name: kept(v.name),
                 datum: v.datum,
                 deprecated: v.deprecated == 1,
             };
@@ -408,7 +433,7 @@ impl Registry {
         for d in doc.datums {
             let datum = Datum {
                 code: d.code,
-                name: d.name,
+                name: kept(d.name),
                 publication_date: d.publication_date,
                 ellipsoid: d.ellipsoid.unwrap_or(0),
                 prime_meridian: d.prime_meridian.unwrap_or(0),
@@ -426,7 +451,7 @@ impl Registry {
         let mut extents = HashMap::new();
         for x in doc.extents {
             let extent = Extent::new(
-                x.name,
+                x.name.map(kept),
                 x.west.unwrap_or(-180.0),
                 x.south.unwrap_or(-90.0),
                 x.east.unwrap_or(180.0),
@@ -495,7 +520,7 @@ fn ensemble_operations(
             vertical
                 .values()
                 .filter(|c| !c.deprecated && c.datum == datum)
-                .map(|c| (c.code, c.name.as_str()))
+                .map(|c| (c.code, c.name))
                 .collect()
         } else {
             geodetic
@@ -506,12 +531,12 @@ fn ensemble_operations(
                         && c.kind == GeodeticKind::Geographic2d
                         && !c.name.ends_with("(lon-lat)")
                 })
-                .map(|c| (c.code, c.name.as_str()))
+                .map(|c| (c.code, c.name))
                 .collect()
         };
         (found.len() == 1).then(|| found.pop()).flatten()
     };
-    let names: std::collections::HashSet<&str> = ops.values().map(|o| o.name.as_str()).collect();
+    let names: std::collections::HashSet<&str> = ops.values().map(|o| &*o.name).collect();
     let mut ensembles: Vec<&Datum> = datums
         .values()
         .filter(|d| d.members.is_some() && d.ensemble_accuracy.is_some())
@@ -540,7 +565,7 @@ fn ensemble_operations(
             };
             out.push(Operation {
                 code: PROJ_CODES + out.len() as u32,
-                name: format!("{src_name} to {dst_name}"),
+                name: format!("{src_name} to {dst_name}").into(),
                 table: if ensemble.vertical {
                     Table::Other
                 } else {
@@ -585,18 +610,12 @@ mod tests {
         // The ETRS89 ensemble lists ETRF2000-PL among its members.
         assert!(r.datums[&6258].members.as_ref().unwrap().contains(&1305));
         // ETRF2020: frame reference epoch 1989, published in 2024.
-        assert_eq!(
-            r.datums[&1382].publication_date.as_deref(),
-            Some("1989-01-01")
-        );
-        assert_eq!(r.datums[&1382].published.as_deref(), Some("2024-01-31"));
+        assert_eq!(r.datums[&1382].publication_date, Some("1989-01-01"));
+        assert_eq!(r.datums[&1382].published, Some("2024-01-31"));
         let etrs89 = &r.crs_by_datum[&6258];
         assert!(etrs89.is_sorted() && etrs89.contains(&4258));
         let poland = &r.crs_extent[&2180];
-        assert_eq!(
-            poland.name.as_deref(),
-            Some("Poland - onshore and offshore.")
-        );
+        assert_eq!(poland.name, Some("Poland - onshore and offshore."));
         assert_eq!((poland.west, poland.east), (14.14, 24.15));
     }
 

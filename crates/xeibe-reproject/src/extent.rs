@@ -9,7 +9,7 @@
 /// A geographic bounding box, west may exceed east across the antimeridian.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Extent {
-    pub(crate) name: Option<String>,
+    pub(crate) name: Option<&'static str>,
     pub(crate) west: f64,
     pub(crate) south: f64,
     pub(crate) east: f64,
@@ -19,7 +19,7 @@ pub(crate) struct Extent {
 /// The whole world, as PROJ's `Extent::WORLD`.
 pub(crate) fn world() -> Extent {
     Extent {
-        name: Some("World".to_owned()),
+        name: Some("World"),
         west: -180.0,
         south: -90.0,
         east: 180.0,
@@ -31,7 +31,7 @@ impl Extent {
     /// As `GeographicBoundingBox::create`: a box reduced to a line or a point
     /// is widened by one ulp so it isn't degenerate.
     pub(crate) fn new(
-        name: Option<String>,
+        name: Option<&'static str>,
         mut west: f64,
         mut south: f64,
         mut east: f64,
@@ -138,7 +138,7 @@ impl Extent {
             areas.iter().map(|a| g(a)).reduce(f).unwrap_or(0.0)
         };
         Some(Extent::new(
-            largest.name.clone(),
+            largest.name,
             fold(f64::min, |a| a.west),
             fold(f64::min, |a| a.south),
             fold(f64::max, |a| a.east),
@@ -235,10 +235,10 @@ mod tests {
 
     #[test]
     fn intersection_keeps_the_contained_extent_and_its_name() {
-        let poland = Extent::new(Some("Poland".into()), 14.14, 49.0, 24.15, 55.93);
-        let europe = Extent::new(Some("Europe".into()), -16.1, 32.88, 40.18, 84.73);
+        let poland = Extent::new(Some("Poland"), 14.14, 49.0, 24.15, 55.93);
+        let europe = Extent::new(Some("Europe"), -16.1, 32.88, 40.18, 84.73);
         assert_eq!(europe.intersection(&poland), Some(poland.clone()));
-        let east = Extent::new(Some("East".into()), 20.0, 40.0, 30.0, 60.0);
+        let east = Extent::new(Some("East"), 20.0, 40.0, 30.0, 60.0);
         let cut = poland.intersection(&east).unwrap();
         assert_eq!((cut.name, cut.west, cut.east), (None, 20.0, 24.15));
     }
@@ -246,19 +246,13 @@ mod tests {
     #[test]
     fn covering_takes_the_containing_area_else_the_bounding_box() {
         let world = world();
-        let vietnam = Extent::new(Some("Vietnam".into()), 102.2, 5.67, 112.55, 21.45);
+        let vietnam = Extent::new(Some("Vietnam"), 102.2, 5.67, 112.55, 21.45);
         assert_eq!(Extent::covering(&[&vietnam, &world]), Some(world));
-        let south = Extent::new(Some("South".into()), -141.0, 41.0, -52.0, 60.0);
-        let north = Extent::new(Some("North".into()), -141.0, 60.0, -60.0, 84.0);
+        let south = Extent::new(Some("South"), -141.0, 41.0, -52.0, 60.0);
+        let north = Extent::new(Some("North"), -141.0, 60.0, -60.0, 84.0);
         let both = Extent::covering(&[&south, &north]).unwrap();
         assert_eq!(
-            (
-                both.name.as_deref(),
-                both.west,
-                both.south,
-                both.east,
-                both.north
-            ),
+            (both.name, both.west, both.south, both.east, both.north),
             (Some("South"), -141.0, 41.0, -52.0, 84.0)
         );
     }

@@ -265,7 +265,7 @@ fn via_published(op: &Candidate, crs: &mut CrsCache) -> Vec<String> {
     }
     let mut dates: Vec<String> = datums
         .iter()
-        .filter_map(|d| registry().datums.get(d)?.published.clone())
+        .filter_map(|d| Some(registry().datums.get(d)?.published?.to_owned()))
         .collect();
     dates.sort_unstable_by(|a, b| b.cmp(a));
     dates

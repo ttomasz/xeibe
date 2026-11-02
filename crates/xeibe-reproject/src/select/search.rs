@@ -602,7 +602,7 @@ impl Search {
                     .crs
                     .datum(CrsRef::Epsg(c))
                     .and_then(|d| r.datums.get(&d))
-                    .and_then(|d| d.publication_date.clone())
+                    .and_then(|d| d.publication_date)
             };
             match (date(s, self), date(t, self)) {
                 (Some(a), Some(b)) => Some(a.min(b)),
@@ -868,7 +868,7 @@ impl Search {
                 .crs
                 .datum(c)
                 .and_then(|d| r.datums.get(&d))
-                .and_then(|d| d.publication_date.clone())
+                .and_then(|d| d.publication_date)
         };
         let (ds, dt) = (date(src, self), date(dst, self));
         let most_ancient = match (ds, dt) {
@@ -892,12 +892,12 @@ impl Search {
             ) else {
                 continue;
             };
-            if let Some(min) = &most_ancient {
+            if let Some(min) = most_ancient {
                 let mut older = false;
                 for c in [op1.src, op1.dst, op2.src, op2.dst] {
                     if let Some(d) = date(c, self)
-                        && d.as_str() < CUT_OFF_DATE
-                        && min.as_str() > CUT_OFF_DATE
+                        && d < CUT_OFF_DATE
+                        && min > CUT_OFF_DATE
                     {
                         older = true;
                     }

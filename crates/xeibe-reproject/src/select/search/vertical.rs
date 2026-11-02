@@ -339,11 +339,11 @@ impl Search {
     /// ballpark (the gravity-related height taken as ellipsoidal).
     pub(super) fn vert_to_geog(&mut self, s: CrsRef, t: CrsRef, res: &mut Vec<Candidate>) {
         let r = registry();
-        let name_of = |d: Option<u32>| d.and_then(|d| r.datums.get(&d)).map(|d| d.name.clone());
+        let name_of = |d: Option<u32>| d.and_then(|d| r.datums.get(&d)).map(|d| d.name);
         let vertical_name = name_of(self.crs.vertical_datum(s));
         let geodetic_name = name_of(self.crs.datum(t));
         let same = vertical_name.is_some()
-            && vertical_name.as_deref() != Some("unknown")
+            && vertical_name != Some("unknown")
             && vertical_name == geodetic_name;
         let extent = self.same_extent(s, t);
         let single = if same {
@@ -564,7 +564,7 @@ impl Search {
 
     /// The geodetic datums the transformations of an operation start and
     /// end on (`makeDatumSet`).
-    fn datum_set(&mut self, op: &Candidate) -> std::collections::BTreeSet<String> {
+    fn datum_set(&mut self, op: &Candidate) -> std::collections::BTreeSet<&'static str> {
         let r = registry();
         let mut set = std::collections::BTreeSet::new();
         let steps: Vec<&Single> = if op.steps.len() > 1 {
@@ -581,7 +581,7 @@ impl Search {
                     .crs
                     .datum(c)
                     .and_then(|d| r.datums.get(&d))
-                    .map(|d| d.name.clone())
+                    .map(|d| d.name)
                 {
                     set.insert(name);
                 }

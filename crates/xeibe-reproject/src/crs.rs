@@ -1146,7 +1146,8 @@ impl Ctx<'_> {
             name: transformation["name"]
                 .as_str()
                 .unwrap_or("unnamed")
-                .to_owned(),
+                .to_owned()
+                .into(),
             table,
             method,
             src: None,

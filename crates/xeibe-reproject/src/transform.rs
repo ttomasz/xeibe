@@ -77,7 +77,7 @@ struct Leg {
 
 impl Leg {
     fn new(base: &Crs, bound: &Bound) -> Result<Leg, Error> {
-        Leg::to(base, bound, &bound.hub, bound.operation.name.clone())
+        Leg::to(base, bound, &bound.hub, bound.operation.name.to_string())
     }
 
     /// The bound transformation, landing on `hub` instead of the bound
