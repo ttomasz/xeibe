@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from xeibe_proj import database
@@ -63,13 +61,13 @@ def test_units_map_matches_pyproj(kwargs: dict[str, object]) -> None:
     without Esri's."""
     theirs = {k: v for k, v in pyproj.database.get_units_map(**kwargs).items() if v.auth_name != "ESRI"}
     ours = database.get_units_map(**kwargs)  # type: ignore[arg-type]
-    # The factors within an ulp: macOS wheels' proj.db rounds some of them
-    # the other way.
+    # The factors exactly, or to 15 significant digits: macOS arm64 wheels'
+    # proj.db keeps them only to that, up to 5e-15 off.
     assert [tuple(u._replace(conv_factor=0.0)) for u in ours.values()] == [
         tuple(u._replace(conv_factor=0.0)) for u in theirs.values()
     ]
     assert all(
-        math.isclose(o.conv_factor, t.conv_factor, rel_tol=1e-15)
+        t.conv_factor in (o.conv_factor, float(f"{o.conv_factor:.15g}"))
         for o, t in zip(ours.values(), theirs.values(), strict=True)
     )
     assert list(ours) == list(theirs)
