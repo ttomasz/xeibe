@@ -94,28 +94,35 @@ core), so names compare across machines while the numbers don't.
 
 ## Reference numbers
 
-From `--quick` runs on a 4-core cloud container. A shared machine is noisy;
-use these for scale only, and compare runs on one machine.
+Medians from one run of `cargo bench --bench '*'` on a 4-core cloud
+container. A shared machine is noisy; use these for scale only, and compare
+runs on one machine.
 
 | Benchmark | Time | Throughput |
 |---|---|---|
-| `split/one_layer` | 40 ms | 1.1 GiB/s |
-| `decode_and_split/gzip` | 107 ms | 410 MiB/s |
-| `decode_and_split/zstd` | 131 ms | 330 MiB/s |
-| `reader/events` | 11.6 ms | 170 MiB/s |
-| `parse/polygon_256_holes_4` | | 12 M positions/s |
-| `parse/point` | 1.45 ms | 690 K points/s |
-| `write_wkb/linestring_1000` | | 210 M positions/s |
-| `scan/full/1` | 143 ms | 83 MiB/s |
-| `scan/full/all` | 65 ms | 185 MiB/s |
-| `read/given/1` | 262 ms | 46 MiB/s |
-| `read/given/all` | 112 ms | 106 MiB/s |
-| `read/to_epsg_4258/1` | 384 ms | 31 MiB/s |
-| `parquet/wkb/bbox` | 91 ms | 166 MiB/s |
-| `convert_xy/4258_to_2180` | 2.0 ms | 4.9 M points/s |
+| `split/one_layer` | 41 ms | 1.0 GiB/s |
+| `decode_and_split/gzip` | 103 ms | 424 MiB/s |
+| `decode_and_split/zstd` | 107 ms | 407 MiB/s |
+| `decode_and_split/iso-8859-2` | 46 ms | 937 MiB/s |
+| `reader/events` | 11.4 ms | 176 MiB/s |
+| `parse/point` | 1.50 ms | 665 K points/s |
+| `parse/polygon_256_holes_4` | 72 µs | 12 M positions/s |
+| `write_wkb/linestring_1000` | 4.7 µs | 213 M positions/s |
+| `scan/full/1` | 148 ms | 81 MiB/s |
+| `scan/full/all` | 53 ms | 226 MiB/s |
+| `read/given/1` | 277 ms | 43 MiB/s |
+| `read/given/all` | 104 ms | 115 MiB/s |
+| `read/to_epsg_4258/1` | 344 ms | 35 MiB/s |
+| `read_points/sampled/1` | 595 ms | 31 MiB/s |
+| `read_points/sampled/all` | 210 ms | 87 MiB/s |
+| `parquet/wkb/bbox` | 96 ms | 157 MiB/s |
+| `ipc/wkb` | 2.6 ms | 5.3 GiB/s |
+| `convert_xy/4258_to_2180` | 2.0 ms | 5.0 M points/s |
+| `convert_xy/2180_to_32634` | 4.1 ms | 2.5 M points/s |
 | `transform_new/4258_to_2180` | 280 ns | |
-| `transform_new/2180_to_32634` | 5.4 ms | |
-| `geodesic/inverse` | 20.8 ms | 480 K problems/s |
+| `transform_new/2180_to_32634` | 5.9 ms | |
+| `crs/from_epsg/2180` | 50 µs | |
+| `geodesic/inverse` | 13.9 ms | 717 K problems/s |
 
 Choosing an operation is cheap on one datum and takes milliseconds across
 datums, where the candidate operations are looked up and ranked; a read
