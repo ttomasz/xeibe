@@ -230,6 +230,12 @@ fn measure(v: &Value, kind: Kind) -> Result<(f64, Node), Error> {
     }
 }
 
+/// The factor to SI units of a PROJJSON measure's unit: 1 for a plain
+/// number, which is in metres or degrees' SI unit's place.
+fn si_factor(v: &Value) -> f64 {
+    v["unit"]["conversion_factor"].as_f64().unwrap_or(1.0)
+}
+
 fn id(v: &Value) -> Result<Node, Error> {
     let mut args = vec![text(str_of(v, "authority")?)];
     args.push(match &v["code"] {
@@ -502,7 +508,9 @@ fn object_nodes(v: &Value) -> Result<Vec<Node>, Error> {
             dynamic_then(vertical_datum(v)?)
         }
         "DatumEnsemble" => with_ids(ensemble(v, true)?),
-        "EngineeringDatum" => with_ids(engineering_datum(v)?),
+        // Without its id: PROJ's `EngineeringDatum::_exportToWKT` writes
+        // none, where its other datums do.
+        "EngineeringDatum" => Ok(vec![engineering_datum(v)?]),
         "CoordinateSystem" => Ok(cs_args(v)?
             .into_iter()
             .filter_map(|a| match a {
@@ -632,7 +640,11 @@ fn ellipsoid(e: &Value) -> Result<Node, Error> {
         let rf = match (&e["inverse_flattening"], &e["semi_minor_axis"]) {
             (rf @ Value::Number(_), _) => num_of(rf)?,
             (_, b) if !b.is_null() => {
-                let (b, _) = measure(b, Kind::Length)?;
+                // In metres, as PROJ computes it (`computedInverseFlattening`).
+                let (a, b) = (
+                    a * si_factor(&e["semi_major_axis"]),
+                    measure(b, Kind::Length)?.0 * si_factor(b),
+                );
                 a / (a - b)
             }
             _ => return Err(invalid("an ellipsoid without its shape")),
@@ -649,8 +661,8 @@ fn ellipsoid(e: &Value) -> Result<Node, Error> {
     Ok(node("ELLIPSOID", args))
 }
 
-/// `ENSEMBLE`, its members with their ids when `member_ids`, as PROJ
-/// writes an ensemble on its own.
+/// `ENSEMBLE`, its members and ellipsoid with their ids when
+/// `member_ids`, as PROJ writes an ensemble on its own.
 fn ensemble(e: &Value, member_ids: bool) -> Result<Node, Error> {
     let mut args = vec![text(str_of(e, "name")?)];
     for m in e["members"].as_array().into_iter().flatten() {
@@ -661,7 +673,12 @@ fn ensemble(e: &Value, member_ids: bool) -> Result<Node, Error> {
         args.push(sub(node("MEMBER", member)));
     }
     if e["ellipsoid"].is_object() {
-        args.push(sub(ellipsoid(&e["ellipsoid"])?));
+        let mut el = ellipsoid(&e["ellipsoid"])?;
+        // On its own, PROJ writes the ellipsoid's id too.
+        if member_ids {
+            ids(&e["ellipsoid"], &mut el.args)?;
+        }
+        args.push(sub(el));
     }
     // PROJJSON keeps the accuracy as text ("2.0"), which PROJ writes as is.
     let accuracy = match &e["accuracy"] {

@@ -5,7 +5,8 @@
 > bodies are in); PROJ strings, 2026-10-31 (steps 1 and 2, see
 > [Order of work](#order-of-work)); PROJ's own methods and other
 > celestial bodies, 2026-10-31 (step 2b); `install_as_pyproj()` and
-> GeoPandas, 2026-11-01 (step 3).** This is phase 3 of
+> GeoPandas, 2026-11-01 (step 3); the objects table and the sub-objects'
+> constructors, 2026-11-03 (step 4).** This is phase 3 of
 > [pyproj-compat.md](pyproj-compat.md#phases). Facts about PROJ, pyproj
 > and GeoPandas were checked against PROJ 9.8.1 through pyproj 3.8.0 and
 > GeoPandas 1.2.0, with the oracle database
@@ -576,6 +577,68 @@ On top of the table, every sub-object gets pyproj's constructors:
 `query_geodetic_crs_from_datum(crs_auth_name, datum_auth_name,
 datum_code, pj_type)` comes from the CRS records and the table.
 
+**As built.** `data/objects.bin` is one LZ4 block (346 KiB) of 55
+ellipsoids, 15 prime meridians, 997 datums and ensembles and 3,606
+conversions, a line each: kind, code, deprecation, names and PROJJSON.
+EPSG's worked examples are left out, as their CRSs are. The names are
+EPSG's, EPSG's aliases of datums and PROJ's own nine (`WGS84`, `NAD83`,
+`potsdam`, …, from its `customizations.sql`). PROJ's search is exact, not
+canonical: the name or an alias equal to it ignoring the case of ASCII
+letters (SQLite's `NOCASE`), current objects first, names before aliases,
+shorter names first; a name ending in " (deprecated)" finds deprecated
+objects only. A conversion carries its usage, which PROJ keeps for its
+area of use but leaves out of its PROJJSON; the Python side moves it to
+`area_of_use` and `scope`, and a projected CRS's `coordinate_operation`
+gets its conversion's.
+
+On the Python side:
+
+- `CoordinateOperation.from_epsg` also gives EPSG's transformations and
+  concatenated operations, from the operations `xeibe-reproject` chooses
+  among, and their grids: EPSG's file names, or with
+  `use_proj_alternative_grid_names` PROJ-data's
+  (`xeibe_reproject::proj_data_file`). `from_name` finds those by their
+  `coordinate_operation_type`.
+- `from_string` reads `urn:ogc:def:<type>:EPSG::<code>` (`ellipsoid`,
+  `meridian`, `datum`, `ensemble`, `coordinateOperation`), a part of a CRS
+  in WKT2 on its own (`xeibe_reproject::wkt::object_to_projjson`:
+  `ELLIPSOID`, `PRIMEM`, `DATUM`, `VDATUM`, `EDATUM`, `PDATUM`, `ENSEMBLE`,
+  `CONVERSION`), and PROJJSON, then a name. `EPSG:7001` is not an
+  ellipsoid, as in PROJ.
+- `Ellipsoid.from_name` falls back to PROJ's `+ellps` table (`intl`), as
+  pyproj does. `Datum.from_name` without a type takes an ensemble, then a
+  geodetic datum, then a vertical one, in pyproj's order of `DatumType`s.
+- Equality is equivalence, as pyproj's: the other side as
+  `from_user_input` takes it (`Datum.from_epsg(6326) == 6326`), and the
+  PROJJSON compared without ids, usages and remarks. The hash is of the same,
+  so equal objects hash equal.
+- `query_geodetic_crs_from_datum` lists EPSG's current geographic and
+  geocentric CRSs on the datum by code, then OGC's (CRS84, CRS83, CRS27)
+  when no authority is given, as PROJ's database has them.
+
+**Validation.** `scripts/gen_object_vectors.py` writes PROJ's PROJJSON and
+WKT for every such object in PROJ's database (4,645), pyproj's `from_name`
+for each name and alias in either case and with " (deprecated)" (13,290),
+and `query_geodetic_crs_from_datum` for each geodetic datum with each type
+(5,664). Over all of them ours match PROJ's, with nested ids dropped (ours
+keep them, as a CRS's PROJJSON does) and WKT numbers to 1e-11, but for:
+
+- Krovak Modified's evaluation point and C1 to C10: PROJ's database keeps
+  seven parameters of a conversion, ours all nineteen of EPSG's;
+- Rikets hojdsystem 2000: EPSG types it a static vertical datum, and its
+  own WKT is a `VDATUM` without an epoch, but its record has a frame
+  reference epoch, from which PROJ makes it dynamic. Ours is static;
+- Lambert Azimuthal Equal Area (Spherical) on its own in WKT1, in three
+  deprecated conversions: PROJ mixes the ellipsoidal method's name with the
+  spherical one's parameters, ours keeps the spherical name;
+- other authorities: Esri's names of EPSG objects, and IGNF's and NKG's
+  objects and CRSs, which PROJ's database adds.
+
+The run found three things in the WKT writer, now as PROJ writes them: an
+ellipsoid given by its axes has its inverse flattening computed in metres
+(the last digit of Clarke 1866 Michigan's, in feet), an engineering datum
+on its own has no `ID`, and an ensemble on its own has its ellipsoid's.
+
 ### Builders
 
 Ports of pyproj's modules:
@@ -700,7 +763,9 @@ imports no Arrow library.
    ([the results](#geopandas)).
 4. **The objects table and the sub-objects' constructors**, with
    `query_geodetic_crs_from_datum`, gated on pyproj over every EPSG
-   object.
+   object. **Done** (2026-11-03): see [the objects table](#the-objects-table).
+   pyproj's suite went from 444 to 560 of 994 (more of its tests collect
+   now).
 5. **The builders**, gated on pyproj's tests for them.
 6. **CF**, gated on pyproj's `test_crs_cf.py`.
 7. **GeoArrow**: first the wheel-size measurement for decision 17, then

@@ -25,6 +25,11 @@ crs = CRS("urn:ogc:def:crs:EPSG::2180")
 crs.name, crs.axis_info, crs.area_of_use, crs.to_epsg()
 crs == CRS(2180)                                    # True
 
+from xeibe_proj.crs import Datum, Ellipsoid
+
+Datum.from_name("ETRS89").name                      # an EPSG datum by name, alias or code
+Ellipsoid.from_epsg(7019).semi_major_metre          # GRS 1980
+
 prj = CRS(open("parcels.prj").read())               # WKT1 (GDAL's or Esri's) or WKT2
 prj.to_epsg(), prj.list_authority()                 # identified by its definition
 prj.to_wkt("WKT1_GDAL", pretty=True)                # or "WKT2_2019"

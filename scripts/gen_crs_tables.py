@@ -1391,9 +1391,10 @@ def with_id_last(doc: dict) -> dict:
 def export_objects(e: Epsg, datum_aliases: list[tuple[int, str]]) -> list[tuple[str, int, bool, list[str], dict]]:
     """EPSG's ellipsoids, prime meridians, datums (and ensembles) and
     conversions on their own, each as `(kind, code, deprecated,
-    names, PROJJSON)`: the PROJJSON PROJ writes for the object at the root,
-    and its name followed by the aliases PROJ's name search uses (EPSG's for
-    datums, PROJ's own few)."""
+    names, PROJJSON)`: the PROJJSON PROJ writes for the object at the root
+    (and a conversion's usage, which PROJ keeps and doesn't write), and its
+    name followed by the aliases PROJ's name search uses (EPSG's for datums,
+    PROJ's own few)."""
     out: list[tuple[str, int, bool, list[str], dict]] = []
     for r in e.all("select ellipsoid_code, deprecated from epsg_ellipsoid order by ellipsoid_code"):
         doc = {"type": "Ellipsoid", **e.ellipsoid(r["ellipsoid_code"])}
@@ -1433,9 +1434,12 @@ def export_objects(e: Epsg, datum_aliases: list[tuple[int, str]]) -> list[tuple[
         code = r["coord_op_code"]
         if EXAMPLE_NAME.match(r["coord_op_name"]):
             continue
-        doc = {"type": "Conversion", **e.conversion(code), "id": {"authority": "EPSG", "code": code}}
+        doc = {"type": "Conversion", **e.conversion(code)}
         if not doc["parameters"]:
             del doc["parameters"]
+        # PROJ keeps a conversion's usage, for its area of use, but leaves
+        # it out of the PROJJSON it writes.
+        doc = {**doc, **object_usage(e, "epsg_coordoperation", code), "id": {"authority": "EPSG", "code": code}}
         out.append(("conversion", code, bool(r["deprecated"]), [doc["name"]], doc))
     return out
 

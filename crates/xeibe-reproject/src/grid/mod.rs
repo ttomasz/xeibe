@@ -28,6 +28,19 @@ use std::sync::Arc;
 pub(crate) use catalog_types::{Entry, lookup};
 pub use store::clear_grids;
 
+/// PROJ-data's file for a grid EPSG names in its operation `op_name` (the
+/// operation's name matters for one family of Australian geoid files), and
+/// whether `cdn.proj.org` serves it openly, from PROJ's
+/// `grid_alternatives`; `None` for a grid PROJ-data doesn't have.
+///
+/// ```
+/// let (file, open) = xeibe_reproject::proj_data_file("conus.las", "NAD27 to NAD83 (1)").unwrap();
+/// assert_eq!((file, open), ("us_noaa_conus.tif", true));
+/// ```
+pub fn proj_data_file(epsg_name: &str, op_name: &str) -> Option<(&'static str, bool)> {
+    catalog_types::lookup(epsg_name, op_name).map(|e| (e.file, e.cdn))
+}
+
 /// Where PROJ-data's grids are served.
 pub const CDN: &str = "https://cdn.proj.org/";
 

@@ -7,11 +7,14 @@ descriptions of areas of use aren't there (``AreaOfUse.name`` is ``None``).
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from xeibe_proj import _epsg, _native
 from xeibe_proj.aoi import AreaOfInterest, AreaOfUse, BBox
 from xeibe_proj.enums import PJType
+
+if TYPE_CHECKING:
+    from xeibe_proj.crs import CRS
 
 __all__ = [
     "CRSInfo",
@@ -21,6 +24,7 @@ __all__ = [
     "get_database_metadata",
     "get_units_map",
     "query_crs_info",
+    "query_geodetic_crs_from_datum",
     "query_utm_crs_info",
 ]
 
@@ -168,6 +172,53 @@ def query_utm_crs_info(
         for info in query_crs_info(pj_types=PJType.PROJECTED_CRS, area_of_interest=area_of_interest, contains=contains)
         if "UTM zone" in info.name and (prefix is None or info.name.startswith(prefix))
     ]
+
+
+# The geodetic CRS types `query_geodetic_crs_from_datum` takes, by kind.
+_GEODETIC_KINDS: dict[PJType, str] = {
+    PJType.GEOGRAPHIC_2D_CRS: "geographic_2d",
+    PJType.GEOGRAPHIC_3D_CRS: "geographic_3d",
+    PJType.GEOCENTRIC_CRS: "geocentric",
+}
+
+
+def query_geodetic_crs_from_datum(
+    crs_auth_name: str | None,
+    datum_auth_name: str,
+    datum_code: str,
+    pj_type: PJType | str | None = None,
+) -> list[CRS]:
+    """The current geodetic CRSs on an EPSG datum or datum ensemble, of
+    ``pj_type`` (``GEOCENTRIC_CRS``, ``GEOGRAPHIC_2D_CRS``,
+    ``GEOGRAPHIC_3D_CRS``, or ``None`` for all three), from the authority
+    ``crs_auth_name`` (``None`` for EPSG's and OGC's), by authority and
+    code as PROJ orders them."""
+    # Typed as required, but pyproj checks: a None is a TypeError.
+    if datum_auth_name is None or datum_code is None:  # pyright: ignore[reportUnnecessaryComparison]
+        raise TypeError("datum_auth_name and datum_code are required")
+    kinds = set(_GEODETIC_KINDS.values())
+    if pj_type is not None:
+        kind = _GEODETIC_KINDS.get(PJType.create(pj_type))
+        if kind is None:
+            raise ValueError("type must be GEOCENTRIC_CRS, GEOGRAPHIC_2D_CRS, GEOGRAPHIC_3D_CRS or None")
+        kinds = {kind}
+    if datum_auth_name != "EPSG" or not str(datum_code).isdigit():
+        return []
+    datum = int(datum_code)
+    from xeibe_proj.crs import CRS
+
+    out: list[CRS] = []
+    if crs_auth_name in (None, "EPSG"):
+        records = sorted(_epsg.records().values(), key=lambda r: r.code)
+        out += [
+            CRS.from_epsg(r.code) for r in records if r.datum == datum and not r.deprecated and r.kind in kinds
+        ]
+    if crs_auth_name in (None, "OGC"):
+        for code, (twin, _) in sorted(_epsg.OGC_CRS.items()):
+            r = _epsg.record(twin)
+            if r is not None and r.datum == datum and r.kind in kinds:
+                out.append(CRS.from_authority("OGC", code))
+    return out
 
 
 def get_database_metadata(key: str) -> str | None:

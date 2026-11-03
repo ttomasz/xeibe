@@ -663,7 +663,7 @@ class CRS:
         conversion = as_dict(self._projjson.get("conversion"))
         if conversion is None:
             return None
-        return CoordinateOperation({"type": "Conversion", **conversion})
+        return CoordinateOperation._of_crs(conversion, self._epsg_code())  # pyright: ignore[reportPrivateUsage]
 
     @property
     def axis_info(self) -> list[AxisInfo]:

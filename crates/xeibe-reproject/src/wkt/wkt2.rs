@@ -32,6 +32,70 @@ pub(crate) fn crs(node: &Node) -> Result<Value, Error> {
     }
 }
 
+/// A part of a CRS given on its own: an ellipsoid, a prime meridian, a
+/// datum of any kind, a datum ensemble or a conversion, as PROJJSON with
+/// its `type`, as PROJ reads one (pyproj's `Datum.from_string`, …).
+pub(crate) fn object(node: &Node) -> Result<Value, Error> {
+    let typed = |type_name: &str, v: Value| {
+        let mut o = Obj::new();
+        o.insert("type".into(), json!(type_name));
+        if let Value::Object(rest) = v {
+            o.extend(rest);
+        }
+        Value::Object(o)
+    };
+    match node.keyword.as_str() {
+        "ELLIPSOID" | "SPHEROID" => Ok(typed("Ellipsoid", ellipsoid(node)?)),
+        "PRIMEM" | "PRIMEMERIDIAN" => {
+            let pm = match prime_meridian(node)? {
+                Some(pm) => pm,
+                None => {
+                    let mut o = Obj::new();
+                    o.insert("name".into(), json!(node.text(0)?));
+                    o.insert("longitude".into(), json!(0));
+                    ids(node, &mut o)?;
+                    Value::Object(o)
+                }
+            };
+            Ok(typed("PrimeMeridian", pm))
+        }
+        k if GEODETIC_DATUM.contains(&k) => geodetic_frame(node, None, None),
+        k if VERTICAL_DATUM.contains(&k) => vertical_frame(node, None),
+        k if ENGINEERING_DATUM.contains(&k) => {
+            node.only(&[&["ANCHOR", "ID"]])?;
+            let mut o = named("EngineeringDatum", node)?;
+            anchors(node, &mut o)?;
+            ids(node, &mut o)?;
+            Ok(Value::Object(o))
+        }
+        "PDATUM" | "PARAMETRICDATUM" => {
+            node.only(&[&["ANCHOR", "ID"]])?;
+            let mut o = named("ParametricDatum", node)?;
+            anchors(node, &mut o)?;
+            ids(node, &mut o)?;
+            Ok(Value::Object(o))
+        }
+        "TDATUM" | "TIMEDATUM" => {
+            node.only(&[&["CALENDAR", "TIMEORIGIN", "ID"]])?;
+            let mut o = named("TemporalDatum", node)?;
+            if let Some(c) = node.child(&["CALENDAR"]) {
+                o.insert("calendar".into(), json!(c.text(0)?));
+            }
+            if let Some(t) = node.child(&["TIMEORIGIN"]) {
+                o.insert("time_origin".into(), json!(t.text(0)?));
+            }
+            ids(node, &mut o)?;
+            Ok(Value::Object(o))
+        }
+        "ENSEMBLE" => Ok(typed("DatumEnsemble", ensemble(node)?)),
+        "CONVERSION" => Ok(typed(
+            "Conversion",
+            conversion(node, &Unit::metre(), &Unit::degree())?,
+        )),
+        other => Err(unsupported(node, &format!("WKT2 {other} on its own"))),
+    }
+}
+
 // --- keywords --------------------------------------------------------------
 
 const GEODETIC_DATUM: &[&str] = &["DATUM", "TRF", "GEODETICDATUM"];

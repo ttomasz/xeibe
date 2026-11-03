@@ -114,6 +114,14 @@ fn check_objects(records: &[Value]) {
         if let Some(Value::Array(params)) = ours.get_mut("parameters") {
             params.truncate(PROJ_MAX_PARAMETERS);
         }
+        // A conversion's usage, which PROJ doesn't write.
+        if k == "conversion"
+            && let Value::Object(map) = &mut ours
+        {
+            for key in ["scope", "area", "bbox", "usages"] {
+                map.remove(key);
+            }
+        }
         if !same(&ours, &proj) {
             failures.push(format!("{k} {code}:\n  ours {ours}\n  PROJ {proj}"));
         }

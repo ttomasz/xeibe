@@ -38,8 +38,10 @@ as of 2026-10-24 all of it is done: the geodesic port, `Geod`, `Proj`,
 `area_of_interest`, `accuracy` and `only_best`, `Transformer.to_json` and
 `to_wkt`, and `download_grids`. Phase 3 is designed in
 [pyproj-phase3.md](pyproj-phase3.md); as of 2026-10-31 PROJ strings are
-read and written (its steps 1 and 2), and as of 2026-11-01
-`install_as_pyproj()` runs GeoPandas (step 3).
+read and written (its steps 1 and 2), as of 2026-11-01
+`install_as_pyproj()` runs GeoPandas (step 3), and as of 2026-11-03 EPSG's
+ellipsoids, prime meridians, datums and operations have their own
+constructors (step 4).
 
 - **Done.**
   - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
@@ -68,6 +70,10 @@ read and written (its steps 1 and 2), and as of 2026-11-01
   - `Proj` for EPSG and WKT input ([pyproj-phase2.md](pyproj-phase2.md#proj)).
   - `CRS.to_2d`, `to_3d` and `get_non_deprecated`
     ([pyproj-phase2.md](pyproj-phase2.md#to_2d-to_3d-get_non_deprecated)).
+  - `Ellipsoid`, `PrimeMeridian`, `Datum` and `CoordinateOperation` from
+    EPSG codes, names, URNs, WKT and PROJJSON, `CoordinateSystem` from
+    PROJJSON, and `query_geodetic_crs_from_datum`
+    ([pyproj-phase3.md](pyproj-phase3.md#the-objects-table)).
   - `xeibe_proj.compat.install_as_pyproj()`, under which GeoPandas 1.2.0
     passes its tests but four ([pyproj-phase3.md](pyproj-phase3.md#geopandas)).
 - **The Rust changes phase 1 needed are made**:
@@ -368,6 +374,7 @@ becomes the package's status tracker.
 | `to_wkt(version, pretty, output_axis_rule)`, also on the parts (`Datum`, `Ellipsoid`, …) | 2 | WKT2_2019 and WKT1_GDAL from PROJJSON, what GeoPandas, pyogrio and rioxarray ask for; other versions raise ([crs-wkt.md](crs-wkt.md#writing)). Equivalent to PROJ's output, not byte-identical. **Done**: PROJ's token for token for every EPSG CRS but listed differences. |
 | `from_proj4`, `from_dict`, `+proj=…` strings, `CRS(proj=…)` | 3 | Read as PROJ reads them into an EPSG method, with pyproj's preparation and `+init` warning; pipelines and PROJ4 extensions are an error ([pyproj-phase3.md](pyproj-phase3.md#proj-strings)). **Done.** |
 | `to_proj4`, `to_dict`, `to_string` | 3 | PROJ's string, token for token for every EPSG CRS. **Done.** |
+| `Datum`, `Ellipsoid`, `PrimeMeridian`, `CoordinateOperation`: `from_epsg`, `from_authority`, `from_name`, `from_string`, `from_user_input`, `from_json`, `from_json_dict`; `CoordinateSystem` from strings and PROJJSON; equality with what `from_user_input` takes | 3 | From `xeibe-crs`'s table of EPSG's objects, names matched as PROJ's name search matches them, and EPSG's transformations. Esri's names of EPSG objects stay out ([pyproj-phase3.md](pyproj-phase3.md#the-objects-table)). **Done.** |
 | Builder classes (`GeographicCRS`, `ProjectedCRS`, `CompoundCRS`, `*Conversion`) | 3 | For the methods `xeibe-reproject` implements. |
 | `to_cf`, `from_cf`, `cs_to_cf` | 3, if asked | pyproj's implementation is pure Python over PROJJSON (MIT), so it could be ported. |
 | Other authorities (`ESRI:`, `IGNF:`, `IAU_2015:`, `NKG:`) | Out | Not in EPSG. Exception, in phase 2: the 987 old ESRI codes that are now EPSG codes (`ESRI:102100` → 3857), from `xeibe-esri` ([crs-wkt.md](crs-wkt.md#esri-names)). **Done.** |
@@ -405,6 +412,7 @@ becomes the package's status tracker.
 | `Proj(crs)(lon, lat, inverse=, radians=)`, `Proj(proj="utm", zone=…)` | 2 / 3 | Phase 2 for EPSG and WKT input: the CRS's projection on its own ellipsoid ([pyproj-phase2.md](pyproj-phase2.md#proj)). Phase 3: PROJ parameters, `definition_string` and `to_latlong_def`. **Done.** |
 | `Proj.get_factors` | Out | |
 | `pyproj.database`: `query_crs_info`, `query_utm_crs_info`, `get_authorities`, `get_codes`, `get_units_map`, `get_database_metadata("EPSG.VERSION")` | 1 / 2 | From the `xeibe-crs` tables; `get_units_map` (2) with PROJ's short names and own units, not Esri's. **Done.** `query_utm_crs_info` (GeoPandas' `estimate_utm_crs`) needs each projected CRS's datum, which the PROJJSON has. |
+| `pyproj.database.query_geodetic_crs_from_datum` | 3 | EPSG's and OGC's current geodetic CRSs on the datum, by code, as PROJ lists them. **Done.** |
 | `pyproj.aoi` (`AreaOfInterest`, `AreaOfUse`, `BBox`), `pyproj.enums`, `pyproj.exceptions` (`CRSError`, `ProjError`, `GeodError`, `DataDirError`) | 1 | Same names and hierarchy. Error messages differ. |
 | `pyproj.network.set_network_enabled` / `is_network_enabled`, `PROJ_NETWORK` | 1 | On by default, unlike pyproj. `set_network_enabled(False)` or `PROJ_NETWORK=OFF` turns it off (see [Grids](#grids)). |
 | `pyproj.datadir.get_data_dir` / `set_data_dir` / `append_data_dir`, `PROJ_DATA` | 1 | Directories searched for local PROJ-data grids. `get_data_dir` returns them joined with `os.pathsep`, as pyproj does, or `""` when there are none (GeoPandas calls it in `show_versions`). |

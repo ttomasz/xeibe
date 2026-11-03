@@ -463,13 +463,19 @@ From a PROJJSON value:
   | `True` (`Always`) | As `None` | Every `AXIS` but those of a projected CRS's base `GEOGCS`; EPSG's "Geodetic latitude" written "Latitude" |
   | `False` (`Never`) | No `CS` or `AXIS`, but an `ENGCRS`'s; PROJ can't read such WKT back | No `AXIS`, but a `LOCAL_CS`'s; a geographic 3D CRS is then written as a 2D `GEOGCS` |
 - **A part on its own** (pyproj's `CRS.datum.to_wkt()`, …) is written as
-  PROJ writes it: with its ids, a datum ensemble's members with theirs, a
+  PROJ writes it: with its ids, a datum ensemble's members and ellipsoid
+  with theirs, an engineering datum without its id (PROJ writes none), a
   datum followed by its `PRIMEM` when that isn't Greenwich, a dynamic
   datum after its `DYNAMIC`, a coordinate system as its `CS` and `AXIS`
   nodes, a transformation as `COORDINATEOPERATION` with its source and
   target CRSs. In WKT1_GDAL, a conversion is its `PROJECTION` and
   `PARAMETER` nodes in degrees and metres, a coordinate system the empty
   string, and a transformation nothing (`None` in Python), as in PROJ.
+  An ellipsoid given by its two axes has its inverse flattening computed
+  from them in metres, as PROJ computes it. A part in WKT2 is read on its
+  own too (`wkt::object_to_projjson`, pyproj's `Datum.from_string`, …):
+  an ellipsoid, a prime meridian, a datum of any kind, an ensemble or a
+  conversion.
 
   Some CRSs WKT1 can't express, such as geographic and projected 3D CRSs,
   engineering CRSs with non-metric axes, derived projected CRSs, and

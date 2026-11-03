@@ -7,9 +7,42 @@ test.crs.test_crs::test_compare_crs_non_crs
 test.crs.test_crs::test_compound_crs
 test.crs.test_crs::test_compound_crs_init
 test.crs.test_crs::test_compound_crs_urn_init
+test.crs.test_crs::test_coordinate_operation
+test.crs.test_crs::test_coordinate_operation__from_authority
+test.crs.test_crs::test_coordinate_operation__from_authority__empty
+test.crs.test_crs::test_coordinate_operation__from_epsg
+test.crs.test_crs::test_coordinate_operation__from_epsg__empty
+test.crs.test_crs::test_coordinate_operation__from_name
+test.crs.test_crs::test_coordinate_operation__from_name__invalid[3-598y5-98y]
+test.crs.test_crs::test_coordinate_operation__from_name__invalid[urn:ogc:def:datum:EPSG::6326]
+test.crs.test_crs::test_coordinate_operation__from_string__invalid[3-598y5-98y]
+test.crs.test_crs::test_coordinate_operation__from_string__invalid[urn:ogc:def:datum:EPSG::6326]
+test.crs.test_crs::test_coordinate_operation__from_user_input[1671]
+test.crs.test_crs::test_coordinate_operation__from_user_input[urn:ogc:def:coordinateOperation:EPSG::1671]
+test.crs.test_crs::test_coordinate_operation__from_user_input[user_input1]
+test.crs.test_crs::test_coordinate_operation__from_user_input[user_input3]
+test.crs.test_crs::test_coordinate_operation__from_user_input[user_input4]
+test.crs.test_crs::test_coordinate_operation__from_user_input__invalid
 test.crs.test_crs::test_coordinate_operation__missing
+test.crs.test_crs::test_coordinate_operation_equals
+test.crs.test_crs::test_coordinate_operation_grids
+test.crs.test_crs::test_coordinate_operation_grids__alternative_grid_name
 test.crs.test_crs::test_coordinate_operation_towgs84_missing
+test.crs.test_crs::test_coordinate_operation_towgs84_seven
+test.crs.test_crs::test_coordinate_operation_towgs84_three
 test.crs.test_crs::test_coordinate_system
+test.crs.test_crs::test_coordinate_system__equals
+test.crs.test_crs::test_coordinate_system__from_string
+test.crs.test_crs::test_coordinate_system__from_string__invalid[3-598y5-98y]
+test.crs.test_crs::test_coordinate_system__from_string__invalid[urn:ogc:def:datum:EPSG::6326]
+test.crs.test_crs::test_coordinate_system__from_user_input[user_input0]
+test.crs.test_crs::test_coordinate_system__from_user_input[user_input2]
+test.crs.test_crs::test_coordinate_system__from_user_input[{"$schema": "https://proj.org/schemas/v0.2/projjson.schema.json", "type": "CoordinateSystem", "subtype": "Cartesian", "axis": [{"name": "Easting", "abbreviation": "E", "direction": "east", "unit": "metre"}, {"name": "Northing", "abbreviation": "N", "direction": "north", "unit": "metre"}]}]
+test.crs.test_crs::test_coordinate_system__from_user_input__invalid[7001]
+test.crs.test_crs::test_coordinate_system__from_user_input__invalid[urn:ogc:def:ellipsoid:EPSG::7001]
+test.crs.test_crs::test_coordinate_system__from_user_input__invalid[user_input1]
+test.crs.test_crs::test_coordinate_system__from_user_input__invalid[user_input3]
+test.crs.test_crs::test_coordinate_system__from_user_input__invalid[user_input4]
 test.crs.test_crs::test_coordinate_system_geog
 test.crs.test_crs::test_crs_OSR_equivalence
 test.crs.test_crs::test_crs_OSR_no_equivalence
@@ -23,12 +56,58 @@ test.crs.test_crs::test_crs_is_exact_same__non_crs_input
 test.crs.test_crs::test_crs_multiprocess
 test.crs.test_crs::test_crs_multithread
 test.crs.test_crs::test_datum
+test.crs.test_crs::test_datum__from_authority
+test.crs.test_crs::test_datum__from_authority__invalid
+test.crs.test_crs::test_datum__from_epsg
+test.crs.test_crs::test_datum__from_epsg__invalid
+test.crs.test_crs::test_datum__from_name[WGS 84]
+test.crs.test_crs::test_datum__from_name[WGS84]
+test.crs.test_crs::test_datum__from_name[World Geodetic System 1984]
+test.crs.test_crs::test_datum__from_name__invalid[3-598y5-98y]
+test.crs.test_crs::test_datum__from_name__invalid[urn:ogc:def:ellipsoid:EPSG::7001]
+test.crs.test_crs::test_datum__from_name__invalid_type
+test.crs.test_crs::test_datum__from_string[World Geodetic System 1984]
+test.crs.test_crs::test_datum__from_string[urn:ogc:def:ensemble:EPSG::6326]
+test.crs.test_crs::test_datum__from_string__invalid[3-598y5-98y]
+test.crs.test_crs::test_datum__from_string__invalid[urn:ogc:def:ellipsoid:EPSG::7001]
+test.crs.test_crs::test_datum__from_string__type_name[ENGINEERINGDATUM["Engineering datum"]-Engineering Datum]
+test.crs.test_crs::test_datum__from_string__type_name[PDATUM["Mean Sea Level",ANCHOR["1013.25 hPa at 15\xb0C"]]-Parametric Datum]
+test.crs.test_crs::test_datum__from_user_input[6326]
+test.crs.test_crs::test_datum__from_user_input[World Geodetic System 1984]
+test.crs.test_crs::test_datum__from_user_input[urn:ogc:def:ensemble:EPSG::6326]
+test.crs.test_crs::test_datum__from_user_input[user_input1]
+test.crs.test_crs::test_datum__from_user_input[user_input3]
+test.crs.test_crs::test_datum__from_user_input[user_input4]
+test.crs.test_crs::test_datum__from_user_input__invalid
+test.crs.test_crs::test_datum_equals
 test.crs.test_crs::test_datum_horizontal
 test.crs.test_crs::test_datum_unknown
 test.crs.test_crs::test_derived_projected_crs
 test.crs.test_crs::test_dunder_str
 test.crs.test_crs::test_ellipsoid
+test.crs.test_crs::test_ellipsoid__from_authority
+test.crs.test_crs::test_ellipsoid__from_authority__invalid
+test.crs.test_crs::test_ellipsoid__from_epsg
+test.crs.test_crs::test_ellipsoid__from_epsg__invalid
+test.crs.test_crs::test_ellipsoid__from_name[Airy 1830-Airy 1830]
+test.crs.test_crs::test_ellipsoid__from_name[International 1924 (Hayford 1909, 1910)-International 1924 (Hayford 1909, 1910)]
+test.crs.test_crs::test_ellipsoid__from_name[intl-International 1924 (Hayford 1909, 1910)]
+test.crs.test_crs::test_ellipsoid__from_name__invalid[3-598y5-98y]
+test.crs.test_crs::test_ellipsoid__from_name__invalid[urn:ogc:def:datum:EPSG::6326]
+test.crs.test_crs::test_ellipsoid__from_name__invalid__auth
+test.crs.test_crs::test_ellipsoid__from_string[Airy 1830]
+test.crs.test_crs::test_ellipsoid__from_string[urn:ogc:def:ellipsoid:EPSG::7001]
+test.crs.test_crs::test_ellipsoid__from_string__invalid[3-598y5-98y]
+test.crs.test_crs::test_ellipsoid__from_string__invalid[urn:ogc:def:datum:EPSG::6326]
+test.crs.test_crs::test_ellipsoid__from_user_input[7001]
+test.crs.test_crs::test_ellipsoid__from_user_input[Airy 1830]
+test.crs.test_crs::test_ellipsoid__from_user_input[urn:ogc:def:ellipsoid:EPSG::7001]
+test.crs.test_crs::test_ellipsoid__from_user_input[user_input1]
+test.crs.test_crs::test_ellipsoid__from_user_input[user_input3]
+test.crs.test_crs::test_ellipsoid__from_user_input[user_input4]
+test.crs.test_crs::test_ellipsoid__from_user_input__invalid
 test.crs.test_crs::test_ellipsoid__semi_minor_not_computed
+test.crs.test_crs::test_ellipsoid_equals
 test.crs.test_crs::test_empty_json
 test.crs.test_crs::test_epsg
 test.crs.test_crs::test_epsg__no_code_available
@@ -66,11 +145,31 @@ test.crs.test_crs::test_non_deprecated_empty
 test.crs.test_crs::test_non_deprecated_multiple
 test.crs.test_crs::test_numpy_bool_kwarg_false
 test.crs.test_crs::test_numpy_bool_kwarg_true
+test.crs.test_crs::test_prime_meridian__from_authority
+test.crs.test_crs::test_prime_meridian__from_authority__invalid
+test.crs.test_crs::test_prime_meridian__from_epsg
+test.crs.test_crs::test_prime_meridian__from_epsg__invalid
+test.crs.test_crs::test_prime_meridian__from_name
+test.crs.test_crs::test_prime_meridian__from_name__invalid[3-598y5-98y]
+test.crs.test_crs::test_prime_meridian__from_name__invalid[urn:ogc:def:datum:EPSG::6326]
+test.crs.test_crs::test_prime_meridian__from_string[Greenwich]
+test.crs.test_crs::test_prime_meridian__from_string[urn:ogc:def:meridian:EPSG::8901]
+test.crs.test_crs::test_prime_meridian__from_string__invalid[3-598y5-98y]
+test.crs.test_crs::test_prime_meridian__from_string__invalid[urn:ogc:def:datum:EPSG::6326]
+test.crs.test_crs::test_prime_meridian__from_user_input[8901]
+test.crs.test_crs::test_prime_meridian__from_user_input[Greenwich]
+test.crs.test_crs::test_prime_meridian__from_user_input[urn:ogc:def:meridian:EPSG::8901]
+test.crs.test_crs::test_prime_meridian__from_user_input[user_input1]
+test.crs.test_crs::test_prime_meridian__from_user_input[user_input3]
+test.crs.test_crs::test_prime_meridian__from_user_input[user_input4]
+test.crs.test_crs::test_prime_meridian__from_user_input__invalid
+test.crs.test_crs::test_prime_meridian_equals
 test.crs.test_crs::test_repr
 test.crs.test_crs::test_repr__long
 test.crs.test_crs::test_repr__undefined
 test.crs.test_crs::test_repr_compound
 test.crs.test_crs::test_repr_epsg
+test.crs.test_crs::test_scope__remarks
 test.crs.test_crs::test_source_crs__bound
 test.crs.test_crs::test_source_crs__missing
 test.crs.test_crs::test_srs__no_plus
@@ -108,12 +207,18 @@ test.crs.test_crs::test_utm_zone[EPSG:26915+5717]
 test.crs.test_crs::test_utm_zone__none[+proj=tmerc]
 test.crs.test_crs::test_utm_zone__none[epsg:4326]
 test.crs.test_crs::test_whitepace_between_equals
+test.crs.test_crs_json::test_coordinate_system_from_json
+test.crs.test_crs_json::test_coordinate_system_from_json_dict
 test.crs.test_crs_json::test_crs_from_json
 test.crs.test_crs_json::test_crs_from_json_dict
 test.crs.test_crs_json::test_crs_to_json
 test.crs.test_crs_json::test_crs_to_json__pretty
 test.crs.test_crs_json::test_crs_to_json__pretty__indenation
 test.crs.test_crs_json::test_crs_to_json_dict
+test.crs.test_crs_json::test_properties_from_json_dict[coordinate_operation-CoordinateOperation]
+test.crs.test_crs_json::test_properties_from_json_dict[datum-Datum]
+test.crs.test_crs_json::test_properties_from_json_dict[ellipsoid-Ellipsoid]
+test.crs.test_crs_json::test_properties_from_json_dict[prime_meridian-PrimeMeridian]
 test.crs.test_crs_json::test_properties_to_json[coordinate_operation-Conversion]
 test.crs.test_crs_json::test_properties_to_json[coordinate_system-CoordinateSystem]
 test.crs.test_crs_json::test_properties_to_json[datum-GeodeticReferenceFrame]
@@ -182,6 +287,17 @@ test.test_database::test_query_crs_info__empty[IGNF-PJType.ELLIPSOID]
 test.test_database::test_query_crs_info__empty[ITRF-PJType.BOUND_CRS]
 test.test_database::test_query_crs_info__empty[PROJ-PJType.BOUND_CRS]
 test.test_database::test_query_crs_info__empty[blob-BOUND_CRS]
+test.test_database::test_query_geodetic_crs_from_datum[EPSG-EPSG-1116-GEOCENTRIC_CRS-res0]
+test.test_database::test_query_geodetic_crs_from_datum[EPSG-EPSG-1116-PJType.GEOCENTRIC_CRS-res1]
+test.test_database::test_query_geodetic_crs_from_datum[EPSG-EPSG-6269-None-res3]
+test.test_database::test_query_geodetic_crs_from_datum[None-EPSG-1116-None-res2]
+test.test_database::test_query_geodetic_crs_from_datum_invalid[None-EPSG-11-None]
+test.test_database::test_query_geodetic_crs_from_datum_invalid[None-EPSG-32632-None]
+test.test_database::test_query_geodetic_crs_from_datum_invalid[foo-bar-EPSG-6269-None]
+test.test_database::test_query_geodetic_crs_from_datum_raises[EPSG-EPSG-1116-PJType.PROJECTED_CRS-ValueError]
+test.test_database::test_query_geodetic_crs_from_datum_raises[EPSG-EPSG-1116-invalid string-ValueError]
+test.test_database::test_query_geodetic_crs_from_datum_raises[EPSG-EPSG-None-None-TypeError]
+test.test_database::test_query_geodetic_crs_from_datum_raises[EPSG-None-1116-None-TypeError]
 test.test_database::test_query_utm_crs_info__aoi_contains
 test.test_database::test_query_utm_crs_info__aoi_datum_name[NAD27]
 test.test_database::test_query_utm_crs_info__aoi_datum_name[NAD83]

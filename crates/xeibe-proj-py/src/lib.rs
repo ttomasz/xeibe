@@ -98,6 +98,52 @@ fn esri_code(code: u32) -> Option<u32> {
     xeibe_esri::epsg_code(code)
 }
 
+/// An EPSG object's kind by the name the Python side uses.
+fn object_kind(kind: &str) -> PyResult<xeibe_crs::ObjectKind> {
+    Ok(match kind {
+        "ellipsoid" => xeibe_crs::ObjectKind::Ellipsoid,
+        "prime_meridian" => xeibe_crs::ObjectKind::PrimeMeridian,
+        "datum" => xeibe_crs::ObjectKind::Datum,
+        "conversion" => xeibe_crs::ObjectKind::Conversion,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown object kind {other:?}"
+            )));
+        }
+    })
+}
+
+/// The PROJJSON of an EPSG ellipsoid, prime meridian, datum or conversion
+/// on its own (`kind` is one of those, as `"prime_meridian"`), or `None`.
+#[pyfunction]
+fn object_json(kind: &str, code: u32) -> PyResult<Option<&'static str>> {
+    Ok(xeibe_crs::object(object_kind(kind)?, code).map(|o| o.projjson))
+}
+
+/// The EPSG objects of a kind with this name or alias, as PROJ's name
+/// search orders them: `(code, PROJJSON)`.
+#[pyfunction]
+fn objects_by_name(kind: &str, name: &str) -> PyResult<Vec<(u32, &'static str)>> {
+    Ok(xeibe_crs::objects_by_name(object_kind(kind)?, name)
+        .into_iter()
+        .map(|o| (o.code, o.projjson))
+        .collect())
+}
+
+/// PROJ-data's file for a grid EPSG names in operation `op_name`, and
+/// whether `cdn.proj.org` serves it openly, or `None`.
+#[pyfunction]
+fn proj_data_file(epsg_name: &str, op_name: &str) -> Option<(&'static str, bool)> {
+    xeibe_reproject::proj_data_file(epsg_name, op_name)
+}
+
+/// The PROJJSON of a part of a CRS given as WKT2 on its own (an
+/// ellipsoid, prime meridian, datum, ensemble or conversion).
+#[pyfunction]
+fn wkt_object_to_projjson(py: Python<'_>, text: &str) -> PyResult<String> {
+    wkt::object_to_projjson(text).map_err(|e| error(py, e))
+}
+
 /// The PROJJSON of a CRS given as WKT (any version PROJ reads but WKT2's
 /// derived geographic, parametric and temporal CRSs).
 #[pyfunction]
@@ -702,6 +748,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(replacements, m)?)?;
     m.add_function(wrap_pyfunction!(operations_json, m)?)?;
     m.add_function(wrap_pyfunction!(wkt_to_projjson, m)?)?;
+    m.add_function(wrap_pyfunction!(wkt_object_to_projjson, m)?)?;
+    m.add_function(wrap_pyfunction!(object_json, m)?)?;
+    m.add_function(wrap_pyfunction!(objects_by_name, m)?)?;
+    m.add_function(wrap_pyfunction!(proj_data_file, m)?)?;
     m.add_function(wrap_pyfunction!(to_wkt, m)?)?;
     m.add_function(wrap_pyfunction!(proj_string_to_projjson, m)?)?;
     m.add_function(wrap_pyfunction!(to_proj4, m)?)?;

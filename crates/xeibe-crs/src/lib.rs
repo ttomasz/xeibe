@@ -686,8 +686,9 @@ pub struct EpsgObject {
     pub names: &'static [&'static str],
     pub deprecated: bool,
     /// The PROJJSON PROJ writes for the object at the root, without
-    /// `$schema`: a datum with its areas of use and scope, an ensemble and
-    /// a conversion without.
+    /// `$schema`: a datum with its areas of use and scope, an ensemble
+    /// without. A conversion has its usage too, which PROJ keeps for its
+    /// area of use but leaves out of the PROJJSON it writes.
     pub projjson: &'static str,
 }
 

@@ -43,6 +43,25 @@ pub fn to_projjson(text: &str) -> Result<String, Error> {
     Ok(to_value(text)?.to_string())
 }
 
+/// The PROJJSON for a part of a CRS given as WKT2 on its own, as a JSON
+/// string with its `type`: an ellipsoid (`ELLIPSOID`), a prime meridian
+/// (`PRIMEM`), a datum of any kind (`DATUM`, `VDATUM`, `EDATUM`, `PDATUM`,
+/// `TDATUM`), a datum ensemble (`ENSEMBLE`) or a conversion
+/// (`CONVERSION`). Anything else is an error naming it.
+///
+/// ```
+/// let json = xeibe_reproject::wkt::object_to_projjson(
+///     r#"ELLIPSOID["WGS 84",6378137,298.257223563,LENGTHUNIT["metre",1]]"#,
+/// )
+/// .unwrap();
+/// assert!(json.contains(r#""type":"Ellipsoid""#));
+/// assert!(json.contains(r#""semi_major_axis":6378137"#));
+/// ```
+pub fn object_to_projjson(text: &str) -> Result<String, Error> {
+    let node = parse::parse(text)?;
+    Ok(wkt2::object(&node)?.to_string())
+}
+
 /// A WKT version this crate writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
