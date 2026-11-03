@@ -2,8 +2,8 @@
 #
 # - `v0.2.0`: the workspace crates to crates.io, the `xeibe` CLI binaries to
 #   a GitHub release, the `xeibe` wheels and sdist to PyPI;
-# - `xeibe-proj-v0.2.0`: the `xeibe-proj` wheels and sdist to PyPI, and a
-#   GitHub release with them.
+# - `xeibe-proj-v0.2.0`: the `xeibe-proj` wheels (the Pyodide one too) and
+#   sdist to PyPI, and a GitHub release with them.
 #
 # Everything is built and tested before anything is published, because
 # neither registry takes a release back: crates.io only yanks, and PyPI never
@@ -378,6 +378,111 @@ jobs:
           path: dist/*.whl
           if-no-files-found: error
 
+  # xeibe-proj's Pyodide wheel (docs/pyproj-phase3.md, Pyodide): abi3, for
+  # the PyEmscripten platform of the Pyodide release PYODIDE names, built by
+  # pyodide-build with that release's Emscripten, as proj-py.yml builds it.
+  # Tested in a Pyodide venv in Node: the bare install and the suite.
+  pyodide-wheel:
+    needs: [plan, licenses]
+    if: needs.plan.outputs.series == 'xeibe-proj'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      MANIFEST: ${{ needs.plan.outputs.manifest }}
+      PYODIDE: "314.0.7"
+      PYODIDE_BUILD: "0.39.3"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: licenses
+          path: licenses
+
+      - name: Licences into the package
+        run: cp licenses/wheel.md "$(dirname "$MANIFEST")/THIRD-PARTY-LICENSES.md"
+
+      - name: Rust with the Emscripten target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-emscripten
+          rustup default stable
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.3"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: pyodide-build
+        run: |
+          uv tool install --python 3.14 pyodide-cli==0.5.0 --with "pyodide-build==$PYODIDE_BUILD"
+          uv tool dir --bin >> "$GITHUB_PATH"
+
+      - name: Cross-build environment and Emscripten
+        run: |
+          pyodide xbuildenv install "$PYODIDE"
+          pyodide xbuildenv install-emscripten
+          echo "EMSDK_ENV=$(pyodide config get emsdk_dir)/emsdk_env.sh" >> "$GITHUB_ENV"
+
+      # maturin, run by pyodide-build, takes its arguments from the variable.
+      - name: Build the wheel
+        env:
+          MATURIN_PEP517_ARGS: --profile dist --locked
+        run: |
+          source "$EMSDK_ENV"
+          cd "$(dirname "$MANIFEST")"
+          pyodide build -o "$GITHUB_WORKSPACE/dist"
+
+      - name: Check the wheel's licence files
+        run: |
+          uv run --no-project --isolated python - dist/xeibe_proj-*.whl <<'EOF'
+          import sys
+          import zipfile
+
+          names = zipfile.ZipFile(sys.argv[1]).namelist()
+          for want in ("NOTICE.md", "THIRD-PARTY-LICENSES.md"):
+              if not any(n.endswith(f".dist-info/licenses/{want}") for n in names):
+                  sys.exit(f"{sys.argv[1]} has no {want}")
+          EOF
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          pyodide venv target/pyodide-bare
+          target/pyodide-bare/bin/pip install dist/xeibe_proj-*.whl
+          PROJ_NETWORK=OFF target/pyodide-bare/bin/python - <<'EOF'
+          import importlib.util
+
+          from xeibe_proj import CRS, Transformer
+
+          assert importlib.util.find_spec("numpy") is None, "numpy is installed"
+          assert CRS("EPSG:2180").name == "ETRS89 / PL-1992"
+          x, y = Transformer.from_crs(4326, 2180).transform([52.0], [21.0])
+          assert abs(x[0] - 461_197.24) < 1 and abs(y[0] - 637_253.16) < 1, (x, y)
+          EOF
+          pyodide venv target/pyodide-venv
+          target/pyodide-venv/bin/pip install dist/xeibe_proj-*.whl pytest numpy pyproj
+          target/pyodide-venv/bin/python -m pytest crates/xeibe-proj-py/tests -p no:cacheprovider
+
+      - name: Attest
+        if: needs.plan.outputs.publish == 'true'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/*.whl
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheel-pyodide
+          path: dist/*.whl
+          if-no-files-found: error
+
   sdist:
     needs: [plan, licenses]
     runs-on: ubuntu-latest
@@ -453,9 +558,10 @@ jobs:
         run: scripts/release.py publish-crates
 
   publish-pypi:
-    needs: [plan, test, wheels, sdist, publish-crates]
+    needs: [plan, test, wheels, pyodide-wheel, sdist, publish-crates]
     # After the crates for a `v*` tag, so that a failure there stops the
-    # release; a `xeibe-proj-v*` tag has no crates to wait for.
+    # release; a `xeibe-proj-v*` tag has no crates to wait for, and a `v*`
+    # tag no Pyodide wheel.
     if: >-
       !cancelled()
       && needs.plan.outputs.publish == 'true'
@@ -464,6 +570,8 @@ jobs:
       && needs.sdist.result == 'success'
       && (needs.publish-crates.result == 'success'
           || (needs.plan.outputs.series == 'xeibe-proj' && needs.publish-crates.result == 'skipped'))
+      && (needs.pyodide-wheel.result == 'success'
+          || (needs.plan.outputs.series == 'workspace' && needs.pyodide-wheel.result == 'skipped'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
@@ -482,8 +590,17 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@v1.14.3
 
   publish-testpypi:
-    needs: [plan, test, wheels, sdist]
-    if: github.event_name == 'workflow_dispatch' && inputs.testpypi
+    needs: [plan, test, wheels, pyodide-wheel, sdist]
+    # `!cancelled()`, so that the skipped pyodide-wheel of the workspace
+    # series doesn't skip this job.
+    if: >-
+      !cancelled()
+      && github.event_name == 'workflow_dispatch' && inputs.testpypi
+      && needs.test.result == 'success'
+      && needs.wheels.result == 'success'
+      && needs.sdist.result == 'success'
+      && (needs.pyodide-wheel.result == 'success'
+          || (needs.plan.outputs.series == 'workspace' && needs.pyodide-wheel.result == 'skipped'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: testpypi

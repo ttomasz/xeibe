@@ -12,6 +12,8 @@ from xeibe_proj import Transformer
 from xeibe_proj.enums import TransformDirection
 from xeibe_proj.exceptions import ProjError
 
+from .conftest import EMSCRIPTEN
+
 pyproj = pytest.importorskip("pyproj")
 np = pytest.importorskip("numpy")
 
@@ -175,6 +177,8 @@ def test_last_used_operation_follows_the_last_direction() -> None:
     assert t.get_last_used_operation().description == "Inverse of ETRS89 to WGS 84 (1) + Poland CS92"
     t.transform(x, y, direction="INVERSE")
     assert t.get_last_used_operation().description == "Inverse of Poland CS92 + ETRS89 to WGS 84 (1)"
+    if EMSCRIPTEN:
+        return  # no threads
     # Per thread: another thread has converted nothing yet.
     errors: list[BaseException] = []
 

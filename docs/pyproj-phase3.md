@@ -5,7 +5,8 @@
 > bodies are in); PROJ strings, 2026-10-31 (steps 1 and 2, see
 > [Order of work](#order-of-work)); PROJ's own methods and other
 > celestial bodies, 2026-10-31 (step 2b); `install_as_pyproj()` and
-> GeoPandas, 2026-11-01 (step 3).** This is phase 3 of
+> GeoPandas, 2026-11-01 (step 3); the Pyodide wheel, 2026-11-03
+> (step 8).** This is phase 3 of
 > [pyproj-compat.md](pyproj-compat.md#phases). Facts about PROJ, pyproj
 > and GeoPandas were checked against PROJ 9.8.1 through pyproj 3.8.0 and
 > GeoPandas 1.2.0, with the oracle database
@@ -71,7 +72,7 @@ other authorities, PROJ's context and CA bundle, and `get_factors`.
 | 15 | **GeoArrow is `xeibe_proj.arrow`, a module of its own**, not new methods on pyproj's classes. It reads and writes through the Arrow PyCapsule interface, without depending on any Arrow library. | The classes keep pyproj's surface, so the type checks and the shim stay exact. |
 | 16 | **GeoArrow's native encodings and WKB are supported**, not WKT. WKB is rewritten in place: a copy of the buffer, with each coordinate overwritten. | WKB is what GeoParquet and `GeoDataFrame.to_arrow` write by default. Its coordinates have fixed widths, so the offsets don't change. WKT's lengths would change. |
 | 17 | **The Arrow code uses `arrow-array` and `arrow-schema` with `ffi`** (`xeibe-py` already does), if the wheel grows by less than 0.5 MB. If it grows more, the C Data Interface is written by hand for the few layouts needed. | That is the measurement phase 0 was to make. Writing the FFI by hand costs time, and is only worth it if the size matters. |
-| 18 | **Pyodide gets its own wheel**, built by maturin for Emscripten, with grids fetched through `pyodide.http.pyxhr`. | abi3 doesn't apply to Pyodide, and `urllib` has no sockets there. `pyxhr` is Pyodide's synchronous client. |
+| 18 | **Pyodide gets its own wheel**, built by maturin for Emscripten, with grids fetched through the browser's synchronous `XMLHttpRequest`. | Pyodide needs a wheel for its PyEmscripten platform; it is still abi3. `urllib` has no sockets there, and `pyodide.http.pyxhr`, Pyodide's synchronous client, garbles binary responses ([Pyodide](#pyodide)). |
 
 ## `install_as_pyproj()`
 
@@ -647,24 +648,59 @@ imports no Arrow library.
 
 ## Pyodide
 
-- **The wheel.** maturin builds it for `wasm32-unknown-emscripten` with
-  the Emscripten version of the targeted Pyodide release, and the Rust
-  toolchain that release requires. `xeibe-reproject` already builds for
-  `wasm32-unknown-unknown` in `xeibe-wasm`, so the code is portable.
-- **Grids.** `_grids.py` fetches ranges through `pyodide.http.pyxhr` when
-  it runs under Pyodide (`sys.platform == "emscripten"`). There is no
-  disk cache between page loads; the in-memory cache stays. Pyodide's
-  documentation warns that synchronous requests block the page on the
-  main thread, so the README recommends a web worker.
-- **To be checked when the step starts:**
-  - whether `pyxhr` returns binary range responses on the main thread, or
-    only in a worker;
-  - whether PyPI accepts Pyodide wheels for the targeted release (Pyodide
-    announced this for its 314 ABI), or whether the wheel goes on the
-    GitHub release instead.
-- **CI.** A job builds the wheel and runs the package's tests under
-  `pyodide venv` in Node, without the grid tests. One Playwright test runs
-  the grid fetch in a browser against the local grid server.
+Done (2026-11-03). Measured with Pyodide 314.0.7 (Python 3.14.2,
+Emscripten 5.0.3), pyodide-build 0.39.3, Node 22 and Chromium 153.
+
+- **The wheel.** `pyodide build` in `crates/xeibe-proj-py` runs maturin
+  through pip's build frontend with the release's Emscripten, and tags the
+  wheel for its PyEmscripten platform (PEP 783):
+  `xeibe_proj-0.1.0-cp311-abi3-pyemscripten_2026_0_wasm32.whl`, 2.6 MB
+  with `--profile dist` (`MATURIN_PEP517_ARGS`), its native module 6.4 MB.
+  It is still abi3: PEP 783's tags are `packaging`'s `cpython_tags`, which
+  include `abi3`, and pip in a Pyodide venv installs it. One wheel per
+  PyEmscripten platform, as one per OS elsewhere.
+- **Rust.** Stable, not the 1.93 that Pyodide 314 names (`pyodide config
+  get rust_toolchain`): the workspace's MSRV is 1.95, and the Emscripten
+  target's ABI (wasm exceptions, no `-Z` flags in `rustflags`) is the one
+  1.93 introduced. The whole suite passes on a 1.99 build.
+- **Grids.** `_grids.py` fetches ranges with the browser's synchronous
+  `XMLHttpRequest` when it runs under Pyodide (`sys.platform ==
+  "emscripten"`), not with `pyodide.http.pyxhr`. The step's open question
+  ("does `pyxhr` return binary range responses on the main thread, or
+  only in a worker?") has the answer "in neither": a synchronous request
+  can't set `responseType` on a page's main thread, `pyxhr` doesn't set it
+  in a worker either, and it then encodes the response text as UTF-8,
+  which turns a 200-byte range of a grid into 202 bytes. `_grids.py` asks
+  for the `x-user-defined` charset instead, which maps each byte to one
+  UTF-16 code unit whose low byte it is, and works in every thread. It
+  sends only `Range`: `cdn.proj.org` allows that header and no other in
+  CORS requests (`Access-Control-Allow-Headers: range`), and browsers set
+  `User-Agent` themselves. The cache is Pyodide's in-memory file system,
+  so it lasts until the page is reloaded. In Node, where Pyodide has no
+  `XMLHttpRequest`, fetching raises `ProjError` saying to put the grids in
+  a data directory. A synchronous request blocks the page while it runs on
+  the main thread, so the README recommends a web worker.
+- **PyPI** takes PyEmscripten wheels: pydantic-core and jiter ship
+  `pyemscripten_2026_0_wasm32` wheels, and PEP 783 says an index should
+  accept any wheel whose platform tag matches
+  `pyemscripten_[0-9]+_[0-9]+_wasm32`. So the release uploads it with the
+  other wheels (`release.yml`'s `pyodide-wheel` job), and it is on the
+  GitHub release too.
+- **CI.** `proj-py.yml`'s `pyodide` job builds the wheel, checks a bare
+  install in a Pyodide venv in Node, and runs the package's tests there
+  with Pyodide's own numpy and pyproj (3.7.2, with PROJ 9.6.2: the one
+  test that compares GeographicLib's version with pyproj's only runs
+  against 3.8.0). Pyodide can't start processes, threads or sockets, so:
+  the tests that run code in a new interpreter run it in the same one
+  with `sys.modules` put back (`conftest.run_python`); the thread half of
+  `test_last_used_operation_follows_the_last_direction` is skipped; and
+  the grid tests, which run against a local HTTP server natively, run
+  against a fake `XMLHttpRequest` there, as they also do natively.
+  `tests/pyodide_browser/run.py` then checks the real `XMLHttpRequest` in
+  Chromium (Playwright): Pyodide and the wheel on one origin, the grids on
+  another that answers as `cdn.proj.org` does, and EPSG:8546 (NADCON5,
+  two grids) converted on the main thread and in a worker, both matching
+  PROJ's results.
 
 ## What stays out
 
@@ -705,7 +741,8 @@ imports no Arrow library.
 6. **CF**, gated on pyproj's `test_crs_cf.py`.
 7. **GeoArrow**: first the wheel-size measurement for decision 17, then
    the module.
-8. **Pyodide.**
+8. **Pyodide.** **Done** (2026-11-03): the wheel, the grid fetch through
+   `XMLHttpRequest`, and CI in Node and Chromium ([Pyodide](#pyodide)).
 
 Each step updates [pyproj-compat.md](pyproj-compat.md)'s table and status,
 and the two pass lists.

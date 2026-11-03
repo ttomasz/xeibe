@@ -7,3 +7,5 @@ xeibe repository). Each entry names the EPSG Dataset version it embeds
 ## Unreleased
 
 - First release, with EPSG Dataset 13.106.
+- A wheel for Pyodide 314 (`pyemscripten_2026_0_wasm32`). Grids are
+  fetched there with the browser's `XMLHttpRequest`.

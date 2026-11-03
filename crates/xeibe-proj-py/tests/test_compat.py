@@ -1,19 +1,16 @@
 """``xeibe_proj.compat.install_as_pyproj()``. Each test runs in a new
-interpreter: the shim changes ``sys.modules``, and the other tests import
-the real pyproj."""
+interpreter (in Pyodide, in this one with ``sys.modules`` put back): the
+shim changes ``sys.modules``, and the other tests import the real pyproj."""
 
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
 import textwrap
+
+from .conftest import run_python
 
 
 def run(code: str) -> None:
-    # The whole environment: Python on Windows doesn't start without SYSTEMROOT.
-    env = {**os.environ, "PROJ_NETWORK": "OFF"}
-    subprocess.run([sys.executable, "-c", textwrap.dedent(code)], check=True, env=env)
+    run_python(textwrap.dedent(code))
 
 
 def test_pyproj_modules_are_xeibe_projs() -> None:

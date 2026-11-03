@@ -92,7 +92,10 @@ def test_every_named_ellipsoid() -> None:
 
 def test_prime_meridians_and_version() -> None:
     assert xeibe_proj.get_prime_meridians_map() == pyproj.get_prime_meridians_map()
-    assert xeibe_proj.geodesic_version_str == pyproj.geodesic_version_str
+    # Only against pyproj 3.8.0, whose API is followed: Pyodide's pyproj
+    # 3.7.2 has PROJ 9.6's GeographicLib, 2.1.0.
+    if pyproj.__version__ == "3.8.0":
+        assert xeibe_proj.geodesic_version_str == pyproj.geodesic_version_str
     with pytest.raises(NotImplementedError):
         xeibe_proj.get_proj_operations_map()
 

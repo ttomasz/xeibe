@@ -17,16 +17,26 @@ reaches stderr through Python's last-resort handler.
 Which operation a coordinate went through, and so whether it needed a grid,
 needs operation metadata from ``xeibe-reproject``; until then the first
 message names the grids the transformer may read.
+
+Under Pyodide (``sys.platform == "emscripten"``) there are no sockets, so
+grids are fetched with the browser's synchronous ``XMLHttpRequest``, and the
+cache is Pyodide's in-memory file system, which lasts until the page is
+reloaded (``docs/pyproj-phase3.md``, Pyodide).
 """
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 import shutil
+import sys
 import tempfile
+from collections.abc import Generator
+from contextlib import contextmanager
+from io import BytesIO
 from pathlib import Path
-from typing import Protocol
+from typing import Any, BinaryIO, Protocol
 
 from xeibe_proj import _native, datadir, network
 from xeibe_proj.exceptions import ProjError
@@ -37,6 +47,9 @@ LOGGER = logging.getLogger("xeibe_proj.grids")
 
 CDN = "https://cdn.proj.org/"
 TIMEOUT = 60.0
+
+# Pyodide, in a browser or in Node: fetched through XMLHttpRequest.
+_EMSCRIPTEN = sys.platform == "emscripten"
 
 
 class _Transform(Protocol):
@@ -99,28 +112,70 @@ def _write_cache(path: Path, data: bytes) -> None:
         LOGGER.warning("could not cache grid data at %s: %s", path, e)
 
 
-def _fetch(file: str, offset: int, length: int | None) -> bytes:
+def _xhr_get(url: str, headers: dict[str, str]) -> tuple[int, bytes]:
+    """GET with the browser's synchronous ``XMLHttpRequest``: the status and
+    the body.
+
+    Not ``pyodide.http.pyxhr``: it never asks for an ``ArrayBuffer`` (a
+    synchronous request can't, on a page's main thread), and encodes the
+    response text as UTF-8, which garbles binary data in every thread. The
+    ``x-user-defined`` charset works in
+    every thread: it maps byte ``b`` to ``b`` below 0x80 and to
+    ``U+F700 + b`` above, so each byte is the low byte of its UTF-16 code
+    unit. No ``User-Agent``: browsers set it, and ``cdn.proj.org`` allows
+    only ``Range`` in CORS requests."""
+    # Pyodide's module of JavaScript's globals, untyped: by name.
+    try:
+        xhr: Any = importlib.import_module("js").XMLHttpRequest.new()
+    except (ImportError, AttributeError) as e:
+        raise OSError("no XMLHttpRequest here (Node has none): put the grids in a data directory") from e
+    xhr.open("GET", url, False)
+    xhr.overrideMimeType("text/plain; charset=x-user-defined")
+    for name, value in headers.items():
+        xhr.setRequestHeader(name, value)
+    try:
+        xhr.send()
+    except Exception as e:  # a JsException: a network or CORS error
+        raise OSError(f"request failed: {e}") from e
+    status = int(xhr.status)
+    if status == 0:
+        raise OSError("request failed (network or CORS error)")
+    if status >= 400:
+        raise OSError(f"HTTP Error {status}: {xhr.statusText}")
+    text = str(xhr.responseText)
+    return status, text.encode("utf-16-le")[::2]
+
+
+@contextmanager
+def _open(url: str, headers: dict[str, str]) -> Generator[tuple[int, BinaryIO]]:
+    """GET ``url``: the status and the body to read. Raises ``OSError``
+    (``urllib.error.URLError`` is one) when the request fails or the status
+    is an error."""
+    if _EMSCRIPTEN:
+        status, data = _xhr_get(url, headers)
+        yield status, BytesIO(data)
+        return
     # Here, not at the top: urllib.request and ssl take about half of
     # `import xeibe_proj`, for what only fetching a grid needs.
     import ssl
-    import urllib.error
     import urllib.request
 
+    request = urllib.request.Request(url, headers={**headers, "User-Agent": f"xeibe-proj/{_native.version()}"})
+    context = ssl.create_default_context(cafile=network.ca_bundle_path())
+    with urllib.request.urlopen(request, timeout=TIMEOUT, context=context) as response:
+        yield response.status, response
+
+
+def _fetch(file: str, offset: int, length: int | None) -> bytes:
     url = CDN + file
     end = "" if length is None else str(offset + length - 1)
-    request = urllib.request.Request(
-        url,
-        headers={"Range": f"bytes={offset}-{end}", "User-Agent": f"xeibe-proj/{_native.version()}"},
-    )
-    cafile = network.ca_bundle_path()
-    context = ssl.create_default_context(cafile=cafile)
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT, context=context) as response:
-            data: bytes = response.read()
-            # A server that ignores the range sends the whole file.
-            if response.status == 200 and offset:
-                data = data[offset:] if length is None else data[offset : offset + length]
-    except (urllib.error.URLError, OSError) as e:
+        with _open(url, {"Range": f"bytes={offset}-{end}"}) as (status, body):
+            data = body.read()
+        # A server that ignores the range sends the whole file.
+        if status == 200 and offset:
+            data = data[offset:] if length is None else data[offset : offset + length]
+    except OSError as e:
         LOGGER.error("downloading grid %s failed: %s", url, e, extra={"grid": file, "url": url})
         raise ProjError(f"grid {file}: downloading {url} failed: {e}") from e
     LOGGER.info(
@@ -139,10 +194,6 @@ def download(file_url: str, short_name: str, directory: str | Path, verbose: boo
     ``_download_resource_file``: through ``<name>.part``, renamed when
     complete. A file of that name already there is kept; ``verbose``
     prints the URL of each download."""
-    import ssl
-    import urllib.error
-    import urllib.request
-
     target = Path(directory, short_name)
     if target.is_file():
         LOGGER.debug("grid %s is already in %s", short_name, directory, extra={"grid": short_name, "path": str(target)})
@@ -151,14 +202,12 @@ def download(file_url: str, short_name: str, directory: str | Path, verbose: boo
         print(f"Downloading: {file_url}")
     target.parent.mkdir(parents=True, exist_ok=True)
     part = Path(directory, f"{short_name}.part")
-    request = urllib.request.Request(file_url, headers={"User-Agent": f"xeibe-proj/{_native.version()}"})
-    context = ssl.create_default_context(cafile=network.ca_bundle_path())
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT, context=context) as response, part.open("wb") as f:
-            shutil.copyfileobj(response, f)
+        with _open(file_url, {}) as (_, body), part.open("wb") as f:
+            shutil.copyfileobj(body, f)
         size = part.stat().st_size
         part.replace(target)
-    except (urllib.error.URLError, OSError) as e:
+    except OSError as e:
         LOGGER.error("downloading grid %s failed: %s", file_url, e, extra={"grid": short_name, "url": file_url})
         raise ProjError(f"grid {short_name}: downloading {file_url} failed: {e}") from e
     finally:

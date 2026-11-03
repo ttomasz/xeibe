@@ -10,7 +10,7 @@ publishes only after an approval.
 | Tag | crates.io | GitHub release | PyPI |
 |---|---|---|---|
 | `v0.2.0` | The workspace crates (below) | CLI archives, wheels, sdist, `SHA256SUMS` | `xeibe` (crate `xeibe-py`) |
-| `xeibe-proj-v0.2.0` | — | Wheels, sdist, `SHA256SUMS` | `xeibe-proj` (crate `xeibe-proj-py`) |
+| `xeibe-proj-v0.2.0` | — | Wheels (Pyodide's too), sdist, `SHA256SUMS` | `xeibe-proj` (crate `xeibe-proj-py`) |
 
 Published to crates.io: `xeibe-core`, `xeibe-crs`, `xeibe-esri`,
 `xeibe-reproject`, `xeibe-geom`, `xeibe-schema`, `xeibe-arrow`,
@@ -69,6 +69,7 @@ flowchart LR
     plan --> licenses
     licenses --> cli["cli<br/>4 targets, v* only"]
     licenses --> wheels["wheels<br/>4 targets"]
+    licenses --> pyw["pyodide-wheel<br/>xeibe-proj-v* only"]
     licenses --> sdist
     test --> pc
     cli --> pc["publish-crates<br/>v* only, approval"]
@@ -76,6 +77,7 @@ flowchart LR
     sdist --> pc
     pc --> pp["publish-pypi<br/>approval"]
     wheels --> pp
+    pyw --> pp
     sdist --> pp
     pp --> gh["github-release"]
 ```
@@ -103,6 +105,13 @@ flowchart LR
     platform: `crates/xeibe-py/tests/smoke.py` for `xeibe`; for
     `xeibe-proj`, the bare install check and the pytest suite, as
     `proj-py.yml` runs them.
+  - For `xeibe-proj` only, pyodide-build also builds an abi3 wheel for
+    Pyodide's PyEmscripten platform (`pyemscripten_2026_0_wasm32`, Pyodide
+    314), with `--profile dist`. It gets the same licence check, and the
+    bare install check and the suite in a Pyodide venv in Node
+    ([pyproj-phase3.md](pyproj-phase3.md#pyodide)). Moving to a new
+    Pyodide release means changing `PYODIDE` (and `PYODIDE_BUILD`, if the
+    release needs a newer one) in both `release.yml` and `proj-py.yml`.
 - **Build provenance.** Every archive, wheel and sdist of a tagged release
   gets an attestation (`gh attestation verify <file> -R ttomasz/xeibe`).
 - **publish-crates.** `scripts/release.py publish-crates` publishes each
@@ -131,6 +140,9 @@ trusted publishing before a real release.
 |---|---|---|---|---|
 | CLI | glibc ≥ 2.28 | glibc ≥ 2.28 | macOS ≥ 11 | static CRT |
 | Wheels | manylinux_2_28 | manylinux_2_28 | macOS ≥ 11 | ✓ |
+
+`xeibe-proj` also has a wheel for Pyodide 314
+(`pyemscripten_2026_0_wasm32`), in the browser and in Node.
 
 Not built, for now:
 
