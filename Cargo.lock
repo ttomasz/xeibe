@@ -4275,7 +4275,7 @@ dependencies = [
 
 [[package]]
 name = "xeibe-crs"
-version = "0.4.1+epsg-13.106"
+version = "0.4.2+epsg-13.106"
 dependencies = [
  "lz4_flex",
  "serde_json",

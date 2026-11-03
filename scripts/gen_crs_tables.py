@@ -26,6 +26,9 @@ Outputs (all committed):
     crates/xeibe-crs/data/operations.bin coordinate operations, geodetic CRSs, datums
                                        and areas of use, as PROJ imports them (one
                                        LZ4 block of JSON)
+    crates/xeibe-crs/data/objects.bin  ellipsoids, prime meridians, datums and
+                                       conversions on their own, as PROJJSON with
+                                       their names (one LZ4 block of lines)
     crates/xeibe-crs/EPSG-NOTICE.md    provenance and EPSG terms (regenerated)
 """
 
@@ -1343,6 +1346,113 @@ def pack_usages(e: Epsg, crs_codes: set[int]) -> bytes:
     return USAGES_MAGIC + struct.pack("<I", len(raw)) + lz4_block(bytes(raw))
 
 
+OBJECTS_MAGIC = b"XOB1"
+# The kinds of objects.bin, by the letter that starts each record.
+OBJECT_KINDS = {"ellipsoid": "e", "prime_meridian": "p", "datum": "d", "conversion": "c"}
+# PROJ's own names for some EPSG datums (its data/sql/customizations.sql),
+# which its name search finds as it finds EPSG's aliases.
+PROJ_DATUM_ALIASES = {
+    6326: ["WGS84"], 6121: ["GGRS87"], 6269: ["NAD83"], 6267: ["NAD27"], 6314: ["potsdam"],
+    6223: ["carthage"], 6312: ["hermannskogel"], 6299: ["ire65"], 6272: ["nzgd49"],
+}  # fmt: skip
+
+
+def object_usage(e: Epsg, table: str, code: int) -> dict:
+    """An object's areas of use and scopes as PROJJSON spells them: `scope`,
+    `area` and `bbox` for one, `usages` for several."""
+    usages = []
+    for r in e.all(
+        "select extent_code, scope_code from epsg_usage where object_table_name = ? and object_code = ? order by usage_code",
+        table,
+        code,
+    ):
+        usage = {}
+        if r["scope_code"] is not None:
+            usage["scope"] = plain_text(e.one("select scope from epsg_scope where scope_code = ?", r["scope_code"])["scope"])
+        x = e.one("select * from epsg_extent where extent_code = ?", r["extent_code"]) if r["extent_code"] else None
+        if x is not None:
+            usage["area"] = plain_text(x["extent_description"])
+            bbox = [x["bbox_south_bound_lat"], x["bbox_west_bound_lon"], x["bbox_north_bound_lat"], x["bbox_east_bound_lon"]]
+            if all(v is not None for v in bbox):
+                keys = ("south_latitude", "west_longitude", "north_latitude", "east_longitude")
+                usage["bbox"] = {k: float(v) for k, v in zip(keys, bbox)}
+        usages.append(usage)
+    if len(usages) == 1:
+        return usages[0]
+    return {"usages": usages} if usages else {}
+
+
+def with_id_last(doc: dict) -> dict:
+    """The id after everything else, where PROJ writes it."""
+    ident = doc.pop("id", None)
+    return doc if ident is None else {**doc, "id": ident}
+
+
+def export_objects(e: Epsg, datum_aliases: list[tuple[int, str]]) -> list[tuple[str, int, bool, list[str], dict]]:
+    """EPSG's ellipsoids, prime meridians, datums (and ensembles) and
+    conversions on their own, each as `(kind, code, deprecated,
+    names, PROJJSON)`: the PROJJSON PROJ writes for the object at the root,
+    and its name followed by the aliases PROJ's name search uses (EPSG's for
+    datums, PROJ's own few)."""
+    out: list[tuple[str, int, bool, list[str], dict]] = []
+    for r in e.all("select ellipsoid_code, deprecated from epsg_ellipsoid order by ellipsoid_code"):
+        doc = {"type": "Ellipsoid", **e.ellipsoid(r["ellipsoid_code"])}
+        out.append(("ellipsoid", r["ellipsoid_code"], bool(r["deprecated"]), [doc["name"]], doc))
+    for r in e.all("select * from epsg_primemeridian order by prime_meridian_code"):
+        code = r["prime_meridian_code"]
+        value, uom = angle(r["greenwich_longitude"], r["uom_code"])
+        unit = e.unit(uom)
+        doc = {
+            "type": "PrimeMeridian",
+            "name": r["prime_meridian_name"],
+            "longitude": value if unit == "degree" else {"value": value, "unit": unit},
+            "id": {"authority": "EPSG", "code": code},
+        }
+        out.append(("prime_meridian", code, bool(r["deprecated"]), [doc["name"]], doc))
+    aliases: dict[int, list[str]] = defaultdict(list)
+    for code, alias in datum_aliases:
+        aliases[code].append(alias)
+    for code, names in PROJ_DATUM_ALIASES.items():
+        aliases[code].extend(names)
+    for r in e.all("select datum_code, datum_name, datum_type, deprecated from epsg_datum order by datum_code"):
+        code = r["datum_code"]
+        if EXAMPLE_NAME.match(r["datum_name"]):
+            continue
+        key, doc = e.datum(code)
+        if doc is None:
+            continue
+        if key == "datum_ensemble":
+            doc = {"type": "DatumEnsemble", **doc}
+        else:
+            # A datum on its own carries its usage; an ensemble none.
+            doc = with_id_last({**doc, **object_usage(e, "epsg_datum", code)})
+        out.append(("datum", code, bool(r["deprecated"]), [doc["name"], *aliases.get(code, [])], doc))
+    for r in e.all(
+        "select coord_op_code, coord_op_name, deprecated from epsg_coordoperation where coord_op_type = 'conversion' order by coord_op_code"
+    ):
+        code = r["coord_op_code"]
+        if EXAMPLE_NAME.match(r["coord_op_name"]):
+            continue
+        doc = {"type": "Conversion", **e.conversion(code), "id": {"authority": "EPSG", "code": code}}
+        if not doc["parameters"]:
+            del doc["parameters"]
+        out.append(("conversion", code, bool(r["deprecated"]), [doc["name"]], doc))
+    return out
+
+
+def pack_objects(objects: list[tuple[str, int, bool, list[str], dict]]) -> bytes:
+    """A magic, the raw length, and one LZ4 block of lines, one per object:
+    its kind's letter (`OBJECT_KINDS`), code, `1` if deprecated else `0`,
+    its names joined by U+001F, and its PROJJSON, separated by tabs."""
+    lines = []
+    for kind, code, deprecated, names, doc in objects:
+        assert not any(c in n for n in names for c in "\t\n\x1f"), names
+        text = json.dumps(doc, separators=(",", ":"), ensure_ascii=False)
+        lines.append(f"{OBJECT_KINDS[kind]}\t{code}\t{int(deprecated)}\t{chr(0x1F).join(names)}\t{text}")
+    raw = "\n".join(lines).encode()
+    return OBJECTS_MAGIC + struct.pack("<I", len(raw)) + lz4_block(raw)
+
+
 REMARKS_MAGIC = b"XRM1"
 REMARK_KINDS = {"crs": b"c", "operation": b"o"}
 
@@ -1963,6 +2073,9 @@ def main() -> None:
         (out / "src" / "names.rs").write_text(emit_names(methods, parameters, units, version, date))
         datums, datum_aliases = datum_names(e)
         (out / "src" / "datums.rs").write_text(emit_datums(datums, datum_aliases, version, date))
+        objects = export_objects(e, datum_aliases)
+        objects_blob = pack_objects(objects)
+        (out / "data" / "objects.bin").write_bytes(objects_blob)
         replacements = crs_replacements(e, records)
         (out / "src" / "deprecations.rs").write_text(emit_deprecations(replacements, version, date))
         uoms = units_of_measure(e)
@@ -1977,6 +2090,12 @@ def main() -> None:
         )
         print(f"wrote {out / 'data' / 'remarks.bin'}  ({len(remarks_blob) / 1024:.0f} KiB)")
         print(f"wrote {out / 'data' / 'usages.bin'}  ({len(usages_blob) / 1024:.0f} KiB)")
+        kinds = Counter(o[0] for o in objects)
+        print(
+            f"wrote {out / 'data' / 'objects.bin'}  ({len(objects_blob) / 1024:.0f} KiB, "
+            + ", ".join(f"{n} {k.replace('_', ' ')}s" for k, n in kinds.items())
+            + ")"
+        )
         print(f"wrote {out / 'src' / 'aliases.rs'}  ({len(aliases)} aliases)")
         print(f"wrote {out / 'src' / 'names.rs'}  ({len(methods)} method and {len(parameters)} parameter names)")
         print(f"wrote {out / 'src' / 'datums.rs'}  ({len(datums)} datums, {len(datum_aliases)} aliases)")

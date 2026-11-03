@@ -5,6 +5,8 @@
 //! `docs/geometry.md` records, and that the normalisations the EPSG terms
 //! permit were actually applied.
 
+mod objects;
+
 use xeibe_crs::{CrsKind, FirstAxis, alias, crs_remarks, get, operation_remarks, projjson, usages};
 
 #[test]

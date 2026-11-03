@@ -9,6 +9,8 @@ EPSG's coordinate operations, datums and areas of use, from which
 `xeibe-reproject` chooses datum transformations (see the
 [reprojection document](https://github.com/ttomasz/xeibe/blob/main/docs/reprojection.md)).
 Since 0.3.0 also each CRS's areas of use and scopes, and EPSG's remarks.
+Since 0.4.2 also EPSG's ellipsoids, prime meridians, datums and conversions on
+their own, with their names, for looking one up by code or name.
 
 > **Warning: experimental, not for production use.** This crate is
 > AI-generated and has not been thoroughly tested yet. Its interfaces are not
@@ -46,6 +48,7 @@ flowchart TD
     B --> L["coordinate operations,<br/>datums, areas of use"] --> M["data/operations.bin"]
     B --> N["each CRS's areas of use<br/>and scopes, by reference"] --> O["data/usages.bin"]
     B --> P["remarks on CRSs<br/>and operations"] --> Q["data/remarks.bin"]
+    B --> Z["ellipsoids, prime meridians,<br/>datums, conversions"] --> AA["data/objects.bin"]
 ```
 
 No PROJ, GDAL, pyproj or network access is involved, at generation time or at

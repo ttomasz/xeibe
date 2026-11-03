@@ -181,6 +181,14 @@ sources, but their contents haven't been checked against the local copies:
   (`corpus.jsonl`). A committed subset goes to `tests/data/proj-string/`;
   `--all` writes every EPSG CRS to `target/proj-string/`. See
   `docs/pyproj-phase3.md`.
+- `scripts/gen_object_vectors.py` writes test vectors for EPSG's
+  ellipsoids, prime meridians, datums and conversions on their own
+  (`xeibe-crs`'s `objects.bin`) with PROJ on the full oracle database:
+  PROJ's PROJJSON and WKT for each (`objects.jsonl`), pyproj's `from_name`
+  for each name and alias (`names.jsonl`) and
+  `query_geodetic_crs_from_datum` for each geodetic datum (`query.jsonl`).
+  A committed subset goes to `tests/data/crs-objects/`; `--all` writes
+  everything to `target/crs-objects/`. See `docs/pyproj-phase3.md`.
 - `scripts/gen_geodesic_vectors.py` writes geodesic test vectors with
   pyproj's `Geod` (no oracle database needed): inverse and direct
   problems, geodesic lines and polygon areas on several ellipsoids,
