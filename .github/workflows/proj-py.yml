@@ -161,19 +161,22 @@ jobs:
           echo "EMSDK_ENV=$(pyodide config get emsdk_dir)/emsdk_env.sh" >> "$GITHUB_ENV"
           echo "PYODIDE_DIST=$(pyodide config get dist_dir)" >> "$GITHUB_ENV"
 
+      # The wheel and the venvs go in RUNNER_TEMP, not target/: rust-cache
+      # saves target/ but prunes what isn't Cargo's, and a venv it brings
+      # back half-deleted makes `pyodide venv` fail. pyodide build makes
+      # the output directory but not its parents.
       - name: Build the wheel
         working-directory: crates/xeibe-proj-py
-        # pyodide build makes the output directory but not its parents.
         run: |
           source "$EMSDK_ENV"
-          mkdir -p ../../target/pyodide-wheels
-          pyodide build -o ../../target/pyodide-wheels
+          mkdir -p "$RUNNER_TEMP/pyodide-wheels"
+          pyodide build -o "$RUNNER_TEMP/pyodide-wheels"
 
       - name: Bare install
         run: |
-          pyodide venv target/pyodide-bare
-          target/pyodide-bare/bin/pip install target/pyodide-wheels/xeibe_proj-*.whl
-          PROJ_NETWORK=OFF target/pyodide-bare/bin/python - <<'EOF'
+          pyodide venv "$RUNNER_TEMP/pyodide-bare"
+          "$RUNNER_TEMP/pyodide-bare/bin/pip" install "$RUNNER_TEMP"/pyodide-wheels/xeibe_proj-*.whl
+          PROJ_NETWORK=OFF "$RUNNER_TEMP/pyodide-bare/bin/python" - <<'EOF'
           import importlib.util
           import sys
 
@@ -188,12 +191,12 @@ jobs:
 
       - name: Tests
         run: |
-          pyodide venv target/pyodide-venv
-          target/pyodide-venv/bin/pip install target/pyodide-wheels/xeibe_proj-*.whl pytest numpy pyproj
-          target/pyodide-venv/bin/python -m pytest crates/xeibe-proj-py/tests -p no:cacheprovider
+          pyodide venv "$RUNNER_TEMP/pyodide-venv"
+          "$RUNNER_TEMP/pyodide-venv/bin/pip" install "$RUNNER_TEMP"/pyodide-wheels/xeibe_proj-*.whl pytest numpy pyproj
+          "$RUNNER_TEMP/pyodide-venv/bin/python" -m pytest crates/xeibe-proj-py/tests -p no:cacheprovider
 
       - name: Grid fetch in Chromium
         run: |
           uv run --no-project --isolated --with playwright==1.63.0 playwright install --with-deps chromium
           crates/xeibe-proj-py/tests/pyodide_browser/run.py \
-            --wheel target/pyodide-wheels/xeibe_proj-*.whl --pyodide "$PYODIDE_DIST"
+            --wheel "$RUNNER_TEMP"/pyodide-wheels/xeibe_proj-*.whl --pyodide "$PYODIDE_DIST"
