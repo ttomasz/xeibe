@@ -124,13 +124,15 @@ def test_object_matches_proj(r: dict[str, Any]) -> None:
         if r["projjson"]["type"] == "EngineeringDatum":
             theirs = theirs[:-1] + ENGINEERING_IDS[version].format(code=code)
         assert same_wkt(ours.to_wkt(version), theirs), (version, ours.to_wkt(version), theirs)
-    # And back: the same object from its URN, its URL and its PROJJSON,
-    # and the same WKT from its WKT.
+    # And back: the same object from its URN, its URL, its WKT and its
+    # PROJJSON.
     urn = {"ellipsoid": "ellipsoid", "prime_meridian": "meridian", "datum": "datum", "conversion": "coordinateOperation"}
     assert cls.from_string(f"urn:ogc:def:{urn[kind]}:EPSG::{code}") == ours
     assert cls.from_string(f"http://www.opengis.net/def/{urn[kind]}/EPSG/0/{code}") == ours
     wkt = ours.to_wkt()
     assert cls.from_string(wkt).to_wkt() == wkt
+    if kind != "conversion":
+        assert cls.from_string(wkt) == ours
     assert cls.from_json(ours.to_json()) == ours
     assert cls.from_user_input(code) == ours
 
@@ -200,6 +202,29 @@ def test_constructors_as_pyproj_documents_them() -> None:
     msl = Datum.from_string('PDATUM["Mean Sea Level",ANCHOR["1013.25 hPa at 15°C"]]')
     assert msl.type_name == "Parametric Datum"
     assert msl.to_wkt() == 'PDATUM["Mean Sea Level",ANCHOR["1013.25 hPa at 15°C"]]'
+
+
+def test_parts_compare_by_their_numbers() -> None:
+    # Clarke 1858 by its semi-axes in feet, and back from its WKT, which
+    # has its inverse flattening.
+    clarke = Ellipsoid.from_epsg(7007)
+    again = Ellipsoid.from_string(clarke.to_wkt())
+    assert "semi_minor_axis" not in again.to_json_dict()
+    assert again == clarke and hash(again) == hash(clarke)
+    # Names don't count for an ellipsoid, as in PROJ; the numbers do, as
+    # PROJ compares them: GRS 1980 and WGS 84 are apart by their inverse
+    # flattenings, though their semi-minor axes are 0.1 mm apart.
+    assert Ellipsoid.from_epsg(7019) == Ellipsoid.from_epsg(1024)  # CGCS2000
+    assert Ellipsoid.from_epsg(7019) != Ellipsoid.from_epsg(7030)
+    assert {Ellipsoid.from_epsg(c) for c in (7019, 1024, 7030)} == {Ellipsoid.from_epsg(7019), Ellipsoid.from_epsg(7030)}
+    # Paris in degrees, where EPSG gives grads.
+    assert PrimeMeridian.from_epsg(8903) == PrimeMeridian.from_string('PRIMEM["Paris",2.33722917]')
+    # A datum by its name, ellipsoid and prime meridian; the ETRS89
+    # ensemble isn't one of its members.
+    assert Datum.from_string(Datum.from_epsg(6801).to_wkt()) == Datum.from_epsg(6801)
+    assert Datum.from_epsg(6258) != Datum.from_epsg(1178)
+    # Parts these don't compare stay compared as PROJJSON.
+    assert CoordinateOperation.from_epsg(16031) == CoordinateOperation.from_epsg(16031)
 
 
 def test_strings_name_objects_as_crs_strings_do() -> None:

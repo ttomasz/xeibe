@@ -144,6 +144,9 @@ pub(crate) struct Datum {
     pub(crate) key: String,
     pub(crate) name: String,
     pub(crate) ellipsoid: Ellipsoid,
+    /// The ellipsoid's inverse flattening as given, `None` when it is given
+    /// by its semi-minor axis or radius ([`same_ellipsoid`]).
+    pub(crate) inverse_flattening: Option<f64>,
     /// The ellipsoid's EPSG code: its id, or the EPSG datum's ellipsoid.
     pub(crate) ellipsoid_code: Option<u32>,
     /// Prime meridian, radians east of Greenwich.
@@ -200,10 +203,28 @@ fn same_key(key_a: &str, name_a: &str, key_b: &str, name_b: &str) -> bool {
 impl Datum {
     fn same(&self, other: &Datum, relax: Relax) -> bool {
         (relax.datum_identity || same_key(&self.key, &self.name, &other.key, &other.name))
-            && close(self.ellipsoid.a, other.ellipsoid.a)
-            && close(self.ellipsoid.b, other.ellipsoid.b)
+            && same_ellipsoid(
+                &self.ellipsoid,
+                self.inverse_flattening,
+                &other.ellipsoid,
+                other.inverse_flattening,
+            )
             && same_meridian(self.prime_meridian, other.prime_meridian)
     }
+}
+
+/// Two ellipsoids as PROJ compares them: the semi-major axes, then the
+/// inverse flattenings where both are given by one, else the semi-minor
+/// axes. The semi-minor axes alone would make GRS 1980 WGS 84 (0.1 mm,
+/// 1.6e-11 apart), whose inverse flattenings are 4.9e-9 apart; the
+/// inverse flattening computed from a semi-minor axis rounded to 0.1 mm
+/// (`+b=` in a PROJ string) would keep it from its EPSG ellipsoid.
+fn same_ellipsoid(x: &Ellipsoid, rf_x: Option<f64>, y: &Ellipsoid, rf_y: Option<f64>) -> bool {
+    close(x.a, y.a)
+        && match (rf_x, rf_y) {
+            (Some(p), Some(q)) => close(p, q),
+            _ => close(x.b, y.b),
+        }
 }
 
 /// A projection method's code, with Krovak's north-orientated variants
@@ -215,6 +236,86 @@ pub(crate) fn oriented_alike(method: u32) -> u32 {
         1043 => 1042,
         other => other,
     }
+}
+
+/// A part of a CRS on its own, as [`equivalent_parts`] compares it.
+enum Part {
+    /// With its inverse flattening as given ([`same_ellipsoid`]).
+    Ellipsoid(Ellipsoid, Option<f64>),
+    /// Radians east of Greenwich.
+    PrimeMeridian(f64),
+    /// With whether it is an ensemble.
+    Geodetic(Datum, bool),
+    /// A vertical or engineering datum's key and name, with which of the
+    /// two it is.
+    Named(bool, String, String),
+}
+
+impl Part {
+    /// `None` for what isn't compared here.
+    fn read(v: &Value) -> Result<Option<Part>, Error> {
+        let ctx = Ctx { crs: "PROJJSON" };
+        let wrapped = || serde_json::json!({ "datum": v });
+        let part = match v["type"].as_str().unwrap_or("") {
+            "Ellipsoid" => Part::Ellipsoid(ctx.ellipsoid(v)?, ctx.inverse_flattening(v)?),
+            "PrimeMeridian" => Part::PrimeMeridian(ctx.value(&v["longitude"], UnitKind::Angle)?),
+            "GeodeticReferenceFrame" | "DynamicGeodeticReferenceFrame" => {
+                Part::Geodetic(ctx.datum(&wrapped())?, false)
+            }
+            "DatumEnsemble" if v["ellipsoid"].is_object() => {
+                Part::Geodetic(ctx.datum(&wrapped())?, true)
+            }
+            "VerticalReferenceFrame" | "DynamicVerticalReferenceFrame" | "DatumEnsemble" => {
+                let d = ctx.vertical_datum(&wrapped())?;
+                Part::Named(true, d.key, d.name)
+            }
+            "EngineeringDatum" => {
+                let d = ctx.engineering_datum(&wrapped())?;
+                Part::Named(false, d.key, d.name)
+            }
+            _ => return Ok(None),
+        };
+        Ok(Some(part))
+    }
+}
+
+/// Whether two parts of a CRS given on their own as PROJJSON are
+/// equivalent, as [`Crs::equivalent`] compares them inside CRSs: an
+/// ellipsoid by its semi-major axis and inverse flattening or semi-minor
+/// axis, in metres (as PROJ compares them), a prime meridian by its
+/// longitude, a geodetic datum or ensemble by its id or name, ellipsoid and
+/// prime meridian, and a vertical or engineering datum by its id or name.
+/// Names don't count for an ellipsoid or a prime meridian, as in PROJ's
+/// `proj_is_equivalent_to`. Parts of different kinds aren't equivalent,
+/// nor an ensemble and a datum, which a CRS's WKT2 2015 makes alike.
+/// `None` when either is a part not compared here: a parametric or
+/// temporal datum, a coordinate system or an operation.
+///
+/// ```
+/// use serde_json::json;
+/// // Clarke 1858 as EPSG gives it, and as WKT writes it back.
+/// let feet = json!({"type": "LinearUnit", "name": "Clarke's foot", "conversion_factor": 0.3047972654});
+/// let epsg = json!({"type": "Ellipsoid", "name": "Clarke 1858",
+///     "semi_major_axis": {"value": 20926348.0, "unit": feet},
+///     "semi_minor_axis": {"value": 20855233.0, "unit": feet}});
+/// let wkt = json!({"type": "Ellipsoid", "name": "Clarke 1858",
+///     "semi_major_axis": {"value": 20926348.0, "unit": feet},
+///     "inverse_flattening": 294.260676369261});
+/// assert_eq!(xeibe_reproject::equivalent_parts(&epsg, &wkt).unwrap(), Some(true));
+/// ```
+pub fn equivalent_parts(a: &Value, b: &Value) -> Result<Option<bool>, Error> {
+    let (Some(a), Some(b)) = (Part::read(a)?, Part::read(b)?) else {
+        return Ok(None);
+    };
+    Ok(Some(match (a, b) {
+        (Part::Ellipsoid(x, rf_x), Part::Ellipsoid(y, rf_y)) => same_ellipsoid(&x, rf_x, &y, rf_y),
+        (Part::PrimeMeridian(x), Part::PrimeMeridian(y)) => same_meridian(x, y),
+        (Part::Geodetic(x, ex), Part::Geodetic(y, ey)) => ex == ey && x.same(&y, Relax::default()),
+        (Part::Named(vx, kx, nx), Part::Named(vy, ky, ny)) => {
+            vx == vy && same_key(&kx, &nx, &ky, &ny)
+        }
+        _ => false,
+    }))
 }
 
 /// Prime meridians within 1e-8 relative, PROJ's tolerance for them
@@ -1056,6 +1157,7 @@ impl Ctx<'_> {
             None => name.clone(),
         };
         let ellipsoid = self.ellipsoid(&datum["ellipsoid"])?;
+        let inverse_flattening = self.inverse_flattening(&datum["ellipsoid"])?;
         // A datum ensemble carries no prime meridian; EPSG's are all Greenwich.
         let prime_meridian = match &datum["prime_meridian"] {
             Value::Null => 0.0,
@@ -1072,9 +1174,20 @@ impl Ctx<'_> {
             key,
             name,
             ellipsoid,
+            inverse_flattening,
             ellipsoid_code,
             prime_meridian,
         })
+    }
+
+    /// An ellipsoid's inverse flattening, when it is given by one rather
+    /// than by its semi-minor axis or as a sphere's radius.
+    fn inverse_flattening(&self, value: &Value) -> Result<Option<f64>, Error> {
+        if !value["radius"].is_null() || value["inverse_flattening"].is_null() {
+            return Ok(None);
+        }
+        self.value(&value["inverse_flattening"], UnitKind::Scale)
+            .map(Some)
     }
 
     fn ellipsoid(&self, value: &Value) -> Result<Ellipsoid, Error> {

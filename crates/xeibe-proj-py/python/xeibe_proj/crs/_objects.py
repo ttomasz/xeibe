@@ -97,6 +97,9 @@ class _JsonObject:
     # The object types of `urn:ogc:def:` this class reads, lowercase, by
     # the check each makes on the PROJJSON found.
     _urns: ClassVar[dict[str, Callable[[JsonDict], bool]]] = {}
+    # Compared as a CRS's parts are (`_native.equivalent_parts`), by their
+    # numbers in SI units, rather than as PROJJSON.
+    _by_numbers: ClassVar[bool] = False
 
     def __init__(self, projjson: JsonDict) -> None:
         self._json = projjson
@@ -238,15 +241,31 @@ class _JsonObject:
     def __eq__(self, other: object) -> bool:
         """Equivalence, as pyproj's: ``other`` as ``from_user_input``
         takes it, with the same definition whatever its ids, usages and
-        remarks."""
+        remarks. An ellipsoid, a prime meridian and a geodetic, vertical or
+        engineering datum are compared as a CRS compares them: by their
+        numbers in SI units, to PROJ's tolerances, so that one written
+        another way (an ellipsoid's semi-minor axis as an inverse
+        flattening, in feet) is the same."""
         try:
             other = self.from_user_input(other)
         except CRSError:
             return False
-        return _definition(self.to_json_dict()) == _definition(other.to_json_dict())
+        a, b = self.to_json_dict(), other.to_json_dict()
+        if self._by_numbers:
+            try:
+                same = _native.equivalent_parts(a, b)
+            except CRSError:
+                same = None
+            if same is not None:
+                return same
+        return _definition(a) == _definition(b)
 
     def __hash__(self) -> int:
-        # Of what equivalence compares, so that equal objects hash equal.
+        # Equal objects hash equal. Of those compared by their numbers,
+        # within a tolerance and some by name or id, nothing finer than the
+        # class is.
+        if self._by_numbers:
+            return hash(type(self).__name__)
         return hash(json.dumps(_definition(self.to_json_dict()), sort_keys=True))
 
     def __str__(self) -> str:
@@ -383,6 +402,7 @@ class Ellipsoid(_EpsgObject):
     _types = frozenset({"Ellipsoid"})
     _what = "ellipsoid"
     _kind = "ellipsoid"
+    _by_numbers = True
     _urns = {"ellipsoid": _always}
 
     @classmethod
@@ -443,6 +463,7 @@ class PrimeMeridian(_EpsgObject):
     _types = frozenset({"PrimeMeridian"})
     _what = "prime meridian"
     _kind = "prime_meridian"
+    _by_numbers = True
     _urns = {"meridian": _always}
 
     def _longitude(self) -> tuple[float, str, float]:
@@ -505,6 +526,7 @@ class Datum(_EpsgObject):
     )
     _what = "datum"
     _kind = "datum"
+    _by_numbers = True
     _urns = {"datum": _always, "ensemble": lambda d: d.get("type") == "DatumEnsemble"}
 
     @classmethod

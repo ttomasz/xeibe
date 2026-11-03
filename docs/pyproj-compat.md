@@ -576,7 +576,9 @@ These are documented in the package README and in its `NotImplementedError` and
     `EPSG:7019`, URNs in any case and their URLs, as `CRS` does, and WKT
     reads back what it writes: a dynamic datum after its `DYNAMIC`, which
     PROJ doesn't read. An engineering datum's WKT on its own has its id,
-    which PROJ leaves out.
+    which PROJ leaves out. An ellipsoid, a prime meridian or a datum hashes
+    as its class does, so that equal ones, compared by their numbers, hash
+    equal.
 
 ## Testing
 

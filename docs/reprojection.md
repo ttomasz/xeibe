@@ -91,7 +91,11 @@ reached. It runs the same choice as `convert`, which pays nothing for it
 `Crs::equivalent(&other, ignore_axis_order)` compares two CRSs' definitions
 (datum, ellipsoid, prime meridian, projection method and parameters, axes
 and units) whatever their names and ids, to PROJ's relative 1e-10, as
-`proj_is_equivalent_to` does. A coordinate
+`proj_is_equivalent_to` does: ellipsoids by their semi-major axes, then
+their inverse flattenings where both are given by one, else their
+semi-minor axes, which alone would make GRS 1980 WGS 84 (0.1 mm apart).
+`equivalent_parts` compares an ellipsoid, a prime meridian or a datum on
+its own the same way. A coordinate
 that can't be converted is an error naming its index; NaN (GeoArrow's empty
 point) passes through.
 `convert_bounds` converts a bounding box as PROJ's `proj_trans_bounds` does,

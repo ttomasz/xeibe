@@ -630,9 +630,17 @@ On the Python side:
   and `GEODETIC_REFERENCE_FRAME`), and an ensemble is of its members' type
   too, as in PROJ's tables.
 - Equality is equivalence, as pyproj's: the other side as
-  `from_user_input` takes it (`Datum.from_epsg(6326) == 6326`), and the
-  PROJJSON compared without ids, usages and remarks. The hash is of the same,
-  so equal objects hash equal.
+  `from_user_input` takes it (`Datum.from_epsg(6326) == 6326`). An
+  ellipsoid, a prime meridian and a geodetic, vertical or engineering datum
+  are compared as a CRS's are (`xeibe_reproject::equivalent_parts`), by
+  their numbers in SI units to PROJ's tolerances, and a datum by its id
+  or name too, but an ellipsoid's or a meridian's name doesn't count, so
+  that one written another way is the
+  same: Clarke 1858's semi-axes in feet and the inverse flattening its WKT
+  has, Paris in grads and degrees. An ensemble isn't a datum. Their hash is
+  their class's: nothing finer is equal for equal objects, and there are at
+  most a thousand. Other parts compare as PROJJSON without ids, usages and
+  remarks, and hash it.
 - `query_geodetic_crs_from_datum` lists EPSG's current geographic and
   geocentric CRSs on the datum by code, then OGC's (CRS84, CRS83, CRS27)
   when no authority is given, as PROJ's database has them.
@@ -658,7 +666,13 @@ keep them, as a CRS's PROJJSON does) and WKT numbers to 1e-11, but for:
   ASCII's (`rÉSEAU`), and the 15 engineering datums' (`Dabajuro`), which
   pyproj never looks for;
 - an engineering datum's WKT on its own, which has its `ID` where PROJ's
-  has none.
+  has none;
+- equality of EPSG's ellipsoids, prime meridians and datums, pair by pair
+  (`tests/it/parts.rs`, 1,485, 105 and 68,823 pairs): the same as PROJ's,
+  but for six pairs of datums PROJ finds equal because one's alias is the
+  other's name. That isn't transitive (`Mhast` is an alias of both
+  `Mhast (onshore)` and `Mhast (offshore)`, which PROJ keeps apart), and
+  ours aren't equal.
 
 The run found two things in the WKT writer, now as PROJ writes them: an
 ellipsoid given by its axes has its inverse flattening computed in metres

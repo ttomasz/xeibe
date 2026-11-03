@@ -138,6 +138,26 @@ fn objects_by_name(kind: &str, name: &str) -> PyResult<Vec<(u32, &'static str)>>
         .collect())
 }
 
+/// Whether two parts of CRSs on their own, PROJJSON dicts or text, are
+/// equivalent (`xeibe_reproject::equivalent_parts`): `None` for parts it
+/// doesn't compare.
+#[pyfunction]
+fn equivalent_parts(py: Python<'_>, a: Source, b: Source) -> PyResult<Option<bool>> {
+    let value = |s: Source| match s {
+        Source::Value(v) => Ok(v),
+        Source::Text(t) => serde_json::from_str(&t).map_err(|e| {
+            error(
+                py,
+                Error::Projjson {
+                    crs: "PROJJSON".into(),
+                    message: e.to_string(),
+                },
+            )
+        }),
+    };
+    xeibe_reproject::equivalent_parts(&value(a)?, &value(b)?).map_err(|e| error(py, e))
+}
+
 /// PROJ-data's file for a grid EPSG names in operation `op_name`, and
 /// whether `cdn.proj.org` serves it openly, or `None`.
 #[pyfunction]
@@ -760,6 +780,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(object_json, m)?)?;
     m.add_function(wrap_pyfunction!(objects_by_name, m)?)?;
     m.add_function(wrap_pyfunction!(name_key, m)?)?;
+    m.add_function(wrap_pyfunction!(equivalent_parts, m)?)?;
     m.add_function(wrap_pyfunction!(proj_data_file, m)?)?;
     m.add_function(wrap_pyfunction!(to_wkt, m)?)?;
     m.add_function(wrap_pyfunction!(proj_string_to_projjson, m)?)?;
