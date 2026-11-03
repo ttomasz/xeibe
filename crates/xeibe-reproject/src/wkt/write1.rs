@@ -62,7 +62,12 @@ pub(crate) fn object(v: &Value) -> Result<Vec<Node>, Error> {
         "VerticalReferenceFrame" | "DynamicVerticalReferenceFrame" | "DatumEnsemble" => {
             Ok(vec![vertical_datum(v)])
         }
-        "EngineeringDatum" => Ok(vec![local_datum(v)?]),
+        // With its authority, which PROJ leaves out.
+        "EngineeringDatum" => {
+            let mut datum = local_datum(v)?;
+            id(v, &mut datum.args);
+            Ok(vec![datum])
+        }
         "Conversion" => {
             let (args, _) = projection(v, v, PI / 180.0, 1.0)?;
             Ok(args

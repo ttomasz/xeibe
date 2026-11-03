@@ -465,7 +465,7 @@ impl Writer {
     fn engineering(&mut self, v: &Value) -> Result<Node, Error> {
         let mut args = vec![
             text(str_of(v, "name")?),
-            sub(engineering_datum(&v["datum"])?),
+            sub(anchored_datum("EDATUM", &v["datum"])?),
         ];
         args.extend(cs_args(&v["coordinate_system"])?);
         self.finish(v, &mut args)?;
@@ -508,9 +508,11 @@ fn object_nodes(v: &Value) -> Result<Vec<Node>, Error> {
             dynamic_then(vertical_datum(v)?)
         }
         "DatumEnsemble" => with_ids(ensemble(v, true)?),
-        // Without its id: PROJ's `EngineeringDatum::_exportToWKT` writes
-        // none, where its other datums do.
-        "EngineeringDatum" => Ok(vec![engineering_datum(v)?]),
+        // With its id, which PROJ's `EngineeringDatum::_exportToWKT` leaves
+        // out, alone of its datums.
+        "EngineeringDatum" => with_ids(anchored_datum("EDATUM", v)?),
+        "ParametricDatum" => with_ids(anchored_datum("PDATUM", v)?),
+        "TemporalDatum" => with_ids(temporal_datum(v)?),
         "CoordinateSystem" => Ok(cs_args(v)?
             .into_iter()
             .filter_map(|a| match a {
@@ -539,12 +541,24 @@ pub(super) fn not_greenwich(d: &Value) -> Option<&Value> {
     (longitude != 0.0).then_some(pm)
 }
 
-fn engineering_datum(d: &Value) -> Result<Node, Error> {
+/// An engineering or parametric datum: its name and anchor.
+fn anchored_datum(keyword: &str, d: &Value) -> Result<Node, Error> {
     let mut datum = vec![text(str_of(d, "name")?)];
     if let Some(a) = d["anchor"].as_str() {
         datum.push(sub(node("ANCHOR", vec![text(a)])));
     }
-    Ok(node("EDATUM", datum))
+    Ok(node(keyword, datum))
+}
+
+/// `TDATUM`, with its calendar and time origin, quoted as text.
+fn temporal_datum(d: &Value) -> Result<Node, Error> {
+    let mut datum = vec![text(str_of(d, "name")?)];
+    for (key, keyword) in [("calendar", "CALENDAR"), ("time_origin", "TIMEORIGIN")] {
+        if let Some(s) = d[key].as_str() {
+            datum.push(sub(node(keyword, vec![text(s)])));
+        }
+    }
+    Ok(node("TDATUM", datum))
 }
 
 /// An operation's usages, id and remarks, as an outermost one ends; a step

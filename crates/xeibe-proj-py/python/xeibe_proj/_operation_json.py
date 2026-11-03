@@ -281,22 +281,24 @@ def epsg_operation(code: int) -> JsonDict | None:
 def epsg_operations_named(name: str, tables: tuple[str, ...]) -> list[int]:
     """The codes of EPSG's operations in these of PROJ's tables
     (``helmert_transformation``, ``concatenated_operation``, …) with this
-    name, ignoring the case of ASCII letters, in PROJ's order: current
-    ones first, then by name."""
-    folded = _ascii_fold(name)
+    name, in PROJ's order: current ones first, then by name. Names equal
+    ignoring case come before those equal only by ``name_key``, as
+    ``xeibe_crs::objects_by_name`` orders them."""
+    key, lower = _native.name_key(name), name.lower()
     found = [
-        o for o in _registry().ops.values() if o.get("table") in tables and _ascii_fold(str(o["name"])) == folded
+        o
+        for o in _registry().ops.values()
+        if o.get("table") in tables and _native.name_key(str(o["name"])) == key
     ]
-    found.sort(key=lambda o: (bool(o.get("deprecated")), str(o["name"]), int(o["code"])))
+    found.sort(
+        key=lambda o: (
+            str(o["name"]).lower() != lower,
+            bool(o.get("deprecated")),
+            str(o["name"]),
+            int(o["code"]),
+        )
+    )
     return [int(o["code"]) for o in found]
-
-
-def _ascii_fold(text: str) -> str:
-    """Lowercase in ASCII only, as SQLite's NOCASE compares."""
-    return text.translate(_ASCII_LOWER)
-
-
-_ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
 
 
 def _zero(code: int, name: str, unit: str) -> JsonDict:

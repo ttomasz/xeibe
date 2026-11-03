@@ -44,6 +44,9 @@ DEVIATIONS: set[tuple[str, int, str | None]] = {
 # PROJ's database holds at most this many parameters of a conversion: it
 # drops Krovak Modified's evaluation point and C1 to C10, which ours keep.
 PROJ_MAX_PARAMETERS = 7
+# An engineering datum's id, which PROJ alone of its datums leaves out of
+# the WKT it writes on its own, and ours writes.
+ENGINEERING_IDS = {"WKT2_2019": ',ID["EPSG",{code}]]', "WKT1_GDAL": ',AUTHORITY["EPSG","{code}"]]'}
 TOKEN = re.compile(r'"(?:[^"]|"")*"|[-+]?\d+(?:\.\d*)?(?:[eE][-+]?\d+)?|[^\s\d"]+')
 
 
@@ -118,10 +121,16 @@ def test_object_matches_proj(r: dict[str, Any]) -> None:
     for version, theirs in r["wkt"].items():
         if (kind, code, version) in DEVIATIONS or "Krovak Modified" in str(theirs):
             continue
+        if r["projjson"]["type"] == "EngineeringDatum":
+            theirs = theirs[:-1] + ENGINEERING_IDS[version].format(code=code)
         assert same_wkt(ours.to_wkt(version), theirs), (version, ours.to_wkt(version), theirs)
-    # And back: the same object from its URN, its WKT and its PROJJSON.
+    # And back: the same object from its URN, its URL and its PROJJSON,
+    # and the same WKT from its WKT.
     urn = {"ellipsoid": "ellipsoid", "prime_meridian": "meridian", "datum": "datum", "conversion": "coordinateOperation"}
     assert cls.from_string(f"urn:ogc:def:{urn[kind]}:EPSG::{code}") == ours
+    assert cls.from_string(f"http://www.opengis.net/def/{urn[kind]}/EPSG/0/{code}") == ours
+    wkt = ours.to_wkt()
+    assert cls.from_string(wkt).to_wkt() == wkt
     assert cls.from_json(ours.to_json()) == ours
     assert cls.from_user_input(code) == ours
 
@@ -140,6 +149,12 @@ def test_name_finds_what_proj_finds(r: dict[str, Any]) -> None:
         doc = cls.from_name(r["name"]).to_json_dict()
     except CRSError:
         assert want is None
+        return
+    if want is None:
+        # Beyond pyproj: a name that differs other than in ASCII case
+        # (`rÉSEAU`), which PROJ alone ignores, or an engineering datum,
+        # which pyproj never looks for.
+        assert not r["name"].isascii() or doc["type"] == "EngineeringDatum", doc
         return
     if isinstance(want, dict):
         # pyproj's own ellipsoid from PROJ's +ellps table.
@@ -182,7 +197,62 @@ def test_constructors_as_pyproj_documents_them() -> None:
         "ETRS89-FRA [RGF93 v1] to WGS 84 (1)"
     )
     assert Datum.from_string('ENGINEERINGDATUM["Engineering datum"]').type_name == "Engineering Datum"
-    assert Datum.from_string('PDATUM["Mean Sea Level",ANCHOR["1013.25 hPa at 15°C"]]').type_name == "Parametric Datum"
+    msl = Datum.from_string('PDATUM["Mean Sea Level",ANCHOR["1013.25 hPa at 15°C"]]')
+    assert msl.type_name == "Parametric Datum"
+    assert msl.to_wkt() == 'PDATUM["Mean Sea Level",ANCHOR["1013.25 hPa at 15°C"]]'
+
+
+def test_strings_name_objects_as_crs_strings_do() -> None:
+    # An authority and code in any case, as a URN, its URL or AUTH:CODE.
+    grs80 = Ellipsoid.from_epsg(7019)
+    for text in (
+        "EPSG:7019",
+        "epsg:7019",
+        "URN:OGC:DEF:ELLIPSOID:EPSG::7019",
+        "https://www.opengis.net/def/ellipsoid/EPSG/0/7019",
+        " urn:ogc:def:ellipsoid:EPSG:10.106:7019 ",
+    ):
+        assert Ellipsoid.from_string(text) == grs80, text
+    assert Datum.from_user_input("EPSG:6258").name == "European Terrestrial Reference System 1989 ensemble"
+    assert CoordinateOperation.from_string("urn:ogc:def:coordinateoperation:EPSG::16031").name == "UTM zone 31N"
+    # A URN or URL of another type of object isn't one of these.
+    with pytest.raises(CRSError, match="Invalid ellipsoid string"):
+        Ellipsoid.from_string("http://www.opengis.net/def/datum/EPSG/0/6326")
+    with pytest.raises(CRSError, match="Invalid datum string"):
+        Datum.from_string("urn:ogc:def:ensemble:EPSG::6171")
+
+
+def test_names_compare_beyond_ascii_case() -> None:
+    # Case in any script, accents, EPSG's stray spaces and typographic
+    # apostrophes, which nobody types.
+    assert Datum.from_name("PANAMÁ-COLÓN 1911") == Datum.from_epsg(1072) == Datum.from_name("panama-colon  1911")
+    assert Datum.from_name("Nivellement General de Futuna et d'Alofi 2022") == Datum.from_epsg(1455)
+    assert Datum.from_name("Chart Datum Portugal").name == "Chart Datum Portugal "
+    # A name equal ignoring case comes first: EPSG gives the accented name
+    # to the three RGF93 frames, the unaccented one to v1 only.
+    assert Datum.from_name("Réseau Géodésique Français 1993") == Datum.from_epsg(1312)
+    assert Datum.from_name("Reseau Geodesique Francais 1993") == Datum.from_epsg(6171)
+    # Operation and CRS names too.
+    assert CoordinateOperation.from_name("UTM ZONE 31N") == CoordinateOperation.from_epsg(16031)
+    assert CRS("panama-colon  1911").to_epsg() == 5467
+    # EPSG's alias has an en dash.
+    assert CRS("MGI 1901 / Gauss-Kruger zone 5") == CRS("MGI 1901 / Gauss–Kruger zone 5")
+
+
+def test_datum_names_find_any_type() -> None:
+    # Of datums whose names tie, the ensemble, as pyproj looks for one
+    # first: ETRS89 is the ensemble's alias and IRENET95's.
+    assert Datum.from_name("ETRS89") == Datum.from_epsg(6258)
+    assert Datum.from_name("ETRS89", datum_type="GEODETIC_REFERENCE_FRAME") == Datum.from_epsg(6258)
+    # Engineering datums, which pyproj doesn't look for.
+    dabajuro = Datum.from_name("Dabajuro")
+    assert dabajuro.type_name == "Engineering Datum"
+    assert Datum.from_name("Dabajuro", datum_type="ENGINEERING_DATUM") == dabajuro
+    assert dabajuro.to_wkt() == 'EDATUM["Dabajuro",ID["EPSG",9307]]'
+    with pytest.raises(CRSError, match="Invalid datum name"):
+        Datum.from_name("Dabajuro", datum_type="GEODETIC_REFERENCE_FRAME")
+    with pytest.raises(CRSError, match="Invalid datum type"):
+        Datum.from_name("Dabajuro", datum_type="NOT_A_TYPE")
 
 
 def test_transformations_and_their_grids() -> None:

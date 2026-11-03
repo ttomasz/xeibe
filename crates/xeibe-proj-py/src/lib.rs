@@ -73,10 +73,18 @@ fn projjson(code: u32) -> Option<&'static str> {
     xeibe_crs::projjson(code)
 }
 
-/// The code an EPSG alias names, or `None`. Case is ignored.
+/// The code an EPSG alias names, or `None`, compared by `name_key`.
 #[pyfunction]
 fn alias(name: &str) -> Option<u32> {
     xeibe_crs::alias(name)
+}
+
+/// A name as name searches compare it: lowercase, without accents,
+/// typographic apostrophes and dashes as ASCII ones, whitespace collapsed
+/// (`xeibe_crs::name_key`).
+#[pyfunction]
+fn name_key(name: &str) -> String {
+    xeibe_crs::name_key(name)
 }
 
 /// EPSG's coordinate operations as `xeibe-crs` exports them: one JSON
@@ -751,6 +759,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(wkt_object_to_projjson, m)?)?;
     m.add_function(wrap_pyfunction!(object_json, m)?)?;
     m.add_function(wrap_pyfunction!(objects_by_name, m)?)?;
+    m.add_function(wrap_pyfunction!(name_key, m)?)?;
     m.add_function(wrap_pyfunction!(proj_data_file, m)?)?;
     m.add_function(wrap_pyfunction!(to_wkt, m)?)?;
     m.add_function(wrap_pyfunction!(proj_string_to_projjson, m)?)?;

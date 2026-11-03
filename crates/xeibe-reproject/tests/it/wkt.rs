@@ -1805,3 +1805,56 @@ fn every_bound_crs_converts_as_proj_converts_it() {
     println!("{compared} conversions\n{report}");
     assert!(report.is_empty(), "{report}");
 }
+
+/// Datums on their own, written back with everything they have: an
+/// engineering datum's id, which PROJ leaves out, the parametric and
+/// temporal datums PROJ reads, and a dynamic datum's `DYNAMIC` and a
+/// prime meridian next to the datum, as PROJ writes them.
+#[test]
+fn datums_on_their_own_round_trip() {
+    for (text, wkt1) in [
+        (
+            r#"DYNAMIC[FRAMEEPOCH[1994]],DATUM["World Geodetic System 1984 (G730)",ELLIPSOID["WGS 84",6378137,298.257223563,LENGTHUNIT["metre",1]],ID["EPSG",1152]]"#,
+            Some(
+                r#"DATUM["World_Geodetic_System_1984_G730",SPHEROID["WGS 84",6378137,298.257223563],AUTHORITY["EPSG","1152"]]"#,
+            ),
+        ),
+        (
+            r#"DATUM["CH1903 (Bern)",ELLIPSOID["Bessel 1841",6377397.155,299.1528128,LENGTHUNIT["metre",1]],ID["EPSG",6801]],PRIMEM["Bern",7.43958333333333,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8907]]"#,
+            None,
+        ),
+        (
+            r#"EDATUM["Dabajuro",ANCHOR["Station 1"],ID["EPSG",9307]]"#,
+            Some(r#"LOCAL_DATUM["Dabajuro",32767,AUTHORITY["EPSG","9307"]]"#),
+        ),
+        (
+            r#"PDATUM["Mean Sea Level",ANCHOR["1013.25 hPa at 15°C"],ID["XYZ",1]]"#,
+            None,
+        ),
+        (
+            r#"TDATUM["Gregorian calendar",CALENDAR["proleptic Gregorian"],TIMEORIGIN["0000-01-01"]]"#,
+            None,
+        ),
+    ] {
+        let json = wkt::object_to_projjson(text).unwrap();
+        let value: Value = serde_json::from_str(&json).unwrap();
+        let written =
+            wkt::from_projjson_value(&value, wkt::Version::Wkt2_2019, false, wkt::AxisRule::Auto)
+                .unwrap();
+        assert_eq!(written, text);
+        let written1 =
+            wkt::from_projjson_value(&value, wkt::Version::Wkt1Gdal, false, wkt::AxisRule::Auto);
+        match wkt1 {
+            Some(w) => assert_eq!(written1.unwrap(), w),
+            None if value["type"] == "GeodeticReferenceFrame" => assert!(written1.is_ok()),
+            None => assert!(written1.is_err(), "{written1:?}"),
+        }
+    }
+    // Deformation models belong to a CRS.
+    assert!(
+        wkt::object_to_projjson(
+            r#"DYNAMIC[FRAMEEPOCH[2010],MODEL["NKG_RF17vel"]],DATUM["X",ELLIPSOID["GRS 1980",6378137,298.257222101]]"#
+        )
+        .is_err()
+    );
+}

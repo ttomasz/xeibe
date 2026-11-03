@@ -64,8 +64,15 @@ def _value(value: object, factor: float = 1.0) -> float:
 
 # What equivalence leaves out: metadata, not definition.
 _METADATA = frozenset({"$schema", "id", "ids", "usages", "scope", "area", "bbox", "remarks"})
-# `urn:ogc:def:<type>:<authority>:<version>:<code>`, lowercase as PROJ reads it.
-_URN = re.compile(r"^urn:ogc:def:([A-Za-z]+):([^:]+):[^:]*:(.+)$")
+# An object by authority and code, in any case, as a CRS can be given:
+# `urn:ogc:def:<type>:<authority>:<version>:<code>`, its URL at
+# opengis.net, or `<authority>:<code>`, which names no type.
+_URN = re.compile(r"urn:ogc:def:(?P<type>[A-Za-z]+):(?P<auth>[^:]+):[^:]*:(?P<code>[^:]+)", re.IGNORECASE)
+_URL = re.compile(
+    r"https?://www\.opengis\.net/def/(?P<type>[A-Za-z]+)/(?P<auth>[^/]+)/[^/]*/(?P<code>[^/?#]+)/?",
+    re.IGNORECASE,
+)
+_AUTH_CODE = re.compile(r"(?P<auth>[A-Za-z_][A-Za-z_0-9]*)\s*:\s*(?P<code>\d+)")
 _WKT = re.compile(r"^\s*[A-Za-z_]+\s*[\[(]")
 
 
@@ -87,8 +94,8 @@ class _JsonObject:
     # The PROJJSON types this class holds, and its name in error messages.
     _types: ClassVar[frozenset[str]] = frozenset()
     _what = "object"
-    # The object types of `urn:ogc:def:` this class reads, by the check
-    # each makes on the PROJJSON found.
+    # The object types of `urn:ogc:def:` this class reads, lowercase, by
+    # the check each makes on the PROJJSON found.
     _urns: ClassVar[dict[str, Callable[[JsonDict], bool]]] = {}
 
     def __init__(self, projjson: JsonDict) -> None:
@@ -119,18 +126,19 @@ class _JsonObject:
 
     @classmethod
     def _from_string(cls, text: str) -> Self:
-        """From a URN, WKT or PROJJSON, as PROJ's ``proj_create`` reads one."""
+        """From a URN, a URL, ``AUTH:CODE``, WKT or PROJJSON."""
         invalid = CRSError(f"Invalid {cls._what} string: {text}")
-        if text.lstrip().startswith("{"):
+        s = text.strip()
+        if s.startswith("{"):
             try:
                 return cls.from_json(text)
             except CRSError:
                 raise invalid from None
-        m = _URN.match(text)
+        m = _URN.fullmatch(s) or _URL.fullmatch(s) or _AUTH_CODE.fullmatch(s)
         if m is not None:
-            urn_type, auth, code = m.groups()
-            check = cls._urns.get(urn_type)
-            doc = None if check is None else cls._by_code(auth, code, urn_type)
+            urn_type = m.groupdict().get("type")
+            check = _always if urn_type is None else cls._urns.get(urn_type.lower())
+            doc = None if check is None else cls._by_code(m["auth"].upper(), m["code"], urn_type)
             if doc is None or check is None or not check(doc):
                 raise invalid
             return cls(doc)
@@ -146,7 +154,8 @@ class _JsonObject:
 
     @classmethod
     def from_string(cls, text: str) -> Self:
-        """From a URN (``urn:ogc:def:datum:EPSG::6326``), WKT or PROJJSON."""
+        """From a URN (``urn:ogc:def:datum:EPSG::6326``), its URL at
+        opengis.net, ``EPSG:6326``, WKT or PROJJSON."""
         return cls._from_string(text)
 
     @classmethod
@@ -283,8 +292,9 @@ class _EpsgObject(_JsonObject):
 
     @classmethod
     def from_name(cls, name: str, auth_name: str | None = None) -> Self:
-        """By name or alias, as PROJ's name search finds it: exactly,
-        ignoring the case of ASCII letters."""
+        """By name or alias, as PROJ's name search finds it, ignoring
+        case, accents, typographic apostrophes and dashes and extra
+        whitespace (``xeibe_crs::name_key``)."""
         found = cls._named(name, auth_name)
         if not found:
             raise CRSError(f"Invalid {cls._what} name: {name}")
@@ -292,7 +302,7 @@ class _EpsgObject(_JsonObject):
 
     @classmethod
     def from_string(cls, text: str) -> Self:
-        """From a URN, WKT, PROJJSON or a name."""
+        """From a URN, a URL, ``AUTH:CODE``, WKT, PROJJSON or a name."""
         try:
             return cls._from_string(text)
         except CRSError as err:
@@ -459,22 +469,16 @@ class PrimeMeridian(_EpsgObject):
 _GREENWICH: JsonDict = {"name": "Greenwich", "longitude": 0}
 
 
-# Each of pyproj's `DatumType`s, by the PROJJSON types PROJ's name search
-# finds under it (`createObjectsFromName`'s tables). Without a type, pyproj
-# tries them in this order.
-_DATUM_TYPES: dict[str, Callable[[JsonDict], bool]] = {
-    "DATUM_ENSEMBLE": lambda d: d.get("type") == "DatumEnsemble",
-    "GEODETIC_REFERENCE_FRAME": lambda d: (
-        d.get("type") in ("GeodeticReferenceFrame", "DynamicGeodeticReferenceFrame")
-        or (d.get("type") == "DatumEnsemble" and "ellipsoid" in d)
-    ),
-    "DYNAMIC_GEODETIC_REFERENCE_FRAME": lambda d: d.get("type") == "DynamicGeodeticReferenceFrame",
-    "VERTICAL_REFERENCE_FRAME": lambda d: (
-        d.get("type") in ("VerticalReferenceFrame", "DynamicVerticalReferenceFrame")
-        or (d.get("type") == "DatumEnsemble" and "ellipsoid" not in d)
-    ),
-    "DYNAMIC_VERTICAL_REFERENCE_FRAME": lambda d: d.get("type") == "DynamicVerticalReferenceFrame",
-}
+def _datum_types(doc: JsonDict) -> set[str]:
+    """The names of pyproj's ``DatumType``s a datum is of, from its
+    PROJJSON type (``DynamicGeodeticReferenceFrame`` is a
+    ``DYNAMIC_GEODETIC_REFERENCE_FRAME`` and a ``GEODETIC_REFERENCE_FRAME``).
+    An ensemble is of its members' type too, as PROJ's name search keeps
+    it with geodetic or vertical datums."""
+    if doc.get("type") == "DatumEnsemble":
+        return {"DATUM_ENSEMBLE", "GEODETIC_REFERENCE_FRAME" if "ellipsoid" in doc else "VERTICAL_REFERENCE_FRAME"}
+    name = re.sub(r"(?<=[a-z])(?=[A-Z])", "_", str(doc.get("type", ""))).upper()
+    return {name, name.removeprefix("DYNAMIC_")}
 
 
 def _enum_name(value: object) -> str:
@@ -505,19 +509,21 @@ class Datum(_EpsgObject):
 
     @classmethod
     def from_name(cls, name: str, auth_name: str | None = None, datum_type: Any = None) -> Self:
-        """By name or alias, of ``datum_type`` (a ``DatumType`` or its
-        name), or else the first of PROJ's types that has one: an ensemble,
-        a geodetic datum, then a vertical one."""
+        """By name or alias, as ``from_name`` finds any object, of
+        ``datum_type`` (a ``DatumType`` or its name) when given. Of datums
+        whose names tie, an ensemble comes first, then a geodetic datum,
+        then a vertical one (``ETRS89`` is the ETRS89 ensemble's alias and
+        IRENET95's), as pyproj looks for them; engineering datums, which
+        pyproj doesn't, are found too."""
         found = cls._named(name, auth_name)
-        types = list(_DATUM_TYPES) if datum_type is None else [_enum_name(datum_type)]
-        for t in types:
-            check = _DATUM_TYPES.get(t)
-            if check is None:
+        if datum_type is not None:
+            wanted = _enum_name(datum_type)
+            if wanted not in set().union(*(_datum_types({"type": t}) for t in cls._types)):
                 raise CRSError(f"Invalid datum type: {datum_type}")
-            for doc in found:
-                if check(doc):
-                    return cls(doc)
-        raise CRSError(f"Invalid datum name: {name}")
+            found = [doc for doc in found if wanted in _datum_types(doc)]
+        if not found:
+            raise CRSError(f"Invalid datum name: {name}")
+        return cls(found[0])
 
     @property
     def type_name(self) -> str:
@@ -670,7 +676,7 @@ class CoordinateOperation(_EpsgObject):
     _types = frozenset({"Conversion", "Transformation", "ConcatenatedOperation", "CoordinateOperation"})
     _what = "coordinate operation"
     _kind = "conversion"
-    _urns = {"coordinateOperation": _always}
+    _urns = {"coordinateoperation": _always}
 
     @classmethod
     def _by_code(cls, auth_name: str, code: int | str, urn_type: str | None = None) -> JsonDict | None:
@@ -730,8 +736,8 @@ class CoordinateOperation(_EpsgObject):
     @classmethod
     def _with_usage(cls, doc: JsonDict, proj_names: bool) -> Self:
         """An operation with its area of use, scope and grids, as pyproj
-        describes one. A conversion's usage, which PROJ keeps but doesn't
-        write, leaves its PROJJSON."""
+        describes one. A conversion's usage leaves its PROJJSON, whose
+        schema has none for a conversion (nor WKT2's ``CONVERSION``)."""
         usage = (get_dicts(doc, "usages") or [doc])[0]
         bbox = as_dict(usage.get("bbox"))
         area = None

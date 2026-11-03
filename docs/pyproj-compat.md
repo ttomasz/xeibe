@@ -374,7 +374,7 @@ becomes the package's status tracker.
 | `to_wkt(version, pretty, output_axis_rule)`, also on the parts (`Datum`, `Ellipsoid`, …) | 2 | WKT2_2019 and WKT1_GDAL from PROJJSON, what GeoPandas, pyogrio and rioxarray ask for; other versions raise ([crs-wkt.md](crs-wkt.md#writing)). Equivalent to PROJ's output, not byte-identical. **Done**: PROJ's token for token for every EPSG CRS but listed differences. |
 | `from_proj4`, `from_dict`, `+proj=…` strings, `CRS(proj=…)` | 3 | Read as PROJ reads them into an EPSG method, with pyproj's preparation and `+init` warning; pipelines and PROJ4 extensions are an error ([pyproj-phase3.md](pyproj-phase3.md#proj-strings)). **Done.** |
 | `to_proj4`, `to_dict`, `to_string` | 3 | PROJ's string, token for token for every EPSG CRS. **Done.** |
-| `Datum`, `Ellipsoid`, `PrimeMeridian`, `CoordinateOperation`: `from_epsg`, `from_authority`, `from_name`, `from_string`, `from_user_input`, `from_json`, `from_json_dict`; `CoordinateSystem` from strings and PROJJSON; equality with what `from_user_input` takes | 3 | From `xeibe-crs`'s table of EPSG's objects, names matched as PROJ's name search matches them, and EPSG's transformations. Esri's names of EPSG objects stay out ([pyproj-phase3.md](pyproj-phase3.md#the-objects-table)). **Done.** |
+| `Datum`, `Ellipsoid`, `PrimeMeridian`, `CoordinateOperation`: `from_epsg`, `from_authority`, `from_name`, `from_string`, `from_user_input`, `from_json`, `from_json_dict`; `CoordinateSystem` from strings and PROJJSON; equality with what `from_user_input` takes | 3 | From `xeibe-crs`'s table of EPSG's objects, names matched as PROJ's name search matches them but beyond ASCII case (divergence 11), and EPSG's transformations. Esri's names of EPSG objects stay out ([pyproj-phase3.md](pyproj-phase3.md#the-objects-table)). **Done.** |
 | Builder classes (`GeographicCRS`, `ProjectedCRS`, `CompoundCRS`, `*Conversion`) | 3 | For the methods `xeibe-reproject` implements. |
 | `to_cf`, `from_cf`, `cs_to_cf` | 3, if asked | pyproj's implementation is pure Python over PROJJSON (MIT), so it could be ported. |
 | Other authorities (`ESRI:`, `IGNF:`, `IAU_2015:`, `NKG:`) | Out | Not in EPSG. Exception, in phase 2: the 987 old ESRI codes that are now EPSG codes (`ESRI:102100` → 3857), from `xeibe-esri` ([crs-wkt.md](crs-wkt.md#esri-names)). **Done.** |
@@ -567,6 +567,16 @@ These are documented in the package README and in its `NotImplementedError` and
       these methods have their origin on the equator, where the two agree.
     - **Interrupted Mollweide and Goode Homolosine** invert the south pole,
       which PROJ's test (`-y90 + EPSLN`) refuses.
+11. **Ellipsoids, datums and other parts of CRSs are found more widely**
+    ([pyproj-phase3.md](pyproj-phase3.md#the-objects-table)). Names are
+    compared without case in any script, accents, typographic
+    apostrophes and dashes, and extra whitespace, where PROJ ignores
+    ASCII case only; where PROJ finds an object, ours finds the same.
+    `Datum.from_name` finds engineering datums too. `from_string` takes
+    `EPSG:7019`, URNs in any case and their URLs, as `CRS` does, and WKT
+    reads back what it writes: a dynamic datum after its `DYNAMIC`, which
+    PROJ doesn't read. An engineering datum's WKT on its own has its id,
+    which PROJ leaves out.
 
 ## Testing
 

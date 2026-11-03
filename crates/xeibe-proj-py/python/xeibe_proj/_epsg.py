@@ -59,12 +59,24 @@ def named(name: str, kind: str) -> list[Record]:
     return _by_name_and_kind().get((name.lower(), kind), [])
 
 
+@cache
+def _keyed_names() -> dict[str, int]:
+    """``_names`` by ``name_key``: the names that differ otherwise (accents,
+    dashes, spacing) as well."""
+    out: dict[str, int] = {}
+    for r in sorted(records().values(), key=lambda r: (r.deprecated, r.code)):
+        out.setdefault(_native.name_key(r.name), r.code)
+    return out
+
+
 def code_for_name(name: str) -> int | None:
-    """The code of the CRS with this name or EPSG alias, ignoring case."""
-    key = name.strip().lower()
-    code = _names().get(key)
+    """The code of the CRS with this name, ignoring case, else equal by
+    ``name_key``, else with this EPSG alias."""
+    code = _names().get(name.strip().lower())
     if code is None:
-        code = _native.alias(key)
+        code = _keyed_names().get(_native.name_key(name))
+    if code is None:
+        code = _native.alias(name)
     return code
 
 

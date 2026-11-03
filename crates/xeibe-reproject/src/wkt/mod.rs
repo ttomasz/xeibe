@@ -47,7 +47,9 @@ pub fn to_projjson(text: &str) -> Result<String, Error> {
 /// string with its `type`: an ellipsoid (`ELLIPSOID`), a prime meridian
 /// (`PRIMEM`), a datum of any kind (`DATUM`, `VDATUM`, `EDATUM`, `PDATUM`,
 /// `TDATUM`), a datum ensemble (`ENSEMBLE`) or a conversion
-/// (`CONVERSION`). Anything else is an error naming it.
+/// (`CONVERSION`). A geodetic or vertical datum may follow its `DYNAMIC`,
+/// and a geodetic one come before its `PRIMEM`, as they are written on
+/// their own. Anything else is an error naming it.
 ///
 /// ```
 /// let json = xeibe_reproject::wkt::object_to_projjson(
@@ -58,8 +60,8 @@ pub fn to_projjson(text: &str) -> Result<String, Error> {
 /// assert!(json.contains(r#""semi_major_axis":6378137"#));
 /// ```
 pub fn object_to_projjson(text: &str) -> Result<String, Error> {
-    let node = parse::parse(text)?;
-    Ok(wkt2::object(&node)?.to_string())
+    let nodes = parse::parse_all(text)?;
+    Ok(wkt2::object_nodes(&nodes)?.to_string())
 }
 
 /// A WKT version this crate writes.

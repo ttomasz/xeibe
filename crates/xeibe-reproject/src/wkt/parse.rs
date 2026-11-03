@@ -81,6 +81,23 @@ pub(crate) fn parse(text: &str) -> Result<Node, Error> {
     Ok(node)
 }
 
+/// Top-level nodes separated by commas, as a datum on its own is written
+/// with its `DYNAMIC` or `PRIMEM` next to it.
+pub(crate) fn parse_all(text: &str) -> Result<Vec<Node>, Error> {
+    let mut p = Parser { text, pos: 0 };
+    let mut nodes = Vec::new();
+    loop {
+        p.skip_space();
+        nodes.push(p.node(0)?);
+        p.skip_space();
+        match p.peek() {
+            Some(b',') => p.pos += 1,
+            None => return Ok(nodes),
+            Some(_) => return Err(p.error("text after the end of the WKT")),
+        }
+    }
+}
+
 struct Parser<'a> {
     text: &'a str,
     pos: usize,

@@ -563,9 +563,9 @@ degrees in PROJJSON and WKT, which we copy so that the text stays PROJ's.
 prime meridians, geodetic and vertical datums, datum ensembles and
 conversions. Each is the PROJJSON that PROJ writes for it, with its name,
 EPSG's aliases and its deprecation. `xeibe_crs::object(kind, code)` and
-`xeibe_crs::object_by_name(kind, name)` read it. Names match as PROJ's
-`createObjectsFromName` does, ignoring case, spaces and punctuation, and
-with EPSG's aliases.
+`xeibe_crs::objects_by_name(kind, name)` read it. Names match as PROJ's
+`createObjectsFromName` does, with EPSG's aliases, and more leniently
+(`xeibe_crs::name_key`).
 
 On top of the table, every sub-object gets pyproj's constructors:
 
@@ -586,10 +586,26 @@ EPSG's, EPSG's aliases of datums and PROJ's own nine (`WGS84`, `NAD83`,
 canonical: the name or an alias equal to it ignoring the case of ASCII
 letters (SQLite's `NOCASE`), current objects first, names before aliases,
 shorter names first; a name ending in " (deprecated)" finds deprecated
-objects only. A conversion carries its usage, which PROJ keeps for its
-area of use but leaves out of its PROJJSON; the Python side moves it to
-`area_of_use` and `scope`, and a projected CRS's `coordinate_operation`
-gets its conversion's.
+objects only. Ours keeps that order and compares by `name_key`: lowercase
+in any script, without accents, typographic apostrophes and dashes as
+ASCII ones, whitespace collapsed and trimmed. EPSG's own names need it
+(`Gauss–Kruger` with an en dash, `d’Alofi`, "Chart Datum Portugal " with a
+trailing space), and PROJ finds none of its 61 non-ASCII names in another
+case. Names equal ignoring case come before names equal only by key, so
+where PROJ finds something ours finds the same: EPSG gives "Réseau
+Géodésique Français 1993" to the three RGF93 frames and "Reseau
+Geodesique Francais 1993" to v1 only. Of datums whose names tie, an
+ensemble comes first, then a geodetic datum, a vertical one and any
+other: `ETRS89` is an alias of both the ETRS89 ensemble and IRENET95.
+pyproj gets the same by trying its `DatumType`s in turn, which never
+reaches engineering datums. CRS names and aliases (`CRS("…")`,
+`xeibe_crs::alias`) and operation names compare by the same key.
+
+A conversion carries its usage, which PROJ keeps for its area of use but
+leaves out of its PROJJSON, whose schema has no usage for a conversion or
+an ensemble (nor has WKT2's `CONVERSION` or `ENSEMBLE`); the Python side
+moves it to `area_of_use` and `scope`, and a projected CRS's
+`coordinate_operation` gets its conversion's.
 
 On the Python side:
 
@@ -600,14 +616,19 @@ On the Python side:
   (`xeibe_reproject::proj_data_file`). `from_name` finds those by their
   `coordinate_operation_type`.
 - `from_string` reads `urn:ogc:def:<type>:EPSG::<code>` (`ellipsoid`,
-  `meridian`, `datum`, `ensemble`, `coordinateOperation`), a part of a CRS
-  in WKT2 on its own (`xeibe_reproject::wkt::object_to_projjson`:
-  `ELLIPSOID`, `PRIMEM`, `DATUM`, `VDATUM`, `EDATUM`, `PDATUM`, `ENSEMBLE`,
-  `CONVERSION`), and PROJJSON, then a name. `EPSG:7001` is not an
-  ellipsoid, as in PROJ.
+  `meridian`, `datum`, `ensemble`, `coordinateOperation`) in any case, its
+  URL at opengis.net and `EPSG:<code>`, as `CRS` reads a CRS's, where
+  PROJ takes only the lowercase URN; a part of a CRS in WKT2 on its own
+  (`xeibe_reproject::wkt::object_to_projjson`: `ELLIPSOID`, `PRIMEM`,
+  `DATUM`, `VDATUM`, `EDATUM`, `PDATUM`, `TDATUM`, `ENSEMBLE`,
+  `CONVERSION`, and a datum after its `DYNAMIC` or before its `PRIMEM`, as
+  they are written); and PROJJSON, then a name.
 - `Ellipsoid.from_name` falls back to PROJ's `+ellps` table (`intl`), as
-  pyproj does. `Datum.from_name` without a type takes an ensemble, then a
-  geodetic datum, then a vertical one, in pyproj's order of `DatumType`s.
+  pyproj does. `Datum.from_name` takes the first datum the table's search
+  finds, of `datum_type` when given; a type is any PROJJSON datum type
+  (`DynamicGeodeticReferenceFrame` is `DYNAMIC_GEODETIC_REFERENCE_FRAME`
+  and `GEODETIC_REFERENCE_FRAME`), and an ensemble is of its members' type
+  too, as in PROJ's tables.
 - Equality is equivalence, as pyproj's: the other side as
   `from_user_input` takes it (`Datum.from_epsg(6326) == 6326`), and the
   PROJJSON compared without ids, usages and remarks. The hash is of the same,
@@ -632,12 +653,19 @@ keep them, as a CRS's PROJJSON does) and WKT numbers to 1e-11, but for:
   deprecated conversions: PROJ mixes the ellipsoidal method's name with the
   spherical one's parameters, ours keeps the spherical name;
 - other authorities: Esri's names of EPSG objects, and IGNF's and NKG's
-  objects and CRSs, which PROJ's database adds.
+  objects and CRSs, which PROJ's database adds;
+- names ours finds where PROJ finds nothing: those in another case than
+  ASCII's (`rÉSEAU`), and the 15 engineering datums' (`Dabajuro`), which
+  pyproj never looks for;
+- an engineering datum's WKT on its own, which has its `ID` where PROJ's
+  has none.
 
-The run found three things in the WKT writer, now as PROJ writes them: an
+The run found two things in the WKT writer, now as PROJ writes them: an
 ellipsoid given by its axes has its inverse flattening computed in metres
-(the last digit of Clarke 1866 Michigan's, in feet), an engineering datum
-on its own has no `ID`, and an ensemble on its own has its ellipsoid's.
+(the last digit of Clarke 1866 Michigan's, in feet), and an ensemble on its
+own has its ellipsoid's id. Reading each object's WKT back found that
+neither PROJ nor ours read a dynamic datum's `DYNAMIC[…],DATUM[…]`, and
+ours not `DATUM[…],PRIMEM[…]`; ours reads both now.
 
 ### Builders
 

@@ -22,6 +22,7 @@ include = ["src/**", "data/**", "EPSG-NOTICE.md", "README.md"]
 
 [dependencies]
 lz4_flex.workspace = true
+unicode-normalization.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

@@ -32,6 +32,38 @@ pub(crate) fn crs(node: &Node) -> Result<Value, Error> {
     }
 }
 
+/// A part of a CRS given on its own, as [`object`] reads it, from the
+/// nodes it is written as: one, or a datum after its `DYNAMIC` or before
+/// its `PRIMEM`, as PROJ writes them. (PROJ doesn't read its own
+/// `DYNAMIC`.)
+pub(crate) fn object_nodes(nodes: &[Node]) -> Result<Value, Error> {
+    let (dynamic_node, rest) = match nodes {
+        [d, rest @ ..] if d.keyword == "DYNAMIC" && !rest.is_empty() => (Some(d), rest),
+        _ => (None, nodes),
+    };
+    let (datum, primem) = match rest {
+        [datum] if dynamic_node.is_none() => return object(datum),
+        [datum] => (datum, None),
+        [datum, pm] if matches!(pm.keyword.as_str(), "PRIMEM" | "PRIMEMERIDIAN") => {
+            (datum, Some(pm))
+        }
+        [_, extra, ..] => return Err(unsupported(extra, "a second object")),
+        [] => unreachable!("the parser reads at least one node"),
+    };
+    let (epoch, models) = dynamic(dynamic_node)?;
+    if !models.is_empty() {
+        return Err(unsupported(
+            datum,
+            "deformation models on a datum on its own",
+        ));
+    }
+    match datum.keyword.as_str() {
+        k if GEODETIC_DATUM.contains(&k) => geodetic_frame(datum, epoch, primem),
+        k if VERTICAL_DATUM.contains(&k) && primem.is_none() => vertical_frame(datum, epoch),
+        _ => Err(unsupported(datum, "a datum with DYNAMIC or PRIMEM")),
+    }
+}
+
 /// A part of a CRS given on its own: an ellipsoid, a prime meridian, a
 /// datum of any kind, a datum ensemble or a conversion, as PROJJSON with
 /// its `type`, as PROJ reads one (pyproj's `Datum.from_string`, …).

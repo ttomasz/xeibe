@@ -155,18 +155,59 @@ pub fn get(code: u32) -> Option<&'static CrsRecord> {
         .map(|index| &CRS[index])
 }
 
-/// The EPSG code a CRS alias names, e.g. `PL-1992` → 2180. Case is ignored.
+/// The EPSG code a CRS alias names, e.g. `PL-1992` → 2180, compared by
+/// [`name_key`].
 ///
 /// These are EPSG's own aliases (its abbreviations and former names, INSPIRE
 /// and national identifiers), limited to those that name a single CRS. An
-/// alias EPSG gives to several live CRSs (`PL-ETRF2000`) is not here.
+/// alias EPSG gives to several live CRSs (`PL-ETRF2000`) is not here, nor
+/// two aliases of different CRSs that differ only where [`name_key`] doesn't
+/// look.
 pub fn alias(name: &str) -> Option<u32> {
-    let name = name.trim().to_lowercase();
-    let aliases = aliases::ALIASES;
-    aliases
-        .binary_search_by(|(alias, _)| (*alias).cmp(name.as_str()))
-        .ok()
-        .map(|index| aliases[index].1)
+    static INDEX: OnceLock<HashMap<String, Option<u32>>> = OnceLock::new();
+    let index = INDEX.get_or_init(|| {
+        let mut index: HashMap<String, Option<u32>> = HashMap::new();
+        for &(alias, code) in aliases::ALIASES {
+            index
+                .entry(name_key(alias))
+                .and_modify(|c| {
+                    if *c != Some(code) {
+                        *c = None;
+                    }
+                })
+                .or_insert(Some(code));
+        }
+        index
+    });
+    index.get(&name_key(name)).copied().flatten()
+}
+
+/// A name as the name searches here compare it ([`alias`],
+/// [`objects_by_name`]): lowercase in any script, without accents, with
+/// typographic apostrophes and dashes as ASCII ones, and each run of
+/// whitespace one space, none at the ends. `"Réseau Géodésique Français
+/// 1993"` and `"reseau  geodesique francais 1993 "` are the same name.
+///
+/// EPSG's names mix spellings (`Gauss–Kruger` with an en dash, `d’Alofi`,
+/// trailing spaces), which nobody types; PROJ's exact search compares
+/// ASCII case only.
+pub fn name_key(name: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    use unicode_normalization::char::is_combining_mark;
+    let mut key = String::with_capacity(name.len());
+    for word in name.split_whitespace() {
+        if !key.is_empty() {
+            key.push(' ');
+        }
+        for c in word.nfd().filter(|c| !is_combining_mark(*c)) {
+            match c {
+                '\u{2018}' | '\u{2019}' | '\u{02bc}' => key.push('\''),
+                '\u{2010}'..='\u{2015}' | '\u{2212}' => key.push('-'),
+                c => key.extend(c.to_lowercase()),
+            }
+        }
+    }
+    key
 }
 
 /// The CRSs EPSG gives as replacements of a deprecated one, in EPSG's
@@ -697,6 +738,29 @@ impl EpsgObject {
     pub fn name(&self) -> &'static str {
         self.names[0]
     }
+
+    /// The PROJJSON's `type`: `"Ellipsoid"`, `"DatumEnsemble"`,
+    /// `"DynamicGeodeticReferenceFrame"`, …, which the generator writes
+    /// first.
+    pub fn projjson_type(&self) -> &'static str {
+        self.projjson
+            .strip_prefix(r#"{"type":""#)
+            .and_then(|rest| rest.split('"').next())
+            .expect("data/objects.bin: PROJJSON starts with its type")
+    }
+
+    /// Which of the datums with the same name [`objects_by_name`] puts
+    /// first: an ensemble, then a geodetic datum, a vertical one, and any
+    /// other, as pyproj's `Datum.from_name` looks for them. Other kinds
+    /// tie.
+    fn datum_rank(&self) -> u8 {
+        match self.projjson_type() {
+            "DatumEnsemble" => 0,
+            "GeodeticReferenceFrame" | "DynamicGeodeticReferenceFrame" => 1,
+            "VerticalReferenceFrame" | "DynamicVerticalReferenceFrame" => 2,
+            _ => 3,
+        }
+    }
 }
 
 /// Every object, sorted by kind and code, decompressed on first use (about
@@ -756,32 +820,62 @@ pub fn objects(kind: ObjectKind) -> impl Iterator<Item = &'static EpsgObject> {
     table[start..].iter().take_while(move |o| o.kind == kind)
 }
 
+/// Every object's names by [`name_key`], sorted by kind and key: (kind,
+/// key, the object's index in the table, the name's among its names).
+fn name_index() -> &'static [(ObjectKind, String, u32, u16)] {
+    static INDEX: OnceLock<Vec<(ObjectKind, String, u32, u16)>> = OnceLock::new();
+    INDEX.get_or_init(|| {
+        let mut index: Vec<_> = object_table()
+            .iter()
+            .enumerate()
+            .flat_map(|(o, object)| {
+                object
+                    .names
+                    .iter()
+                    .enumerate()
+                    .map(move |(i, n)| (object.kind, name_key(n), o as u32, i as u16))
+            })
+            .collect();
+        index.sort();
+        index
+    })
+}
+
 /// The objects of one kind with this name, as PROJ's name search finds them
 /// (`createObjectsFromName`, without approximate matching): the name or an
-/// alias equal to it, ignoring the case of ASCII letters, current objects
-/// first, then by name before alias, then the shorter name. A name ending in
-/// " (deprecated)" finds only deprecated objects.
+/// alias equal to it ignoring case, current objects first, then by name
+/// before alias, then the shorter name. Names equal only by [`name_key`]
+/// come after all those, in the same order: where PROJ, which ignores
+/// ASCII case only, finds an object, this finds the same first. Of datums
+/// whose names tie, an ensemble comes first, then a geodetic datum, then a
+/// vertical one (`ETRS89` is the ETRS89 ensemble's alias and IRENET95's).
+/// A name ending in " (deprecated)" finds only deprecated objects.
 pub fn objects_by_name(kind: ObjectKind, name: &str) -> Vec<&'static EpsgObject> {
-    let (name, deprecated_only) = match name.strip_suffix(" (deprecated)") {
+    let key = name_key(name);
+    let (key, deprecated_only) = match key.strip_suffix(" (deprecated)") {
         Some(rest) => (rest, true),
-        None => (name, false),
+        None => (key.as_str(), false),
     };
-    // PROJ finds nothing for a name of one character or none, once spaces
-    // and punctuation are left out.
-    if name.chars().filter(|c| c.is_alphanumeric()).count() <= 1 {
-        return Vec::new();
-    }
-    let mut found: Vec<(bool, bool, usize, &'static str, &'static EpsgObject)> = objects(kind)
-        .filter(|o| !deprecated_only || o.deprecated)
-        .flat_map(|o| {
-            o.names
-                .iter()
-                .enumerate()
-                .filter(|(_, n)| n.eq_ignore_ascii_case(name))
-                .map(move |(i, n)| (o.deprecated, i > 0, n.chars().count(), *n, o))
+    let lower = name.to_lowercase();
+    let lower = lower.strip_suffix(" (deprecated)").unwrap_or(&lower);
+    let (table, index) = (object_table(), name_index());
+    let start = index.partition_point(|(k, n, ..)| (*k, n.as_str()) < (kind, key));
+    // Each name found, with what orders it: folded only, deprecated, an
+    // alias, its length, itself, the datum's rank.
+    let mut found: Vec<_> = index[start..]
+        .iter()
+        .take_while(|(k, n, ..)| *k == kind && n == key)
+        .map(|&(_, _, o, i)| {
+            let o = &table[o as usize];
+            let n = o.names[i as usize];
+            let folded = n.to_lowercase() != lower;
+            let rank = o.datum_rank();
+            ((folded, o.deprecated, i > 0, n.chars().count(), n, rank), o)
         })
+        .filter(|(order, _)| !deprecated_only || order.1)
         .collect();
-    found.sort_by(|a, b| (a.0, a.1, a.2, a.3).cmp(&(b.0, b.1, b.2, b.3)));
+    // Stable: names that tie keep the table's order, by code.
+    found.sort_by_key(|(order, _)| *order);
     let mut out: Vec<&'static EpsgObject> = Vec::new();
     for (.., o) in found {
         if !out.iter().any(|seen| seen.code == o.code) {

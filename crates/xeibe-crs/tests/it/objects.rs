@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
-use xeibe_crs::{CrsKind, ObjectKind, object, objects, objects_by_name};
+use xeibe_crs::{CrsKind, ObjectKind, name_key, object, objects, objects_by_name};
 
 fn data(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -135,31 +135,6 @@ fn check_objects(records: &[Value]) {
     );
 }
 
-/// What pyproj's `from_name` finds for a class among the objects with
-/// that name: a datum is looked for among ensembles, then geodetic datums,
-/// then vertical ones, never engineering ones.
-fn pyproj_choice(kind: ObjectKind, name: &str) -> Option<u32> {
-    let found = objects_by_name(kind, name);
-    if kind != ObjectKind::Datum {
-        return found.first().map(|o| o.code);
-    }
-    let type_of = |o: &&xeibe_crs::EpsgObject| {
-        let doc: Value = serde_json::from_str(o.projjson).unwrap();
-        doc["type"].as_str().unwrap().to_owned()
-    };
-    let rank = |t: &str| match t {
-        "DatumEnsemble" => Some(0),
-        "GeodeticReferenceFrame" | "DynamicGeodeticReferenceFrame" => Some(1),
-        "VerticalReferenceFrame" | "DynamicVerticalReferenceFrame" => Some(2),
-        _ => None,
-    };
-    found
-        .iter()
-        .filter_map(|o| rank(&type_of(o)).map(|r| (r, o.code)))
-        .min_by_key(|(r, _)| *r)
-        .map(|(_, code)| code)
-}
-
 fn check_names(records: &[Value]) {
     let mut failures = Vec::new();
     let mut compared = 0;
@@ -185,8 +160,20 @@ fn check_names(records: &[Value]) {
             continue;
         }
         compared += 1;
-        let got = pyproj_choice(k, name);
-        if got != want {
+        // pyproj's `from_name` takes the first.
+        let got = objects_by_name(k, name).first().map(|o| o.code);
+        // Where pyproj finds nothing, ours may find a name that differs
+        // other than in ASCII case (`rÉSEAU`), which PROJ alone ignores, or
+        // an engineering datum, which pyproj never looks for.
+        let beyond_proj = want.is_none()
+            && got.is_some_and(|c| {
+                let o = object(k, c).unwrap();
+                o.projjson_type() == "EngineeringDatum"
+                    || o.names
+                        .iter()
+                        .any(|n| name_key(n) == name_key(name) && !n.eq_ignore_ascii_case(name))
+            });
+        if got != want && !beyond_proj {
             failures.push(format!("{k:?} {name:?}: ours {got:?}, PROJ {want:?}"));
         }
     }
@@ -251,7 +238,7 @@ fn objects_by_code() {
     assert!(!wgs84.deprecated);
     let etrs89 = object(ObjectKind::Datum, 6258).unwrap();
     assert!(etrs89.names.contains(&"ETRS89"), "{:?}", etrs89.names);
-    assert!(etrs89.projjson.contains("\"type\":\"DatumEnsemble\""));
+    assert_eq!(etrs89.projjson_type(), "DatumEnsemble");
     assert_eq!(
         object(ObjectKind::Conversion, 16031).unwrap().name(),
         "UTM zone 31N"
@@ -263,6 +250,17 @@ fn objects_by_code() {
     // Kinds have codes of their own.
     assert!(object(ObjectKind::Ellipsoid, 6258).is_none());
     assert_eq!(objects(ObjectKind::PrimeMeridian).count(), 15);
+    for kind in [
+        ObjectKind::Ellipsoid,
+        ObjectKind::PrimeMeridian,
+        ObjectKind::Datum,
+        ObjectKind::Conversion,
+    ] {
+        for o in objects(kind) {
+            let doc: Value = serde_json::from_str(o.projjson).unwrap();
+            assert_eq!(doc["type"], o.projjson_type());
+        }
+    }
 }
 
 #[test]
@@ -286,6 +284,59 @@ fn objects_by_name_as_proj_finds_them() {
         "PROJ's +ellps names aren't EPSG's"
     );
     assert!(codes(ObjectKind::Datum, "W").is_empty());
+    // Beyond PROJ: case in any script, accents, EPSG's stray spaces.
+    assert_eq!(codes(ObjectKind::Datum, "PANAMÁ-COLÓN 1911"), [1072]);
+    assert_eq!(codes(ObjectKind::Datum, "Panama-Colon 1911"), [1072]);
+    assert_eq!(codes(ObjectKind::Datum, " chart  datum portugal"), [1361]);
+    // But a name equal ignoring case comes first: EPSG gives the accented
+    // name to the three RGF93 frames and the unaccented one to v1 only.
+    assert_eq!(
+        codes(ObjectKind::Datum, "Réseau Géodésique Français 1993"),
+        [1312, 1313, 6171]
+    );
+    assert_eq!(
+        codes(ObjectKind::Datum, "Reseau Geodesique Francais 1993")[0],
+        6171
+    );
+    assert_eq!(
+        codes(
+            ObjectKind::Datum,
+            "reseau geodesique francais 1993 (DEPRECATED)"
+        ),
+        Vec::<u32>::new()
+    );
+    // Of datums whose names tie, the ensemble, as pyproj looks for one
+    // first; engineering datums, which pyproj never finds, are found.
+    assert_eq!(codes(ObjectKind::Datum, "ETRS89"), [6258, 6173]);
+    assert_eq!(codes(ObjectKind::Datum, "Dabajuro"), [9307]);
+}
+
+#[test]
+fn name_keys() {
+    assert_eq!(
+        name_key("  Réseau\tGéodésique  Français 1993 "),
+        "reseau geodesique francais 1993"
+    );
+    assert_eq!(
+        name_key("MGI 1901 / Gauss–Kruger zone 5"),
+        "mgi 1901 / gauss-kruger zone 5"
+    );
+    assert_eq!(name_key("d’Alofi"), "d'alofi");
+    // Letters of their own stay: æ, ð and ø aren't accented.
+    assert_eq!(name_key("LANDSHÆÐARKERFI"), "landshæðarkerfi");
+    assert_eq!(name_key("ΕΓΣΑ87"), "εγσα87");
+    // CRS aliases compare the same way.
+    assert_eq!(xeibe_crs::alias("PL-1992"), Some(2180));
+    assert_eq!(
+        xeibe_crs::alias("MGI 1901 / Gauss-Kruger zone 5"),
+        xeibe_crs::alias("mgi 1901 / gauss–kruger zone 5")
+    );
+    assert!(xeibe_crs::alias("MGI 1901 / Gauss-Kruger zone 5").is_some());
+    assert_eq!(
+        xeibe_crs::alias("tananarive / laborde"),
+        xeibe_crs::alias("Tananarive  / Laborde")
+    );
+    assert!(xeibe_crs::alias("tananarive / laborde").is_some());
 }
 
 #[test]

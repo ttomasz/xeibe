@@ -96,6 +96,8 @@ zstd = "0.13"
 # xeibe-crs's blobs: LZ4 blocks, decoded without unsafe code. No frames
 # (twox-hash) and no encoder; the generator compresses.
 lz4_flex = { version = "0.14", default-features = false, features = ["std", "safe-decode", "checked-decode"] }
+# xeibe-crs's name searches: accents compare as the letters under them.
+unicode-normalization = "0.1"
 fast-float2 = "0.2"
 bytes = "1"
 indexmap = { version = "2", features = ["serde"] }

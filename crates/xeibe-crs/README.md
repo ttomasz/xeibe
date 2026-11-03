@@ -232,6 +232,18 @@ they match the Cargo version so the two cannot drift.
 The crate's own versions; [`CHANGELOG.md`](CHANGELOG.md) lists the EPSG Dataset
 releases embedded in each.
 
+### 0.4.2
+
+- `object(kind, code)`, `objects(kind)` and `objects_by_name(kind, name)`:
+  EPSG's ellipsoids, prime meridians, datums and ensembles, and conversions
+  on their own, as PROJJSON with their names and aliases
+  (`data/objects.bin`), found by name in PROJ's order
+  (`docs/pyproj-phase3.md`, "The objects table").
+- `name_key(name)`: names compare lowercase in any script, without accents,
+  with typographic apostrophes and dashes as ASCII ones and whitespace
+  collapsed. `objects_by_name` and `alias` use it; `alias` ignored case
+  only. Accents need the `unicode-normalization` crate.
+
 ### 0.4.0
 
 - `replacements(code)`: the CRSs EPSG names as replacements of a
