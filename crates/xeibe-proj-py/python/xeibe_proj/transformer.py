@@ -158,6 +158,8 @@ class Transformer:
     _member: str | None
     # The search's options (from_crs's area_of_interest, accuracy, only_best).
     _options: _Options
+    # The same transformer with always_xy, once made (_east_first).
+    _xy: Transformer | None
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         raise ProjError("Transformer must be initialized using: 'from_crs'.")
@@ -216,6 +218,7 @@ class Transformer:
         self._natives = {}
         self._logged = set()
         self._options = _NO_OPTIONS
+        self._xy = None
         return self
 
     @staticmethod
@@ -422,6 +425,15 @@ class Transformer:
             return None
 
     # Conversion ---------------------------------------------------------------
+
+    def _east_first(self) -> Transformer:
+        """This transformer with ``always_xy``: GeoArrow's coordinates are
+        always easting or longitude first (``xeibe_proj.arrow``)."""
+        if self._always_xy:
+            return self
+        if self._xy is None:
+            self._xy = Transformer._make(self._source, self._target, True, self._member, self._options)
+        return self._xy
 
     def _native_for(self, direction: Direction) -> _native.Transform | _native.Projection | None:
         """The native conversion for ``direction`` (``None`` for IDENT),

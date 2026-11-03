@@ -90,10 +90,12 @@ jobs:
           EOF
 
       # pyproj 3.8.0, which the tests compare with, needs Python 3.12.
+      # pyarrow and arro3 hand GeoArrow arrays to xeibe_proj.arrow.
       - name: Tests
         run: |
           uv run --no-project --isolated --python 3.12 --with target/proj-py-wheels/xeibe_proj-*.whl \
-            --with pytest --with numpy --with pyproj==3.8.0 pytest crates/xeibe-proj-py/tests
+            --with pytest --with numpy --with pyproj==3.8.0 --with pyarrow==26.0.1 --with arro3-core==0.9.1 \
+            pytest crates/xeibe-proj-py/tests
 
       - name: Type checks
         if: runner.os == 'Linux'

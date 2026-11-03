@@ -1,6 +1,6 @@
 # A pyproj-compatible Python package
 
-> **Status: phases 0 and 1 are implemented (2026-10-21), in
+> **Status: phases 0 to 3 are implemented (phase 3 on 2026-11-03), in
 > `crates/xeibe-proj-py`; see
 > [Implementation status](#implementation-status).** API facts below were
 > checked against pyproj 3.8.0 (PROJ 9.8.1) and GeoPandas 1.2.0.
@@ -42,10 +42,12 @@ read and written (its steps 1 and 2), as of 2026-11-01
 `install_as_pyproj()` runs GeoPandas (step 3), and as of 2026-11-03 EPSG's
 ellipsoids, prime meridians, datums and operations have their own
 constructors (step 4), pyproj's builders exist (step 5), CF too (step 6),
-and there is a Pyodide wheel (step 8).
+GeoArrow arrays are converted (step 7) and there is a Pyodide wheel
+(step 8). That completes phase 3.
 
 - **Done.**
-  - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
+  - The crate, abi3 wheel (2.0 MB with `--profile dist` in phase 0, 3.9 MB
+    on Linux x86_64 on 2026-11-03: 3.6 MB of it before GeoArrow), and the strict
     type checks. CI (`.github/workflows/proj-py.yml`) builds and tests the
     wheel on Linux, macOS and Windows. Its wheels aren't release builds;
     `.github/workflows/release.yml` builds and publishes those
@@ -88,6 +90,10 @@ and there is a Pyodide wheel (step 8).
     ([pyproj-phase3.md](pyproj-phase3.md#cf), divergence 13).
   - `xeibe_proj.compat.install_as_pyproj()`, under which GeoPandas 1.2.0
     passes its tests but four ([pyproj-phase3.md](pyproj-phase3.md#geopandas)).
+  - `xeibe_proj.arrow`: GeoArrow's native encodings, WKB and boxes converted
+    through the Arrow PyCapsule interface, over arrow-rs's C Data Interface
+    (0.31 MB of the wheel), with no Arrow library imported
+    ([pyproj-phase3.md](pyproj-phase3.md#geoarrow)).
 - **The Rust changes phase 1 needed are made**:
   - `Transform::operation_info`, `operation_index_for` and
     `with_operation_index` for the metadata and the group;
@@ -269,11 +275,12 @@ everything compiled in. For Python users, the "feature flags" are therefore
     (`__array__`: pandas, xarray), non-float64 dtypes and non-contiguous
     arrays. The extra `xeibe-proj[numpy]` just declares the dependency.
   - **Arrow** (phase 3): GeoArrow arrays in and out through the Arrow
-    PyCapsule interface (`__arrow_c_array__`). The native side reads and
-    writes the C Data Interface itself (coordinates are float64 buffers), so
-    pyarrow, arro3 and polars objects work without the package depending on
-    any of them. Pull in `arrow-rs` only if the wheel-size cost measured in
-    phase 0 is small.
+    PyCapsule interface (`__arrow_c_array__`, `__arrow_c_stream__`). The
+    native side reads and writes the C Data Interface itself, through
+    arrow-rs's `ffi` (0.31 MB of the wheel), so pyarrow, arro3 and polars
+    objects work without the package depending on any of them. pyo3-arrow
+    would have cost 2.7 MB ([pyproj-phase3.md](pyproj-phase3.md#geoarrow),
+    decision 17).
   - **shapely / GeoPandas**: never imported. `Geod.geometry_*` duck-types
     shapely geometries, as pyproj does, and the shim works with whatever
     GeoPandas the user has.
@@ -281,8 +288,8 @@ everything compiled in. For Python users, the "feature flags" are therefore
   module carries no HTTP or TLS stack, which keeps the wheel small and lets
   downloads honour the system's proxies and certificates.
 
-Extras: `numpy`, `test` (pytest and pyproj, for the differential tests),
-`all`.
+Extras: `numpy`, `test` (pytest and pyproj, for the differential tests,
+and pyarrow and arro3 for `xeibe_proj.arrow`'s), `all`.
 
 ## Type hints
 
@@ -657,6 +664,10 @@ These are documented in the package README and in its `NotImplementedError` and
   the range requests, the cache and every log record in the table above.
 - **Type checking**: the strict mypy and pyright runs, `stubtest`, and the
   `assert_type` file described under [Type hints](#type-hints).
+- **GeoArrow** (`tests/test_arrow.py`): every encoding, dimension and
+  storage type through pyarrow and arro3, checked coordinate for
+  coordinate against `Transformer.transform` (and WKB byte for byte), plus
+  nulls, slices, chunks, the metadata and the errors.
 - **Bare install**: the job described under
   [Dependencies](#dependencies-and-extras), with no extras and `numpy` absent
   from `sys.modules`.
@@ -681,7 +692,8 @@ flowchart LR
   for Linux/macOS/Windows, `py.typed` and the strict type-checking jobs, and
   the pyproj test harness with an empty pass list.
   Measure the wheel size, and from that decide whether to use `arrow-rs` or
-  hand-written FFI for Arrow.
+  hand-written FFI for Arrow. (Measured in phase 3 instead: arrow-rs, at
+  0.31 MB.)
 - **Phase 1.** Covers scripts that build CRSs from EPSG codes and convert
   coordinates and bounds. Done when the differential tests pass and the
   pyproj pass list covers `test_transformer.py` and `test_crs.py` for EPSG

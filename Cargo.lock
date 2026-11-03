@@ -4370,6 +4370,9 @@ dependencies = [
 name = "xeibe-proj-py"
 version = "0.1.0"
 dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
  "pyo3",
  "serde_json",
  "xeibe-crs",

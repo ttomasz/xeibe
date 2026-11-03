@@ -75,6 +75,26 @@ an error.
 string with `+ellps` but no `+datum`) converts only to CRSs on that datum:
 there is no zero datum shift, as PROJ's ballpark would apply.
 
+## GeoArrow
+
+`xeibe_proj.arrow` converts GeoArrow arrays, which pyproj doesn't. It takes
+anything with `__arrow_c_array__` or `__arrow_c_stream__` (pyarrow, arro3,
+polars, nanoarrow) and imports none of them:
+
+```python
+import pyarrow as pa
+from xeibe_proj import Transformer, arrow
+
+t = Transformer.from_crs(2180, 4326)
+out = pa.array(arrow.transform(t, column))  # pa.chunked_array() for chunked input
+out = arrow.to_crs(column, 4326)            # source CRS from the GeoArrow metadata
+```
+
+GeoArrow's native encodings (interleaved or separated, XY to XYZM), WKB and
+boxes are converted in place of their coordinates, in Rust without the GIL;
+WKT is not. Coordinates are always easting or longitude first, as GeoArrow
+has them. The result's GeoArrow metadata names the target CRS.
+
 ## Libraries that import pyproj
 
 `install_as_pyproj()` makes `import pyproj` give this package, for

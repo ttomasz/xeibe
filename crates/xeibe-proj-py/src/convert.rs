@@ -84,7 +84,11 @@ impl Calls {
     }
 
     /// `GridsNeeded` when grid data for `bounds` is missing.
-    fn check_grids<C: Convert>(&self, c: &C, bounds: Option<[f64; 4]>) -> Result<(), Missing> {
+    pub(crate) fn check_grids<C: Convert>(
+        &self,
+        c: &C,
+        bounds: Option<[f64; 4]>,
+    ) -> Result<(), Missing> {
         if self.grids && c.grids_missing(bounds) {
             Err(Missing(bounds))
         } else {
@@ -94,10 +98,10 @@ impl Calls {
 }
 
 /// Grid data missing for a box.
-struct Missing(Option<[f64; 4]>);
+pub(crate) struct Missing(Option<[f64; 4]>);
 
 impl Missing {
-    fn into_err(self) -> PyErr {
+    pub(crate) fn into_err(self) -> PyErr {
         GridsNeeded::new_err((self.0.map(|[a, b, c, d]| (a, b, c, d)),))
     }
 }

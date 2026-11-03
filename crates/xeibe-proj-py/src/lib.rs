@@ -5,9 +5,11 @@
 //! identification, and Esri's old codes from `xeibe-esri`. The
 //! pyproj-shaped API is Python over PROJJSON. Conversion takes plain
 //! numbers, or works in place on float64 buffers the Python side has
-//! already copied and releases the GIL (`convert`). Errors are
+//! already copied and releases the GIL (`convert`), or on GeoArrow arrays
+//! through the Arrow C Data Interface (`arrow`). Errors are
 //! `xeibe_proj.exceptions`' classes.
 
+mod arrow;
 mod convert;
 mod geod;
 mod json;
@@ -805,6 +807,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(proj_string_to_projjson, m)?)?;
     m.add_function(wrap_pyfunction!(to_proj4, m)?)?;
     m.add_class::<Transform>()?;
+    m.add_class::<arrow::ArrowData>()?;
     m.add("GridsNeeded", m.py().get_type::<convert::GridsNeeded>())?;
     m.add_class::<OperationInfo>()?;
     m.add_class::<ParsedCrs>()?;

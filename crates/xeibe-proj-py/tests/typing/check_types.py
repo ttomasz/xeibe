@@ -47,3 +47,23 @@ assert_type(g.inv(0.0, 0.0, 1.0, 1.0), tuple[Any, Any, Any])
 assert_type(g.polygon_area_perimeter([0.0, 1.0, 1.0], [0.0, 0.0, 1.0]), tuple[float, float])
 assert_type(crs.get_geod(), Geod | None)
 g.fwd(0.0, 0.0, 90.0, 1.0, inplace=True)  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
+
+from xeibe_proj import arrow  # noqa: E402
+
+
+class _Producer:
+    def __arrow_c_array__(self, requested_schema: Any = None) -> tuple[object, object]:
+        raise NotImplementedError
+
+
+class _StreamProducer:
+    def __arrow_c_stream__(self, requested_schema: Any = None) -> object:
+        raise NotImplementedError
+
+
+assert_type(arrow.transform(t, _Producer()), arrow.Array)
+assert_type(arrow.transform(t, _StreamProducer(), direction="INVERSE"), arrow.ChunkedArray)
+assert_type(arrow.to_crs(_Producer(), 4326), arrow.Array)
+assert_type(arrow.to_crs(_StreamProducer(), "EPSG:4326"), arrow.ChunkedArray)
+assert_type(arrow.to_crs(_Producer(), 4326).crs, CRS | None)
+arrow.transform(t, [1.0])  # type: ignore[call-overload]  # pyright: ignore[reportCallIssue, reportArgumentType]

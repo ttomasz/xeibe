@@ -46,10 +46,10 @@ GeoParquet, queried with DataFusion or SedonaDB, or passed to Python.
 | [geometry.md](geometry.md) | GML geometry → GeoArrow/WKB, curves, CRS and axis order |
 | [wfs.md](wfs.md) | WFS bulk-read client: paging, pages streamed into a read |
 | [reprojection.md](reprojection.md) | Pure-Rust reprojection from the EPSG data: levels, PROJ's operation selection, validation |
-| [pyproj-compat.md](pyproj-compat.md) | pyproj-compatible Python package `xeibe_proj` over `xeibe-crs` and `xeibe-reproject`: scope, extras, phases (phases 0 and 1 built) |
+| [pyproj-compat.md](pyproj-compat.md) | pyproj-compatible Python package `xeibe_proj` over `xeibe-crs` and `xeibe-reproject`: scope, extras, phases (all four built) |
 | [crs-wkt.md](crs-wkt.md) | Reading and writing CRS WKT (WKT1, ESRI, WKT2) through PROJJSON, identifying EPSG codes, and Bound CRSs (implemented) |
-| [pyproj-phase2.md](pyproj-phase2.md) | The rest of `xeibe_proj`'s phase 2: the full geodesic port and `Geod`, `Proj`, `to_2d`/`to_3d`, units, selection options, operation JSON/WKT, grid downloads (designed) |
-| [pyproj-phase3.md](pyproj-phase3.md) | `xeibe_proj`'s phase 3: `install_as_pyproj()` and GeoPandas, PROJ strings, builders, CF, GeoArrow, Pyodide (designed) |
+| [pyproj-phase2.md](pyproj-phase2.md) | The rest of `xeibe_proj`'s phase 2: the full geodesic port and `Geod`, `Proj`, `to_2d`/`to_3d`, units, selection options, operation JSON/WKT, grid downloads (built) |
+| [pyproj-phase3.md](pyproj-phase3.md) | `xeibe_proj`'s phase 3: `install_as_pyproj()` and GeoPandas, PROJ strings, builders, CF, GeoArrow, Pyodide (built) |
 | [web.md](web.md) | Browser page on WebAssembly: layout, map views, inputs, network limits, building it (first version built) |
 | [web-reproject.md](web-reproject.md) | The page split into a landing page, the GML page and a reproject page: two wasm builds, coordinate input, operation metadata, why an operation is chosen (proposed) |
 | [support-matrix.md](support-matrix.md) | Supported, planned and out-of-scope GML/WFS features (progress tracker) |
