@@ -39,8 +39,10 @@ as of 2026-10-24 all of it is done: the geodesic port, `Geod`, `Proj`,
 `to_wkt`, and `download_grids`. Phase 3 is designed in
 [pyproj-phase3.md](pyproj-phase3.md); as of 2026-10-31 PROJ strings are
 read and written (its steps 1 and 2), as of 2026-11-01
-`install_as_pyproj()` runs GeoPandas (step 3), and as of 2026-11-03 there
-is a Pyodide wheel (step 8).
+`install_as_pyproj()` runs GeoPandas (step 3), and as of 2026-11-03 EPSG's
+ellipsoids, prime meridians, datums and operations have their own
+constructors (step 4), pyproj's builders exist (step 5), CF too (step 6),
+and there is a Pyodide wheel (step 8).
 
 - **Done.**
   - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
@@ -55,7 +57,8 @@ is a Pyodide wheel (step 8).
     and keyword arguments included (phase 3), with its properties, parts,
     `repr`, equality, hashing and pickling; `to_proj4` and `to_dict`.
   - WKT: `from_wkt` and WKT wherever a CRS is taken, `to_wkt` in
-    WKT2_2019 and WKT1_GDAL with `output_axis_rule`, `to_wkt` and WKT
+    WKT2_2019, WKT2_2015, their simplified forms and WKT1_GDAL with
+    `output_axis_rule` (not WKT1_ESRI), `to_wkt` and WKT
     `repr` on the parts, `to_epsg`/`to_authority`/`list_authority` with
     `min_confidence`, and Bound CRSs (`TOWGS84`) with pyproj's attributes
     ([crs-wkt.md](crs-wkt.md#implementation), step 7).
@@ -72,6 +75,17 @@ is a Pyodide wheel (step 8).
   - `Proj` for EPSG and WKT input ([pyproj-phase2.md](pyproj-phase2.md#proj)).
   - `CRS.to_2d`, `to_3d` and `get_non_deprecated`
     ([pyproj-phase2.md](pyproj-phase2.md#to_2d-to_3d-get_non_deprecated)).
+  - `Ellipsoid`, `PrimeMeridian`, `Datum` and `CoordinateOperation` from
+    EPSG codes, names, URNs, WKT and PROJJSON, `CoordinateSystem` from
+    PROJJSON, and `query_geodetic_crs_from_datum`
+    ([pyproj-phase3.md](pyproj-phase3.md#the-objects-table)).
+  - The builders: `GeographicCRS`, `ProjectedCRS` and the other
+    `CustomConstructorCRS` classes, the 22 conversions and
+    `ToWGS84Transformation`, `CustomDatum`, `CustomEllipsoid`,
+    `CustomPrimeMeridian`, the coordinate systems and `crs.enums`
+    ([pyproj-phase3.md](pyproj-phase3.md#builders)).
+  - CF: `to_cf`, `from_cf`, `cs_to_cf` and `CoordinateSystem.to_cf`
+    ([pyproj-phase3.md](pyproj-phase3.md#cf), divergence 13).
   - `xeibe_proj.compat.install_as_pyproj()`, under which GeoPandas 1.2.0
     passes its tests but four ([pyproj-phase3.md](pyproj-phase3.md#geopandas)).
 - **The Rust changes phase 1 needed are made**:
@@ -85,13 +99,20 @@ is a Pyodide wheel (step 8).
     EPSG's remarks on CRSs and operations in a file of their own, read on
     first use. The wheel grew from 2.0 to 2.2 MB.
 - **Measured** (see [Testing](#testing)):
-  - pyproj's own suite: 444 of its 963 tests pass: 120 before phase 1's
+  - pyproj's own suite: 739 of its 996 tests pass: 120 before phase 1's
     Rust changes, 129 after, 149 with the WKT part of phase 2, 318 with
     `Geod`, 324 with `Proj`, 335 with `to_2d`/`to_3d`, 348 with
     `get_units_map`, 351 with the selection's options, 356 with
     `Transformer.to_json` and `to_wkt`, 438 with PROJ strings, 439 with
     PROJ's own methods and other celestial bodies, 444 with the
-    projections PROJ has no CRS method for.
+    projections PROJ has no CRS method for, 560 with the objects table
+    (more of its tests collect), 667 with the builders, 718 with CF (and
+    five that assert pyproj's CF names for a vertical axis, in
+    `diverges.txt`), 739 with WKT2 2015 and the simplified forms, and
+    pyproj's errors for wrong input (an area of interest that isn't one,
+    a non-string authority, `CRS.from_string(4326)`, the parts' bare
+    constructors), empty lists and tuples converted, and numpy's integers
+    taken as EPSG codes.
   - Against the oracle `proj.db`, every EPSG CRS reports what PROJ does,
     scopes, area descriptions and remarks included, except four documented
     differences:
@@ -369,11 +390,12 @@ becomes the package's status tracker.
 | `repr`, `str`, `srs`, pickling | 1 | pyproj's multi-line summary. Pickles as PROJJSON, which dask and multiprocessing need. |
 | `to_2d`, `to_3d`, `get_geod` | 2 | PROJ's `demoteTo2D` and `promoteTo3D`, with EPSG's 2D–3D twins ([pyproj-phase2.md](pyproj-phase2.md#to_2d-to_3d-get_non_deprecated)), and the `Geod` of the CRS's ellipsoid. **Done.** |
 | `from_wkt`, objects with `to_wkt()` (rasterio, fiona) | 2 | WKT1 (GDAL and ESRI flavours) and WKT2 2015/2019 → PROJJSON, in Rust ([crs-wkt.md](crs-wkt.md)). **Done.** |
-| `to_wkt(version, pretty, output_axis_rule)`, also on the parts (`Datum`, `Ellipsoid`, …) | 2 | WKT2_2019 and WKT1_GDAL from PROJJSON, what GeoPandas, pyogrio and rioxarray ask for; other versions raise ([crs-wkt.md](crs-wkt.md#writing)). Equivalent to PROJ's output, not byte-identical. **Done**: PROJ's token for token for every EPSG CRS but listed differences. |
+| `to_wkt(version, pretty, output_axis_rule)`, also on the parts (`Datum`, `Ellipsoid`, …) | 2 | WKT2_2019, WKT2_2015, their simplified forms and WKT1_GDAL from PROJJSON; WKT1_ESRI raises ([crs-wkt.md](crs-wkt.md#writing)). Equivalent to PROJ's output, not byte-identical. **Done**: PROJ's token for token for every EPSG CRS but listed differences. |
 | `from_proj4`, `from_dict`, `+proj=…` strings, `CRS(proj=…)` | 3 | Read as PROJ reads them into an EPSG method, with pyproj's preparation and `+init` warning; pipelines and PROJ4 extensions are an error ([pyproj-phase3.md](pyproj-phase3.md#proj-strings)). **Done.** |
 | `to_proj4`, `to_dict`, `to_string` | 3 | PROJ's string, token for token for every EPSG CRS. **Done.** |
-| Builder classes (`GeographicCRS`, `ProjectedCRS`, `CompoundCRS`, `*Conversion`) | 3 | For the methods `xeibe-reproject` implements. |
-| `to_cf`, `from_cf`, `cs_to_cf` | 3, if asked | pyproj's implementation is pure Python over PROJJSON (MIT), so it could be ported. |
+| `Datum`, `Ellipsoid`, `PrimeMeridian`, `CoordinateOperation`: `from_epsg`, `from_authority`, `from_name`, `from_string`, `from_user_input`, `from_json`, `from_json_dict`; `CoordinateSystem` from strings and PROJJSON; equality with what `from_user_input` takes | 3 | From `xeibe-crs`'s table of EPSG's objects, names matched as PROJ's name search matches them but beyond ASCII case (divergence 11), and EPSG's transformations. Esri's names of EPSG objects stay out ([pyproj-phase3.md](pyproj-phase3.md#the-objects-table)). **Done.** |
+| Builder classes (`GeographicCRS`, `ProjectedCRS`, `CompoundCRS`, `*Conversion`) | 3 | pyproj's signatures, PROJJSON as PROJ makes of pyproj's, checked class by class against pyproj ([pyproj-phase3.md](pyproj-phase3.md#builders), divergence 12). A CRS with a method `xeibe-reproject` doesn't implement is built but can't be converted. **Done.** |
+| `to_cf`, `from_cf`, `cs_to_cf` | 3 | pyproj's attributes, from one table of grid mappings both ways; where pyproj's attributes name another CRS, ours name the CRS given (divergence 13). **Done.** |
 | Other authorities (`ESRI:`, `IGNF:`, `IAU_2015:`, `NKG:`) | Out | Not in EPSG. Exception, in phase 2: the 987 old ESRI codes that are now EPSG codes (`ESRI:102100` → 3857), from `xeibe-esri` ([crs-wkt.md](crs-wkt.md#esri-names)). **Done.** |
 
 ### `Transformer` and `TransformerGroup`
@@ -409,6 +431,7 @@ becomes the package's status tracker.
 | `Proj(crs)(lon, lat, inverse=, radians=)`, `Proj(proj="utm", zone=…)` | 2 / 3 | Phase 2 for EPSG and WKT input: the CRS's projection on its own ellipsoid ([pyproj-phase2.md](pyproj-phase2.md#proj)). Phase 3: PROJ parameters, `definition_string` and `to_latlong_def`. **Done.** |
 | `Proj.get_factors` | Out | |
 | `pyproj.database`: `query_crs_info`, `query_utm_crs_info`, `get_authorities`, `get_codes`, `get_units_map`, `get_database_metadata("EPSG.VERSION")` | 1 / 2 | From the `xeibe-crs` tables; `get_units_map` (2) with PROJ's short names and own units, not Esri's. **Done.** `query_utm_crs_info` (GeoPandas' `estimate_utm_crs`) needs each projected CRS's datum, which the PROJJSON has. |
+| `pyproj.database.query_geodetic_crs_from_datum` | 3 | EPSG's and OGC's current geodetic CRSs on the datum, by code, as PROJ lists them. **Done.** |
 | `pyproj.aoi` (`AreaOfInterest`, `AreaOfUse`, `BBox`), `pyproj.enums`, `pyproj.exceptions` (`CRSError`, `ProjError`, `GeodError`, `DataDirError`) | 1 | Same names and hierarchy. Error messages differ. |
 | `pyproj.network.set_network_enabled` / `is_network_enabled`, `PROJ_NETWORK` | 1 | On by default, unlike pyproj. `set_network_enabled(False)` or `PROJ_NETWORK=OFF` turns it off (see [Grids](#grids)). |
 | `pyproj.datadir.get_data_dir` / `set_data_dir` / `append_data_dir`, `PROJ_DATA` | 1 | Directories searched for local PROJ-data grids. `get_data_dir` returns them joined with `os.pathsep`, as pyproj does, or `""` when there are none (GeoPandas calls it in `show_versions`). |
@@ -564,6 +587,40 @@ These are documented in the package README and in its `NotImplementedError` and
       these methods have their origin on the equator, where the two agree.
     - **Interrupted Mollweide and Goode Homolosine** invert the south pole,
       which PROJ's test (`-y90 + EPSLN`) refuses.
+11. **Ellipsoids, datums and other parts of CRSs are found more widely**
+    ([pyproj-phase3.md](pyproj-phase3.md#the-objects-table)). Names are
+    compared without case in any script, accents, typographic
+    apostrophes and dashes, and extra whitespace, where PROJ ignores
+    ASCII case only; where PROJ finds an object, ours finds the same.
+    `Datum.from_name` finds engineering datums too. `from_string` takes
+    `EPSG:7019`, URNs in any case and their URLs, as `CRS` does, and WKT
+    reads back what it writes: a dynamic datum after its `DYNAMIC`, which
+    PROJ doesn't read. An engineering datum's WKT on its own has its id,
+    which PROJ leaves out. An ellipsoid, a prime meridian or a datum hashes
+    as its class does, so that equal ones, compared by their numbers, hash
+    equal.
+12. **The builders' objects are of their class**: pyproj's
+    `TransverseMercatorConversion(…)` is a plain `CoordinateOperation`
+    (and `CustomEllipsoid(…)` an `Ellipsoid`), ours an instance of the
+    class called, a subclass of it. Albers' false easting and northing are
+    in PROJJSON's `metre`, where pyproj names a unit of its own "Metre".
+    WKT of the builders' CRSs leaves out the usage and remarks of their
+    components, as PROJ's PROJJSON of them does but its WKT doesn't, and
+    a coordinate system of latitude, longitude and ellipsoidal height
+    keeps its axes' abbreviations, which PROJ drops there alone.
+13. **CF's attributes are the CRS's**, where pyproj's name another
+    ([pyproj-phase3.md](pyproj-phase3.md#cf)): angles in degrees (pyproj
+    writes NTF's in grads), a Lambert Conic Conformal (1SP) with a scale
+    under 1 as the cone through two parallels it is (pyproj leaves the
+    scale out), and only `crs_wkt` for one with a scale over 1; `from_cf`
+    keeps a height and `towgs84` on a geographic CRS, and a single
+    standard parallel's origin where CF puts it. A vertical CRS's axis is
+    CF's `height_above_geopotential_datum`, or `depth`, where pyproj names
+    the ellipsoidal height (`height_above_reference_ellipsoid`). Kept as
+    pyproj has it, against CF: a vertical CRS with a geoid model gets both
+    `geoid_name` and `geopotential_datum_name`, which CF 1.8 allows only
+    one of, so that `from_cf` keeps both; `to_cf` warns when it writes
+    them.
 
 ## Testing
 
@@ -578,7 +635,9 @@ These are documented in the package README and in its `NotImplementedError` and
     statement, so it still yields the tests it can.
   - The committed `pass-list.txt` is the compatibility measure. The run
     exits 1 when a listed test fails, and `--update` adds new passes, so
-    the list only grows.
+    the list only grows, but for tests that fail because ours differs on
+    purpose: those are in `diverges.txt` under the divergence, and the run
+    exits 1 when one of them passes.
 - **Differential tests** (`tests/test_oracle.py`, marked `oracle`) against
   pyproj with the `proj.db` that `scripts/build_proj_oracle.py` builds from
   our EPSG archive, so both sides see the same EPSG data:

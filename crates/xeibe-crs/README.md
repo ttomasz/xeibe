@@ -9,6 +9,8 @@ EPSG's coordinate operations, datums and areas of use, from which
 `xeibe-reproject` chooses datum transformations (see the
 [reprojection document](https://github.com/ttomasz/xeibe/blob/main/docs/reprojection.md)).
 Since 0.3.0 also each CRS's areas of use and scopes, and EPSG's remarks.
+Since 0.4.2 also EPSG's ellipsoids, prime meridians, datums and conversions on
+their own, with their names, for looking one up by code or name.
 
 > **Warning: experimental, not for production use.** This crate is
 > AI-generated and has not been thoroughly tested yet. Its interfaces are not
@@ -46,6 +48,7 @@ flowchart TD
     B --> L["coordinate operations,<br/>datums, areas of use"] --> M["data/operations.bin"]
     B --> N["each CRS's areas of use<br/>and scopes, by reference"] --> O["data/usages.bin"]
     B --> P["remarks on CRSs<br/>and operations"] --> Q["data/remarks.bin"]
+    B --> Z["ellipsoids, prime meridians,<br/>datums, conversions"] --> AA["data/objects.bin"]
 ```
 
 No PROJ, GDAL, pyproj or network access is involved, at generation time or at
@@ -228,6 +231,18 @@ they match the Cargo version so the two cannot drift.
 
 The crate's own versions; [`CHANGELOG.md`](CHANGELOG.md) lists the EPSG Dataset
 releases embedded in each.
+
+### 0.4.2
+
+- `object(kind, code)`, `objects(kind)` and `objects_by_name(kind, name)`:
+  EPSG's ellipsoids, prime meridians, datums and ensembles, and conversions
+  on their own, as PROJJSON with their names and aliases
+  (`data/objects.bin`), found by name in PROJ's order
+  (`docs/pyproj-phase3.md`, "The objects table").
+- `name_key(name)`: names compare lowercase in any script, without accents,
+  with typographic apostrophes and dashes as ASCII ones and whitespace
+  collapsed. `objects_by_name` and `alias` use it; `alias` ignored case
+  only. Accents need the `unicode-normalization` crate.
 
 ### 0.4.0
 

@@ -27,20 +27,19 @@ fn reverse(azi: f64, half_turn: f64) -> f64 {
 }
 
 /// Buffers held for a call, and their starts and lengths.
-type Held<const N: usize> = (Vec<PyBuffer<f64>>, [(usize, usize); N]);
+type Held<const N: usize> = (Vec<Option<PyBuffer<f64>>>, [(usize, usize); N]);
 
 /// The buffers of one call, checked: writable, C-contiguous, of one length.
 fn buffers<'py, const N: usize>(
     py: Python<'py>,
     objects: [&Bound<'py, PyAny>; N],
 ) -> PyResult<Held<N>> {
-    let held = objects
-        .iter()
-        .map(|o| PyBuffer::<f64>::get(o))
-        .collect::<PyResult<Vec<_>>>()?;
+    let mut held = Vec::with_capacity(N);
     let mut raw = [(0, 0); N];
-    for (i, b) in held.iter().enumerate() {
-        raw[i] = writable(b, "array")?;
+    for (i, o) in objects.iter().enumerate() {
+        let (buffer, r) = writable(o, "array")?;
+        held.push(buffer);
+        raw[i] = r;
     }
     if raw.iter().any(|r| r.1 != raw[0].1) {
         return Err(exception(
@@ -329,8 +328,8 @@ impl GeodesicLine {
         back_azimuth: bool,
     ) -> PyResult<()> {
         let (_held, raw) = buffers(py, [lons, lats])?;
-        let azis = azis.map(PyBuffer::<f64>::get).transpose()?;
-        let raw_azis = azis.as_ref().map(|b| writable(b, "azis")).transpose()?;
+        let azis = azis.map(|a| writable(a, "azis")).transpose()?;
+        let raw_azis = azis.as_ref().map(|b| b.1);
         if raw_azis.is_some_and(|r| r.1 != raw[0].1) {
             return Err(exception(
                 py,
@@ -368,8 +367,7 @@ impl GeodesicLine {
 /// `reverse_azimuth`).
 #[pyfunction]
 pub(crate) fn reverse_azimuth(azis: &Bound<'_, PyAny>, radians: bool) -> PyResult<()> {
-    let buffer = PyBuffer::<f64>::get(azis)?;
-    let raw = writable(&buffer, "azi")?;
+    let (_buffer, raw) = writable(azis, "azi")?;
     // SAFETY: the buffer is held until this returns.
     let azis = unsafe { slice(raw) };
     let half_turn = if radians { PI } else { 180.0 };

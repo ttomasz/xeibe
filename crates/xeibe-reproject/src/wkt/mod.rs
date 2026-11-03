@@ -10,6 +10,7 @@ pub(crate) mod datums;
 pub(crate) mod esri;
 mod names;
 mod parse;
+mod variants;
 pub(crate) mod wkt1;
 pub(crate) mod wkt2;
 mod write;
@@ -43,12 +44,41 @@ pub fn to_projjson(text: &str) -> Result<String, Error> {
     Ok(to_value(text)?.to_string())
 }
 
+/// The PROJJSON for a part of a CRS given as WKT2 on its own, as a JSON
+/// string with its `type`: an ellipsoid (`ELLIPSOID`), a prime meridian
+/// (`PRIMEM`), a datum of any kind (`DATUM`, `VDATUM`, `EDATUM`, `PDATUM`,
+/// `TDATUM`), a datum ensemble (`ENSEMBLE`) or a conversion
+/// (`CONVERSION`). A geodetic or vertical datum may follow its `DYNAMIC`,
+/// and a geodetic one come before its `PRIMEM`, as they are written on
+/// their own. Anything else is an error naming it.
+///
+/// ```
+/// let json = xeibe_reproject::wkt::object_to_projjson(
+///     r#"ELLIPSOID["WGS 84",6378137,298.257223563,LENGTHUNIT["metre",1]]"#,
+/// )
+/// .unwrap();
+/// assert!(json.contains(r#""type":"Ellipsoid""#));
+/// assert!(json.contains(r#""semi_major_axis":6378137"#));
+/// ```
+pub fn object_to_projjson(text: &str) -> Result<String, Error> {
+    let nodes = parse::parse_all(text)?;
+    Ok(wkt2::object_nodes(&nodes)?.to_string())
+}
+
 /// A WKT version this crate writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Version {
     /// ISO 19162:2019, as PROJ writes it by default (`WKT2_2019`).
     Wkt2_2019,
+    /// ISO 19162:2015 (`WKT2_2015`): as 2019, but for what 2015 doesn't
+    /// have (datum ensembles, dynamic frames, several usages).
+    Wkt2_2015,
+    /// PROJ's shorter WKT2 2019 (`WKT2_2019_SIMPLIFIED`): ids on the
+    /// outermost object only, and units only where they aren't implied.
+    Wkt2_2019Simplified,
+    /// PROJ's shorter WKT2 2015 (`WKT2_2015_SIMPLIFIED`).
+    Wkt2_2015Simplified,
     /// WKT1 as GDAL writes it (`WKT1_GDAL`): what pyogrio and rasterio
     /// take. Geographic and projected 3D CRSs (but see [`AxisRule::Never`]),
     /// derived projected CRSs, and methods PROJ gives no WKT1 name, can't
@@ -143,6 +173,19 @@ pub fn from_projjson_value(
         (false, false) => write::object(value)?,
         (false, true) => write1::object(value)?,
     };
+    if matches!(
+        version,
+        Version::Wkt2_2019Simplified | Version::Wkt2_2015Simplified
+    ) {
+        if crs {
+            nodes.iter_mut().for_each(|n| variants::simplify(n, value));
+        } else {
+            variants::simplify_object(&mut nodes);
+        }
+    }
+    if matches!(version, Version::Wkt2_2015 | Version::Wkt2_2015Simplified) {
+        nodes.iter_mut().for_each(variants::to_2015);
+    }
     if axes == AxisRule::Never {
         for n in &mut nodes {
             without_axes(n, wkt1);

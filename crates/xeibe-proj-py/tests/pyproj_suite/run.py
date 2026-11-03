@@ -13,7 +13,9 @@ that pass are compared with `pass-list.txt` next to this script:
 - a listed test that fails is a regression, and the run exits 1;
 - a test that passes but isn't listed is progress: `--update` adds it.
 
-The list only grows (docs/pyproj-compat.md, Testing). Tests marked
+The list only grows (docs/pyproj-compat.md, Testing), but for tests that
+fail because ours differs on purpose: those move to `diverges.txt` under
+the divergence, and the run fails when one passes again. Tests marked
 `network` or `cli` are not run: they need a network connection or pyproj's
 command line. The network is off (PROJ_NETWORK=OFF), as in pyproj's tests.
 
@@ -38,6 +40,9 @@ SRC = ROOT / "target" / "pyproj-src"
 WHEELS = ROOT / "target" / "proj-py-wheels"
 REPORT = ROOT / "target" / "pyproj-suite.xml"
 PASS_LIST = HERE / "pass-list.txt"
+# Tests that fail because ours differs from pyproj on purpose, each under a
+# comment that names the divergence (docs/pyproj-compat.md).
+DIVERGES = HERE / "diverges.txt"
 # pyproj's test dependencies (its pyproject.toml, group "test").
 # certifi is a dependency of pyproj itself. pytest is pinned because the
 # shim subclasses its Module collector.
@@ -114,7 +119,11 @@ def main() -> None:
     run(args.wheel.resolve() if args.wheel else build(), args.pytest_args)
     now = passed()
     listed = set(PASS_LIST.read_text().splitlines()) if PASS_LIST.exists() else set()
+    diverges = {
+        line for line in DIVERGES.read_text().splitlines() if line and not line.startswith("#")
+    } if DIVERGES.exists() else set()
     regressed = sorted(listed - now)
+    agreeing = sorted(diverges & now)
     new = sorted(now - listed)
     total = sum(1 for _ in ET.parse(REPORT).iter("testcase"))
     print(f"\n{len(now)} of {total} pyproj tests pass ({len(listed)} listed, {len(new)} new)")
@@ -124,9 +133,13 @@ def main() -> None:
     elif new:
         print("passing but not listed (run with --update):")
         print("".join(f"  {t}\n" for t in new), end="")
+    if agreeing:
+        print("in diverges.txt but passing (take them out):")
+        print("".join(f"  {t}\n" for t in agreeing), end="")
     if regressed and not args.pytest_args:
         print("REGRESSED (listed, now failing):")
         print("".join(f"  {t}\n" for t in regressed), end="")
+    if (regressed and not args.pytest_args) or agreeing:
         sys.exit(1)
 
 

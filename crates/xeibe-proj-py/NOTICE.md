@@ -76,7 +76,12 @@ C. F. F. Karney, "On auxiliary latitudes", Survey Review 56, 165–180 (2024).
 intermediate-point logic and its geometry helpers. `xeibe_proj.crs.crs`
 follows pyproj's `crs/crs.py` in preparing PROJ strings and dicts
 (`_prepare_from_dict`, `_prepare_from_proj_string`) and in parsing
-`to_dict`. pyproj's licence applies to those parts:
+`to_dict`. The builders (`xeibe_proj.crs.coordinate_operation`,
+`coordinate_system`, `datum`, `enums` and the `CustomConstructorCRS`
+classes) have pyproj's `crs/` modules' classes, signatures, defaults and
+enum values, and `xeibe_proj.crs._cf1x8` and the CRS's CF methods follow
+pyproj's `crs/_cf1x8.py` and `crs/crs.py` in CF's attributes. pyproj's
+licence applies to those parts:
 
 ```text
 Copyright (c) 2006-2018, Jeffrey Whitaker.

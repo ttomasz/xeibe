@@ -7,11 +7,14 @@ descriptions of areas of use aren't there (``AreaOfUse.name`` is ``None``).
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from xeibe_proj import _epsg, _native
 from xeibe_proj.aoi import AreaOfInterest, AreaOfUse, BBox
 from xeibe_proj.enums import PJType
+
+if TYPE_CHECKING:
+    from xeibe_proj.crs import CRS
 
 __all__ = [
     "CRSInfo",
@@ -21,6 +24,7 @@ __all__ = [
     "get_database_metadata",
     "get_units_map",
     "query_crs_info",
+    "query_geodetic_crs_from_datum",
     "query_utm_crs_info",
 ]
 
@@ -72,6 +76,13 @@ def get_authorities() -> list[str]:
     return ["EPSG", "OGC"]
 
 
+def _text(name: str, value: object) -> None:
+    """A TypeError for an argument that isn't a string, as pyproj's typed
+    arguments raise."""
+    if value is not None and not isinstance(value, str):
+        raise TypeError(f"{name} must be a string, not {type(value).__name__}")
+
+
 def _types(pj_types: PJType | str | list[PJType] | list[str] | None) -> set[PJType]:
     if pj_types is None:
         return _GROUPS[PJType.CRS]
@@ -85,8 +96,9 @@ def _types(pj_types: PJType | str | list[PJType] | list[str] | None) -> set[PJTy
 
 def get_codes(auth_name: str, pj_type: PJType | str, allow_deprecated: bool = False) -> list[str]:
     """The codes of one authority's CRSs of a type."""
-    auth = auth_name.upper()
+    _text("auth_name", auth_name)
     types = _types(pj_type)
+    auth = auth_name.upper()
     codes: list[str] = []
     if auth in ("EPSG", "ANY"):
         codes += [
@@ -131,9 +143,10 @@ def query_crs_info(
 ) -> list[CRSInfo]:
     """The CRSs of these types (all by default) whose area of use
     intersects (or with ``contains``, holds) ``area_of_interest``."""
+    _text("auth_name", auth_name)
+    types = _types(pj_types)
     if auth_name is not None and auth_name.upper() not in ("EPSG", "ANY"):
         return []
-    types = _types(pj_types)
     out: list[CRSInfo] = []
     for r in _epsg.records().values():
         t = _KIND_TYPES.get(r.kind)
@@ -170,6 +183,53 @@ def query_utm_crs_info(
     ]
 
 
+# The geodetic CRS types `query_geodetic_crs_from_datum` takes, by kind.
+_GEODETIC_KINDS: dict[PJType, str] = {
+    PJType.GEOGRAPHIC_2D_CRS: "geographic_2d",
+    PJType.GEOGRAPHIC_3D_CRS: "geographic_3d",
+    PJType.GEOCENTRIC_CRS: "geocentric",
+}
+
+
+def query_geodetic_crs_from_datum(
+    crs_auth_name: str | None,
+    datum_auth_name: str,
+    datum_code: str,
+    pj_type: PJType | str | None = None,
+) -> list[CRS]:
+    """The current geodetic CRSs on an EPSG datum or datum ensemble, of
+    ``pj_type`` (``GEOCENTRIC_CRS``, ``GEOGRAPHIC_2D_CRS``,
+    ``GEOGRAPHIC_3D_CRS``, or ``None`` for all three), from the authority
+    ``crs_auth_name`` (``None`` for EPSG's and OGC's), by authority and
+    code as PROJ orders them."""
+    # Typed as required, but pyproj checks: a None is a TypeError.
+    if datum_auth_name is None or datum_code is None:  # pyright: ignore[reportUnnecessaryComparison]
+        raise TypeError("datum_auth_name and datum_code are required")
+    kinds = set(_GEODETIC_KINDS.values())
+    if pj_type is not None:
+        kind = _GEODETIC_KINDS.get(PJType.create(pj_type))
+        if kind is None:
+            raise ValueError("type must be GEOCENTRIC_CRS, GEOGRAPHIC_2D_CRS, GEOGRAPHIC_3D_CRS or None")
+        kinds = {kind}
+    if datum_auth_name != "EPSG" or not str(datum_code).isdigit():
+        return []
+    datum = int(datum_code)
+    from xeibe_proj.crs import CRS
+
+    out: list[CRS] = []
+    if crs_auth_name in (None, "EPSG"):
+        records = sorted(_epsg.records().values(), key=lambda r: r.code)
+        out += [
+            CRS.from_epsg(r.code) for r in records if r.datum == datum and not r.deprecated and r.kind in kinds
+        ]
+    if crs_auth_name in (None, "OGC"):
+        for code, (twin, _) in sorted(_epsg.OGC_CRS.items()):
+            r = _epsg.record(twin)
+            if r is not None and r.datum == datum and r.kind in kinds:
+                out.append(CRS.from_authority("OGC", code))
+    return out
+
+
 def get_database_metadata(key: str) -> str | None:
     """``EPSG.VERSION`` (as ``v13.106``) and ``EPSG.DATE``; ``None`` otherwise."""
     if key == "EPSG.VERSION":
@@ -195,6 +255,8 @@ def get_units_map(auth_name: str | None = None, category: str | None = None, all
     known), as PROJ's database lists them. ``category`` is one of
     ``linear``, ``angular``, ``scale``, ``time`` and their ``_per_time``
     forms. A name used twice is the later unit's."""
+    _text("auth_name", auth_name)
+    _text("category", category)
     out: dict[str, Unit] = {}
     for auth, code, name, kind, factor, short_name, deprecated in _native.units():
         if auth_name and auth != auth_name:

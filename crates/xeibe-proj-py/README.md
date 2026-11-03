@@ -25,6 +25,18 @@ crs = CRS("urn:ogc:def:crs:EPSG::2180")
 crs.name, crs.axis_info, crs.area_of_use, crs.to_epsg()
 crs == CRS(2180)                                    # True
 
+from xeibe_proj.crs import Datum, Ellipsoid
+
+Datum.from_name("ETRS89").name                      # an EPSG datum by name, alias or code
+Ellipsoid.from_epsg(7019).semi_major_metre          # GRS 1980
+
+from xeibe_proj.crs import GeographicCRS, ProjectedCRS
+from xeibe_proj.crs.coordinate_operation import TransverseMercatorConversion
+
+tm = TransverseMercatorConversion(longitude_natural_origin=19, scale_factor_natural_origin=0.9993,
+                                  false_easting=500000, false_northing=-5300000)
+ProjectedCRS(tm, geodetic_crs=GeographicCRS(datum="urn:ogc:def:ensemble:EPSG::6258"))  # pyproj's builders
+
 prj = CRS(open("parcels.prj").read())               # WKT1 (GDAL's or Esri's) or WKT2
 prj.to_epsg(), prj.list_authority()                 # identified by its definition
 prj.to_wkt("WKT1_GDAL", pretty=True)                # or "WKT2_2019"
@@ -102,9 +114,9 @@ one expects equal CRSs to hash differently.
 - **A newer EPSG release** than pyproj's bundled `proj.db`:
   `xeibe_proj.EPSG_VERSION`. Names and operations can differ.
 - **No PROJ version**: `proj_version_str` and `PROJ_VERSION` don't exist.
-- **WKT is written in two versions**, `WKT2_2019` and `WKT1_GDAL`; the
-  others raise `NotImplementedError`. The output is PROJ's, but for ids PROJ
-  looks up in its database.
+- **WKT1_ESRI isn't written**: `to_wkt("WKT1_ESRI")` raises
+  `NotImplementedError`. The other versions are PROJ's output, but for ids
+  PROJ looks up in its database.
 - **`Proj` follows EPSG**, where pyproj's follows the CRS's PROJ string:
   full-precision parameters, EPSG's prime meridians and the CRS's own
   datum. Results differ by up to 0.35 mm (kilometres for EASE-Grid). `srs`

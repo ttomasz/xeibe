@@ -1,7 +1,7 @@
 [package]
 name = "xeibe-crs"
 description = "EPSG CRS facts, PROJJSON definitions and coordinate operations, generated from the EPSG Geodetic Parameter Dataset. Experimental: AI-generated, not thoroughly tested, unstable API"
-version = "0.4.1+epsg-13.106"
+version = "0.4.2+epsg-13.106"
 edition.workspace = true
 rust-version.workspace = true
 repository.workspace = true
@@ -22,6 +22,7 @@ include = ["src/**", "data/**", "EPSG-NOTICE.md", "README.md"]
 
 [dependencies]
 lz4_flex.workspace = true
+unicode-normalization.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

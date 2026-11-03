@@ -14,7 +14,7 @@ mod json;
 mod proj;
 
 use pyo3::buffer::PyBuffer;
-use pyo3::exceptions::{PyTypeError, PyValueError};
+use pyo3::exceptions::{PyBufferError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyTuple};
 use xeibe_reproject::wkt::{self, AxisRule, Version};
@@ -73,10 +73,18 @@ fn projjson(code: u32) -> Option<&'static str> {
     xeibe_crs::projjson(code)
 }
 
-/// The code an EPSG alias names, or `None`. Case is ignored.
+/// The code an EPSG alias names, or `None`, compared by `name_key`.
 #[pyfunction]
 fn alias(name: &str) -> Option<u32> {
     xeibe_crs::alias(name)
+}
+
+/// A name as name searches compare it: lowercase, without accents,
+/// typographic apostrophes and dashes as ASCII ones, whitespace collapsed
+/// (`xeibe_crs::name_key`).
+#[pyfunction]
+fn name_key(name: &str) -> String {
+    xeibe_crs::name_key(name)
 }
 
 /// EPSG's coordinate operations as `xeibe-crs` exports them: one JSON
@@ -96,6 +104,72 @@ fn replacements(code: u32) -> Vec<u32> {
 #[pyfunction]
 fn esri_code(code: u32) -> Option<u32> {
     xeibe_esri::epsg_code(code)
+}
+
+/// An EPSG object's kind by the name the Python side uses.
+fn object_kind(kind: &str) -> PyResult<xeibe_crs::ObjectKind> {
+    Ok(match kind {
+        "ellipsoid" => xeibe_crs::ObjectKind::Ellipsoid,
+        "prime_meridian" => xeibe_crs::ObjectKind::PrimeMeridian,
+        "datum" => xeibe_crs::ObjectKind::Datum,
+        "conversion" => xeibe_crs::ObjectKind::Conversion,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown object kind {other:?}"
+            )));
+        }
+    })
+}
+
+/// The PROJJSON of an EPSG ellipsoid, prime meridian, datum or conversion
+/// on its own (`kind` is one of those, as `"prime_meridian"`), or `None`.
+#[pyfunction]
+fn object_json(kind: &str, code: u32) -> PyResult<Option<&'static str>> {
+    Ok(xeibe_crs::object(object_kind(kind)?, code).map(|o| o.projjson))
+}
+
+/// The EPSG objects of a kind with this name or alias, as PROJ's name
+/// search orders them: `(code, PROJJSON)`.
+#[pyfunction]
+fn objects_by_name(kind: &str, name: &str) -> PyResult<Vec<(u32, &'static str)>> {
+    Ok(xeibe_crs::objects_by_name(object_kind(kind)?, name)
+        .into_iter()
+        .map(|o| (o.code, o.projjson))
+        .collect())
+}
+
+/// Whether two parts of CRSs on their own, PROJJSON dicts or text, are
+/// equivalent (`xeibe_reproject::equivalent_parts`): `None` for parts it
+/// doesn't compare.
+#[pyfunction]
+fn equivalent_parts(py: Python<'_>, a: Source, b: Source) -> PyResult<Option<bool>> {
+    let value = |s: Source| match s {
+        Source::Value(v) => Ok(v),
+        Source::Text(t) => serde_json::from_str(&t).map_err(|e| {
+            error(
+                py,
+                Error::Projjson {
+                    crs: "PROJJSON".into(),
+                    message: e.to_string(),
+                },
+            )
+        }),
+    };
+    xeibe_reproject::equivalent_parts(&value(a)?, &value(b)?).map_err(|e| error(py, e))
+}
+
+/// PROJ-data's file for a grid EPSG names in operation `op_name`, and
+/// whether `cdn.proj.org` serves it openly, or `None`.
+#[pyfunction]
+fn proj_data_file(epsg_name: &str, op_name: &str) -> Option<(&'static str, bool)> {
+    xeibe_reproject::proj_data_file(epsg_name, op_name)
+}
+
+/// The PROJJSON of a part of a CRS given as WKT2 on its own (an
+/// ellipsoid, prime meridian, datum, ensemble or conversion).
+#[pyfunction]
+fn wkt_object_to_projjson(py: Python<'_>, text: &str) -> PyResult<String> {
+    wkt::object_to_projjson(text).map_err(|e| error(py, e))
 }
 
 /// The PROJJSON of a CRS given as WKT (any version PROJ reads but WKT2's
@@ -119,6 +193,9 @@ fn to_wkt(
 ) -> PyResult<String> {
     let version = match version {
         "WKT2_2019" => Version::Wkt2_2019,
+        "WKT2_2015" => Version::Wkt2_2015,
+        "WKT2_2019_SIMPLIFIED" => Version::Wkt2_2019Simplified,
+        "WKT2_2015_SIMPLIFIED" => Version::Wkt2_2015Simplified,
         "WKT1_GDAL" => Version::Wkt1Gdal,
         other => return Err(PyValueError::new_err(format!("not written: {other}"))),
     };
@@ -286,10 +363,25 @@ fn clear_grids() {
     xeibe_reproject::clear_grids();
 }
 
-/// A writable, C-contiguous float64 buffer: its start and length. The
-/// pointer is passed as an integer so the conversion can run without the
-/// GIL; the caller keeps `buffer` alive meanwhile.
-fn writable(buffer: &PyBuffer<f64>, name: &str) -> PyResult<(usize, usize)> {
+/// A buffer to hold while its memory is used (`None` for an empty one
+/// without memory), and its start and length.
+type Writable = (Option<PyBuffer<f64>>, (usize, usize));
+
+/// A writable, C-contiguous float64 buffer of `object`. The pointer is passed as an integer
+/// so the conversion can run without the GIL. An empty `array.array` has
+/// no memory, whose null pointer PyO3 rejects as misaligned: it gives no
+/// buffer and length 0.
+fn writable(object: &Bound<'_, PyAny>, name: &str) -> PyResult<Writable> {
+    let buffer = match PyBuffer::<f64>::get(object) {
+        Ok(buffer) => buffer,
+        Err(e)
+            if e.is_instance_of::<PyBufferError>(object.py())
+                && object.len().is_ok_and(|n| n == 0) =>
+        {
+            return Ok((None, (0, 0)));
+        }
+        Err(e) => return Err(e),
+    };
     if buffer.readonly() {
         return Err(PyTypeError::new_err(format!(
             "{name}: the buffer is read-only"
@@ -300,7 +392,8 @@ fn writable(buffer: &PyBuffer<f64>, name: &str) -> PyResult<(usize, usize)> {
             "{name}: the buffer is not C-contiguous"
         )));
     }
-    Ok((buffer.buf_ptr() as usize, buffer.item_count()))
+    let raw = (buffer.buf_ptr() as usize, buffer.item_count());
+    Ok((Some(buffer), raw))
 }
 
 /// # Safety
@@ -702,6 +795,12 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(replacements, m)?)?;
     m.add_function(wrap_pyfunction!(operations_json, m)?)?;
     m.add_function(wrap_pyfunction!(wkt_to_projjson, m)?)?;
+    m.add_function(wrap_pyfunction!(wkt_object_to_projjson, m)?)?;
+    m.add_function(wrap_pyfunction!(object_json, m)?)?;
+    m.add_function(wrap_pyfunction!(objects_by_name, m)?)?;
+    m.add_function(wrap_pyfunction!(name_key, m)?)?;
+    m.add_function(wrap_pyfunction!(equivalent_parts, m)?)?;
+    m.add_function(wrap_pyfunction!(proj_data_file, m)?)?;
     m.add_function(wrap_pyfunction!(to_wkt, m)?)?;
     m.add_function(wrap_pyfunction!(proj_string_to_projjson, m)?)?;
     m.add_function(wrap_pyfunction!(to_proj4, m)?)?;

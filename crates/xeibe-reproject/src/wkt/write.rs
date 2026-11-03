@@ -42,7 +42,9 @@ fn settle_ids(n: &mut Node, inside_id: bool) {
         }
         _ => true,
     });
-    let has_id = n.args.iter().any(|a| is_id(a, "ID"));
+    // An ensemble's id doesn't keep its members' and ellipsoid's out, as
+    // in PROJ.
+    let has_id = n.keyword != "ENSEMBLE" && n.args.iter().any(|a| is_id(a, "ID"));
     for a in &mut n.args {
         if let Arg::Node(c) = a
             && c.keyword != "ID"
@@ -214,7 +216,11 @@ fn unit(u: &Value, kind: Kind) -> Result<Node, Error> {
         }
         other => return Err(invalid(&format!("the unit {other}"))),
     };
-    let mut args = vec![text(name), Arg::Number(factor)];
+    // A calendar unit (`TIMEUNIT["year"]`): PROJJSON's factor 0.
+    let mut args = vec![text(name)];
+    if !(kw == "TIMEUNIT" && factor == 0.0) {
+        args.push(Arg::Number(factor));
+    }
     match code {
         Some(c) => args.push(optional_epsg(c)),
         None => optional_id(u, &mut args)?,
@@ -228,6 +234,12 @@ fn measure(v: &Value, kind: Kind) -> Result<(f64, Node), Error> {
         Value::Object(o) => Ok((num_of(&o["value"])?, unit(&o["unit"], kind)?)),
         other => Ok((num_of(other)?, unit(&Value::Null, kind)?)),
     }
+}
+
+/// The factor to SI units of a PROJJSON measure's unit: 1 for a plain
+/// number, which is in metres or degrees' SI unit's place.
+fn si_factor(v: &Value) -> f64 {
+    v["unit"]["conversion_factor"].as_f64().unwrap_or(1.0)
 }
 
 fn id(v: &Value) -> Result<Node, Error> {
@@ -325,10 +337,11 @@ impl Writer {
     }
 
     /// The usages, id and remarks that close a CRS. Only the outermost CRS
-    /// writes them, as PROJ does.
+    /// writes them, as PROJ does; a compound CRS's component its id where
+    /// nothing around it has one (`settle_ids`).
     fn finish(&self, v: &Value, args: &mut Vec<Arg>) -> Result<(), Error> {
         if !self.root {
-            return Ok(());
+            return optional_id(v, args);
         }
         if self.ids_only {
             return ids(v, args);
@@ -362,6 +375,7 @@ impl Writer {
             "DerivedVerticalCRS" => self.derived_vertical(v),
             "CompoundCRS" => self.compound(v),
             "EngineeringCRS" => self.engineering(v),
+            "TemporalCRS" => self.temporal(v),
             "DerivedProjectedCRS" => self.derived_projected(v),
             "DerivedGeographicCRS" => self.derived_geographic(v),
             "BoundCRS" => bound(v),
@@ -459,11 +473,18 @@ impl Writer {
     fn engineering(&mut self, v: &Value) -> Result<Node, Error> {
         let mut args = vec![
             text(str_of(v, "name")?),
-            sub(engineering_datum(&v["datum"])?),
+            sub(anchored_datum("EDATUM", &v["datum"])?),
         ];
         args.extend(cs_args(&v["coordinate_system"])?);
         self.finish(v, &mut args)?;
         Ok(node("ENGCRS", args))
+    }
+
+    fn temporal(&mut self, v: &Value) -> Result<Node, Error> {
+        let mut args = vec![text(str_of(v, "name")?), sub(temporal_datum(&v["datum"])?)];
+        args.extend(cs_args(&v["coordinate_system"])?);
+        self.finish(v, &mut args)?;
+        Ok(node("TIMECRS", args))
     }
 }
 
@@ -502,7 +523,11 @@ fn object_nodes(v: &Value) -> Result<Vec<Node>, Error> {
             dynamic_then(vertical_datum(v)?)
         }
         "DatumEnsemble" => with_ids(ensemble(v, true)?),
-        "EngineeringDatum" => with_ids(engineering_datum(v)?),
+        // With its id, which PROJ's `EngineeringDatum::_exportToWKT` leaves
+        // out, alone of its datums.
+        "EngineeringDatum" => with_ids(anchored_datum("EDATUM", v)?),
+        "ParametricDatum" => with_ids(anchored_datum("PDATUM", v)?),
+        "TemporalDatum" => with_ids(temporal_datum(v)?),
         "CoordinateSystem" => Ok(cs_args(v)?
             .into_iter()
             .filter_map(|a| match a {
@@ -531,12 +556,31 @@ pub(super) fn not_greenwich(d: &Value) -> Option<&Value> {
     (longitude != 0.0).then_some(pm)
 }
 
-fn engineering_datum(d: &Value) -> Result<Node, Error> {
+/// An engineering or parametric datum: its name and anchor.
+fn anchored_datum(keyword: &str, d: &Value) -> Result<Node, Error> {
     let mut datum = vec![text(str_of(d, "name")?)];
     if let Some(a) = d["anchor"].as_str() {
         datum.push(sub(node("ANCHOR", vec![text(a)])));
     }
-    Ok(node("EDATUM", datum))
+    Ok(node(keyword, datum))
+}
+
+/// `TDATUM`, with its calendar and time origin: a year, date or
+/// date-time unquoted, as PROJ writes it, else quoted text.
+fn temporal_datum(d: &Value) -> Result<Node, Error> {
+    let mut datum = vec![text(str_of(d, "name")?)];
+    if let Some(c) = d["calendar"].as_str() {
+        datum.push(sub(node("CALENDAR", vec![text(c)])));
+    }
+    if let Some(t) = d["time_origin"].as_str() {
+        let date = t.len() >= 4
+            && t.as_bytes()[..4].iter().all(u8::is_ascii_digit)
+            && t.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b':' | b'.' | b'+'));
+        let origin = if date { Arg::Word(t.into()) } else { text(t) };
+        datum.push(sub(node("TIMEORIGIN", vec![origin])));
+    }
+    Ok(node("TDATUM", datum))
 }
 
 /// An operation's usages, id and remarks, as an outermost one ends; a step
@@ -632,7 +676,11 @@ fn ellipsoid(e: &Value) -> Result<Node, Error> {
         let rf = match (&e["inverse_flattening"], &e["semi_minor_axis"]) {
             (rf @ Value::Number(_), _) => num_of(rf)?,
             (_, b) if !b.is_null() => {
-                let (b, _) = measure(b, Kind::Length)?;
+                // In metres, as PROJ computes it (`computedInverseFlattening`).
+                let (a, b) = (
+                    a * si_factor(&e["semi_major_axis"]),
+                    measure(b, Kind::Length)?.0 * si_factor(b),
+                );
                 a / (a - b)
             }
             _ => return Err(invalid("an ellipsoid without its shape")),
@@ -649,19 +697,27 @@ fn ellipsoid(e: &Value) -> Result<Node, Error> {
     Ok(node("ELLIPSOID", args))
 }
 
-/// `ENSEMBLE`, its members with their ids when `member_ids`, as PROJ
-/// writes an ensemble on its own.
+/// `ENSEMBLE`, its members and ellipsoid with their ids when
+/// `member_ids`, as PROJ writes an ensemble on its own, else their ids
+/// and its own as optional ones, which a CRS without an id has.
 fn ensemble(e: &Value, member_ids: bool) -> Result<Node, Error> {
     let mut args = vec![text(str_of(e, "name")?)];
     for m in e["members"].as_array().into_iter().flatten() {
         let mut member = vec![text(str_of(m, "name")?)];
         if member_ids {
             ids(m, &mut member)?;
+        } else {
+            optional_id(m, &mut member)?;
         }
         args.push(sub(node("MEMBER", member)));
     }
     if e["ellipsoid"].is_object() {
-        args.push(sub(ellipsoid(&e["ellipsoid"])?));
+        let mut el = ellipsoid(&e["ellipsoid"])?;
+        // On its own, PROJ writes the ellipsoid's id too.
+        if member_ids {
+            ids(&e["ellipsoid"], &mut el.args)?;
+        }
+        args.push(sub(el));
     }
     // PROJJSON keeps the accuracy as text ("2.0"), which PROJ writes as is.
     let accuracy = match &e["accuracy"] {
@@ -669,6 +725,9 @@ fn ensemble(e: &Value, member_ids: bool) -> Result<Node, Error> {
         other => Arg::Number(num_of(other)?),
     };
     args.push(sub(node("ENSEMBLEACCURACY", vec![accuracy])));
+    if !member_ids {
+        optional_id(e, &mut args)?;
+    }
     Ok(node("ENSEMBLE", args))
 }
 
@@ -934,7 +993,7 @@ fn cs_args(cs: &Value) -> Result<Vec<Arg>, Error> {
         // their abbreviations.
         let plain = matches!(name, "Latitude" | "Longitude");
         let label = match (
-            bare_axis(i, name, abbreviation),
+            bare_axis(i, name, abbreviation) || name.is_empty(),
             abbreviation.is_empty() || plain,
         ) {
             (true, _) => format!("({abbreviation})"),
@@ -952,7 +1011,8 @@ fn cs_args(cs: &Value) -> Result<Vec<Arg>, Error> {
         }
         let angular =
             subtype == "ellipsoidal" && matches!(direction, "north" | "south" | "east" | "west");
-        if !a["unit"].is_null() || subtype != "ordinal" {
+        // An ordinal or date-time axis has no unit.
+        if !a["unit"].is_null() || !matches!(subtype, "ordinal" | "TemporalDateTime") {
             let kind = if angular { Kind::Angle } else { Kind::Length };
             ax.push(sub(unit(&a["unit"], kind)?));
         }

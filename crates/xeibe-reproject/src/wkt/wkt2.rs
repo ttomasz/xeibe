@@ -25,10 +25,98 @@ pub(crate) fn crs(node: &Node) -> Result<Value, Error> {
         "PROJCRS" | "PROJECTEDCRS" => projected(node),
         "VERTCRS" | "VERTICALCRS" => vertical(node),
         "ENGCRS" | "ENGINEERINGCRS" => engineering(node),
+        "TIMECRS" | "TEMPORALCRS" => temporal(node),
         "COMPOUNDCRS" => compound(node),
         "DERIVEDPROJCRS" | "DERIVEDPROJECTEDCRS" => derived_projected(node),
         "BOUNDCRS" => bound(node),
         other => Err(unsupported(node, &format!("WKT2 {other}"))),
+    }
+}
+
+/// A part of a CRS given on its own, as [`object`] reads it, from the
+/// nodes it is written as: one, or a datum after its `DYNAMIC` or before
+/// its `PRIMEM`, as PROJ writes them. (PROJ doesn't read its own
+/// `DYNAMIC`.)
+pub(crate) fn object_nodes(nodes: &[Node]) -> Result<Value, Error> {
+    let (dynamic_node, rest) = match nodes {
+        [d, rest @ ..] if d.keyword == "DYNAMIC" && !rest.is_empty() => (Some(d), rest),
+        _ => (None, nodes),
+    };
+    let (datum, primem) = match rest {
+        [datum] if dynamic_node.is_none() => return object(datum),
+        [datum] => (datum, None),
+        [datum, pm] if matches!(pm.keyword.as_str(), "PRIMEM" | "PRIMEMERIDIAN") => {
+            (datum, Some(pm))
+        }
+        [_, extra, ..] => return Err(unsupported(extra, "a second object")),
+        [] => unreachable!("the parser reads at least one node"),
+    };
+    let (epoch, models) = dynamic(dynamic_node)?;
+    if !models.is_empty() {
+        return Err(unsupported(
+            datum,
+            "deformation models on a datum on its own",
+        ));
+    }
+    match datum.keyword.as_str() {
+        k if GEODETIC_DATUM.contains(&k) => {
+            geodetic_frame(datum, epoch, primem.map(|pm| (pm, None)))
+        }
+        k if VERTICAL_DATUM.contains(&k) && primem.is_none() => vertical_frame(datum, epoch),
+        _ => Err(unsupported(datum, "a datum with DYNAMIC or PRIMEM")),
+    }
+}
+
+/// A part of a CRS given on its own: an ellipsoid, a prime meridian, a
+/// datum of any kind, a datum ensemble or a conversion, as PROJJSON with
+/// its `type`, as PROJ reads one (pyproj's `Datum.from_string`, …).
+pub(crate) fn object(node: &Node) -> Result<Value, Error> {
+    let typed = |type_name: &str, v: Value| {
+        let mut o = Obj::new();
+        o.insert("type".into(), json!(type_name));
+        if let Value::Object(rest) = v {
+            o.extend(rest);
+        }
+        Value::Object(o)
+    };
+    match node.keyword.as_str() {
+        "ELLIPSOID" | "SPHEROID" => Ok(typed("Ellipsoid", ellipsoid(node)?)),
+        "PRIMEM" | "PRIMEMERIDIAN" => {
+            let pm = match prime_meridian(node, None)? {
+                Some(pm) => pm,
+                None => {
+                    let mut o = Obj::new();
+                    o.insert("name".into(), json!(node.text(0)?));
+                    o.insert("longitude".into(), json!(0));
+                    ids(node, &mut o)?;
+                    Value::Object(o)
+                }
+            };
+            Ok(typed("PrimeMeridian", pm))
+        }
+        k if GEODETIC_DATUM.contains(&k) => geodetic_frame(node, None, None),
+        k if VERTICAL_DATUM.contains(&k) => vertical_frame(node, None),
+        k if ENGINEERING_DATUM.contains(&k) => {
+            node.only(&[&["ANCHOR", "ID"]])?;
+            let mut o = named("EngineeringDatum", node)?;
+            anchors(node, &mut o)?;
+            ids(node, &mut o)?;
+            Ok(Value::Object(o))
+        }
+        "PDATUM" | "PARAMETRICDATUM" => {
+            node.only(&[&["ANCHOR", "ID"]])?;
+            let mut o = named("ParametricDatum", node)?;
+            anchors(node, &mut o)?;
+            ids(node, &mut o)?;
+            Ok(Value::Object(o))
+        }
+        "TDATUM" | "TIMEDATUM" => Ok(typed("TemporalDatum", temporal_datum(node)?)),
+        "ENSEMBLE" => Ok(typed("DatumEnsemble", ensemble(node)?)),
+        "CONVERSION" => Ok(typed(
+            "Conversion",
+            conversion(node, &Unit::metre(), &Unit::degree())?,
+        )),
+        other => Err(unsupported(node, &format!("WKT2 {other} on its own"))),
     }
 }
 
@@ -274,7 +362,12 @@ pub(super) fn unit(node: &Node) -> Result<Unit, Error> {
     };
     node.only(&[&["ID"]])?;
     let name = node.text(0)?;
-    let factor = node.number(1)?;
+    // A calendar unit (`TIMEUNIT["year"]`) has no factor, which PROJ
+    // gives as 0.
+    let factor = match (kind, node.args.get(1)) {
+        (UnitKind::Time, None | Some(Arg::Node(_))) => 0.0,
+        _ => node.number(1)?,
+    };
     let close = |want: f64| (factor - want).abs() <= 1e-12 * want;
     let shorthand = match kind {
         UnitKind::Linear | UnitKind::Any if name == "metre" && factor == 1.0 => Some("metre"),
@@ -465,14 +558,19 @@ fn ellipsoid(node: &Node) -> Result<Value, Error> {
 }
 
 /// `None` for Greenwich, which PROJJSON leaves implicit.
-fn prime_meridian(node: &Node) -> Result<Option<Value>, Error> {
+/// A prime meridian, in `axes` (its CRS's angle unit, in which PROJ's
+/// simplified WKT2 leaves it) when it has no unit, else in degrees.
+fn prime_meridian(node: &Node, axes: Option<&Unit>) -> Result<Option<Value>, Error> {
     node.only(&[UNITS, &["ID"]])?;
     let name = node.text(0)?;
     let mut longitude = node.number(1)?;
     if longitude == 0.0 && name.eq_ignore_ascii_case("Greenwich") {
         return Ok(None);
     }
-    let mut u = own_unit(node)?.unwrap_or_else(Unit::degree);
+    let mut u = match own_unit(node)? {
+        Some(u) => u,
+        None => axes.cloned().unwrap_or_else(Unit::degree),
+    };
     // PROJ's correction for meridians defined in degrees, minutes and
     // seconds: EPSG's export rounds Lisbon to -9.131906111.
     if let Some(degrees) = super::wkt1::sexagesimal(name, longitude) {
@@ -519,7 +617,11 @@ fn dynamic(node: Option<&Node>) -> Result<(Option<f64>, Vec<Value>), Error> {
 }
 
 /// A geodetic reference frame, with the prime meridian WKT puts next to it.
-fn geodetic_frame(node: &Node, epoch: Option<f64>, primem: Option<&Node>) -> Result<Value, Error> {
+fn geodetic_frame(
+    node: &Node,
+    epoch: Option<f64>,
+    primem: Option<(&Node, Option<&Unit>)>,
+) -> Result<Value, Error> {
     node.only(&[&["ELLIPSOID", "SPHEROID", "ANCHOR", "ANCHOREPOCH", "ID"]])?;
     let kind = if epoch.is_some() {
         "DynamicGeodeticReferenceFrame"
@@ -535,7 +637,11 @@ fn geodetic_frame(node: &Node, epoch: Option<f64>, primem: Option<&Node>) -> Res
         .ok_or_else(|| node.invalid("no ELLIPSOID"))?;
     o.insert("ellipsoid".into(), ellipsoid(e)?);
     anchors(node, &mut o)?;
-    if let Some(pm) = primem.map(prime_meridian).transpose()?.flatten() {
+    if let Some(pm) = primem
+        .map(|(pm, axes)| prime_meridian(pm, axes))
+        .transpose()?
+        .flatten()
+    {
         o.insert("prime_meridian".into(), pm);
     }
     ids(node, &mut o)?;
@@ -595,6 +701,22 @@ fn geodetic_datum(node: &Node) -> Result<(&'static str, Value, Vec<Value>), Erro
     let d = node
         .child(GEODETIC_DATUM)
         .ok_or_else(|| node.invalid("no DATUM or ENSEMBLE"))?;
+    // The CRS's angle unit: after its axes or (in a base CRS) its datum,
+    // else its first axis's; a plain `UNIT` in an ellipsoidal CS.
+    let ellipsoidal = node.child(&["CS"]).is_none_or(|cs| {
+        cs.word(0)
+            .is_ok_and(|w| w.eq_ignore_ascii_case("ellipsoidal"))
+    });
+    let axes = match own_unit(node)? {
+        Some(u) => Some(u),
+        None => node.child(&["AXIS"]).map(own_unit).transpose()?.flatten(),
+    }
+    .filter(|u| match u.kind {
+        UnitKind::Angular => true,
+        UnitKind::Any => ellipsoidal,
+        _ => false,
+    });
+    let primem = primem.map(|pm| (pm, axes.as_ref()));
     Ok(("datum", geodetic_frame(d, epoch, primem)?, models))
 }
 
@@ -712,7 +834,8 @@ fn axis_name(label: &str, direction: &str) -> (String, String) {
             ("X", "geocentricX") => "Geocentric X",
             ("Y", "geocentricY") => "Geocentric Y",
             ("Z", "geocentricZ") => "Geocentric Z",
-            (other, _) => other,
+            // Others stay unnamed (`"(T)"`), as in PROJ.
+            _ => "",
         };
         return (name.to_owned(), abbreviation.to_owned());
     }
@@ -1254,6 +1377,46 @@ fn engineering(node: &Node) -> Result<Value, Error> {
     ids(d, &mut datum)?;
     let mut o = named("EngineeringCRS", node)?;
     o.insert("datum".into(), Value::Object(datum));
+    o.insert("coordinate_system".into(), coordinate_system(node)?);
+    finish(node, &mut o)?;
+    Ok(Value::Object(o))
+}
+
+/// `TDATUM`: its calendar, PROJ's "proleptic Gregorian" when it has
+/// none, and its time origin as written (a year, a date, a date-time or
+/// text).
+fn temporal_datum(node: &Node) -> Result<Value, Error> {
+    node.only(&[&["CALENDAR", "TIMEORIGIN", "ID"]])?;
+    let mut o = Obj::new();
+    o.insert("name".into(), json!(node.text(0)?));
+    let calendar = match node.child(&["CALENDAR"]) {
+        Some(c) => c.text(0)?,
+        None => "proleptic Gregorian",
+    };
+    o.insert("calendar".into(), json!(calendar));
+    if let Some(t) = node.child(&["TIMEORIGIN"]) {
+        let origin = match t.args.first() {
+            Some(Arg::Text(s) | Arg::Word(s)) => s.clone(),
+            // A year: `TIMEORIGIN[0000]`.
+            Some(Arg::Number(v)) if v.fract() == 0.0 && (0.0..10000.0).contains(v) => {
+                format!("{v:04}")
+            }
+            _ => return Err(t.invalid("expected a time origin")),
+        };
+        o.insert("time_origin".into(), json!(origin));
+    }
+    ids(node, &mut o)?;
+    Ok(Value::Object(o))
+}
+
+/// `TIMECRS`: a temporal datum and a temporal coordinate system.
+fn temporal(node: &Node) -> Result<Value, Error> {
+    node.only(&[&["TDATUM", "TIMEDATUM"], UNITS, USAGE, &["CS", "AXIS"]])?;
+    let d = node
+        .child(&["TDATUM", "TIMEDATUM"])
+        .ok_or_else(|| node.invalid("no TDATUM"))?;
+    let mut o = named("TemporalCRS", node)?;
+    o.insert("datum".into(), temporal_datum(d)?);
     o.insert("coordinate_system".into(), coordinate_system(node)?);
     finish(node, &mut o)?;
     Ok(Value::Object(o))

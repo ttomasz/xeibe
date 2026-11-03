@@ -1,0 +1,12 @@
+# pyproj's tests that fail because xeibe_proj differs on purpose, each under
+# the divergence (docs/pyproj-compat.md, "Deliberate divergences"). run.py
+# leaves them out of the pass list, and fails when one passes.
+
+# 13: CF's standard name of a vertical CRS's height is
+# height_above_geopotential_datum, of a depth depth; pyproj writes
+# height_above_reference_ellipsoid, the ellipsoidal height, for both.
+test.crs.test_crs_cf::test_export_compound_crs
+test.crs.test_crs_cf::test_export_compound_crs_cs
+test.crs.test_crs_cf::test_geoid_model_name
+test.crs.test_crs_coordinate_system::test_verticalcs_depth_to_cf
+test.crs.test_crs_coordinate_system::test_verticalcs_height_to_cf

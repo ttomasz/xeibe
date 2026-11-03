@@ -21,7 +21,7 @@ from xeibe_proj.exceptions import CRSError
 pyproj = pytest.importorskip("pyproj")
 
 STABLE = [4326, 4258, 3857, 32633, 4978, 5773, 27700, 3035, 27572, 9707]
-VERSIONS = ["WKT2_2019", "WKT1_GDAL"]
+VERSIONS = ["WKT2_2019", "WKT2_2015", "WKT2_2019_SIMPLIFIED", "WKT2_2015_SIMPLIFIED", "WKT1_GDAL"]
 ID = re.compile(r',(ID|AUTHORITY)\[[^\[\]]*\]')
 
 BESSEL = 'SPHEROID["Bessel 1841",6377397.155,299.1528128]'
@@ -57,6 +57,12 @@ def without_ids(wkt: str) -> str:
 def test_wkt_reads_as_pyproj_reads_it(code: int, version: str) -> None:
     theirs = pyproj.CRS(code).to_wkt(version)
     ours = CRS(theirs)
+    if code == 27572 and version.endswith("SIMPLIFIED"):
+        # PROJ's simplified WKT2 gives NTF (Paris) / Lambert zone II's
+        # parameters in grads without a unit, the base CRS's: ours reads
+        # them so, PROJ in degrees.
+        assert ours == CRS(code) and pyproj.CRS(theirs) != pyproj.CRS(code)
+        return
     # WKT1 can't say northing, easting: such a CRS reads back with other
     # axes, in PROJ too.
     assert (ours == CRS(code)) == (pyproj.CRS(theirs) == pyproj.CRS(code))
@@ -74,7 +80,7 @@ def test_wkt_writes_as_pyproj_writes_it(code: int, version: str) -> None:
         written = ours.to_wkt(version, output_axis_rule=rule)
         assert ("AXIS" in written) == ("AXIS" in theirs.to_wkt(version, output_axis_rule=rule))
         # WKT2 without its CS is what PROJ can't read back.
-        if version == "WKT2_2019" and rule is False:
+        if version.startswith("WKT2") and rule is False:
             assert "CS[" not in written
             continue
         # Usages and remarks come from each side's EPSG release.
@@ -88,9 +94,9 @@ def test_wkt_versions() -> None:
     assert crs.to_wkt() == crs.to_wkt(WktVersion.WKT2_2019) == crs.to_wkt("wkt2_2018")
     with pytest.raises(ValueError, match="Invalid value"):
         crs.to_wkt("WKT_INVALID")
-    for version in ("WKT2_2015", "WKT2_2019_SIMPLIFIED", "WKT1_ESRI"):
-        with pytest.raises(NotImplementedError):
-            crs.to_wkt(version)
+    assert crs.to_wkt("WKT2_2018_SIMPLIFIED") == crs.to_wkt("WKT2_2019_SIMPLIFIED")
+    with pytest.raises(NotImplementedError):
+        crs.to_wkt("WKT1_ESRI")
     with pytest.raises(CRSError, match="CRS cannot be converted to a WKT string"):
         CRS(4979).to_wkt("WKT1_GDAL")
 
@@ -158,6 +164,11 @@ def test_identification_matches_pyproj(code: int, version: str) -> None:
     CRSs); the Rust tests compare them on the same release."""
     wkt = without_ids(pyproj.CRS(code).to_wkt(version))
     ours, theirs = CRS(wkt), pyproj.CRS(wkt)
+    if code == 27572 and version.endswith("SIMPLIFIED"):
+        # PROJ doesn't find its own simplified NTF (Paris) / Lambert zone
+        # II, whose Paris meridian is in grads: ours does.
+        assert theirs.to_epsg(70) is None and ours.to_epsg(70) == 27572
+        return
     for min_confidence in (0, 70, 100):
         assert ours.to_epsg(min_confidence) == theirs.to_epsg(min_confidence)
     assert ours.list_authority(min_confidence=100) == theirs.list_authority(min_confidence=100)
@@ -184,7 +195,13 @@ def test_parts_write_as_pyproj_writes_them(code: int, version: str) -> None:
         assert (mine is None) == (their is None), part
         if mine is None:
             continue
-        assert without_ids(mine.to_wkt(version) or "") == without_ids(their.to_wkt(version) or ""), part
+        theirs_written = their.to_wkt(version) or ""
+        if not theirs_written and part == "prime_meridian":
+            # PROJ's simplified WKT2 of Greenwich on its own is empty; ours
+            # is Greenwich.
+            assert mine.to_wkt(version).startswith('PRIMEM["Greenwich",0,')
+            continue
+        assert without_ids(mine.to_wkt(version) or "") == without_ids(theirs_written), part
     if ours.datum is not None:
         assert repr(ours.datum) == ours.datum.to_wkt(pretty=True)
 

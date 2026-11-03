@@ -258,11 +258,9 @@ def test_deprecated() -> None:
     assert CRS(2172).is_deprecated == pyproj.CRS(2172).is_deprecated
 
 
-def test_not_yet() -> None:
+def test_not_supported() -> None:
     with pytest.raises(NotImplementedError, match="not supported"):
         CRS(4326).to_wkt("WKT1_ESRI")
-    with pytest.raises(NotImplementedError, match="phase 3"):
-        CRS(4326).to_cf()
 
 
 def test_axis_info_is_frozen() -> None:
@@ -299,3 +297,25 @@ def test_equality_tolerates_rounding() -> None:
     assert CRS(projjson) == CRS(32633)
     projjson["conversion"]["parameters"][3]["value"] *= 1 + 1e-6
     assert CRS(projjson) != CRS(32633)
+
+
+def test_input_errors() -> None:
+    with pytest.raises(CRSError, match="CRS input is not a string"):
+        CRS.from_string(4326)  # type: ignore[arg-type]
+    with pytest.raises(CRSError, match="Input is not a CRS"):
+        CRS("+proj=pipeline +ellps=GRS80 +step +proj=merc +step +proj=axisswap +order=2,1")
+
+
+def test_numpy_integer() -> None:
+    np = pytest.importorskip("numpy")
+    assert CRS(np.int64(2180)) == CRS(2180)
+    with pytest.raises(CRSError):
+        CRS.from_epsg(np.int64(0))  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("name", ["Datum", "Ellipsoid", "PrimeMeridian", "CoordinateSystem"])
+def test_parts_need_a_constructor(name: str) -> None:
+    import xeibe_proj.crs
+
+    with pytest.raises(RuntimeError, match="from_"):
+        getattr(xeibe_proj.crs, name)()

@@ -455,3 +455,18 @@ def test_operation_json_with_ensemble_and_geocentric_steps() -> None:
     steps = (t.to_json_dict() or {})["steps"]
     assert steps[0]["name"].startswith("Conversion from NAD83(2011) (geog2D) to NAD83(2011) (geocentric)")
     assert steps[-1]["method"]["id"]["code"] == 9602
+
+
+@pytest.mark.parametrize("empty", [(), [], array("d"), np.array([])])
+def test_empty_coordinates(empty: object) -> None:
+    """An empty array.array has no memory, which the buffer protocol gives
+    as a null pointer: nothing to convert, in the type that came in."""
+    x, y = Transformer.from_crs(2180, 4326).transform(empty, empty)
+    assert type(x) is type(empty) and len(x) == len(y) == 0  # type: ignore[arg-type]
+
+
+def test_initialization_errors() -> None:
+    with pytest.raises(ProjError, match="Transformer must be initialized using"):
+        Transformer()
+    with pytest.raises(ProjError, match="Area of interest must be"):
+        Transformer.from_crs(4326, 2964, area_of_interest=(-136.46, 49.0, -60.72, 83.17))  # type: ignore[arg-type]

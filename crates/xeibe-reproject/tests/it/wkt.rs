@@ -473,6 +473,9 @@ const KNOWN_WKT1_WRITING: &[(&[u32], &str)] = &[
 fn check_writing(path: &Path, version: wkt::Version) -> (usize, usize, String) {
     let key = match version {
         wkt::Version::Wkt1Gdal => "WKT1_GDAL",
+        wkt::Version::Wkt2_2015 => "WKT2_2015",
+        wkt::Version::Wkt2_2019Simplified => "WKT2_2019_SIMPLIFIED",
+        wkt::Version::Wkt2_2015Simplified => "WKT2_2015_SIMPLIFIED",
         _ => "WKT2_2019",
     };
     let mut same = 0;
@@ -553,6 +556,60 @@ fn every_epsg_crs_writes_as_proj_writes_it() {
     );
     println!("{written} written, {same} as PROJ writes them (or a listed difference)\n{report}");
     assert_eq!(same, written, "{report}");
+}
+
+#[test]
+fn epsg_crss_write_wkt2_2015_as_proj_writes_them() {
+    let (written, same, report) = check_writing(
+        &xeibe_testkit::data_dir().join("crs-wkt/wkt.jsonl"),
+        wkt::Version::Wkt2_2015,
+    );
+    assert!(written > 80, "{written}");
+    assert_eq!(same, written, "{report}");
+}
+
+#[test]
+#[ignore = "needs target/crs-wkt/wkt.jsonl (scripts/gen_wkt_vectors.py --all)"]
+fn every_epsg_crs_writes_wkt2_2015_as_proj_writes_it() {
+    let (written, same, report) = check_writing(
+        &xeibe_testkit::data_dir().join("../../target/crs-wkt/wkt.jsonl"),
+        wkt::Version::Wkt2_2015,
+    );
+    println!("{written} written, {same} as PROJ writes them (or a listed difference)\n{report}");
+    assert_eq!(same, written, "{report}");
+}
+
+#[test]
+fn epsg_crss_write_simplified_wkt2_as_proj_writes_them() {
+    for version in [
+        wkt::Version::Wkt2_2019Simplified,
+        wkt::Version::Wkt2_2015Simplified,
+    ] {
+        let (written, same, report) = check_writing(
+            &xeibe_testkit::data_dir().join("crs-wkt/wkt.jsonl"),
+            version,
+        );
+        assert!(written > 80, "{written}");
+        assert_eq!(same, written, "{version:?}\n{report}");
+    }
+}
+
+#[test]
+#[ignore = "needs target/crs-wkt/wkt.jsonl (scripts/gen_wkt_vectors.py --all)"]
+fn every_epsg_crs_writes_simplified_wkt2_as_proj_writes_it() {
+    for version in [
+        wkt::Version::Wkt2_2019Simplified,
+        wkt::Version::Wkt2_2015Simplified,
+    ] {
+        let (written, same, report) = check_writing(
+            &xeibe_testkit::data_dir().join("../../target/crs-wkt/wkt.jsonl"),
+            version,
+        );
+        println!(
+            "{version:?}: {written} written, {same} as PROJ writes them (or a listed difference)\n{report}"
+        );
+        assert_eq!(same, written, "{version:?}\n{report}");
+    }
 }
 
 #[test]
@@ -1804,4 +1861,118 @@ fn every_bound_crs_converts_as_proj_converts_it() {
         check_bound(&xeibe_testkit::data_dir().join("../../target/crs-wkt/bound.jsonl"));
     println!("{compared} conversions\n{report}");
     assert!(report.is_empty(), "{report}");
+}
+
+/// Datums on their own, written back with everything they have: an
+/// engineering datum's id, which PROJ leaves out, the parametric and
+/// temporal datums PROJ reads, and a dynamic datum's `DYNAMIC` and a
+/// prime meridian next to the datum, as PROJ writes them.
+#[test]
+fn datums_on_their_own_round_trip() {
+    for (text, wkt1) in [
+        (
+            r#"DYNAMIC[FRAMEEPOCH[1994]],DATUM["World Geodetic System 1984 (G730)",ELLIPSOID["WGS 84",6378137,298.257223563,LENGTHUNIT["metre",1]],ID["EPSG",1152]]"#,
+            Some(
+                r#"DATUM["World_Geodetic_System_1984_G730",SPHEROID["WGS 84",6378137,298.257223563],AUTHORITY["EPSG","1152"]]"#,
+            ),
+        ),
+        (
+            r#"DATUM["CH1903 (Bern)",ELLIPSOID["Bessel 1841",6377397.155,299.1528128,LENGTHUNIT["metre",1]],ID["EPSG",6801]],PRIMEM["Bern",7.43958333333333,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8907]]"#,
+            None,
+        ),
+        (
+            r#"EDATUM["Dabajuro",ANCHOR["Station 1"],ID["EPSG",9307]]"#,
+            Some(r#"LOCAL_DATUM["Dabajuro",32767,AUTHORITY["EPSG","9307"]]"#),
+        ),
+        (
+            r#"PDATUM["Mean Sea Level",ANCHOR["1013.25 hPa at 15°C"],ID["XYZ",1]]"#,
+            None,
+        ),
+        (
+            r#"TDATUM["Gregorian calendar",CALENDAR["proleptic Gregorian"],TIMEORIGIN[0000-01-01]]"#,
+            None,
+        ),
+    ] {
+        let json = wkt::object_to_projjson(text).unwrap();
+        let value: Value = serde_json::from_str(&json).unwrap();
+        let written =
+            wkt::from_projjson_value(&value, wkt::Version::Wkt2_2019, false, wkt::AxisRule::Auto)
+                .unwrap();
+        assert_eq!(written, text);
+        let written1 =
+            wkt::from_projjson_value(&value, wkt::Version::Wkt1Gdal, false, wkt::AxisRule::Auto);
+        match wkt1 {
+            Some(w) => assert_eq!(written1.unwrap(), w),
+            None if value["type"] == "GeodeticReferenceFrame" => assert!(written1.is_ok()),
+            None => assert!(written1.is_err(), "{written1:?}"),
+        }
+    }
+    // Deformation models belong to a CRS.
+    assert!(
+        wkt::object_to_projjson(
+            r#"DYNAMIC[FRAMEEPOCH[2010],MODEL["NKG_RF17vel"]],DATUM["X",ELLIPSOID["GRS 1980",6378137,298.257222101]]"#
+        )
+        .is_err()
+    );
+}
+
+/// A CRS without an id (pyproj's builders make them) has the ids of what
+/// is inside it, as PROJ writes them: a compound CRS's components' and an
+/// ensemble's, its members' and its ellipsoid's, but none inside an object
+/// with an id.
+#[test]
+fn ids_inside_a_crs_without_one() {
+    let without_id = |code: u32| {
+        let mut v: Value = serde_json::from_str(xeibe_crs::projjson(code).unwrap()).unwrap();
+        v.as_object_mut().unwrap().remove("id");
+        wkt::from_projjson_value(&v, wkt::Version::Wkt2_2019, false, wkt::AxisRule::Auto).unwrap()
+    };
+    let compound = without_id(5498);
+    assert!(compound.contains(r#"ID["EPSG",4269]"#), "{compound}");
+    assert!(!compound.contains(r#"ID["EPSG",9001]"#), "{compound}");
+    let geographic = without_id(4326);
+    for id in [
+        r#"ID["EPSG",6326]"#,
+        r#"ID["EPSG",1166]"#,
+        r#"ID["EPSG",7030]"#,
+    ] {
+        assert!(geographic.contains(id), "{id} in {geographic}");
+    }
+    // With its id, none of them.
+    let epsg = wkt::from_projjson(
+        xeibe_crs::projjson(4326).unwrap(),
+        wkt::Version::Wkt2_2019,
+        false,
+    )
+    .unwrap();
+    assert_eq!(epsg.matches(r#"ID["EPSG""#).count(), 1, "{epsg}");
+}
+
+/// Temporal CRSs, as PROJ reads and writes them: typographic quotes and
+/// unquoted dates read, the calendar PROJ's default, a calendar unit
+/// without a factor.
+#[test]
+fn temporal_crss_as_proj_reads_them() {
+    for (text, written) in [
+        (
+            r#"TIMECRS["Decimal Years CE",TDATUM["Common Era",CALENDAR["proleptic Gregorian"],TIMEORIGIN[0000]],CS[TemporalMeasure,1],AXIS["decimal years (a)",future,TIMEUNIT["year"]]]"#,
+            r#"TIMECRS["Decimal Years CE",TDATUM["Common Era",CALENDAR["proleptic Gregorian"],TIMEORIGIN[0000]],CS[TemporalMeasure,1],AXIS["decimal years (a)",future,TIMEUNIT["year"]]]"#,
+        ),
+        (
+            "TIMECRS[\u{201c}DateTime\u{201d},TDATUM[\u{201c}Gregorian Calendar\u{201d}],CS[TemporalDateTime,1],AXIS[\"Time (T)\",future]]",
+            r#"TIMECRS["DateTime",TDATUM["Gregorian Calendar",CALENDAR["proleptic Gregorian"]],CS[TemporalDateTime,1],AXIS["time (T)",future]]"#,
+        ),
+        (
+            r#"TIMECRS["GPS milliseconds",TDATUM["GPS time origin",TIMEORIGIN[1980-01-01T00:00:00.0Z]],CS[TemporalCount,1],AXIS["(T)",future,TIMEUNIT["millisecond",0.001]]]"#,
+            r#"TIMECRS["GPS milliseconds",TDATUM["GPS time origin",CALENDAR["proleptic Gregorian"],TIMEORIGIN[1980-01-01T00:00:00.0Z]],CS[TemporalCount,1],AXIS["(T)",future,TIMEUNIT["millisecond",0.001]]]"#,
+        ),
+    ] {
+        let json = wkt::to_projjson(text).unwrap();
+        let value: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["type"], "TemporalCRS");
+        let back =
+            wkt::from_projjson_value(&value, wkt::Version::Wkt2_2019, false, wkt::AxisRule::Auto)
+                .unwrap();
+        assert_eq!(back, written);
+    }
 }

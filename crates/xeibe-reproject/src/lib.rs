@@ -65,9 +65,9 @@ mod transform;
 pub mod wkt;
 
 pub use bounds::DEFAULT_DENSIFY;
-pub use crs::Crs;
+pub use crs::{Crs, equivalent_parts};
 pub use error::{CoordinateError, Error};
-pub use grid::{CDN, GridRequest, Grids, clear_grids};
+pub use grid::{CDN, GridRequest, Grids, clear_grids, proj_data_file};
 pub use projection::Projection;
 pub use select::explain::{Explained, Explanation, Outcome, PassReason};
 pub use select::{OperationInfo, OperationStep, Selection, StepCrs, StepKind};

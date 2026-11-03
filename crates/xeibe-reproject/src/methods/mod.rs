@@ -50,7 +50,7 @@ mod merc;
 mod mlfn;
 mod nzmg;
 mod ob_tran;
-pub(crate) use ob_tran::is_geographic as is_rotated_pole;
+pub(crate) use ob_tran::{is_geographic as is_rotated_pole, pole_rotation_as_ob_tran};
 mod misc;
 mod mod_ster;
 mod omerc;

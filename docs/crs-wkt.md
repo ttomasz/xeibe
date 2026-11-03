@@ -31,7 +31,7 @@ CRS without an EPSG id. This document covers three things:
 |---|---|---|
 | 1 | **WKT is translated to and from PROJJSON; there is no second CRS model.** The reader produces a PROJJSON value, which `Crs::from_value` then reads as it reads `xeibe-crs`'s. The writer formats a PROJJSON value. | PROJJSON was designed as the JSON form of WKT2 2019, so WKT2 maps onto it node for node. `Crs`, `xeibe_proj`'s metadata (`datum`, `axis_info`, …) and GeoParquet already use it. |
 | 2 | **A `wkt` module in `xeibe-reproject`**, with identification next to it. | As planned in [pyproj-compat.md](pyproj-compat.md#changes-needed-in-the-rust-crates). Identification needs `Crs::equivalent`. The parser itself has no dependency on the conversion code, so it can move to its own crate if something outside `xeibe-reproject` needs it. Not `xeibe-crs`, although it holds the PROJJSON text: it depends only on `zstd` and is used by `xeibe-geom` and `xeibe-arrow`, which would gain `serde_json`; it is regenerated and versioned by EPSG releases; and identification would still need `xeibe-reproject`. The PROJJSON reader isn't there either. Generated EPSG data the reader needs (datum aliases) does go in `xeibe-crs`. |
-| 3 | **Read** WKT2 2019, WKT2 2015, WKT1 (OGC 01-009 and GDAL's form of it) and WKT1 ESRI. **Write only WKT2 2019 and WKT1_GDAL.** `to_wkt` with any other version (`WKT2_2015`, the `_SIMPLIFIED` ones, `WKT1_ESRI`) raises `NotImplementedError` naming it. | Reading takes what is in the wild. Writing is only for the libraries that hand a pyproj CRS on as WKT: GeoPandas' `to_file` through fiona calls `crs.to_wkt()` (WKT2 2019), pyogrio's `write_dataframe` calls `crs.to_wkt("WKT1_GDAL")`, and rioxarray uses both (CF and Zarr metadata, rasterio). Nothing found asks for the other versions. |
+| 3 | **Read** WKT2 2019, WKT2 2015, WKT1 (OGC 01-009 and GDAL's form of it) and WKT1 ESRI. **Write WKT2 2019, WKT2 2015, their `_SIMPLIFIED` forms and WKT1_GDAL**, not WKT1_ESRI: `to_wkt("WKT1_ESRI")` raises `NotImplementedError`. | Reading takes what is in the wild. Writing is for the libraries that hand a pyproj CRS on as WKT: GeoPandas' `to_file` through fiona calls `crs.to_wkt()` (WKT2 2019), pyogrio's `write_dataframe` calls `crs.to_wkt("WKT1_GDAL")`, and rioxarray uses both (CF and Zarr metadata, rasterio). WKT2 2015 and the simplified forms are passes over the 2019 nodes, so they came cheap (2026-11-03). Esri's WKT1 needs Esri's names for every CRS, datum, unit and method, Esri's parameter order and PROJ's fallback names, and nothing found asks for it. |
 | 8 | **The CLI and the web page take EPSG codes only**, as now: `--crs` and `--target-crs` accept no WKT and no `.prj` files, and neither writes WKT. | WKT is for `xeibe_proj`'s compatibility. GML names CRSs by URI, and an EPSG code is enough to pick a target. |
 | 4 | **Datums are resolved to EPSG while reading**, not only by `to_epsg`. | A datum named only `D_WGS_1984` or `WGS_1984` has to become `EPSG:6326`. Otherwise the selection finds no operation between it and any EPSG CRS: datums match by EPSG key, or by exact name (`same_key` in `crs.rs`). |
 | 5 | **Identification ranks matches with PROJ's confidence levels** (100, 90, 70, 25), measured against PROJ for every EPSG CRS in every dialect. | `to_epsg(min_confidence=70)` and `list_authority` are what callers see, and the cases where PROJ's rules aren't obvious are decided by measurement (see [Identification](#identification)). |
@@ -431,7 +431,10 @@ From a PROJJSON value:
     id (PROJ's `outputId`). An EPSG CRS shows only its own ids; one from
     a PROJ string, with none, shows its datum's, ellipsoid's and units':
     `LENGTHUNIT["metre",1,ID["EPSG",9001]]`, Greenwich as 8901, degree as
-    9122, unity as 9201. None on compound components or members;
+    9122, unity as 9201. A compound CRS's components and an ensemble's
+    members have theirs under the same rule: none in an EPSG CRS, theirs
+    in one built without an id (pyproj's `CompoundCRS`, `GeographicCRS`).
+    An ensemble's own id doesn't keep its members' and ellipsoid's out;
   - every axis with its own unit, and `ORDER` when there are several;
   - axis names with a lower-case first letter, and left out for Easting
     (E) as the first axis, Northing (N) as the second, and Geocentric X,
@@ -463,23 +466,55 @@ From a PROJJSON value:
   | `True` (`Always`) | As `None` | Every `AXIS` but those of a projected CRS's base `GEOGCS`; EPSG's "Geodetic latitude" written "Latitude" |
   | `False` (`Never`) | No `CS` or `AXIS`, but an `ENGCRS`'s; PROJ can't read such WKT back | No `AXIS`, but a `LOCAL_CS`'s; a geographic 3D CRS is then written as a 2D `GEOGCS` |
 - **A part on its own** (pyproj's `CRS.datum.to_wkt()`, …) is written as
-  PROJ writes it: with its ids, a datum ensemble's members with theirs, a
-  datum followed by its `PRIMEM` when that isn't Greenwich, a dynamic
-  datum after its `DYNAMIC`, a coordinate system as its `CS` and `AXIS`
+  PROJ writes it: with its ids, a datum ensemble's members and ellipsoid
+  with theirs, an engineering datum with its id too (PROJ writes none,
+  alone of its datums), parametric and temporal datums (`PDATUM`,
+  `TDATUM`), a datum followed by its `PRIMEM` when that isn't Greenwich, a
+  dynamic datum after its `DYNAMIC`, a coordinate system as its `CS` and `AXIS`
   nodes, a transformation as `COORDINATEOPERATION` with its source and
   target CRSs. In WKT1_GDAL, a conversion is its `PROJECTION` and
   `PARAMETER` nodes in degrees and metres, a coordinate system the empty
   string, and a transformation nothing (`None` in Python), as in PROJ.
+  An ellipsoid given by its two axes has its inverse flattening computed
+  from them in metres, as PROJ computes it. A part in WKT2 is read on its
+  own too (`wkt::object_to_projjson`, pyproj's `Datum.from_string`, …):
+  an ellipsoid, a prime meridian, a datum of any kind, an ensemble or a
+  conversion, and a datum with its `DYNAMIC` or `PRIMEM` as written
+  above, which PROJ can't read back when it is `DYNAMIC`.
+- **Temporal CRSs** (`TIMECRS`) are read and written as PROJ does: the
+  calendar "proleptic Gregorian" when none is given, the time origin as
+  written (`TIMEORIGIN[1979-12-29T00Z]` unquoted, a year as four digits), a
+  calendar unit without a factor (`TIMEUNIT["year"]`, PROJJSON's factor
+  0), a date-time axis without a unit. They can't be converted. As in
+  PROJ, strings may be quoted with `“` and `”` too, and an axis given only
+  an abbreviation PROJ doesn't name (`"(T)"`) stays unnamed.
 
   Some CRSs WKT1 can't express, such as geographic and projected 3D CRSs,
   engineering CRSs with non-metric axes, derived projected CRSs, and
   methods without a WKT1 name. Those raise and name the part, where PROJ
   would also fail or write something lossy.
 - **Pretty printing** indents by 4 spaces, as PROJ does.
-- **Not written** (decision 3): WKT2 2015, the `_SIMPLIFIED` variants and
-  WKT1_ESRI. Each is a small step from the two above (PROJ's rules for
-  2015 replace ensembles with a `DATUM` and move `USAGE` to the top level),
-  to add if a caller turns up.
+- **WKT2 2015** is the 2019 text with PROJ's changes (`wkt/variants.rs`):
+  `GEODCRS` and `BASEGEODCRS` for `GEOGCRS` and `BASEGEOGCRS`, the base
+  CRS without its id, an ensemble as a `DATUM` (with its ellipsoid) or
+  `VDATUM` named as WKT1 names it (the traditional names of WGS 84's,
+  ETRS89's and GR96's ensembles, else the ensemble's own), no `DYNAMIC`
+  or `ANCHOREPOCH`, and the first usage's `SCOPE`, `AREA` and extents at
+  the top level.
+- **The simplified forms** (`WKT2_2019_SIMPLIFIED`,
+  `WKT2_2015_SIMPLIFIED`) are PROJ's shorter text: ids on the outermost
+  object only, no `ORDER`, no Greenwich `PRIMEM`, no metre on an
+  ellipsoid; the axes' unit once as `UNIT` after them when they share it,
+  else each axis's as `UNIT`; a base CRS's angular unit as `UNIT` after its
+  datum; and units left out where implied: a parameter's in the base CRS's
+  angular unit, the CRS's linear unit or unity, a prime meridian's in the
+  axes' unit (in degrees in a base CRS). Any other parameter unit is
+  written as `UNIT`. A part on its own is in degrees and metres; there
+  Greenwich is written, where PROJ writes the empty string. The reader
+  takes a prime meridian without a unit in its CRS's angular unit, as
+  PROJ writes it, so a simplified NTF (Paris) / Lambert zone II reads back
+  as itself; PROJ reads its parameters in degrees.
+- **Not written** (decision 3): WKT1_ESRI.
 
 ## Identification
 
@@ -808,8 +843,9 @@ Pseudo-Mercator, ETRS89, NAD83, the plain EPSG CRS and another Bound CRS
   read as the EPSG CRS (PROJ keeps Esri's own definition and id). A bare
   number is an EPSG code, as in pyproj.
 - **Output.** `to_wkt(version, pretty, output_axis_rule)` writes
-  `WKT2_2019` (and `WKT2_2018`, the same in PROJ) and `WKT1_GDAL`; another
-  `WktVersion` raises `NotImplementedError`, an unknown one `ValueError`,
+  `WKT2_2019` (and `WKT2_2018`, the same in PROJ), `WKT2_2015`, the
+  `_SIMPLIFIED` forms and `WKT1_GDAL`; `WKT1_ESRI` raises
+  `NotImplementedError`, an unknown version `ValueError`,
   and a CRS the version can't express `CRSError` with pyproj's message.
   The parts (`Datum`, `Ellipsoid`, `PrimeMeridian`, `CoordinateSystem`,
   `CoordinateOperation`) have `to_wkt()`, `None` where PROJ writes
@@ -844,6 +880,15 @@ Measured:
   projected 3D CRS in WKT1_GDAL, as the writer now does; and ArcGIS's
   `VERTCS` inside a `PROJCS` is read as a compound CRS.
 
+**Step 8 (2026-11-03): WKT2 2015 and the simplified forms**, as described
+under [Writing](#writing). `gen_wkt_vectors.py` writes PROJ's
+`WKT2_2019_SIMPLIFIED` and `WKT2_2015_SIMPLIFIED` of every EPSG CRS too.
+Measured on every EPSG CRS PROJ writes (8,879 in 2015, 8,880 in the
+simplified 2019), ours is PROJ's token for token in all three, but for the
+differences listed for WKT2 2019, and each reads back as the EPSG CRS.
+pyproj's suite went from 718 to 739 of 996 with these and the input fixes
+of the same day (`docs/pyproj-compat.md`).
+
 ## Order of work
 
 1. **Tokenizer and WKT2 reader**, gated on EPSG's archive.
@@ -858,12 +903,12 @@ Measured:
    transformation, gated on PROJ's choices.
 7. **`xeibe_proj`:** `from_wkt`, WKT in `CRS(...)`, `from_user_input` and
    objects with `to_wkt()`, `to_wkt(version, pretty, output_axis_rule)` for
-   the two versions written,
+   the versions written,
    `to_epsg`/`to_authority`/`list_authority` with `min_confidence`,
    `to_wkt` on the sub-objects (`Datum`, `Ellipsoid`, …), and
    `pyproj.enums.WktVersion`, gated on pyproj and its own suite.
 
 ## Later, if asked
 
-- Writing WKT2 2015, the `_SIMPLIFIED` variants or WKT1_ESRI (decision 3).
+- Writing WKT1_ESRI (decision 3).
 - CRSs only Esri defines ([ESRI names](#esri-names)).

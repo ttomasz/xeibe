@@ -54,7 +54,7 @@ def test_missing_modules_say_why() -> None:
         for name, reason in [
             ("pyproj.sync", "not supported"),
             ("pyproj._crs", "private"),
-            ("pyproj.crs.datum", "not implemented yet"),
+            ("pyproj.utils", "not implemented yet"),
             ("pyproj.nothing", "no such module"),
         ]:
             try:

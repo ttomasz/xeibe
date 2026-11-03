@@ -32,7 +32,7 @@ from typing import Any
 from xeibe_proj import _epsg, _native
 from xeibe_proj._json import JsonDict, as_dict, get_dict, get_dicts
 
-__all__ = ["SCHEMA", "projection", "transformer_json"]
+__all__ = ["SCHEMA", "crs_conversion", "epsg_operation", "epsg_operations_named", "projection", "transformer_json"]
 
 SCHEMA = "https://proj.org/schemas/v0.7/projjson.schema.json"
 # EPSG's year, in seconds: what the time parameters were converted with.
@@ -248,6 +248,57 @@ def _epsg_operation(code: int) -> JsonDict | None:
     if remarks:
         out["remarks"] = remarks
     return out
+
+
+def crs_conversion(crs_code: int) -> int | None:
+    """The code of the conversion of EPSG's projected CRS ``crs_code``."""
+    return _registry().projections.get(crs_code)
+
+
+def epsg_operation(code: int) -> JsonDict | None:
+    """One of EPSG's transformations or concatenated operations on its
+    own, as PROJ writes it: a concatenated operation with its steps."""
+    reg = _registry()
+    op = reg.ops.get(code)
+    if op is None or op.get("table") != "concatenated_operation":
+        return _epsg_operation(code)
+    out: JsonDict = {"type": "ConcatenatedOperation", "name": op["name"]}
+    for key, crs in (("source_crs", op.get("src")), ("target_crs", op.get("dst"))):
+        j = _epsg.projjson(crs) if isinstance(crs, int) else None
+        if j is not None:
+            out[key] = _without_schema(j)
+    out["steps"] = [s for s in (_epsg_operation(c) for c in op.get("steps", [])) if s is not None]
+    if op.get("accuracy") is not None and float(op["accuracy"]) != _UNKNOWN_ACCURACY:
+        out["accuracy"] = str(float(op["accuracy"]))
+    out.update(_usage(op.get("extents", []), op.get("scope")))
+    out["id"] = {"authority": "EPSG", "code": code}
+    remarks = _native.operation_remarks(code)
+    if remarks:
+        out["remarks"] = remarks
+    return out
+
+
+def epsg_operations_named(name: str, tables: tuple[str, ...]) -> list[int]:
+    """The codes of EPSG's operations in these of PROJ's tables
+    (``helmert_transformation``, ``concatenated_operation``, …) with this
+    name, in PROJ's order: current ones first, then by name. Names equal
+    ignoring case come before those equal only by ``name_key``, as
+    ``xeibe_crs::objects_by_name`` orders them."""
+    key, lower = _native.name_key(name), name.lower()
+    found = [
+        o
+        for o in _registry().ops.values()
+        if o.get("table") in tables and _native.name_key(str(o["name"])) == key
+    ]
+    found.sort(
+        key=lambda o: (
+            str(o["name"]).lower() != lower,
+            bool(o.get("deprecated")),
+            str(o["name"]),
+            int(o["code"]),
+        )
+    )
+    return [int(o["code"]) for o in found]
 
 
 def _zero(code: int, name: str, unit: str) -> JsonDict:

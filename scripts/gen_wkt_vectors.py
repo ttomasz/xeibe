@@ -13,7 +13,8 @@ CRS PROJ has, deprecated ones included, two files:
 
 * `wkt.jsonl`: PROJ's `to_wkt()` in `WKT2_2019`, `WKT2_2015`, `WKT1_GDAL` and
   `WKT1_ESRI` (single line), `null` with the error in `errors` where PROJ
-  can't write a version; and PROJ's reading of each string back: whether it
+  can't write a version, and in `WKT2_2019_SIMPLIFIED` and
+  `WKT2_2015_SIMPLIFIED` (written only); and PROJ's reading of each string back: whether it
   `equals` the original, also with `ignore_axis_order`, and its axis
   directions (what the WKT1 axis rules are measured on).
 * `epsg.jsonl`: EPSG's own WKT2 2019 for each CRS, from the "WKT File"
@@ -76,6 +77,8 @@ COMMITTED = ROOT / "tests/data/crs-wkt"
 ALL = ROOT / "target/crs-wkt"
 
 VERSIONS = ("WKT2_2019", "WKT2_2015", "WKT1_GDAL", "WKT1_ESRI")
+# Written only, for the writer's tests: not read back or identified.
+SIMPLIFIED = ("WKT2_2019_SIMPLIFIED", "WKT2_2015_SIMPLIFIED")
 ID_KEYWORDS = {"WKT2_2019": {"ID"}, "WKT2_2015": {"ID"}, "WKT1_GDAL": {"AUTHORITY"}, "WKT1_ESRI": {"AUTHORITY"}}
 MAX_MATCHES = 5
 
@@ -231,6 +234,11 @@ def vectors(code: int, deprecated: bool) -> tuple[dict, list[dict]] | None:
         "wkt": {},
     }
     errors, read, ids = {}, {}, []
+    for version in SIMPLIFIED:
+        try:
+            record["wkt"][version] = crs.to_wkt(version)
+        except pyproj.exceptions.CRSError:
+            record["wkt"][version] = None
     for version in VERSIONS:
         try:
             wkt = crs.to_wkt(version)

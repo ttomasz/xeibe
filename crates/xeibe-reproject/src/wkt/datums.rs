@@ -17,6 +17,19 @@ const TRADITIONAL: &[(&str, u32)] = &[
     ("Greenland 1996", 1421),
 ];
 
+/// The datum name PROJ writes for an ensemble where ensembles can't be
+/// written: the traditional name of these three, else the ensemble's.
+pub(crate) fn traditional(ensemble: &str) -> &str {
+    match ensemble {
+        "World Geodetic System 1984 ensemble" => "World Geodetic System 1984",
+        "European Terrestrial Reference System 1989 ensemble" => {
+            "European Terrestrial Reference System 1989"
+        }
+        "Greenland Reference 1996 ensemble" => "Greenland 1996",
+        other => other,
+    }
+}
+
 fn index() -> &'static HashMap<String, Vec<u32>> {
     static INDEX: OnceLock<HashMap<String, Vec<u32>>> = OnceLock::new();
     INDEX.get_or_init(|| {

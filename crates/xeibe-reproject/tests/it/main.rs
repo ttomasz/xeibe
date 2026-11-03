@@ -6,6 +6,7 @@ mod explain;
 mod geodesic;
 mod grids;
 mod operations;
+mod parts;
 mod proj_string;
 mod support;
 mod transformations;

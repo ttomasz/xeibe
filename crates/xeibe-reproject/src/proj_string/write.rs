@@ -160,7 +160,9 @@ impl Formatter {
             Some("ProjectedCRS") => self.projected(v),
             // A rotated pole (`ob_tran`): the conversion, then the base's datum.
             Some("DerivedGeographicCRS") => {
-                let conv = &v["conversion"];
+                // CF's rotated pole as the `ob_tran` PROJ makes of it.
+                let cf = crate::methods::pole_rotation_as_ob_tran(&v["conversion"]);
+                let conv = cf.as_ref().unwrap_or(&v["conversion"]);
                 if !conv["method"]["name"]
                     .as_str()
                     .is_some_and(|n| n.starts_with("PROJ "))

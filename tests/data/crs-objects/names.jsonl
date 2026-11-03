@@ -1,0 +1,1156 @@
+{"generator": "scripts/gen_object_vectors.py", "pyproj": "3.8.0", "proj": "9.8.1", "epsg": "v13.106", "notice": "EPSG Dataset (IOGP) rendered by PROJ; see crates/xeibe-crs/EPSG-NOTICE.md"}
+{"kind":"ellipsoid","name":"ATS_1977","of":7041,"source":"ESRI","found":["EPSG",7041]}
+{"kind":"ellipsoid","name":"ats_1977","of":7041,"source":"ESRI","found":["EPSG",7041]}
+{"kind":"ellipsoid","name":"Airy 1830","of":7001,"source":"name","found":["EPSG",7001]}
+{"kind":"ellipsoid","name":"aIRY 1830","of":7001,"source":"name","found":["EPSG",7001]}
+{"kind":"ellipsoid","name":"Airy Modified 1849","of":7002,"source":"name","found":["EPSG",7002]}
+{"kind":"ellipsoid","name":"aIRY mODIFIED 1849","of":7002,"source":"name","found":["EPSG",7002]}
+{"kind":"ellipsoid","name":"Airy_1830","of":7001,"source":"ESRI","found":["EPSG",7001]}
+{"kind":"ellipsoid","name":"aIRY_1830","of":7001,"source":"ESRI","found":["EPSG",7001]}
+{"kind":"ellipsoid","name":"Airy_Modified","of":7002,"source":"ESRI","found":["EPSG",7002]}
+{"kind":"ellipsoid","name":"aIRY_mODIFIED","of":7002,"source":"ESRI","found":["EPSG",7002]}
+{"kind":"ellipsoid","name":"Australian","of":7003,"source":"ESRI","found":["EPSG",7003]}
+{"kind":"ellipsoid","name":"aUSTRALIAN","of":7003,"source":"ESRI","found":["EPSG",7003]}
+{"kind":"ellipsoid","name":"Australian National Spheroid","of":7003,"source":"name","found":["EPSG",7003]}
+{"kind":"ellipsoid","name":"aUSTRALIAN nATIONAL sPHEROID","of":7003,"source":"name","found":["EPSG",7003]}
+{"kind":"ellipsoid","name":"Average Terrestrial System 1977","of":7041,"source":"name","found":["EPSG",7041]}
+{"kind":"ellipsoid","name":"aVERAGE tERRESTRIAL sYSTEM 1977","of":7041,"source":"name","found":["EPSG",7041]}
+{"kind":"ellipsoid","name":"Bessel 1841","of":7004,"source":"name","found":["EPSG",7004]}
+{"kind":"ellipsoid","name":"bESSEL 1841","of":7004,"source":"name","found":["EPSG",7004]}
+{"kind":"ellipsoid","name":"Bessel Modified","of":7005,"source":"name","found":["EPSG",7005]}
+{"kind":"ellipsoid","name":"bESSEL mODIFIED","of":7005,"source":"name","found":["EPSG",7005]}
+{"kind":"ellipsoid","name":"Bessel Namibia","of":7006,"source":"name","found":["EPSG",7006]}
+{"kind":"ellipsoid","name":"bESSEL nAMIBIA","of":7006,"source":"name","found":["EPSG",7006]}
+{"kind":"ellipsoid","name":"Bessel Namibia (deprecated)","of":7006,"source":"name","found":["EPSG",7006]}
+{"kind":"ellipsoid","name":"Bessel Namibia (GLM)","of":7046,"source":"name","found":["EPSG",7046]}
+{"kind":"ellipsoid","name":"bESSEL nAMIBIA (glm)","of":7046,"source":"name","found":["EPSG",7046]}
+{"kind":"ellipsoid","name":"Bessel_1841","of":7004,"source":"ESRI","found":["EPSG",7004]}
+{"kind":"ellipsoid","name":"bESSEL_1841","of":7004,"source":"ESRI","found":["EPSG",7004]}
+{"kind":"ellipsoid","name":"Bessel_Modified","of":7005,"source":"ESRI","found":["EPSG",7005]}
+{"kind":"ellipsoid","name":"bESSEL_mODIFIED","of":7005,"source":"ESRI","found":["EPSG",7005]}
+{"kind":"ellipsoid","name":"Bessel_Namibia","of":7006,"source":"ESRI","found":["EPSG",7006]}
+{"kind":"ellipsoid","name":"bESSEL_nAMIBIA","of":7006,"source":"ESRI","found":["EPSG",7006]}
+{"kind":"ellipsoid","name":"Bessel_Namibia (deprecated)","of":7006,"source":"ESRI","found":["EPSG",7006]}
+{"kind":"ellipsoid","name":"CGCS2000","of":1024,"source":"name","found":["EPSG",1024]}
+{"kind":"ellipsoid","name":"cgcs2000","of":1024,"source":"name","found":["EPSG",1024]}
+{"kind":"ellipsoid","name":"Clarke 1858","of":7007,"source":"name","found":["EPSG",7007]}
+{"kind":"ellipsoid","name":"cLARKE 1858","of":7007,"source":"name","found":["EPSG",7007]}
+{"kind":"ellipsoid","name":"Clarke 1866","of":7008,"source":"name","found":["EPSG",7008]}
+{"kind":"ellipsoid","name":"cLARKE 1866","of":7008,"source":"name","found":["EPSG",7008]}
+{"kind":"ellipsoid","name":"Clarke 1866 Authalic Sphere","of":7052,"source":"name","found":["EPSG",7052]}
+{"kind":"ellipsoid","name":"cLARKE 1866 aUTHALIC sPHERE","of":7052,"source":"name","found":["EPSG",7052]}
+{"kind":"ellipsoid","name":"Clarke 1866 Michigan","of":7009,"source":"name","found":["EPSG",7009]}
+{"kind":"ellipsoid","name":"cLARKE 1866 mICHIGAN","of":7009,"source":"name","found":["EPSG",7009]}
+{"kind":"ellipsoid","name":"Clarke 1866 Michigan (deprecated)","of":7009,"source":"name","found":["EPSG",7009]}
+{"kind":"ellipsoid","name":"Clarke 1880","of":7034,"source":"name","found":["EPSG",7034]}
+{"kind":"ellipsoid","name":"cLARKE 1880","of":7034,"source":"name","found":["EPSG",7034]}
+{"kind":"ellipsoid","name":"Clarke 1880 (Arc)","of":7013,"source":"name","found":["EPSG",7013]}
+{"kind":"ellipsoid","name":"cLARKE 1880 (aRC)","of":7013,"source":"name","found":["EPSG",7013]}
+{"kind":"ellipsoid","name":"Clarke 1880 (Benoit)","of":7010,"source":"name","found":["EPSG",7010]}
+{"kind":"ellipsoid","name":"cLARKE 1880 (bENOIT)","of":7010,"source":"name","found":["EPSG",7010]}
+{"kind":"ellipsoid","name":"Clarke 1880 (IGN)","of":7011,"source":"name","found":["EPSG",7011]}
+{"kind":"ellipsoid","name":"cLARKE 1880 (ign)","of":7011,"source":"name","found":["EPSG",7011]}
+{"kind":"ellipsoid","name":"Clarke 1880 (RGS)","of":7012,"source":"name","found":["EPSG",7012]}
+{"kind":"ellipsoid","name":"cLARKE 1880 (rgs)","of":7012,"source":"name","found":["EPSG",7012]}
+{"kind":"ellipsoid","name":"Clarke 1880 (SGA 1922)","of":7014,"source":"name","found":["EPSG",7014]}
+{"kind":"ellipsoid","name":"cLARKE 1880 (sga 1922)","of":7014,"source":"name","found":["EPSG",7014]}
+{"kind":"ellipsoid","name":"Clarke 1880 (international foot)","of":7055,"source":"name","found":["EPSG",7055]}
+{"kind":"ellipsoid","name":"cLARKE 1880 (INTERNATIONAL FOOT)","of":7055,"source":"name","found":["EPSG",7055]}
+{"kind":"ellipsoid","name":"Clarke_1858","of":7007,"source":"ESRI","found":["EPSG",7007]}
+{"kind":"ellipsoid","name":"cLARKE_1858","of":7007,"source":"ESRI","found":["EPSG",7007]}
+{"kind":"ellipsoid","name":"Clarke_1866","of":7008,"source":"ESRI","found":["EPSG",7008]}
+{"kind":"ellipsoid","name":"cLARKE_1866","of":7008,"source":"ESRI","found":["EPSG",7008]}
+{"kind":"ellipsoid","name":"Clarke_1866_Michigan","of":7009,"source":"ESRI","found":["EPSG",7009]}
+{"kind":"ellipsoid","name":"cLARKE_1866_mICHIGAN","of":7009,"source":"ESRI","found":["EPSG",7009]}
+{"kind":"ellipsoid","name":"Clarke_1866_Michigan (deprecated)","of":7009,"source":"ESRI","found":["EPSG",7009]}
+{"kind":"ellipsoid","name":"Clarke_1880","of":7034,"source":"ESRI","found":["EPSG",7034]}
+{"kind":"ellipsoid","name":"cLARKE_1880","of":7034,"source":"ESRI","found":["EPSG",7034]}
+{"kind":"ellipsoid","name":"Clarke_1880_Arc","of":7013,"source":"ESRI","found":["EPSG",7013]}
+{"kind":"ellipsoid","name":"cLARKE_1880_aRC","of":7013,"source":"ESRI","found":["EPSG",7013]}
+{"kind":"ellipsoid","name":"Clarke_1880_Benoit","of":7010,"source":"ESRI","found":["EPSG",7010]}
+{"kind":"ellipsoid","name":"cLARKE_1880_bENOIT","of":7010,"source":"ESRI","found":["EPSG",7010]}
+{"kind":"ellipsoid","name":"Clarke_1880_IGN","of":7011,"source":"ESRI","found":["EPSG",7011]}
+{"kind":"ellipsoid","name":"cLARKE_1880_ign","of":7011,"source":"ESRI","found":["EPSG",7011]}
+{"kind":"ellipsoid","name":"Clarke_1880_Intl_Ft","of":7055,"source":"ESRI","found":["EPSG",7055]}
+{"kind":"ellipsoid","name":"cLARKE_1880_iNTL_fT","of":7055,"source":"ESRI","found":["EPSG",7055]}
+{"kind":"ellipsoid","name":"Clarke_1880_RGS","of":7012,"source":"ESRI","found":["EPSG",7012]}
+{"kind":"ellipsoid","name":"cLARKE_1880_rgs","of":7012,"source":"ESRI","found":["EPSG",7012]}
+{"kind":"ellipsoid","name":"Clarke_1880_SGA","of":7014,"source":"ESRI","found":["EPSG",7014]}
+{"kind":"ellipsoid","name":"cLARKE_1880_sga","of":7014,"source":"ESRI","found":["EPSG",7014]}
+{"kind":"ellipsoid","name":"Danish 1876","of":7051,"source":"name","found":["EPSG",7051]}
+{"kind":"ellipsoid","name":"dANISH 1876","of":7051,"source":"name","found":["EPSG",7051]}
+{"kind":"ellipsoid","name":"Danish_1876","of":7051,"source":"ESRI","found":["EPSG",7051]}
+{"kind":"ellipsoid","name":"dANISH_1876","of":7051,"source":"ESRI","found":["EPSG",7051]}
+{"kind":"ellipsoid","name":"Everest (1830 Definition)","of":7042,"source":"name","found":["EPSG",7042]}
+{"kind":"ellipsoid","name":"eVEREST (1830 dEFINITION)","of":7042,"source":"name","found":["EPSG",7042]}
+{"kind":"ellipsoid","name":"Everest 1830 (1937 Adjustment)","of":7015,"source":"name","found":["EPSG",7015]}
+{"kind":"ellipsoid","name":"eVEREST 1830 (1937 aDJUSTMENT)","of":7015,"source":"name","found":["EPSG",7015]}
+{"kind":"ellipsoid","name":"Everest 1830 (1962 Definition)","of":7044,"source":"name","found":["EPSG",7044]}
+{"kind":"ellipsoid","name":"eVEREST 1830 (1962 dEFINITION)","of":7044,"source":"name","found":["EPSG",7044]}
+{"kind":"ellipsoid","name":"Everest 1830 (1967 Definition)","of":7016,"source":"name","found":["EPSG",7016]}
+{"kind":"ellipsoid","name":"eVEREST 1830 (1967 dEFINITION)","of":7016,"source":"name","found":["EPSG",7016]}
+{"kind":"ellipsoid","name":"Everest 1830 (1975 Definition)","of":7045,"source":"name","found":["EPSG",7045]}
+{"kind":"ellipsoid","name":"eVEREST 1830 (1975 dEFINITION)","of":7045,"source":"name","found":["EPSG",7045]}
+{"kind":"ellipsoid","name":"Everest 1830 (RSO 1969)","of":7056,"source":"name","found":["EPSG",7056]}
+{"kind":"ellipsoid","name":"eVEREST 1830 (rso 1969)","of":7056,"source":"name","found":["EPSG",7056]}
+{"kind":"ellipsoid","name":"Everest 1830 Modified","of":7018,"source":"name","found":["EPSG",7018]}
+{"kind":"ellipsoid","name":"eVEREST 1830 mODIFIED","of":7018,"source":"name","found":["EPSG",7018]}
+{"kind":"ellipsoid","name":"Everest_1830","of":7042,"source":"ESRI","found":["EPSG",7042]}
+{"kind":"ellipsoid","name":"eVEREST_1830","of":7042,"source":"ESRI","found":["EPSG",7042]}
+{"kind":"ellipsoid","name":"Everest_1830_Modified","of":7018,"source":"ESRI","found":["EPSG",7018]}
+{"kind":"ellipsoid","name":"eVEREST_1830_mODIFIED","of":7018,"source":"ESRI","found":["EPSG",7018]}
+{"kind":"ellipsoid","name":"Everest_Adjustment_1937","of":7015,"source":"ESRI","found":["EPSG",7015]}
+{"kind":"ellipsoid","name":"eVEREST_aDJUSTMENT_1937","of":7015,"source":"ESRI","found":["EPSG",7015]}
+{"kind":"ellipsoid","name":"Everest_Definition_1962","of":7044,"source":"ESRI","found":["EPSG",7044]}
+{"kind":"ellipsoid","name":"eVEREST_dEFINITION_1962","of":7044,"source":"ESRI","found":["EPSG",7044]}
+{"kind":"ellipsoid","name":"Everest_Definition_1967","of":7016,"source":"ESRI","found":["EPSG",7016]}
+{"kind":"ellipsoid","name":"eVEREST_dEFINITION_1967","of":7016,"source":"ESRI","found":["EPSG",7016]}
+{"kind":"ellipsoid","name":"Everest_Definition_1975","of":7045,"source":"ESRI","found":["EPSG",7045]}
+{"kind":"ellipsoid","name":"eVEREST_dEFINITION_1975","of":7045,"source":"ESRI","found":["EPSG",7045]}
+{"kind":"ellipsoid","name":"Everest_Modified_1969","of":7056,"source":"ESRI","found":["EPSG",7056]}
+{"kind":"ellipsoid","name":"eVEREST_mODIFIED_1969","of":7056,"source":"ESRI","found":["EPSG",7056]}
+{"kind":"ellipsoid","name":"GEM 10C","of":7031,"source":"name","found":["EPSG",7031]}
+{"kind":"ellipsoid","name":"gem 10c","of":7031,"source":"name","found":["EPSG",7031]}
+{"kind":"ellipsoid","name":"GEM_10C","of":7031,"source":"ESRI","found":["EPSG",7031]}
+{"kind":"ellipsoid","name":"gem_10c","of":7031,"source":"ESRI","found":["EPSG",7031]}
+{"kind":"ellipsoid","name":"GRS 1967","of":7036,"source":"name","found":["EPSG",7036]}
+{"kind":"ellipsoid","name":"grs 1967","of":7036,"source":"name","found":["EPSG",7036]}
+{"kind":"ellipsoid","name":"GRS 1967 Modified","of":7050,"source":"name","found":["EPSG",7050]}
+{"kind":"ellipsoid","name":"grs 1967 mODIFIED","of":7050,"source":"name","found":["EPSG",7050]}
+{"kind":"ellipsoid","name":"GRS 1980","of":7019,"source":"name","found":["EPSG",7019]}
+{"kind":"ellipsoid","name":"grs 1980","of":7019,"source":"name","found":["EPSG",7019]}
+{"kind":"ellipsoid","name":"GRS 1980 Authalic Sphere","of":7047,"source":"name","found":["EPSG",7048]}
+{"kind":"ellipsoid","name":"grs 1980 aUTHALIC sPHERE","of":7047,"source":"name","found":["EPSG",7048]}
+{"kind":"ellipsoid","name":"GRS 1980 Authalic Sphere (deprecated)","of":7047,"source":"name","found":["EPSG",7047]}
+{"kind":"ellipsoid","name":"GRS 1980 Authalic Sphere","of":7048,"source":"name","found":["EPSG",7048]}
+{"kind":"ellipsoid","name":"grs 1980 aUTHALIC sPHERE","of":7048,"source":"name","found":["EPSG",7048]}
+{"kind":"ellipsoid","name":"GRS_1967","of":7036,"source":"ESRI","found":["EPSG",7036]}
+{"kind":"ellipsoid","name":"grs_1967","of":7036,"source":"ESRI","found":["EPSG",7036]}
+{"kind":"ellipsoid","name":"GRS_1967_Truncated","of":7050,"source":"ESRI","found":["EPSG",7050]}
+{"kind":"ellipsoid","name":"grs_1967_tRUNCATED","of":7050,"source":"ESRI","found":["EPSG",7050]}
+{"kind":"ellipsoid","name":"GRS_1980","of":7019,"source":"ESRI","found":["EPSG",7019]}
+{"kind":"ellipsoid","name":"grs_1980","of":7019,"source":"ESRI","found":["EPSG",7019]}
+{"kind":"ellipsoid","name":"GSK-2011","of":1025,"source":"name","found":["EPSG",1025]}
+{"kind":"ellipsoid","name":"gsk-2011","of":1025,"source":"name","found":["EPSG",1025]}
+{"kind":"ellipsoid","name":"Helmert 1906","of":7020,"source":"name","found":["EPSG",7020]}
+{"kind":"ellipsoid","name":"hELMERT 1906","of":7020,"source":"name","found":["EPSG",7020]}
+{"kind":"ellipsoid","name":"Helmert_1906","of":7020,"source":"ESRI","found":["EPSG",7020]}
+{"kind":"ellipsoid","name":"hELMERT_1906","of":7020,"source":"ESRI","found":["EPSG",7020]}
+{"kind":"ellipsoid","name":"Hough 1960","of":7053,"source":"name","found":["EPSG",7053]}
+{"kind":"ellipsoid","name":"hOUGH 1960","of":7053,"source":"name","found":["EPSG",7053]}
+{"kind":"ellipsoid","name":"Hough_1960","of":7053,"source":"ESRI","found":["EPSG",7053]}
+{"kind":"ellipsoid","name":"hOUGH_1960","of":7053,"source":"ESRI","found":["EPSG",7053]}
+{"kind":"ellipsoid","name":"Hughes 1980","of":7058,"source":"name","found":["EPSG",7058]}
+{"kind":"ellipsoid","name":"hUGHES 1980","of":7058,"source":"name","found":["EPSG",7058]}
+{"kind":"ellipsoid","name":"Hughes_1980","of":7058,"source":"ESRI","found":["EPSG",7058]}
+{"kind":"ellipsoid","name":"hUGHES_1980","of":7058,"source":"ESRI","found":["EPSG",7058]}
+{"kind":"ellipsoid","name":"IAG 1975","of":7049,"source":"name","found":["EPSG",7049]}
+{"kind":"ellipsoid","name":"iag 1975","of":7049,"source":"name","found":["EPSG",7049]}
+{"kind":"ellipsoid","name":"Indonesian","of":7021,"source":"ESRI","found":["EPSG",7021]}
+{"kind":"ellipsoid","name":"iNDONESIAN","of":7021,"source":"ESRI","found":["EPSG",7021]}
+{"kind":"ellipsoid","name":"Indonesian National Spheroid","of":7021,"source":"name","found":["EPSG",7021]}
+{"kind":"ellipsoid","name":"iNDONESIAN nATIONAL sPHEROID","of":7021,"source":"name","found":["EPSG",7021]}
+{"kind":"ellipsoid","name":"International 1924","of":7022,"source":"name","found":["EPSG",7022]}
+{"kind":"ellipsoid","name":"iNTERNATIONAL 1924","of":7022,"source":"name","found":["EPSG",7022]}
+{"kind":"ellipsoid","name":"International 1924 Authalic Sphere","of":7057,"source":"name","found":["EPSG",7057]}
+{"kind":"ellipsoid","name":"iNTERNATIONAL 1924 aUTHALIC sPHERE","of":7057,"source":"name","found":["EPSG",7057]}
+{"kind":"ellipsoid","name":"International_1924","of":7022,"source":"ESRI","found":["EPSG",7022]}
+{"kind":"ellipsoid","name":"iNTERNATIONAL_1924","of":7022,"source":"ESRI","found":["EPSG",7022]}
+{"kind":"ellipsoid","name":"Krasovsky_1940","of":7024,"source":"ESRI","found":["EPSG",7024]}
+{"kind":"ellipsoid","name":"kRASOVSKY_1940","of":7024,"source":"ESRI","found":["EPSG",7024]}
+{"kind":"ellipsoid","name":"Krassowsky 1940","of":7024,"source":"name","found":["EPSG",7024]}
+{"kind":"ellipsoid","name":"kRASSOWSKY 1940","of":7024,"source":"name","found":["EPSG",7024]}
+{"kind":"ellipsoid","name":"NWL 9D","of":7025,"source":"name","found":["EPSG",7025]}
+{"kind":"ellipsoid","name":"nwl 9d","of":7025,"source":"name","found":["EPSG",7025]}
+{"kind":"ellipsoid","name":"NWL_9D","of":7025,"source":"ESRI","found":["EPSG",7025]}
+{"kind":"ellipsoid","name":"nwl_9d","of":7025,"source":"ESRI","found":["EPSG",7025]}
+{"kind":"ellipsoid","name":"OSU86F","of":7032,"source":"name","found":["EPSG",7032]}
+{"kind":"ellipsoid","name":"osu86f","of":7032,"source":"name","found":["EPSG",7032]}
+{"kind":"ellipsoid","name":"OSU91A","of":7033,"source":"name","found":["EPSG",7033]}
+{"kind":"ellipsoid","name":"osu91a","of":7033,"source":"name","found":["EPSG",7033]}
+{"kind":"ellipsoid","name":"OSU_86F","of":7032,"source":"ESRI","found":["EPSG",7032]}
+{"kind":"ellipsoid","name":"osu_86f","of":7032,"source":"ESRI","found":["EPSG",7032]}
+{"kind":"ellipsoid","name":"OSU_91A","of":7033,"source":"ESRI","found":["EPSG",7033]}
+{"kind":"ellipsoid","name":"osu_91a","of":7033,"source":"ESRI","found":["EPSG",7033]}
+{"kind":"ellipsoid","name":"PZ-90","of":7054,"source":"name","found":["EPSG",7054]}
+{"kind":"ellipsoid","name":"pz-90","of":7054,"source":"name","found":["EPSG",7054]}
+{"kind":"ellipsoid","name":"PZ_1990","of":7054,"source":"ESRI","found":["EPSG",7054]}
+{"kind":"ellipsoid","name":"pz_1990","of":7054,"source":"ESRI","found":["EPSG",7054]}
+{"kind":"ellipsoid","name":"Plessis 1817","of":7027,"source":"name","found":["EPSG",7027]}
+{"kind":"ellipsoid","name":"pLESSIS 1817","of":7027,"source":"name","found":["EPSG",7027]}
+{"kind":"ellipsoid","name":"Plessis_1817","of":7027,"source":"ESRI","found":["EPSG",7027]}
+{"kind":"ellipsoid","name":"pLESSIS_1817","of":7027,"source":"ESRI","found":["EPSG",7027]}
+{"kind":"ellipsoid","name":"Popular Visualisation Sphere","of":7059,"source":"name","found":["EPSG",7059]}
+{"kind":"ellipsoid","name":"pOPULAR vISUALISATION sPHERE","of":7059,"source":"name","found":["EPSG",7059]}
+{"kind":"ellipsoid","name":"Popular Visualisation Sphere (deprecated)","of":7059,"source":"name","found":["EPSG",7059]}
+{"kind":"ellipsoid","name":"Sphere","of":7035,"source":"name","found":["EPSG",7035]}
+{"kind":"ellipsoid","name":"sPHERE","of":7035,"source":"name","found":["EPSG",7035]}
+{"kind":"ellipsoid","name":"Sphere (deprecated)","of":7035,"source":"name","found":["EPSG",7035]}
+{"kind":"ellipsoid","name":"Sphere_Clarke_1866_Authalic","of":7052,"source":"ESRI","found":["EPSG",7052]}
+{"kind":"ellipsoid","name":"sPHERE_cLARKE_1866_aUTHALIC","of":7052,"source":"ESRI","found":["EPSG",7052]}
+{"kind":"ellipsoid","name":"Sphere_GRS_1980_Authalic","of":7048,"source":"ESRI","found":["EPSG",7048]}
+{"kind":"ellipsoid","name":"sPHERE_grs_1980_aUTHALIC","of":7048,"source":"ESRI","found":["EPSG",7048]}
+{"kind":"ellipsoid","name":"Sphere_International_1924_Authalic","of":7057,"source":"ESRI","found":["EPSG",7057]}
+{"kind":"ellipsoid","name":"sPHERE_iNTERNATIONAL_1924_aUTHALIC","of":7057,"source":"ESRI","found":["EPSG",7057]}
+{"kind":"ellipsoid","name":"Struve 1860","of":7028,"source":"name","found":["EPSG",7028]}
+{"kind":"ellipsoid","name":"sTRUVE 1860","of":7028,"source":"name","found":["EPSG",7028]}
+{"kind":"ellipsoid","name":"Struve_1860","of":7028,"source":"ESRI","found":["EPSG",7028]}
+{"kind":"ellipsoid","name":"sTRUVE_1860","of":7028,"source":"ESRI","found":["EPSG",7028]}
+{"kind":"ellipsoid","name":"WGS 72","of":7043,"source":"name","found":["EPSG",7043]}
+{"kind":"ellipsoid","name":"wgs 72","of":7043,"source":"name","found":["EPSG",7043]}
+{"kind":"ellipsoid","name":"WGS 84","of":7030,"source":"name","found":["EPSG",7030]}
+{"kind":"ellipsoid","name":"wgs 84","of":7030,"source":"name","found":["EPSG",7030]}
+{"kind":"ellipsoid","name":"WGS_1972","of":7043,"source":"ESRI","found":["EPSG",7043]}
+{"kind":"ellipsoid","name":"wgs_1972","of":7043,"source":"ESRI","found":["EPSG",7043]}
+{"kind":"ellipsoid","name":"WGS_1984","of":7030,"source":"ESRI","found":["EPSG",7030]}
+{"kind":"ellipsoid","name":"wgs_1984","of":7030,"source":"ESRI","found":["EPSG",7030]}
+{"kind":"ellipsoid","name":"WGS_1984_Major_Auxiliary_Sphere","of":7059,"source":"ESRI","found":["ESRI",107037]}
+{"kind":"ellipsoid","name":"wgs_1984_mAJOR_aUXILIARY_sPHERE","of":7059,"source":"ESRI","found":["ESRI",107037]}
+{"kind":"ellipsoid","name":"WGS_1984_Major_Auxiliary_Sphere (deprecated)","of":7059,"source":"ESRI","found":["ESRI",107037]}
+{"kind":"ellipsoid","name":"War Office","of":7029,"source":"name","found":["EPSG",7029]}
+{"kind":"ellipsoid","name":"wAR oFFICE","of":7029,"source":"name","found":["EPSG",7029]}
+{"kind":"ellipsoid","name":"War_Office","of":7029,"source":"ESRI","found":["EPSG",7029]}
+{"kind":"ellipsoid","name":"wAR_oFFICE","of":7029,"source":"ESRI","found":["EPSG",7029]}
+{"kind":"ellipsoid","name":"Xian_1980","of":7049,"source":"ESRI","found":["EPSG",7049]}
+{"kind":"ellipsoid","name":"xIAN_1980","of":7049,"source":"ESRI","found":["EPSG",7049]}
+{"kind":"ellipsoid","name":"Zach 1812","of":1026,"source":"name","found":["EPSG",1026]}
+{"kind":"ellipsoid","name":"zACH 1812","of":1026,"source":"name","found":["EPSG",1026]}
+{"kind":"ellipsoid","name":"Zach_1812","of":1026,"source":"ESRI","found":["EPSG",1026]}
+{"kind":"ellipsoid","name":"zACH_1812","of":1026,"source":"ESRI","found":["EPSG",1026]}
+{"kind":"prime_meridian","name":"Athens","of":8912,"source":"name","found":["EPSG",8912]}
+{"kind":"prime_meridian","name":"aTHENS","of":8912,"source":"name","found":["EPSG",8912]}
+{"kind":"prime_meridian","name":"Bern","of":8907,"source":"name","found":["EPSG",8907]}
+{"kind":"prime_meridian","name":"bERN","of":8907,"source":"name","found":["EPSG",8907]}
+{"kind":"prime_meridian","name":"Bogota","of":8904,"source":"name","found":["EPSG",8904]}
+{"kind":"prime_meridian","name":"bOGOTA","of":8904,"source":"name","found":["EPSG",8904]}
+{"kind":"prime_meridian","name":"Brussels","of":8910,"source":"name","found":["EPSG",8910]}
+{"kind":"prime_meridian","name":"bRUSSELS","of":8910,"source":"name","found":["EPSG",8910]}
+{"kind":"prime_meridian","name":"Copenhagen","of":1026,"source":"name","found":["EPSG",1026]}
+{"kind":"prime_meridian","name":"cOPENHAGEN","of":1026,"source":"name","found":["EPSG",1026]}
+{"kind":"prime_meridian","name":"Ferro","of":8909,"source":"name","found":["EPSG",8909]}
+{"kind":"prime_meridian","name":"fERRO","of":8909,"source":"name","found":["EPSG",8909]}
+{"kind":"prime_meridian","name":"Greenwich","of":8901,"source":"name","found":["EPSG",8901]}
+{"kind":"prime_meridian","name":"gREENWICH","of":8901,"source":"name","found":["EPSG",8901]}
+{"kind":"prime_meridian","name":"Jakarta","of":8908,"source":"name","found":["EPSG",8908]}
+{"kind":"prime_meridian","name":"jAKARTA","of":8908,"source":"name","found":["EPSG",8908]}
+{"kind":"prime_meridian","name":"Lisbon","of":8902,"source":"name","found":["EPSG",8902]}
+{"kind":"prime_meridian","name":"lISBON","of":8902,"source":"name","found":["EPSG",8902]}
+{"kind":"prime_meridian","name":"Madrid","of":8905,"source":"name","found":["EPSG",8905]}
+{"kind":"prime_meridian","name":"mADRID","of":8905,"source":"name","found":["EPSG",8905]}
+{"kind":"prime_meridian","name":"Oslo","of":8913,"source":"name","found":["EPSG",8913]}
+{"kind":"prime_meridian","name":"oSLO","of":8913,"source":"name","found":["EPSG",8913]}
+{"kind":"prime_meridian","name":"Paris","of":8903,"source":"name","found":["EPSG",8903]}
+{"kind":"prime_meridian","name":"pARIS","of":8903,"source":"name","found":["EPSG",8903]}
+{"kind":"prime_meridian","name":"Paris RGS","of":8914,"source":"name","found":["EPSG",8914]}
+{"kind":"prime_meridian","name":"pARIS rgs","of":8914,"source":"name","found":["EPSG",8914]}
+{"kind":"prime_meridian","name":"Paris_RGS","of":8914,"source":"ESRI","found":["EPSG",8914]}
+{"kind":"prime_meridian","name":"pARIS_rgs","of":8914,"source":"ESRI","found":["EPSG",8914]}
+{"kind":"prime_meridian","name":"Rome","of":8906,"source":"name","found":["EPSG",8906]}
+{"kind":"prime_meridian","name":"rOME","of":8906,"source":"name","found":["EPSG",8906]}
+{"kind":"prime_meridian","name":"Stockholm","of":8911,"source":"name","found":["EPSG",8911]}
+{"kind":"prime_meridian","name":"sTOCKHOLM","of":8911,"source":"name","found":["EPSG",8911]}
+{"kind":"datum","name":"12th Parallel traverse","of":6620,"source":"EPSG","found":["EPSG",6620]}
+{"kind":"datum","name":"12TH pARALLEL TRAVERSE","of":6620,"source":"EPSG","found":["EPSG",6620]}
+{"kind":"datum","name":"AAD98","of":6176,"source":"EPSG","found":["EPSG",6176]}
+{"kind":"datum","name":"aad98","of":6176,"source":"EPSG","found":["EPSG",6176]}
+{"kind":"datum","name":"AGD84","of":6203,"source":"EPSG","found":["EPSG",6203]}
+{"kind":"datum","name":"agd84","of":6203,"source":"EPSG","found":["EPSG",6203]}
+{"kind":"datum","name":"AGRS2010 (ETRF2000)","of":1427,"source":"name","found":["EPSG",1427]}
+{"kind":"datum","name":"agrs2010 (etrf2000)","of":1427,"source":"name","found":["EPSG",1427]}
+{"kind":"datum","name":"ASTRO DOS 71/4","of":6710,"source":"EPSG","found":["EPSG",6710]}
+{"kind":"datum","name":"astro dos 71/4","of":6710,"source":"EPSG","found":["EPSG",6710]}
+{"kind":"datum","name":"ATRF2014","of":1291,"source":"EPSG","found":["EPSG",1291]}
+{"kind":"datum","name":"atrf2014","of":1291,"source":"EPSG","found":["EPSG",1291]}
+{"kind":"datum","name":"Accra","of":6168,"source":"name","found":["EPSG",6168]}
+{"kind":"datum","name":"aCCRA","of":6168,"source":"name","found":["EPSG",6168]}
+{"kind":"datum","name":"Alboran","of":1363,"source":"name","found":["EPSG",1363]}
+{"kind":"datum","name":"aLBORAN","of":1363,"source":"name","found":["EPSG",1363]}
+{"kind":"datum","name":"Approximate Lowest Astronomical Tide","of":1080,"source":"EPSG","found":["EPSG",1080]}
+{"kind":"datum","name":"aPPROXIMATE lOWEST aSTRONOMICAL tIDE","of":1080,"source":"EPSG","found":["EPSG",1080]}
+{"kind":"datum","name":"Approximate Mean High Water Spring Tides","of":1088,"source":"EPSG","found":["EPSG",1088]}
+{"kind":"datum","name":"aPPROXIMATE mEAN hIGH wATER sPRING tIDES","of":1088,"source":"EPSG","found":["EPSG",1088]}
+{"kind":"datum","name":"Astro DOS 71","of":6710,"source":"name","found":["EPSG",6710]}
+{"kind":"datum","name":"aSTRO dos 71","of":6710,"source":"name","found":["EPSG",6710]}
+{"kind":"datum","name":"Australian Antarctic Datum 1998","of":6176,"source":"name","found":["EPSG",6176]}
+{"kind":"datum","name":"aUSTRALIAN aNTARCTIC dATUM 1998","of":6176,"source":"name","found":["EPSG",6176]}
+{"kind":"datum","name":"Australian Geodetic Datum 1984","of":6203,"source":"name","found":["EPSG",6203]}
+{"kind":"datum","name":"aUSTRALIAN gEODETIC dATUM 1984","of":6203,"source":"name","found":["EPSG",6203]}
+{"kind":"datum","name":"Australian Terrestrial Reference Frame 2014","of":1291,"source":"name","found":["EPSG",1291]}
+{"kind":"datum","name":"aUSTRALIAN tERRESTRIAL rEFERENCE fRAME 2014","of":1291,"source":"name","found":["EPSG",1291]}
+{"kind":"datum","name":"Australian_Terrestrial_Reference_Frame_2014","of":1291,"source":"ESRI","found":["EPSG",1291]}
+{"kind":"datum","name":"aUSTRALIAN_tERRESTRIAL_rEFERENCE_fRAME_2014","of":1291,"source":"ESRI","found":["EPSG",1291]}
+{"kind":"datum","name":"BD50 (Brussels)","of":6809,"source":"EPSG","found":["EPSG",6809]}
+{"kind":"datum","name":"bd50 (bRUSSELS)","of":6809,"source":"EPSG","found":["EPSG",6809]}
+{"kind":"datum","name":"BVD22","of":1451,"source":"EPSG","found":["EPSG",1451]}
+{"kind":"datum","name":"bvd22","of":1451,"source":"EPSG","found":["EPSG",1451]}
+{"kind":"datum","name":"Balboa","of":1072,"source":"EPSG","found":["EPSG",1072]}
+{"kind":"datum","name":"bALBOA","of":1072,"source":"EPSG","found":["EPSG",1072]}
+{"kind":"datum","name":"Batavia","of":6211,"source":"name","found":["EPSG",6211]}
+{"kind":"datum","name":"bATAVIA","of":6211,"source":"name","found":["EPSG",6211]}
+{"kind":"datum","name":"Belfast","of":5131,"source":"EPSG","found":["EPSG",5131]}
+{"kind":"datum","name":"bELFAST","of":5131,"source":"EPSG","found":["EPSG",5131]}
+{"kind":"datum","name":"Belfast","of":5131,"source":"ESRI","found":["EPSG",5131]}
+{"kind":"datum","name":"bELFAST","of":5131,"source":"ESRI","found":["EPSG",5131]}
+{"kind":"datum","name":"Belfast Lough","of":5131,"source":"name","found":["EPSG",5131]}
+{"kind":"datum","name":"bELFAST lOUGH","of":5131,"source":"name","found":["EPSG",5131]}
+{"kind":"datum","name":"Bhutan Vertical Datum 2022","of":1451,"source":"name","found":["EPSG",1451]}
+{"kind":"datum","name":"bHUTAN vERTICAL dATUM 2022","of":1451,"source":"name","found":["EPSG",1451]}
+{"kind":"datum","name":"Bioko","of":1136,"source":"name","found":["EPSG",1136]}
+{"kind":"datum","name":"bIOKO","of":1136,"source":"name","found":["EPSG",1136]}
+{"kind":"datum","name":"CD UK & Ireland VORF08","of":1331,"source":"EPSG","found":["EPSG",1331]}
+{"kind":"datum","name":"cd uk & iRELAND vorf08","of":1331,"source":"EPSG","found":["EPSG",1331]}
+{"kind":"datum","name":"CGRS93","of":1112,"source":"EPSG","found":["EPSG",1112]}
+{"kind":"datum","name":"cgrs93","of":1112,"source":"EPSG","found":["EPSG",1112]}
+{"kind":"datum","name":"CH1903 (Bern)","of":6801,"source":"name","found":["EPSG",6801]}
+{"kind":"datum","name":"ch1903 (bERN)","of":6801,"source":"name","found":["EPSG",6801]}
+{"kind":"datum","name":"CH1903_(Bern)","of":6801,"source":"ESRI","found":["EPSG",6801]}
+{"kind":"datum","name":"ch1903_(bERN)","of":6801,"source":"ESRI","found":["EPSG",6801]}
+{"kind":"datum","name":"Cagliari 1956","of":1307,"source":"name","found":["EPSG",1307]}
+{"kind":"datum","name":"cAGLIARI 1956","of":1307,"source":"name","found":["EPSG",1307]}
+{"kind":"datum","name":"Cagliari_1956","of":1307,"source":"ESRI","found":["EPSG",1307]}
+{"kind":"datum","name":"cAGLIARI_1956","of":1307,"source":"ESRI","found":["EPSG",1307]}
+{"kind":"datum","name":"Camacupa","of":6220,"source":"EPSG","found":["EPSG",6220]}
+{"kind":"datum","name":"cAMACUPA","of":6220,"source":"EPSG","found":["EPSG",6220]}
+{"kind":"datum","name":"Camacupa 1948","of":6220,"source":"name","found":["EPSG",6220]}
+{"kind":"datum","name":"cAMACUPA 1948","of":6220,"source":"name","found":["EPSG",6220]}
+{"kind":"datum","name":"Caspian","of":5106,"source":"EPSG","found":["EPSG",5106]}
+{"kind":"datum","name":"cASPIAN","of":5106,"source":"EPSG","found":["EPSG",5106]}
+{"kind":"datum","name":"Caspian Sea","of":5106,"source":"name","found":["EPSG",5106]}
+{"kind":"datum","name":"cASPIAN sEA","of":5106,"source":"name","found":["EPSG",5106]}
+{"kind":"datum","name":"Caspian_Sea","of":5106,"source":"ESRI","found":["EPSG",5106]}
+{"kind":"datum","name":"cASPIAN_sEA","of":5106,"source":"ESRI","found":["EPSG",5106]}
+{"kind":"datum","name":"Chart Datum UK & Ireland VORF08","of":1331,"source":"name","found":["EPSG",1331]}
+{"kind":"datum","name":"cHART dATUM uk & iRELAND vorf08","of":1331,"source":"name","found":["EPSG",1331]}
+{"kind":"datum","name":"Chart_Datum_UK_Ireland_VORF08","of":1331,"source":"ESRI","found":["EPSG",1331]}
+{"kind":"datum","name":"cHART_dATUM_uk_iRELAND_vorf08","of":1331,"source":"ESRI","found":["EPSG",1331]}
+{"kind":"datum","name":"Chos Malal 1914","of":6160,"source":"name","found":["EPSG",6160]}
+{"kind":"datum","name":"cHOS mALAL 1914","of":6160,"source":"name","found":["EPSG",6160]}
+{"kind":"datum","name":"Constanta","of":5179,"source":"name","found":["EPSG",5179]}
+{"kind":"datum","name":"cONSTANTA","of":5179,"source":"name","found":["EPSG",5179]}
+{"kind":"datum","name":"Cyprus Geodetic Reference System 1993","of":1112,"source":"name","found":["EPSG",1112]}
+{"kind":"datum","name":"cYPRUS gEODETIC rEFERENCE sYSTEM 1993","of":1112,"source":"name","found":["EPSG",1112]}
+{"kind":"datum","name":"DIBA15 Intermediate Reference Frame","of":1339,"source":"name","found":["EPSG",1339]}
+{"kind":"datum","name":"diba15 iNTERMEDIATE rEFERENCE fRAME","of":1339,"source":"name","found":["EPSG",1339]}
+{"kind":"datum","name":"DIBA15-IRF","of":1339,"source":"EPSG","found":["EPSG",1339]}
+{"kind":"datum","name":"diba15-irf","of":1339,"source":"EPSG","found":["EPSG",1339]}
+{"kind":"datum","name":"DIBA15_Intermediate_Reference_Frame","of":1339,"source":"ESRI","found":["EPSG",1339]}
+{"kind":"datum","name":"diba15_iNTERMEDIATE_rEFERENCE_fRAME","of":1339,"source":"ESRI","found":["EPSG",1339]}
+{"kind":"datum","name":"DVR90 ensemble","of":1371,"source":"EPSG","found":["EPSG",1371]}
+{"kind":"datum","name":"dvr90 ENSEMBLE","of":1371,"source":"EPSG","found":["EPSG",1371]}
+{"kind":"datum","name":"D_Accra","of":6168,"source":"ESRI","found":["EPSG",6168]}
+{"kind":"datum","name":"d_aCCRA","of":6168,"source":"ESRI","found":["EPSG",6168]}
+{"kind":"datum","name":"D_Australian_1984","of":6203,"source":"ESRI","found":["EPSG",6203]}
+{"kind":"datum","name":"d_aUSTRALIAN_1984","of":6203,"source":"ESRI","found":["EPSG",6203]}
+{"kind":"datum","name":"D_Australian_Antarctic_1998","of":6176,"source":"ESRI","found":["EPSG",6176]}
+{"kind":"datum","name":"d_aUSTRALIAN_aNTARCTIC_1998","of":6176,"source":"ESRI","found":["EPSG",6176]}
+{"kind":"datum","name":"D_Batavia","of":6211,"source":"ESRI","found":["EPSG",6211]}
+{"kind":"datum","name":"d_bATAVIA","of":6211,"source":"ESRI","found":["EPSG",6211]}
+{"kind":"datum","name":"D_Bessel_1841","of":6004,"source":"ESRI","found":["EPSG",6004]}
+{"kind":"datum","name":"d_bESSEL_1841","of":6004,"source":"ESRI","found":["EPSG",6004]}
+{"kind":"datum","name":"D_Bessel_1841 (deprecated)","of":6004,"source":"ESRI","found":["EPSG",6004]}
+{"kind":"datum","name":"D_Bioko","of":1136,"source":"ESRI","found":["EPSG",1136]}
+{"kind":"datum","name":"d_bIOKO","of":1136,"source":"ESRI","found":["EPSG",1136]}
+{"kind":"datum","name":"D_Camacupa","of":6220,"source":"ESRI","found":["EPSG",6220]}
+{"kind":"datum","name":"d_cAMACUPA","of":6220,"source":"ESRI","found":["EPSG",6220]}
+{"kind":"datum","name":"D_Chos_Malal_1914","of":6160,"source":"ESRI","found":["EPSG",6160]}
+{"kind":"datum","name":"d_cHOS_mALAL_1914","of":6160,"source":"ESRI","found":["EPSG",6160]}
+{"kind":"datum","name":"D_Clarke_1880_RGS","of":6012,"source":"ESRI","found":["EPSG",6012]}
+{"kind":"datum","name":"d_cLARKE_1880_rgs","of":6012,"source":"ESRI","found":["EPSG",6012]}
+{"kind":"datum","name":"D_Clarke_1880_RGS (deprecated)","of":6012,"source":"ESRI","found":["EPSG",6012]}
+{"kind":"datum","name":"D_Cyprus_Geodetic_Reference_System_1993","of":1112,"source":"ESRI","found":["EPSG",1112]}
+{"kind":"datum","name":"d_cYPRUS_gEODETIC_rEFERENCE_sYSTEM_1993","of":1112,"source":"ESRI","found":["EPSG",1112]}
+{"kind":"datum","name":"D_DOS_71_4","of":6710,"source":"ESRI","found":["EPSG",6710]}
+{"kind":"datum","name":"d_dos_71_4","of":6710,"source":"ESRI","found":["EPSG",6710]}
+{"kind":"datum","name":"D_Douala","of":6228,"source":"ESRI","found":["EPSG",6228]}
+{"kind":"datum","name":"d_dOUALA","of":6228,"source":"ESRI","found":["EPSG",6228]}
+{"kind":"datum","name":"D_Douala (deprecated)","of":6228,"source":"ESRI","found":["EPSG",6228]}
+{"kind":"datum","name":"D_GDBD2009","of":1056,"source":"ESRI","found":["EPSG",1056]}
+{"kind":"datum","name":"d_gdbd2009","of":1056,"source":"ESRI","found":["EPSG",1056]}
+{"kind":"datum","name":"D_GDM_2000","of":6742,"source":"ESRI","found":["EPSG",6742]}
+{"kind":"datum","name":"d_gdm_2000","of":6742,"source":"ESRI","found":["EPSG",6742]}
+{"kind":"datum","name":"D_GEM_10C","of":6031,"source":"ESRI","found":["EPSG",6031]}
+{"kind":"datum","name":"d_gem_10c","of":6031,"source":"ESRI","found":["EPSG",6031]}
+{"kind":"datum","name":"D_GEM_10C (deprecated)","of":6031,"source":"ESRI","found":["EPSG",6031]}
+{"kind":"datum","name":"D_Greek","of":6120,"source":"ESRI","found":["EPSG",6120]}
+{"kind":"datum","name":"d_gREEK","of":6120,"source":"ESRI","found":["EPSG",6120]}
+{"kind":"datum","name":"D_Grenada_1953","of":6603,"source":"ESRI","found":["EPSG",6603]}
+{"kind":"datum","name":"d_gRENADA_1953","of":6603,"source":"ESRI","found":["EPSG",6603]}
+{"kind":"datum","name":"D_Helle_1954","of":6660,"source":"ESRI","found":["EPSG",6660]}
+{"kind":"datum","name":"d_hELLE_1954","of":6660,"source":"ESRI","found":["EPSG",6660]}
+{"kind":"datum","name":"D_Hong_Kong_1980","of":6611,"source":"ESRI","found":["EPSG",6611]}
+{"kind":"datum","name":"d_hONG_kONG_1980","of":6611,"source":"ESRI","found":["EPSG",6611]}
+{"kind":"datum","name":"D_Hu_Tzu_Shan","of":6236,"source":"ESRI","found":["EPSG",6236]}
+{"kind":"datum","name":"d_hU_tZU_sHAN","of":6236,"source":"ESRI","found":["EPSG",6236]}
+{"kind":"datum","name":"D_Hungarian_Datum_1909","of":1024,"source":"ESRI","found":["EPSG",1024]}
+{"kind":"datum","name":"d_hUNGARIAN_dATUM_1909","of":1024,"source":"ESRI","found":["EPSG",1024]}
+{"kind":"datum","name":"D_IGM_1995","of":6670,"source":"ESRI","found":["EPSG",6670]}
+{"kind":"datum","name":"d_igm_1995","of":6670,"source":"ESRI","found":["EPSG",6670]}
+{"kind":"datum","name":"D_ITRF_1993","of":6652,"source":"ESRI","found":["EPSG",6652]}
+{"kind":"datum","name":"d_itrf_1993","of":6652,"source":"ESRI","found":["EPSG",6652]}
+{"kind":"datum","name":"D_Indonesian","of":6021,"source":"ESRI","found":["EPSG",6021]}
+{"kind":"datum","name":"d_iNDONESIAN","of":6021,"source":"ESRI","found":["EPSG",6021]}
+{"kind":"datum","name":"D_Indonesian (deprecated)","of":6021,"source":"ESRI","found":["EPSG",6021]}
+{"kind":"datum","name":"D_JGD_2011","of":1128,"source":"ESRI","found":["EPSG",1128]}
+{"kind":"datum","name":"d_jgd_2011","of":1128,"source":"ESRI","found":["EPSG",1128]}
+{"kind":"datum","name":"D_Jamaica_2001","of":6758,"source":"ESRI","found":["EPSG",6758]}
+{"kind":"datum","name":"d_jAMAICA_2001","of":6758,"source":"ESRI","found":["EPSG",6758]}
+{"kind":"datum","name":"D_Kalianpur_1937","of":6144,"source":"ESRI","found":["EPSG",6144]}
+{"kind":"datum","name":"d_kALIANPUR_1937","of":6144,"source":"ESRI","found":["EPSG",6144]}
+{"kind":"datum","name":"D_Kandawala","of":6244,"source":"ESRI","found":["EPSG",6244]}
+{"kind":"datum","name":"d_kANDAWALA","of":6244,"source":"ESRI","found":["EPSG",6244]}
+{"kind":"datum","name":"D_Kyrgyz_Republic_2006","of":1160,"source":"ESRI","found":["EPSG",1160]}
+{"kind":"datum","name":"d_kYRGYZ_rEPUBLIC_2006","of":1160,"source":"ESRI","found":["EPSG",1160]}
+{"kind":"datum","name":"D_Lao_National_Datum_1997","of":6678,"source":"ESRI","found":["EPSG",6678]}
+{"kind":"datum","name":"d_lAO_nATIONAL_dATUM_1997","of":6678,"source":"ESRI","found":["EPSG",6678]}
+{"kind":"datum","name":"D_Little_Cayman_1961","of":6726,"source":"ESRI","found":["EPSG",6726]}
+{"kind":"datum","name":"d_lITTLE_cAYMAN_1961","of":6726,"source":"ESRI","found":["EPSG",6726]}
+{"kind":"datum","name":"D_Lome","of":6252,"source":"ESRI","found":["EPSG",6252]}
+{"kind":"datum","name":"d_lOME","of":6252,"source":"ESRI","found":["EPSG",6252]}
+{"kind":"datum","name":"D_MAGNA","of":6686,"source":"ESRI","found":["EPSG",6686]}
+{"kind":"datum","name":"d_magna","of":6686,"source":"ESRI","found":["EPSG",6686]}
+{"kind":"datum","name":"D_MOLDREF99","of":1032,"source":"ESRI","found":["EPSG",1032]}
+{"kind":"datum","name":"d_moldref99","of":1032,"source":"ESRI","found":["EPSG",1032]}
+{"kind":"datum","name":"D_Madeira_1936","of":6185,"source":"ESRI","found":["EPSG",6185]}
+{"kind":"datum","name":"d_mADEIRA_1936","of":6185,"source":"ESRI","found":["EPSG",6185]}
+{"kind":"datum","name":"D_Madeira_1936 (deprecated)","of":6185,"source":"ESRI","found":["EPSG",6185]}
+{"kind":"datum","name":"D_Madzansua","of":6128,"source":"ESRI","found":["EPSG",6128]}
+{"kind":"datum","name":"d_mADZANSUA","of":6128,"source":"ESRI","found":["EPSG",6128]}
+{"kind":"datum","name":"D_Manoca","of":6260,"source":"ESRI","found":["EPSG",6260]}
+{"kind":"datum","name":"d_mANOCA","of":6260,"source":"ESRI","found":["EPSG",6260]}
+{"kind":"datum","name":"D_Manoca (deprecated)","of":6260,"source":"ESRI","found":["EPSG",6260]}
+{"kind":"datum","name":"D_Mauritania_1999","of":6702,"source":"ESRI","found":["EPSG",6702]}
+{"kind":"datum","name":"d_mAURITANIA_1999","of":6702,"source":"ESRI","found":["EPSG",6702]}
+{"kind":"datum","name":"D_Mexico_ITRF2008","of":1120,"source":"ESRI","found":["EPSG",1120]}
+{"kind":"datum","name":"d_mEXICO_itrf2008","of":1120,"source":"ESRI","found":["EPSG",1120]}
+{"kind":"datum","name":"D_NEA74_Noumea","of":6644,"source":"ESRI","found":["EPSG",6644]}
+{"kind":"datum","name":"d_nea74_nOUMEA","of":6644,"source":"ESRI","found":["EPSG",6644]}
+{"kind":"datum","name":"D_NGN","of":6318,"source":"ESRI","found":["EPSG",6318]}
+{"kind":"datum","name":"d_ngn","of":6318,"source":"ESRI","found":["EPSG",6318]}
+{"kind":"datum","name":"D_NSWC_9Z_2","of":6276,"source":"ESRI","found":["EPSG",6276]}
+{"kind":"datum","name":"d_nswc_9z_2","of":6276,"source":"ESRI","found":["EPSG",6276]}
+{"kind":"datum","name":"D_North_American_1983_HARN","of":6152,"source":"ESRI","found":["EPSG",6152]}
+{"kind":"datum","name":"d_nORTH_aMERICAN_1983_harn","of":6152,"source":"ESRI","found":["EPSG",6152]}
+{"kind":"datum","name":"D_North_American_Michigan","of":6268,"source":"ESRI","found":["EPSG",6268]}
+{"kind":"datum","name":"d_nORTH_aMERICAN_mICHIGAN","of":6268,"source":"ESRI","found":["EPSG",6268]}
+{"kind":"datum","name":"D_North_American_Michigan (deprecated)","of":6268,"source":"ESRI","found":["EPSG",6268]}
+{"kind":"datum","name":"D_POSGAR_1994","of":6694,"source":"ESRI","found":["EPSG",6694]}
+{"kind":"datum","name":"d_posgar_1994","of":6694,"source":"ESRI","found":["EPSG",6694]}
+{"kind":"datum","name":"D_Panama-Colon-1911","of":1072,"source":"ESRI","found":["EPSG",1072]}
+{"kind":"datum","name":"d_pANAMA-cOLON-1911","of":1072,"source":"ESRI","found":["EPSG",1072]}
+{"kind":"datum","name":"D_Petrels_1972","of":6636,"source":"ESRI","found":["EPSG",6636]}
+{"kind":"datum","name":"d_pETRELS_1972","of":6636,"source":"ESRI","found":["EPSG",6636]}
+{"kind":"datum","name":"D_Point_58","of":6620,"source":"ESRI","found":["EPSG",6620]}
+{"kind":"datum","name":"d_pOINT_58","of":6620,"source":"ESRI","found":["EPSG",6620]}
+{"kind":"datum","name":"D_Pulkovo_1942","of":6284,"source":"ESRI","found":["EPSG",6284]}
+{"kind":"datum","name":"d_pULKOVO_1942","of":6284,"source":"ESRI","found":["EPSG",6284]}
+{"kind":"datum","name":"D_SIRGAS-Chile","of":1064,"source":"ESRI_OLD","found":["EPSG",1064]}
+{"kind":"datum","name":"d_sirgas-cHILE","of":1064,"source":"ESRI_OLD","found":["EPSG",1064]}
+{"kind":"datum","name":"D_ST87_Ouvea","of":6750,"source":"ESRI","found":["EPSG",6750]}
+{"kind":"datum","name":"d_st87_oUVEA","of":6750,"source":"ESRI","found":["EPSG",6750]}
+{"kind":"datum","name":"D_Schwarzeck","of":6293,"source":"ESRI","found":["EPSG",6293]}
+{"kind":"datum","name":"d_sCHWARZECK","of":6293,"source":"ESRI","found":["EPSG",6293]}
+{"kind":"datum","name":"D_Scoresbysund_1952","of":6195,"source":"ESRI","found":["EPSG",6195]}
+{"kind":"datum","name":"d_sCORESBYSUND_1952","of":6195,"source":"ESRI","found":["EPSG",6195]}
+{"kind":"datum","name":"D_Solomon_1968","of":6718,"source":"ESRI","found":["EPSG",6718]}
+{"kind":"datum","name":"d_sOLOMON_1968","of":6718,"source":"ESRI","found":["EPSG",6718]}
+{"kind":"datum","name":"D_St_Lawrence_Island","of":6136,"source":"ESRI","found":["EPSG",6136]}
+{"kind":"datum","name":"d_sT_lAWRENCE_iSLAND","of":6136,"source":"ESRI","found":["EPSG",6136]}
+{"kind":"datum","name":"D_Tahiti","of":6628,"source":"ESRI_OLD","found":["EPSG",6628]}
+{"kind":"datum","name":"d_tAHITI","of":6628,"source":"ESRI_OLD","found":["EPSG",6628]}
+{"kind":"datum","name":"D_Tahiti_1952","of":6628,"source":"ESRI","found":["EPSG",6628]}
+{"kind":"datum","name":"d_tAHITI_1952","of":6628,"source":"ESRI","found":["EPSG",6628]}
+{"kind":"datum","name":"D_Tokyo","of":6301,"source":"ESRI","found":["EPSG",6301]}
+{"kind":"datum","name":"d_tOKYO","of":6301,"source":"ESRI","found":["EPSG",6301]}
+{"kind":"datum","name":"D_Tristan_1968","of":6734,"source":"ESRI","found":["EPSG",6734]}
+{"kind":"datum","name":"d_tRISTAN_1968","of":6734,"source":"ESRI","found":["EPSG",6734]}
+{"kind":"datum","name":"D_Yoff","of":6310,"source":"ESRI","found":["EPSG",6310]}
+{"kind":"datum","name":"d_yOFF","of":6310,"source":"ESRI","found":["EPSG",6310]}
+{"kind":"datum","name":"Dabajuro","of":9307,"source":"name","found":null}
+{"kind":"datum","name":"dABAJURO","of":9307,"source":"name","found":null}
+{"kind":"datum","name":"Dansk Vertikal Reference 1990 ensemble","of":1371,"source":"name","found":["EPSG",1371]}
+{"kind":"datum","name":"dANSK vERTIKAL rEFERENCE 1990 ENSEMBLE","of":1371,"source":"name","found":["EPSG",1371]}
+{"kind":"datum","name":"Dansk_Vertikal_Reference_1990_ensemble","of":1371,"source":"ESRI","found":["EPSG",1371]}
+{"kind":"datum","name":"dANSK_vERTIKAL_rEFERENCE_1990_ENSEMBLE","of":1371,"source":"ESRI","found":["EPSG",1371]}
+{"kind":"datum","name":"Douala","of":6228,"source":"name","found":["EPSG",6228]}
+{"kind":"datum","name":"dOUALA","of":6228,"source":"name","found":["EPSG",6228]}
+{"kind":"datum","name":"Douala (deprecated)","of":6228,"source":"name","found":["EPSG",6228]}
+{"kind":"datum","name":"Dunedin-Bluff 1960","of":1040,"source":"name","found":["EPSG",1040]}
+{"kind":"datum","name":"dUNEDIN-bLUFF 1960","of":1040,"source":"name","found":["EPSG",1040]}
+{"kind":"datum","name":"Dunedin_Bluff_1960","of":1040,"source":"ESRI","found":["EPSG",1040]}
+{"kind":"datum","name":"dUNEDIN_bLUFF_1960","of":1040,"source":"ESRI","found":["EPSG",1040]}
+{"kind":"datum","name":"EGM84","of":5203,"source":"EPSG","found":["EPSG",5203]}
+{"kind":"datum","name":"egm84","of":5203,"source":"EPSG","found":["EPSG",5203]}
+{"kind":"datum","name":"EGM84 geoid","of":5203,"source":"name","found":["EPSG",5203]}
+{"kind":"datum","name":"egm84 GEOID","of":5203,"source":"name","found":["EPSG",5203]}
+{"kind":"datum","name":"EGM84_Geoid","of":5203,"source":"ESRI","found":["EPSG",5203]}
+{"kind":"datum","name":"egm84_gEOID","of":5203,"source":"ESRI","found":["EPSG",5203]}
+{"kind":"datum","name":"EGM96","of":5171,"source":"EPSG","found":["EPSG",5171]}
+{"kind":"datum","name":"egm96","of":5171,"source":"EPSG","found":["EPSG",5171]}
+{"kind":"datum","name":"EGM96 geoid","of":5171,"source":"name","found":["EPSG",5171]}
+{"kind":"datum","name":"egm96 GEOID","of":5171,"source":"name","found":["EPSG",5171]}
+{"kind":"datum","name":"EGM96_Geoid","of":5171,"source":"ESRI","found":["EPSG",5171]}
+{"kind":"datum","name":"egm96_gEOID","of":5171,"source":"ESRI","found":["EPSG",5171]}
+{"kind":"datum","name":"ETRF97","of":1185,"source":"EPSG","found":["EPSG",1185]}
+{"kind":"datum","name":"etrf97","of":1185,"source":"EPSG","found":["EPSG",1185]}
+{"kind":"datum","name":"ETRS89-ITA [IGM95]","of":6670,"source":"EPSG","found":["EPSG",6670]}
+{"kind":"datum","name":"etrs89-ita [igm95]","of":6670,"source":"EPSG","found":["EPSG",6670]}
+{"kind":"datum","name":"ETRS89-MDA [MOLDREF99]","of":1032,"source":"EPSG","found":["EPSG",1032]}
+{"kind":"datum","name":"etrs89-mda [moldref99]","of":1032,"source":"EPSG","found":["EPSG",1032]}
+{"kind":"datum","name":"ETRS89-NLD [AGRS2010]","of":1427,"source":"EPSG","found":["EPSG",1427]}
+{"kind":"datum","name":"etrs89-nld [agrs2010]","of":1427,"source":"EPSG","found":["EPSG",1427]}
+{"kind":"datum","name":"ETRS89-SVK [SKTRF2022]","of":1435,"source":"name","found":["EPSG",1435]}
+{"kind":"datum","name":"etrs89-svk [sktrf2022]","of":1435,"source":"name","found":["EPSG",1435]}
+{"kind":"datum","name":"ETRS89-XKX [KOSOVAREF01]","of":1251,"source":"EPSG","found":["EPSG",1251]}
+{"kind":"datum","name":"etrs89-xkx [kosovaref01]","of":1251,"source":"EPSG","found":["EPSG",1251]}
+{"kind":"datum","name":"European Terrestrial Reference Frame 1997","of":1185,"source":"name","found":["EPSG",1185]}
+{"kind":"datum","name":"eUROPEAN tERRESTRIAL rEFERENCE fRAME 1997","of":1185,"source":"name","found":["EPSG",1185]}
+{"kind":"datum","name":"European_Terrestrial_Reference_Frame_1997","of":1185,"source":"ESRI","found":["EPSG",1185]}
+{"kind":"datum","name":"eUROPEAN_tERRESTRIAL_rEFERENCE_fRAME_1997","of":1185,"source":"ESRI","found":["EPSG",1185]}
+{"kind":"datum","name":"Fair Isle","of":5139,"source":"name","found":["EPSG",5139]}
+{"kind":"datum","name":"fAIR iSLE","of":5139,"source":"name","found":["EPSG",5139]}
+{"kind":"datum","name":"Fair_Isle","of":5139,"source":"ESRI","found":["EPSG",5139]}
+{"kind":"datum","name":"fAIR_iSLE","of":5139,"source":"ESRI","found":["EPSG",5139]}
+{"kind":"datum","name":"GDBD2009","of":1056,"source":"EPSG","found":["EPSG",1056]}
+{"kind":"datum","name":"gdbd2009","of":1056,"source":"EPSG","found":["EPSG",1056]}
+{"kind":"datum","name":"GDM2000","of":6742,"source":"EPSG","found":["EPSG",6742]}
+{"kind":"datum","name":"gdm2000","of":6742,"source":"EPSG","found":["EPSG",6742]}
+{"kind":"datum","name":"GDM2000 (2016)","of":1470,"source":"EPSG","found":["EPSG",1470]}
+{"kind":"datum","name":"gdm2000 (2016)","of":1470,"source":"EPSG","found":["EPSG",1470]}
+{"kind":"datum","name":"GLLAT","of":1459,"source":"EPSG","found":["EPSG",1459]}
+{"kind":"datum","name":"gllat","of":1459,"source":"EPSG","found":["EPSG",1459]}
+{"kind":"datum","name":"GLMSL(2023)","of":1387,"source":"EPSG","found":["EPSG",1387]}
+{"kind":"datum","name":"glmsl(2023)","of":1387,"source":"EPSG","found":["EPSG",1387]}
+{"kind":"datum","name":"GR96(2021)","of":1419,"source":"EPSG","found":["EPSG",1419]}
+{"kind":"datum","name":"gr96(2021)","of":1419,"source":"EPSG","found":["EPSG",1419]}
+{"kind":"datum","name":"GS-IRF","of":1347,"source":"EPSG","found":["EPSG",1347]}
+{"kind":"datum","name":"gs-irf","of":1347,"source":"EPSG","found":["EPSG",1347]}
+{"kind":"datum","name":"Generalstabens System Intermediate Datum","of":1347,"source":"name","found":["EPSG",1347]}
+{"kind":"datum","name":"gENERALSTABENS sYSTEM iNTERMEDIATE dATUM","of":1347,"source":"name","found":["EPSG",1347]}
+{"kind":"datum","name":"Generalstabens_System_Intermediate_Datum","of":1347,"source":"ESRI","found":["EPSG",1347]}
+{"kind":"datum","name":"gENERALSTABENS_sYSTEM_iNTERMEDIATE_dATUM","of":1347,"source":"ESRI","found":["EPSG",1347]}
+{"kind":"datum","name":"Genuk","of":6211,"source":"EPSG","found":["EPSG",6211]}
+{"kind":"datum","name":"gENUK","of":6211,"source":"EPSG","found":["EPSG",6211]}
+{"kind":"datum","name":"Geocentric Datum Brunei Darussalam 2009","of":1056,"source":"name","found":["EPSG",1056]}
+{"kind":"datum","name":"gEOCENTRIC dATUM bRUNEI dARUSSALAM 2009","of":1056,"source":"name","found":["EPSG",1056]}
+{"kind":"datum","name":"Geocentric Datum of Malaysia 2000","of":6742,"source":"name","found":["EPSG",6742]}
+{"kind":"datum","name":"gEOCENTRIC dATUM OF mALAYSIA 2000","of":6742,"source":"name","found":["EPSG",6742]}
+{"kind":"datum","name":"Geocentric Datum of Malaysia 2000 (Revision 2016)","of":1470,"source":"name","found":["EPSG",1470]}
+{"kind":"datum","name":"gEOCENTRIC dATUM OF mALAYSIA 2000 (rEVISION 2016)","of":1470,"source":"name","found":["EPSG",1470]}
+{"kind":"datum","name":"Geodetic Datum of Malaysia 2000","of":6742,"source":"EPSG","found":["EPSG",6742]}
+{"kind":"datum","name":"gEODETIC dATUM OF mALAYSIA 2000","of":6742,"source":"EPSG","found":["EPSG",6742]}
+{"kind":"datum","name":"Greek","of":6120,"source":"name","found":["EPSG",6120]}
+{"kind":"datum","name":"gREEK","of":6120,"source":"name","found":["EPSG",6120]}
+{"kind":"datum","name":"Greenland Lowest Astronomical Tide ","of":1459,"source":"name","found":["EPSG",1459]}
+{"kind":"datum","name":"gREENLAND lOWEST aSTRONOMICAL tIDE ","of":1459,"source":"name","found":["EPSG",1459]}
+{"kind":"datum","name":"Greenland Mean Sea Level (2023)","of":1387,"source":"name","found":["EPSG",1387]}
+{"kind":"datum","name":"gREENLAND mEAN sEA lEVEL (2023)","of":1387,"source":"name","found":["EPSG",1387]}
+{"kind":"datum","name":"Greenland Reference 1996 (2021)","of":1419,"source":"name","found":["EPSG",1419]}
+{"kind":"datum","name":"gREENLAND rEFERENCE 1996 (2021)","of":1419,"source":"name","found":["EPSG",1419]}
+{"kind":"datum","name":"Greenland_Mean_Sea_Level_(2023)","of":1387,"source":"ESRI","found":["EPSG",1387]}
+{"kind":"datum","name":"gREENLAND_mEAN_sEA_lEVEL_(2023)","of":1387,"source":"ESRI","found":["EPSG",1387]}
+{"kind":"datum","name":"Greenland_Reference_1996_(2021)","of":1419,"source":"ESRI","found":["EPSG",1419]}
+{"kind":"datum","name":"gREENLAND_rEFERENCE_1996_(2021)","of":1419,"source":"ESRI","found":["EPSG",1419]}
+{"kind":"datum","name":"Grenada 1953","of":6603,"source":"name","found":["EPSG",6603]}
+{"kind":"datum","name":"gRENADA 1953","of":6603,"source":"name","found":["EPSG",6603]}
+{"kind":"datum","name":"Guadeloupe 1988","of":5155,"source":"name","found":["EPSG",5155]}
+{"kind":"datum","name":"gUADELOUPE 1988","of":5155,"source":"name","found":["EPSG",5155]}
+{"kind":"datum","name":"Guam Geodetic Network 1993","of":6152,"source":"EPSG","found":["EPSG",6152]}
+{"kind":"datum","name":"gUAM gEODETIC nETWORK 1993","of":6152,"source":"EPSG","found":["EPSG",6152]}
+{"kind":"datum","name":"HD1909","of":1024,"source":"EPSG","found":["EPSG",1024]}
+{"kind":"datum","name":"hd1909","of":1024,"source":"EPSG","found":["EPSG",1024]}
+{"kind":"datum","name":"HK80","of":6611,"source":"EPSG","found":["EPSG",6611]}
+{"kind":"datum","name":"hk80","of":6611,"source":"EPSG","found":["EPSG",6611]}
+{"kind":"datum","name":"Helle 1954","of":6660,"source":"name","found":["EPSG",6660]}
+{"kind":"datum","name":"hELLE 1954","of":6660,"source":"name","found":["EPSG",6660]}
+{"kind":"datum","name":"Hong Kong 1980","of":6611,"source":"name","found":["EPSG",6611]}
+{"kind":"datum","name":"hONG kONG 1980","of":6611,"source":"name","found":["EPSG",6611]}
+{"kind":"datum","name":"Horta","of":1104,"source":"name","found":["EPSG",1104]}
+{"kind":"datum","name":"hORTA","of":1104,"source":"name","found":["EPSG",1104]}
+{"kind":"datum","name":"Hu Tzu Shan","of":6236,"source":"EPSG","found":["EPSG",6236]}
+{"kind":"datum","name":"hU tZU sHAN","of":6236,"source":"EPSG","found":["EPSG",6236]}
+{"kind":"datum","name":"Hu Tzu Shan 1950","of":6236,"source":"name","found":["EPSG",6236]}
+{"kind":"datum","name":"hU tZU sHAN 1950","of":6236,"source":"name","found":["EPSG",6236]}
+{"kind":"datum","name":"Hungarian Datum 1909","of":1024,"source":"name","found":["EPSG",1024]}
+{"kind":"datum","name":"hUNGARIAN dATUM 1909","of":1024,"source":"name","found":["EPSG",1024]}
+{"kind":"datum","name":"IERS Terrestrial Reference Frame 1993","of":6652,"source":"EPSG","found":["EPSG",6652]}
+{"kind":"datum","name":"iers tERRESTRIAL rEFERENCE fRAME 1993","of":6652,"source":"EPSG","found":["EPSG",6652]}
+{"kind":"datum","name":"IG05(2012)_Intermediate_Datum","of":1144,"source":"ESRI","found":["EPSG",1144]}
+{"kind":"datum","name":"ig05(2012)_iNTERMEDIATE_dATUM","of":1144,"source":"ESRI","found":["EPSG",1144]}
+{"kind":"datum","name":"IG05/12 Intermediate Datum","of":1144,"source":"name","found":["EPSG",1144]}
+{"kind":"datum","name":"ig05/12 iNTERMEDIATE dATUM","of":1144,"source":"name","found":["EPSG",1144]}
+{"kind":"datum","name":"IGN 1952","of":6628,"source":"EPSG","found":["EPSG",6628]}
+{"kind":"datum","name":"ign 1952","of":6628,"source":"EPSG","found":["EPSG",6628]}
+{"kind":"datum","name":"IGN 1988","of":5155,"source":"EPSG","found":["EPSG",5155]}
+{"kind":"datum","name":"ign 1988","of":5155,"source":"EPSG","found":["EPSG",5155]}
+{"kind":"datum","name":"IGN 1988 MG","of":5211,"source":"name","found":["EPSG",5211]}
+{"kind":"datum","name":"ign 1988 mg","of":5211,"source":"name","found":["EPSG",5211]}
+{"kind":"datum","name":"IGN 2023 Mayotte","of":1443,"source":"name","found":["EPSG",1443]}
+{"kind":"datum","name":"ign 2023 mAYOTTE","of":1443,"source":"name","found":["EPSG",1443]}
+{"kind":"datum","name":"IGN_1988","of":5155,"source":"ESRI","found":["EPSG",5155]}
+{"kind":"datum","name":"ign_1988","of":5155,"source":"ESRI","found":["EPSG",5155]}
+{"kind":"datum","name":"IGN_1988_MG","of":5211,"source":"ESRI","found":["EPSG",5211]}
+{"kind":"datum","name":"ign_1988_mg","of":5211,"source":"ESRI","found":["EPSG",5211]}
+{"kind":"datum","name":"ITRF93","of":6652,"source":"EPSG","found":["EPSG",6652]}
+{"kind":"datum","name":"itrf93","of":6652,"source":"EPSG","found":["EPSG",6652]}
+{"kind":"datum","name":"International Terrestrial Reference Frame 1993","of":6652,"source":"name","found":["EPSG",6652]}
+{"kind":"datum","name":"iNTERNATIONAL tERRESTRIAL rEFERENCE fRAME 1993","of":6652,"source":"name","found":["EPSG",6652]}
+{"kind":"datum","name":"Istituto Geografico Militaire 1995","of":6670,"source":"EPSG","found":["EPSG",6670]}
+{"kind":"datum","name":"iSTITUTO gEOGRAFICO mILITAIRE 1995","of":6670,"source":"EPSG","found":["EPSG",6670]}
+{"kind":"datum","name":"Istituto Geografico Militare 1995","of":6670,"source":"name","found":["EPSG",6670]}
+{"kind":"datum","name":"iSTITUTO gEOGRAFICO mILITARE 1995","of":6670,"source":"name","found":["EPSG",6670]}
+{"kind":"datum","name":"JAD2001","of":6758,"source":"EPSG","found":["EPSG",6758]}
+{"kind":"datum","name":"jad2001","of":6758,"source":"EPSG","found":["EPSG",6758]}
+{"kind":"datum","name":"JGD2011","of":1128,"source":"EPSG","found":["EPSG",1128]}
+{"kind":"datum","name":"jgd2011","of":1128,"source":"EPSG","found":["EPSG",1128]}
+{"kind":"datum","name":"JGD2024","of":1128,"source":"EPSG","found":["EPSG",1128]}
+{"kind":"datum","name":"jgd2024","of":1128,"source":"EPSG","found":["EPSG",1128]}
+{"kind":"datum","name":"Jamaica 2001","of":6758,"source":"name","found":["EPSG",6758]}
+{"kind":"datum","name":"jAMAICA 2001","of":6758,"source":"name","found":["EPSG",6758]}
+{"kind":"datum","name":"Japanese Geodetic Datum 2011","of":1128,"source":"EPSG","found":["EPSG",1128]}
+{"kind":"datum","name":"jAPANESE gEODETIC dATUM 2011","of":1128,"source":"EPSG","found":["EPSG",1128]}
+{"kind":"datum","name":"Japanese Geodetic Datum 2024","of":1128,"source":"name","found":["EPSG",1128]}
+{"kind":"datum","name":"jAPANESE gEODETIC dATUM 2024","of":1128,"source":"name","found":["EPSG",1128]}
+{"kind":"datum","name":"KOC Well Datum","of":5187,"source":"name","found":["EPSG",5187]}
+{"kind":"datum","name":"koc wELL dATUM","of":5187,"source":"name","found":["EPSG",5187]}
+{"kind":"datum","name":"KOC_Well_Datum","of":5187,"source":"ESRI","found":["EPSG",5187]}
+{"kind":"datum","name":"koc_wELL_dATUM","of":5187,"source":"ESRI","found":["EPSG",5187]}
+{"kind":"datum","name":"KOSOVAREF01","of":1251,"source":"EPSG","found":["EPSG",1251]}
+{"kind":"datum","name":"kosovaref01","of":1251,"source":"EPSG","found":["EPSG",1251]}
+{"kind":"datum","name":"KOSOVAREF01 (2012)","of":1251,"source":"EPSG","found":["EPSG",1251]}
+{"kind":"datum","name":"kosovaref01 (2012)","of":1251,"source":"EPSG","found":["EPSG",1251]}
+{"kind":"datum","name":"KOSOVAREF12","of":1251,"source":"EPSG","found":["EPSG",1251]}
+{"kind":"datum","name":"kosovaref12","of":1251,"source":"EPSG","found":["EPSG",1251]}
+{"kind":"datum","name":"Kalianpur 1937","of":6144,"source":"name","found":["EPSG",6144]}
+{"kind":"datum","name":"kALIANPUR 1937","of":6144,"source":"name","found":["EPSG",6144]}
+{"kind":"datum","name":"Kandawala","of":6244,"source":"name","found":["EPSG",6244]}
+{"kind":"datum","name":"kANDAWALA","of":6244,"source":"name","found":["EPSG",6244]}
+{"kind":"datum","name":"Kosovo Reference System 2001","of":1251,"source":"name","found":["EPSG",1251]}
+{"kind":"datum","name":"kOSOVO rEFERENCE sYSTEM 2001","of":1251,"source":"name","found":["EPSG",1251]}
+{"kind":"datum","name":"Kosovo_Reference_System_2001","of":1251,"source":"ESRI","found":["EPSG",1251]}
+{"kind":"datum","name":"kOSOVO_rEFERENCE_sYSTEM_2001","of":1251,"source":"ESRI","found":["EPSG",1251]}
+{"kind":"datum","name":"Kyrg-06","of":1160,"source":"EPSG","found":["EPSG",1160]}
+{"kind":"datum","name":"kYRG-06","of":1160,"source":"EPSG","found":["EPSG",1160]}
+{"kind":"datum","name":"Kyrgyzstan Geodetic Datum 2006","of":1160,"source":"name","found":["EPSG",1160]}
+{"kind":"datum","name":"kYRGYZSTAN gEODETIC dATUM 2006","of":1160,"source":"name","found":["EPSG",1160]}
+{"kind":"datum","name":"LAS07","of":1299,"source":"EPSG","found":["EPSG",1299]}
+{"kind":"datum","name":"las07","of":1299,"source":"EPSG","found":["EPSG",1299]}
+{"kind":"datum","name":"LAT","of":1080,"source":"EPSG","found":["EPSG",1080]}
+{"kind":"datum","name":"lat","of":1080,"source":"EPSG","found":["EPSG",1080]}
+{"kind":"datum","name":"La Palma","of":1283,"source":"name","found":["EPSG",1283]}
+{"kind":"datum","name":"lA pALMA","of":1283,"source":"name","found":["EPSG",1283]}
+{"kind":"datum","name":"La_Palma","of":1283,"source":"ESRI","found":["EPSG",1283]}
+{"kind":"datum","name":"lA_pALMA","of":1283,"source":"ESRI","found":["EPSG",1283]}
+{"kind":"datum","name":"Lao 1997","of":6678,"source":"EPSG","found":["EPSG",6678]}
+{"kind":"datum","name":"lAO 1997","of":6678,"source":"EPSG","found":["EPSG",6678]}
+{"kind":"datum","name":"Lao National Datum 1997","of":6678,"source":"name","found":["EPSG",6678]}
+{"kind":"datum","name":"lAO nATIONAL dATUM 1997","of":6678,"source":"name","found":["EPSG",6678]}
+{"kind":"datum","name":"Lisbon 1890 (Lisbon)","of":6904,"source":"name","found":["EPSG",6904]}
+{"kind":"datum","name":"lISBON 1890 (lISBON)","of":6904,"source":"name","found":["EPSG",6904]}
+{"kind":"datum","name":"Lisbon_1890_(Lisbon)","of":6904,"source":"ESRI","found":["EPSG",6904]}
+{"kind":"datum","name":"lISBON_1890_(lISBON)","of":6904,"source":"ESRI","found":["EPSG",6904]}
+{"kind":"datum","name":"Lithuanian Height System 2007","of":1299,"source":"name","found":["EPSG",1299]}
+{"kind":"datum","name":"lITHUANIAN hEIGHT sYSTEM 2007","of":1299,"source":"name","found":["EPSG",1299]}
+{"kind":"datum","name":"Lithuanian_Height_System_2007","of":1299,"source":"ESRI","found":["EPSG",1299]}
+{"kind":"datum","name":"lITHUANIAN_hEIGHT_sYSTEM_2007","of":1299,"source":"ESRI","found":["EPSG",1299]}
+{"kind":"datum","name":"Little Cayman Geodetic Datum 1961","of":6726,"source":"EPSG","found":["EPSG",6726]}
+{"kind":"datum","name":"lITTLE cAYMAN gEODETIC dATUM 1961","of":6726,"source":"EPSG","found":["EPSG",6726]}
+{"kind":"datum","name":"Lome","of":6252,"source":"name","found":["EPSG",6252]}
+{"kind":"datum","name":"lOME","of":6252,"source":"name","found":["EPSG",6252]}
+{"kind":"datum","name":"Lowest Astronomic Tide","of":1080,"source":"EPSG","found":["EPSG",1080]}
+{"kind":"datum","name":"lOWEST aSTRONOMIC tIDE","of":1080,"source":"EPSG","found":["EPSG",1080]}
+{"kind":"datum","name":"Lowest Astronomical Tide","of":1080,"source":"name","found":["EPSG",1080]}
+{"kind":"datum","name":"lOWEST aSTRONOMICAL tIDE","of":1080,"source":"name","found":["EPSG",1080]}
+{"kind":"datum","name":"Lowest_Astronomic_Tide","of":1080,"source":"ESRI","found":["EPSG",1080]}
+{"kind":"datum","name":"lOWEST_aSTRONOMIC_tIDE","of":1080,"source":"ESRI","found":["EPSG",1080]}
+{"kind":"datum","name":"MAGNA-SIRGAS","of":6686,"source":"EPSG","found":["EPSG",6686]}
+{"kind":"datum","name":"magna-sirgas","of":6686,"source":"EPSG","found":["EPSG",6686]}
+{"kind":"datum","name":"MATRF2022e2020","of":1411,"source":"EPSG","found":["EPSG",1411]}
+{"kind":"datum","name":"matrf2022E2020","of":1411,"source":"EPSG","found":["EPSG",1411]}
+{"kind":"datum","name":"MGD-2000","of":1218,"source":"EPSG","found":["EPSG",1218]}
+{"kind":"datum","name":"mgd-2000","of":1218,"source":"EPSG","found":["EPSG",1218]}
+{"kind":"datum","name":"MHWS","of":1088,"source":"EPSG","found":["EPSG",1088]}
+{"kind":"datum","name":"mhws","of":1088,"source":"EPSG","found":["EPSG",1088]}
+{"kind":"datum","name":"MMS","of":1259,"source":"EPSG","found":["EPSG",1259]}
+{"kind":"datum","name":"mms","of":1259,"source":"EPSG","found":["EPSG",1259]}
+{"kind":"datum","name":"MOLDOR11 Intermediate Reference Frame","of":1315,"source":"name","found":["EPSG",1315]}
+{"kind":"datum","name":"moldor11 iNTERMEDIATE rEFERENCE fRAME","of":1315,"source":"name","found":["EPSG",1315]}
+{"kind":"datum","name":"MOLDOR11-IRF","of":1315,"source":"EPSG","found":["EPSG",1315]}
+{"kind":"datum","name":"moldor11-irf","of":1315,"source":"EPSG","found":["EPSG",1315]}
+{"kind":"datum","name":"MOLDOR11_Intermediate_Reference_Frame","of":1315,"source":"ESRI","found":["EPSG",1315]}
+{"kind":"datum","name":"moldor11_iNTERMEDIATE_rEFERENCE_fRAME","of":1315,"source":"ESRI","found":["EPSG",1315]}
+{"kind":"datum","name":"MOLDREF99","of":1032,"source":"name","found":["EPSG",1032]}
+{"kind":"datum","name":"moldref99","of":1032,"source":"name","found":["EPSG",1032]}
+{"kind":"datum","name":"MOMRA Terrestrial Reference Frame 2000","of":1218,"source":"name","found":["EPSG",1218]}
+{"kind":"datum","name":"momra tERRESTRIAL rEFERENCE fRAME 2000","of":1218,"source":"name","found":["EPSG",1218]}
+{"kind":"datum","name":"MOMRA_Terrestrial_Reference_Frame_2000","of":1218,"source":"ESRI","found":["EPSG",1218]}
+{"kind":"datum","name":"momra_tERRESTRIAL_rEFERENCE_fRAME_2000","of":1218,"source":"ESRI","found":["EPSG",1218]}
+{"kind":"datum","name":"MTRF-2000","of":1218,"source":"EPSG","found":["EPSG",1218]}
+{"kind":"datum","name":"mtrf-2000","of":1218,"source":"EPSG","found":["EPSG",1218]}
+{"kind":"datum","name":"Macao Height Datum","of":1210,"source":"name","found":["EPSG",1210]}
+{"kind":"datum","name":"mACAO hEIGHT dATUM","of":1210,"source":"name","found":["EPSG",1210]}
+{"kind":"datum","name":"Macao_Height_Datum","of":1210,"source":"ESRI","found":["EPSG",1210]}
+{"kind":"datum","name":"mACAO_hEIGHT_dATUM","of":1210,"source":"ESRI","found":["EPSG",1210]}
+{"kind":"datum","name":"Madeira 1936","of":6185,"source":"name","found":["EPSG",6185]}
+{"kind":"datum","name":"mADEIRA 1936","of":6185,"source":"name","found":["EPSG",6185]}
+{"kind":"datum","name":"Madeira 1936 (deprecated)","of":6185,"source":"name","found":["EPSG",6185]}
+{"kind":"datum","name":"Madzansua","of":6128,"source":"name","found":["EPSG",6128]}
+{"kind":"datum","name":"mADZANSUA","of":6128,"source":"name","found":["EPSG",6128]}
+{"kind":"datum","name":"Mallorca","of":1275,"source":"name","found":["EPSG",1275]}
+{"kind":"datum","name":"mALLORCA","of":1275,"source":"name","found":["EPSG",1275]}
+{"kind":"datum","name":"Manoca","of":6260,"source":"name","found":["EPSG",6260]}
+{"kind":"datum","name":"mANOCA","of":6260,"source":"name","found":["EPSG",6260]}
+{"kind":"datum","name":"Manoca (deprecated)","of":6260,"source":"name","found":["EPSG",6260]}
+{"kind":"datum","name":"Marco Geocentrico Nacional de Referencia","of":6686,"source":"name","found":["EPSG",6686]}
+{"kind":"datum","name":"mARCO gEOCENTRICO nACIONAL DE rEFERENCIA","of":6686,"source":"name","found":["EPSG",6686]}
+{"kind":"datum","name":"Mariana Terrestrial Reference Frame of 2022 epoch 2020.00","of":1411,"source":"name","found":["EPSG",1411]}
+{"kind":"datum","name":"mARIANA tERRESTRIAL rEFERENCE fRAME OF 2022 EPOCH 2020.00","of":1411,"source":"name","found":["EPSG",1411]}
+{"kind":"datum","name":"Mauritania 1999","of":6702,"source":"name","found":["EPSG",6702]}
+{"kind":"datum","name":"mAURITANIA 1999","of":6702,"source":"name","found":["EPSG",6702]}
+{"kind":"datum","name":"Mean High Water Spring Tides","of":1088,"source":"name","found":["EPSG",1088]}
+{"kind":"datum","name":"mEAN hIGH wATER sPRING tIDES","of":1088,"source":"name","found":["EPSG",1088]}
+{"kind":"datum","name":"Mean_High_Water_Spring_Tides","of":1088,"source":"ESRI","found":["EPSG",1088]}
+{"kind":"datum","name":"mEAN_hIGH_wATER_sPRING_tIDES","of":1088,"source":"ESRI","found":["EPSG",1088]}
+{"kind":"datum","name":"Mexico ITRF2008","of":1120,"source":"name","found":["EPSG",1120]}
+{"kind":"datum","name":"mEXICO itrf2008","of":1120,"source":"name","found":["EPSG",1120]}
+{"kind":"datum","name":"Ministerio de Marina Sur","of":1259,"source":"name","found":["EPSG",1259]}
+{"kind":"datum","name":"mINISTERIO DE mARINA sUR","of":1259,"source":"name","found":["EPSG",1259]}
+{"kind":"datum","name":"Ministerio_de_Marina_Sur","of":1259,"source":"ESRI","found":["EPSG",1259]}
+{"kind":"datum","name":"mINISTERIO_DE_mARINA_sUR","of":1259,"source":"ESRI","found":["EPSG",1259]}
+{"kind":"datum","name":"NAD27 Michigan","of":6268,"source":"name","found":["EPSG",6268]}
+{"kind":"datum","name":"nad27 mICHIGAN","of":6268,"source":"name","found":["EPSG",6268]}
+{"kind":"datum","name":"NAD27 Michigan (deprecated)","of":6268,"source":"name","found":["EPSG",6268]}
+{"kind":"datum","name":"NAD83","of":6152,"source":"EPSG","found":["EPSG",6152]}
+{"kind":"datum","name":"nad83","of":6152,"source":"EPSG","found":["EPSG",6152]}
+{"kind":"datum","name":"NAD83 (High Accuracy Reference Network)","of":6152,"source":"name","found":["EPSG",6152]}
+{"kind":"datum","name":"nad83 (hIGH aCCURACY rEFERENCE nETWORK)","of":6152,"source":"name","found":["EPSG",6152]}
+{"kind":"datum","name":"NAD83 (High Accuracy Regional Network)","of":6152,"source":"EPSG","found":["EPSG",6152]}
+{"kind":"datum","name":"nad83 (hIGH aCCURACY rEGIONAL nETWORK)","of":6152,"source":"EPSG","found":["EPSG",6152]}
+{"kind":"datum","name":"NAD83 (High Precision Geodetic Network)","of":6152,"source":"EPSG","found":["EPSG",6152]}
+{"kind":"datum","name":"nad83 (hIGH pRECISION gEODETIC nETWORK)","of":6152,"source":"EPSG","found":["EPSG",6152]}
+{"kind":"datum","name":"NAD83(CSRS) 1997","of":1193,"source":"EPSG","found":["EPSG",1193]}
+{"kind":"datum","name":"nad83(csrs) 1997","of":1193,"source":"EPSG","found":["EPSG",1193]}
+{"kind":"datum","name":"NAD83(CSRS)v2","of":1193,"source":"EPSG","found":["EPSG",1193]}
+{"kind":"datum","name":"nad83(csrs)V2","of":1193,"source":"EPSG","found":["EPSG",1193]}
+{"kind":"datum","name":"NAD83(CSRS98)","of":1193,"source":"EPSG","found":["EPSG",1193]}
+{"kind":"datum","name":"nad83(csrs98)","of":1193,"source":"EPSG","found":["EPSG",1193]}
+{"kind":"datum","name":"NAD83(HARN)","of":6152,"source":"EPSG","found":["EPSG",6152]}
+{"kind":"datum","name":"nad83(harn)","of":6152,"source":"EPSG","found":["EPSG",6152]}
+{"kind":"datum","name":"NAD83(HPGN)","of":6152,"source":"EPSG","found":["EPSG",6152]}
+{"kind":"datum","name":"nad83(hpgn)","of":6152,"source":"EPSG","found":["EPSG",6152]}
+{"kind":"datum","name":"NEA74 Noumea","of":6644,"source":"name","found":["EPSG",6644]}
+{"kind":"datum","name":"nea74 nOUMEA","of":6644,"source":"name","found":["EPSG",6644]}
+{"kind":"datum","name":"NGN","of":6318,"source":"EPSG","found":["EPSG",6318]}
+{"kind":"datum","name":"ngn","of":6318,"source":"EPSG","found":["EPSG",6318]}
+{"kind":"datum","name":"NGPF","of":5195,"source":"EPSG","found":["EPSG",5195]}
+{"kind":"datum","name":"ngpf","of":5195,"source":"EPSG","found":["EPSG",5195]}
+{"kind":"datum","name":"NKG_ETRF14","of":1403,"source":"EPSG","found":["NKG","DATUM_NKG_ETRF14"]}
+{"kind":"datum","name":"nkg_etrf14","of":1403,"source":"EPSG","found":["NKG","DATUM_NKG_ETRF14"]}
+{"kind":"datum","name":"NN2000:2018","of":1096,"source":"EPSG","found":["EPSG",1096]}
+{"kind":"datum","name":"nn2000:2018","of":1096,"source":"EPSG","found":["EPSG",1096]}
+{"kind":"datum","name":"NSWC 9Z-2","of":6276,"source":"name","found":["EPSG",6276]}
+{"kind":"datum","name":"nswc 9z-2","of":6276,"source":"name","found":["EPSG",6276]}
+{"kind":"datum","name":"NZVD2016","of":1169,"source":"EPSG","found":["EPSG",1169]}
+{"kind":"datum","name":"nzvd2016","of":1169,"source":"EPSG","found":["EPSG",1169]}
+{"kind":"datum","name":"Napier","of":5163,"source":"EPSG","found":["EPSG",5163]}
+{"kind":"datum","name":"nAPIER","of":5163,"source":"EPSG","found":["EPSG",5163]}
+{"kind":"datum","name":"Napier","of":5163,"source":"ESRI","found":["EPSG",5163]}
+{"kind":"datum","name":"nAPIER","of":5163,"source":"ESRI","found":["EPSG",5163]}
+{"kind":"datum","name":"Napier 1962","of":5163,"source":"name","found":["EPSG",5163]}
+{"kind":"datum","name":"nAPIER 1962","of":5163,"source":"name","found":["EPSG",5163]}
+{"kind":"datum","name":"National Geodetic Network","of":6318,"source":"name","found":["EPSG",6318]}
+{"kind":"datum","name":"nATIONAL gEODETIC nETWORK","of":6318,"source":"name","found":["EPSG",6318]}
+{"kind":"datum","name":"New Zealand Vertical Datum 2016","of":1169,"source":"name","found":["EPSG",1169]}
+{"kind":"datum","name":"nEW zEALAND vERTICAL dATUM 2016","of":1169,"source":"name","found":["EPSG",1169]}
+{"kind":"datum","name":"New_Zealand_Vertical_Datum_2016","of":1169,"source":"ESRI","found":["EPSG",1169]}
+{"kind":"datum","name":"nEW_zEALAND_vERTICAL_dATUM_2016","of":1169,"source":"ESRI","found":["EPSG",1169]}
+{"kind":"datum","name":"Nivellement General de Polynesie Francaise","of":5195,"source":"name","found":["EPSG",5195]}
+{"kind":"datum","name":"nIVELLEMENT gENERAL DE pOLYNESIE fRANCAISE","of":5195,"source":"name","found":["EPSG",5195]}
+{"kind":"datum","name":"Nivellement_General_de_Polynesie_Francaise","of":5195,"source":"ESRI","found":["EPSG",5195]}
+{"kind":"datum","name":"nIVELLEMENT_gENERAL_DE_pOLYNESIE_fRANCAISE","of":5195,"source":"ESRI","found":["EPSG",5195]}
+{"kind":"datum","name":"Nordic Geodetic Commission ETRF14","of":1403,"source":"name","found":["EPSG",1403]}
+{"kind":"datum","name":"nORDIC gEODETIC cOMMISSION etrf14","of":1403,"source":"name","found":["EPSG",1403]}
+{"kind":"datum","name":"North American Datum of 1983 (CSRS) version 2","of":1193,"source":"name","found":["EPSG",1193]}
+{"kind":"datum","name":"nORTH aMERICAN dATUM OF 1983 (csrs) VERSION 2","of":1193,"source":"name","found":["EPSG",1193]}
+{"kind":"datum","name":"North_American_Datum_of_1983_(CSRS)_version_2","of":1193,"source":"ESRI","found":["EPSG",1193]}
+{"kind":"datum","name":"nORTH_aMERICAN_dATUM_OF_1983_(csrs)_VERSION_2","of":1193,"source":"ESRI","found":["EPSG",1193]}
+{"kind":"datum","name":"Norway Normal Null 2000","of":1096,"source":"EPSG","found":["EPSG",1096]}
+{"kind":"datum","name":"nORWAY nORMAL nULL 2000","of":1096,"source":"EPSG","found":["EPSG",1096]}
+{"kind":"datum","name":"Norway Normal Null 2000:2018","of":1096,"source":"name","found":["EPSG",1096]}
+{"kind":"datum","name":"nORWAY nORMAL nULL 2000:2018","of":1096,"source":"name","found":["EPSG",1096]}
+{"kind":"datum","name":"Norway_Normal_Null_2000","of":1096,"source":"ESRI","found":["EPSG",1096]}
+{"kind":"datum","name":"nORWAY_nORMAL_nULL_2000","of":1096,"source":"ESRI","found":["EPSG",1096]}
+{"kind":"datum","name":"Not specified (based on Bessel 1841 ellipsoid)","of":6004,"source":"name","found":["EPSG",6004]}
+{"kind":"datum","name":"nOT SPECIFIED (BASED ON bESSEL 1841 ELLIPSOID)","of":6004,"source":"name","found":["EPSG",6004]}
+{"kind":"datum","name":"Not specified (based on Bessel 1841 ellipsoid) (deprecated)","of":6004,"source":"name","found":["EPSG",6004]}
+{"kind":"datum","name":"Not specified (based on Clarke 1880 (RGS) ellipsoid)","of":6012,"source":"name","found":["EPSG",6012]}
+{"kind":"datum","name":"nOT SPECIFIED (BASED ON cLARKE 1880 (rgs) ELLIPSOID)","of":6012,"source":"name","found":["EPSG",6012]}
+{"kind":"datum","name":"Not specified (based on Clarke 1880 (RGS) ellipsoid) (deprecated)","of":6012,"source":"name","found":["EPSG",6012]}
+{"kind":"datum","name":"Not specified (based on GEM 10C ellipsoid)","of":6031,"source":"name","found":["EPSG",6031]}
+{"kind":"datum","name":"nOT SPECIFIED (BASED ON gem 10c ELLIPSOID)","of":6031,"source":"name","found":["EPSG",6031]}
+{"kind":"datum","name":"Not specified (based on GEM 10C ellipsoid) (deprecated)","of":6031,"source":"name","found":["EPSG",6031]}
+{"kind":"datum","name":"Not specified (based on Indonesian National Spheroid)","of":6021,"source":"name","found":["EPSG",6021]}
+{"kind":"datum","name":"nOT SPECIFIED (BASED ON iNDONESIAN nATIONAL sPHEROID)","of":6021,"source":"name","found":["EPSG",6021]}
+{"kind":"datum","name":"Not specified (based on Indonesian National Spheroid) (deprecated)","of":6021,"source":"name","found":["EPSG",6021]}
+{"kind":"datum","name":"Not specified (based on WGS 72 ellipsoid)","of":6043,"source":"name","found":["EPSG",6043]}
+{"kind":"datum","name":"nOT SPECIFIED (BASED ON wgs 72 ELLIPSOID)","of":6043,"source":"name","found":["EPSG",6043]}
+{"kind":"datum","name":"Not specified (based on WGS 72 ellipsoid) (deprecated)","of":6043,"source":"name","found":["EPSG",6043]}
+{"kind":"datum","name":"PDO Height Datum 1993","of":5123,"source":"name","found":["EPSG",5123]}
+{"kind":"datum","name":"pdo hEIGHT dATUM 1993","of":5123,"source":"name","found":["EPSG",5123]}
+{"kind":"datum","name":"PDO_Height_Datum_1993","of":5123,"source":"ESRI","found":["EPSG",5123]}
+{"kind":"datum","name":"pdo_hEIGHT_dATUM_1993","of":5123,"source":"ESRI","found":["EPSG",5123]}
+{"kind":"datum","name":"PHD93","of":5123,"source":"EPSG","found":["EPSG",5123]}
+{"kind":"datum","name":"phd93","of":5123,"source":"EPSG","found":["EPSG",5123]}
+{"kind":"datum","name":"POSGAR","of":6694,"source":"EPSG","found":["EPSG",1062]}
+{"kind":"datum","name":"posgar","of":6694,"source":"EPSG","found":["EPSG",1062]}
+{"kind":"datum","name":"POSGAR 94","of":6694,"source":"EPSG","found":["EPSG",6694]}
+{"kind":"datum","name":"posgar 94","of":6694,"source":"EPSG","found":["EPSG",6694]}
+{"kind":"datum","name":"Panama-Colon 1911","of":1072,"source":"name","found":["EPSG",1072]}
+{"kind":"datum","name":"pANAMA-cOLON 1911","of":1072,"source":"name","found":["EPSG",1072]}
+{"kind":"datum","name":"Panamá-Colón 1911","of":1072,"source":"EPSG","found":["EPSG",1072]}
+{"kind":"datum","name":"pANAMÁ-cOLÓN 1911","of":1072,"source":"EPSG","found":null}
+{"kind":"datum","name":"Petrels 1972","of":6636,"source":"name","found":["EPSG",6636]}
+{"kind":"datum","name":"pETRELS 1972","of":6636,"source":"name","found":["EPSG",6636]}
+{"kind":"datum","name":"Piraeus Harbour 1986","of":5115,"source":"name","found":["EPSG",5115]}
+{"kind":"datum","name":"pIRAEUS hARBOUR 1986","of":5115,"source":"name","found":["EPSG",5115]}
+{"kind":"datum","name":"Piraeus86","of":5115,"source":"EPSG","found":["EPSG",5115]}
+{"kind":"datum","name":"pIRAEUS86","of":5115,"source":"EPSG","found":["EPSG",5115]}
+{"kind":"datum","name":"Piraeus_Harbour_1986","of":5115,"source":"ESRI","found":["EPSG",5115]}
+{"kind":"datum","name":"pIRAEUS_hARBOUR_1986","of":5115,"source":"ESRI","found":["EPSG",5115]}
+{"kind":"datum","name":"Point 58","of":6620,"source":"name","found":["EPSG",6620]}
+{"kind":"datum","name":"pOINT 58","of":6620,"source":"name","found":["EPSG",6620]}
+{"kind":"datum","name":"Posiciones Geodesicas Argentinas 1994","of":6694,"source":"name","found":["EPSG",6694]}
+{"kind":"datum","name":"pOSICIONES gEODESICAS aRGENTINAS 1994","of":6694,"source":"name","found":["EPSG",6694]}
+{"kind":"datum","name":"Posiciones Geodésicas Argentinas 1994","of":6694,"source":"EPSG","found":["EPSG",6694]}
+{"kind":"datum","name":"pOSICIONES gEODÉSICAS aRGENTINAS 1994","of":6694,"source":"EPSG","found":null}
+{"kind":"datum","name":"Pulkovo 1942","of":6284,"source":"name","found":["EPSG",6284]}
+{"kind":"datum","name":"pULKOVO 1942","of":6284,"source":"name","found":["EPSG",6284]}
+{"kind":"datum","name":"Quini-Huao","of":6160,"source":"EPSG","found":["EPSG",6160]}
+{"kind":"datum","name":"qUINI-hUAO","of":6160,"source":"EPSG","found":["EPSG",6160]}
+{"kind":"datum","name":"Quiñi-Huao","of":6160,"source":"EPSG","found":["EPSG",6160]}
+{"kind":"datum","name":"qUIÑI-hUAO","of":6160,"source":"EPSG","found":null}
+{"kind":"datum","name":"REDNAP","of":1275,"source":"EPSG","found":["EPSG",1275]}
+{"kind":"datum","name":"rednap","of":1275,"source":"EPSG","found":["EPSG",1275]}
+{"kind":"datum","name":"REDNAP","of":1283,"source":"EPSG","found":["EPSG",1275]}
+{"kind":"datum","name":"rednap","of":1283,"source":"EPSG","found":["EPSG",1275]}
+{"kind":"datum","name":"REDNAP","of":1363,"source":"EPSG","found":["EPSG",1275]}
+{"kind":"datum","name":"rednap","of":1363,"source":"EPSG","found":["EPSG",1275]}
+{"kind":"datum","name":"RGSH2020","of":1355,"source":"EPSG","found":["EPSG",1355]}
+{"kind":"datum","name":"rgsh2020","of":1355,"source":"EPSG","found":["EPSG",1355]}
+{"kind":"datum","name":"Red Geodesica Nacional 2008","of":1120,"source":"EPSG","found":["EPSG",1120]}
+{"kind":"datum","name":"rED gEODESICA nACIONAL 2008","of":1120,"source":"EPSG","found":["EPSG",1120]}
+{"kind":"datum","name":"Reseau National Belge 1950 (Brussels)","of":6809,"source":"name","found":["EPSG",6809]}
+{"kind":"datum","name":"rESEAU nATIONAL bELGE 1950 (bRUSSELS)","of":6809,"source":"name","found":["EPSG",6809]}
+{"kind":"datum","name":"Reseau_National_Belge_1950_(Brussels)","of":6809,"source":"ESRI","found":["EPSG",6809]}
+{"kind":"datum","name":"rESEAU_nATIONAL_bELGE_1950_(bRUSSELS)","of":6809,"source":"ESRI","found":["EPSG",6809]}
+{"kind":"datum","name":"S-JTSK (Ferro)","of":6818,"source":"EPSG","found":["EPSG",6818]}
+{"kind":"datum","name":"s-jtsk (fERRO)","of":6818,"source":"EPSG","found":["EPSG",6818]}
+{"kind":"datum","name":"S-JTSK [JTSK03]","of":1201,"source":"EPSG","found":["EPSG",1201]}
+{"kind":"datum","name":"s-jtsk [jtsk03]","of":1201,"source":"EPSG","found":["EPSG",1201]}
+{"kind":"datum","name":"S-JTSK_[JTSK03]","of":1201,"source":"ESRI","found":["EPSG",1201]}
+{"kind":"datum","name":"s-jtsk_[jtsk03]","of":1201,"source":"ESRI","found":["EPSG",1201]}
+{"kind":"datum","name":"SHVD2015","of":1177,"source":"EPSG","found":["EPSG",1177]}
+{"kind":"datum","name":"shvd2015","of":1177,"source":"EPSG","found":["EPSG",1177]}
+{"kind":"datum","name":"SIGD61","of":6726,"source":"EPSG","found":["EPSG",6726]}
+{"kind":"datum","name":"sigd61","of":6726,"source":"EPSG","found":["EPSG",6726]}
+{"kind":"datum","name":"SIRGAS Continuously Operating Network DGF00P01","of":1227,"source":"name","found":["EPSG",1227]}
+{"kind":"datum","name":"sirgas cONTINUOUSLY oPERATING nETWORK dgf00p01","of":1227,"source":"name","found":["EPSG",1227]}
+{"kind":"datum","name":"SIRGAS Continuously Operating Network DGF08P01","of":1235,"source":"name","found":["EPSG",1235]}
+{"kind":"datum","name":"sirgas cONTINUOUSLY oPERATING nETWORK dgf08p01","of":1235,"source":"name","found":["EPSG",1235]}
+{"kind":"datum","name":"SIRGAS Multi-Year Solution 2000","of":1227,"source":"EPSG","found":["EPSG",1227]}
+{"kind":"datum","name":"sirgas mULTI-yEAR sOLUTION 2000","of":1227,"source":"EPSG","found":["EPSG",1227]}
+{"kind":"datum","name":"SIRGAS Multi-Year Solution 2008","of":1235,"source":"EPSG","found":["EPSG",1235]}
+{"kind":"datum","name":"sirgas mULTI-yEAR sOLUTION 2008","of":1235,"source":"EPSG","found":["EPSG",1235]}
+{"kind":"datum","name":"SIRGAS-CON DGF00P01","of":1227,"source":"EPSG","found":["EPSG",1227]}
+{"kind":"datum","name":"sirgas-con dgf00p01","of":1227,"source":"EPSG","found":["EPSG",1227]}
+{"kind":"datum","name":"SIRGAS-CON DGF08P01","of":1235,"source":"EPSG","found":["EPSG",1235]}
+{"kind":"datum","name":"sirgas-con dgf08p01","of":1235,"source":"EPSG","found":["EPSG",1235]}
+{"kind":"datum","name":"SIRGAS-Chile 2002","of":1064,"source":"name","found":["EPSG",1064]}
+{"kind":"datum","name":"sirgas-cHILE 2002","of":1064,"source":"name","found":["EPSG",1064]}
+{"kind":"datum","name":"SIRGAS-Chile 2010","of":1243,"source":"EPSG","found":["EPSG",1243]}
+{"kind":"datum","name":"sirgas-cHILE 2010","of":1243,"source":"EPSG","found":["EPSG",1243]}
+{"kind":"datum","name":"SIRGAS-Chile 2010 (deprecated)","of":1243,"source":"EPSG","found":["EPSG",1243]}
+{"kind":"datum","name":"SIRGAS-Chile realization 2 epoch 2010","of":1243,"source":"name","found":["EPSG",1243]}
+{"kind":"datum","name":"sirgas-cHILE REALIZATION 2 EPOCH 2010","of":1243,"source":"name","found":["EPSG",1243]}
+{"kind":"datum","name":"SIRGAS-Chile realization 2 epoch 2010 (deprecated)","of":1243,"source":"name","found":["EPSG",1243]}
+{"kind":"datum","name":"SIRGAS-Chile_realization_1_epoch_2002","of":1064,"source":"ESRI","found":["EPSG",1064]}
+{"kind":"datum","name":"sirgas-cHILE_REALIZATION_1_EPOCH_2002","of":1064,"source":"ESRI","found":["EPSG",1064]}
+{"kind":"datum","name":"SIRGAS-Chile_realization_2_epoch_2010","of":1243,"source":"ESRI","found":["EPSG",1243]}
+{"kind":"datum","name":"sirgas-cHILE_REALIZATION_2_EPOCH_2010","of":1243,"source":"ESRI","found":["EPSG",1243]}
+{"kind":"datum","name":"SIRGAS-Chile_realization_2_epoch_2010 (deprecated)","of":1243,"source":"ESRI","found":["EPSG",1243]}
+{"kind":"datum","name":"SIRGAS_Continuously_Operating_Network_DGF00P01","of":1227,"source":"ESRI","found":["EPSG",1227]}
+{"kind":"datum","name":"sirgas_cONTINUOUSLY_oPERATING_nETWORK_dgf00p01","of":1227,"source":"ESRI","found":["EPSG",1227]}
+{"kind":"datum","name":"SIRGAS_Continuously_Operating_Network_DGF08P01","of":1235,"source":"ESRI","found":["EPSG",1235]}
+{"kind":"datum","name":"sirgas_cONTINUOUSLY_oPERATING_nETWORK_dgf08p01","of":1235,"source":"ESRI","found":["EPSG",1235]}
+{"kind":"datum","name":"ST87 Ouvea","of":6750,"source":"name","found":["EPSG",6750]}
+{"kind":"datum","name":"st87 oUVEA","of":6750,"source":"name","found":["EPSG",6750]}
+{"kind":"datum","name":"SVD2006","of":1323,"source":"EPSG","found":["EPSG",1323]}
+{"kind":"datum","name":"svd2006","of":1323,"source":"EPSG","found":["EPSG",1323]}
+{"kind":"datum","name":"S_JTSK_JTSK03","of":1201,"source":"ESRI","found":["EPSG",1201]}
+{"kind":"datum","name":"s_jtsk_jtsk03","of":1201,"source":"ESRI","found":["EPSG",1201]}
+{"kind":"datum","name":"Saba","of":1379,"source":"ESRI","found":["EPSG",1379]}
+{"kind":"datum","name":"sABA","of":1379,"source":"ESRI","found":["EPSG",1379]}
+{"kind":"datum","name":"Saba","of":1379,"source":"name","found":["EPSG",1379]}
+{"kind":"datum","name":"sABA","of":1379,"source":"name","found":["EPSG",1379]}
+{"kind":"datum","name":"Schwarzeck","of":6293,"source":"name","found":["EPSG",6293]}
+{"kind":"datum","name":"sCHWARZECK","of":6293,"source":"name","found":["EPSG",6293]}
+{"kind":"datum","name":"Scoresbysund 1952","of":6195,"source":"name","found":["EPSG",6195]}
+{"kind":"datum","name":"sCORESBYSUND 1952","of":6195,"source":"name","found":["EPSG",6195]}
+{"kind":"datum","name":"Sint Eustatius","of":1395,"source":"EPSG","found":["EPSG",1393]}
+{"kind":"datum","name":"sINT eUSTATIUS","of":1395,"source":"EPSG","found":["EPSG",1393]}
+{"kind":"datum","name":"Sint Eustatius Vertical Datum","of":1395,"source":"name","found":["EPSG",1395]}
+{"kind":"datum","name":"sINT eUSTATIUS vERTICAL dATUM","of":1395,"source":"name","found":["EPSG",1395]}
+{"kind":"datum","name":"Sint_Eustatius_Vertical_Datum","of":1395,"source":"ESRI","found":["EPSG",1395]}
+{"kind":"datum","name":"sINT_eUSTATIUS_vERTICAL_dATUM","of":1395,"source":"ESRI","found":["EPSG",1395]}
+{"kind":"datum","name":"Sister Islands Geodetic Datum 1961","of":6726,"source":"name","found":["EPSG",6726]}
+{"kind":"datum","name":"sISTER iSLANDS gEODETIC dATUM 1961","of":6726,"source":"name","found":["EPSG",6726]}
+{"kind":"datum","name":"Solomon 1968","of":6718,"source":"name","found":["EPSG",6718]}
+{"kind":"datum","name":"sOLOMON 1968","of":6718,"source":"name","found":["EPSG",6718]}
+{"kind":"datum","name":"Sonatrach Reference Frame 2020","of":1355,"source":"name","found":["EPSG",1355]}
+{"kind":"datum","name":"sONATRACH rEFERENCE fRAME 2020","of":1355,"source":"name","found":["EPSG",1355]}
+{"kind":"datum","name":"Sonatrach_Reference_Frame_2020","of":1355,"source":"ESRI","found":["EPSG",1355]}
+{"kind":"datum","name":"sONATRACH_rEFERENCE_fRAME_2020","of":1355,"source":"ESRI","found":["EPSG",1355]}
+{"kind":"datum","name":"Spring High Water","of":1088,"source":"EPSG","found":["EPSG",1088]}
+{"kind":"datum","name":"sPRING hIGH wATER","of":1088,"source":"EPSG","found":["EPSG",1088]}
+{"kind":"datum","name":"St. Helena 1971","of":6710,"source":"EPSG","found":["EPSG",6710]}
+{"kind":"datum","name":"sT. hELENA 1971","of":6710,"source":"EPSG","found":["EPSG",6710]}
+{"kind":"datum","name":"St. Helena Vertical Datum 2015","of":1177,"source":"name","found":["EPSG",1177]}
+{"kind":"datum","name":"sT. hELENA vERTICAL dATUM 2015","of":1177,"source":"name","found":["EPSG",1177]}
+{"kind":"datum","name":"St. Lawrence Island","of":6136,"source":"name","found":["EPSG",6136]}
+{"kind":"datum","name":"sT. lAWRENCE iSLAND","of":6136,"source":"name","found":["EPSG",6136]}
+{"kind":"datum","name":"St. Marys","of":5147,"source":"name","found":["EPSG",5147]}
+{"kind":"datum","name":"sT. mARYS","of":5147,"source":"name","found":["EPSG",5147]}
+{"kind":"datum","name":"St_Helena_Vertical_Datum_2015","of":1177,"source":"ESRI","found":["EPSG",1177]}
+{"kind":"datum","name":"sT_hELENA_vERTICAL_dATUM_2015","of":1177,"source":"ESRI","found":["EPSG",1177]}
+{"kind":"datum","name":"St_Marys","of":5147,"source":"ESRI","found":["EPSG",5147]}
+{"kind":"datum","name":"sT_mARYS","of":5147,"source":"ESRI","found":["EPSG",5147]}
+{"kind":"datum","name":"Svalbard vertical datum 2006","of":1323,"source":"name","found":["EPSG",1323]}
+{"kind":"datum","name":"sVALBARD VERTICAL DATUM 2006","of":1323,"source":"name","found":["EPSG",1323]}
+{"kind":"datum","name":"Svalbard_vertical_datum_2006","of":1323,"source":"ESRI","found":["EPSG",1323]}
+{"kind":"datum","name":"sVALBARD_VERTICAL_DATUM_2006","of":1323,"source":"ESRI","found":["EPSG",1323]}
+{"kind":"datum","name":"System of the Unified Trigonometrical Cadastral Network (Ferro)","of":6818,"source":"name","found":["EPSG",6818]}
+{"kind":"datum","name":"sYSTEM OF THE uNIFIED tRIGONOMETRICAL cADASTRAL nETWORK (fERRO)","of":6818,"source":"name","found":["EPSG",6818]}
+{"kind":"datum","name":"System of the Unified Trigonometrical Cadastral Network [JTSK03]","of":1201,"source":"name","found":["EPSG",1201]}
+{"kind":"datum","name":"sYSTEM OF THE uNIFIED tRIGONOMETRICAL cADASTRAL nETWORK [jtsk03]","of":1201,"source":"name","found":["EPSG",1201]}
+{"kind":"datum","name":"System_of_the_Unified_Trigonometrical_Cadastral_Network_(Ferro)","of":6818,"source":"ESRI","found":["EPSG",6818]}
+{"kind":"datum","name":"sYSTEM_OF_THE_uNIFIED_tRIGONOMETRICAL_cADASTRAL_nETWORK_(fERRO)","of":6818,"source":"ESRI","found":["EPSG",6818]}
+{"kind":"datum","name":"Systém Jednotnej trigonometrickej siete katastrálnej (Ferro)","of":6818,"source":"EPSG","found":["EPSG",6818]}
+{"kind":"datum","name":"sYSTÉM jEDNOTNEJ TRIGONOMETRICKEJ SIETE KATASTRÁLNEJ (fERRO)","of":6818,"source":"EPSG","found":null}
+{"kind":"datum","name":"Systém Jednotnej trigonometrickej siete katastrálnej [JTSK03]","of":1201,"source":"EPSG","found":["EPSG",1201]}
+{"kind":"datum","name":"sYSTÉM jEDNOTNEJ TRIGONOMETRICKEJ SIETE KATASTRÁLNEJ [jtsk03]","of":1201,"source":"EPSG","found":null}
+{"kind":"datum","name":"Systém Jednotné trigonometrické sítě katastrální (Ferro)","of":6818,"source":"EPSG","found":["EPSG",6818]}
+{"kind":"datum","name":"sYSTÉM jEDNOTNÉ TRIGONOMETRICKÉ SÍTĚ KATASTRÁLNÍ (fERRO)","of":6818,"source":"EPSG","found":null}
+{"kind":"datum","name":"Tahiti","of":6628,"source":"EPSG","found":["EPSG",6628]}
+{"kind":"datum","name":"tAHITI","of":6628,"source":"EPSG","found":["EPSG",6628]}
+{"kind":"datum","name":"Tahiti 52","of":6628,"source":"name","found":["EPSG",6628]}
+{"kind":"datum","name":"tAHITI 52","of":6628,"source":"name","found":["EPSG",6628]}
+{"kind":"datum","name":"Tokyo","of":6301,"source":"name","found":["EPSG",6301]}
+{"kind":"datum","name":"tOKYO","of":6301,"source":"name","found":["EPSG",6301]}
+{"kind":"datum","name":"Tokyo 1892","of":1048,"source":"name","found":["EPSG",1048]}
+{"kind":"datum","name":"tOKYO 1892","of":1048,"source":"name","found":["EPSG",1048]}
+{"kind":"datum","name":"Tokyo 1898","of":1048,"source":"EPSG","found":["EPSG",1048]}
+{"kind":"datum","name":"tOKYO 1898","of":1048,"source":"EPSG","found":["EPSG",1048]}
+{"kind":"datum","name":"Tokyo 1918","of":6301,"source":"EPSG","found":["EPSG",6301]}
+{"kind":"datum","name":"tOKYO 1918","of":6301,"source":"EPSG","found":["EPSG",6301]}
+{"kind":"datum","name":"Tokyo_1892","of":1048,"source":"ESRI","found":["EPSG",1048]}
+{"kind":"datum","name":"tOKYO_1892","of":1048,"source":"ESRI","found":["EPSG",1048]}
+{"kind":"datum","name":"Tristan 1968","of":6734,"source":"name","found":["EPSG",6734]}
+{"kind":"datum","name":"tRISTAN 1968","of":6734,"source":"name","found":["EPSG",6734]}
+{"kind":"datum","name":"WD","of":5187,"source":"EPSG","found":["EPSG",5187]}
+{"kind":"datum","name":"wd","of":5187,"source":"EPSG","found":["EPSG",5187]}
+{"kind":"datum","name":"WGS 84 (G730)","of":1152,"source":"EPSG","found":["EPSG",1152]}
+{"kind":"datum","name":"wgs 84 (g730)","of":1152,"source":"EPSG","found":["EPSG",1152]}
+{"kind":"datum","name":"Wiener Null","of":1267,"source":"name","found":["EPSG",1267]}
+{"kind":"datum","name":"wIENER nULL","of":1267,"source":"name","found":["EPSG",1267]}
+{"kind":"datum","name":"Wiener_Null","of":1267,"source":"ESRI","found":["EPSG",1267]}
+{"kind":"datum","name":"wIENER_nULL","of":1267,"source":"ESRI","found":["EPSG",1267]}
+{"kind":"datum","name":"World Geodetic System 1984 (G730)","of":1152,"source":"name","found":["EPSG",1152]}
+{"kind":"datum","name":"wORLD gEODETIC sYSTEM 1984 (g730)","of":1152,"source":"name","found":["EPSG",1152]}
+{"kind":"datum","name":"World_Geodetic_System_1984_(G730)","of":1152,"source":"ESRI","found":["EPSG",1152]}
+{"kind":"datum","name":"wORLD_gEODETIC_sYSTEM_1984_(g730)","of":1152,"source":"ESRI","found":["EPSG",1152]}
+{"kind":"datum","name":"Yoff","of":6310,"source":"name","found":["EPSG",6310]}
+{"kind":"datum","name":"yOFF","of":6310,"source":"name","found":["EPSG",6310]}
+{"kind":"conversion","name":"3-degree Gauss-Kruger CM 12E","of":16364,"source":"name","found":["EPSG",16364]}
+{"kind":"conversion","name":"3-DEGREE gAUSS-kRUGER cm 12e","of":16364,"source":"name","found":["EPSG",16364]}
+{"kind":"conversion","name":"3-degree Gauss-Kruger zone 23","of":16283,"source":"name","found":["EPSG",16283]}
+{"kind":"conversion","name":"3-DEGREE gAUSS-kRUGER ZONE 23","of":16283,"source":"name","found":["EPSG",16283]}
+{"kind":"conversion","name":"6-degree Gauss-Kruger zone 3","of":16203,"source":"name","found":["EPSG",16203]}
+{"kind":"conversion","name":"6-DEGREE gAUSS-kRUGER ZONE 3","of":16203,"source":"name","found":["EPSG",16203]}
+{"kind":"conversion","name":"6-degree Gauss-Kruger zone 43","of":16243,"source":"name","found":["EPSG",16243]}
+{"kind":"conversion","name":"6-DEGREE gAUSS-kRUGER ZONE 43","of":16243,"source":"name","found":["EPSG",16243]}
+{"kind":"conversion","name":"BLM zone 4N (US survey foot)","of":4104,"source":"name","found":["EPSG",4104]}
+{"kind":"conversion","name":"blm ZONE 4n (us SURVEY FOOT)","of":4104,"source":"name","found":["EPSG",4104]}
+{"kind":"conversion","name":"Balkans zone 6","of":18276,"source":"name","found":["EPSG",18276]}
+{"kind":"conversion","name":"bALKANS ZONE 6","of":18276,"source":"name","found":["EPSG",18276]}
+{"kind":"conversion","name":"Belgian Lambert 2008","of":3811,"source":"name","found":["EPSG",3811]}
+{"kind":"conversion","name":"bELGIAN lAMBERT 2008","of":3811,"source":"name","found":["EPSG",3811]}
+{"kind":"conversion","name":"British Columbia Albers","of":19984,"source":"name","found":["EPSG",19984]}
+{"kind":"conversion","name":"bRITISH cOLUMBIA aLBERS","of":19984,"source":"name","found":["EPSG",19984]}
+{"kind":"conversion","name":"British West Indies Grid","of":19942,"source":"name","found":["EPSG",19942]}
+{"kind":"conversion","name":"bRITISH wEST iNDIES gRID","of":19942,"source":"name","found":["EPSG",19942]}
+{"kind":"conversion","name":"Busselton Coastal Grid 1994","of":10427,"source":"name","found":["EPSG",10427]}
+{"kind":"conversion","name":"bUSSELTON cOASTAL gRID 1994","of":10427,"source":"name","found":["EPSG",10427]}
+{"kind":"conversion","name":"Chatham Islands Transverse Mercator 2000","of":17965,"source":"name","found":["EPSG",17965]}
+{"kind":"conversion","name":"cHATHAM iSLANDS tRANSVERSE mERCATOR 2000","of":17965,"source":"name","found":["EPSG",17965]}
+{"kind":"conversion","name":"Congo Transverse Mercator zone 28","of":17428,"source":"name","found":["EPSG",17428]}
+{"kind":"conversion","name":"cONGO tRANSVERSE mERCATOR ZONE 28","of":17428,"source":"name","found":["EPSG",17428]}
+{"kind":"conversion","name":"Cuba Norte","of":18061,"source":"name","found":["EPSG",18063]}
+{"kind":"conversion","name":"cUBA nORTE","of":18061,"source":"name","found":["EPSG",18063]}
+{"kind":"conversion","name":"Cuba Norte (deprecated)","of":18061,"source":"name","found":["EPSG",18061]}
+{"kind":"conversion","name":"EPSG Arctic LCC zone 2-18","of":5987,"source":"name","found":["EPSG",5987]}
+{"kind":"conversion","name":"epsg aRCTIC lcc ZONE 2-18","of":5987,"source":"name","found":["EPSG",5987]}
+{"kind":"conversion","name":"EPSG Arctic LCC zone 5-25","of":6027,"source":"name","found":["EPSG",6027]}
+{"kind":"conversion","name":"epsg aRCTIC lcc ZONE 5-25","of":6027,"source":"name","found":["EPSG",6027]}
+{"kind":"conversion","name":"Fiji Map Grid","of":19859,"source":"name","found":["EPSG",19859]}
+{"kind":"conversion","name":"fIJI mAP gRID","of":19859,"source":"name","found":["EPSG",19859]}
+{"kind":"conversion","name":"GDM2000 geocentric to geog3D","of":15578,"source":"name","found":["EPSG",15578]}
+{"kind":"conversion","name":"gdm2000 GEOCENTRIC TO GEOG3d","of":15578,"source":"name","found":["EPSG",15578]}
+{"kind":"conversion","name":"GDM2000 geocentric to geog3D (deprecated)","of":15578,"source":"name","found":["EPSG",15578]}
+{"kind":"conversion","name":"GSK 3-degree Gauss-Kruger CM 162E","of":17154,"source":"name","found":["EPSG",17154]}
+{"kind":"conversion","name":"gsk 3-DEGREE gAUSS-kRUGER cm 162e","of":17154,"source":"name","found":["EPSG",17154]}
+{"kind":"conversion","name":"GSK 3-degree Gauss-Kruger CM 42E","of":17114,"source":"name","found":["EPSG",17114]}
+{"kind":"conversion","name":"gsk 3-DEGREE gAUSS-kRUGER cm 42e","of":17114,"source":"name","found":["EPSG",17114]}
+{"kind":"conversion","name":"GSK 3-degree Gauss-Kruger zone 35","of":16935,"source":"name","found":["EPSG",16935]}
+{"kind":"conversion","name":"gsk 3-DEGREE gAUSS-kRUGER ZONE 35","of":16935,"source":"name","found":["EPSG",16935]}
+{"kind":"conversion","name":"Gauss-Kruger CM 141E","of":16324,"source":"name","found":["EPSG",16324]}
+{"kind":"conversion","name":"gAUSS-kRUGER cm 141e","of":16324,"source":"name","found":["EPSG",16324]}
+{"kind":"conversion","name":"Greenland zone 6 east","of":18426,"source":"name","found":["EPSG",18426]}
+{"kind":"conversion","name":"gREENLAND ZONE 6 EAST","of":18426,"source":"name","found":["EPSG",18426]}
+{"kind":"conversion","name":"Idaho CS27 Central zone","of":11102,"source":"name","found":["EPSG",11102]}
+{"kind":"conversion","name":"iDAHO cs27 cENTRAL ZONE","of":11102,"source":"name","found":["EPSG",11102]}
+{"kind":"conversion","name":"Illinois Coordinate System of 1983 Freeport zone (US survey foot)","of":11264,"source":"name","found":["EPSG",11264]}
+{"kind":"conversion","name":"iLLINOIS cOORDINATE sYSTEM OF 1983 fREEPORT ZONE (us SURVEY FOOT)","of":11264,"source":"name","found":["EPSG",11264]}
+{"kind":"conversion","name":"InGCS Clinton (ftUS)","of":7166,"source":"name","found":["EPSG",7166]}
+{"kind":"conversion","name":"iNgcs cLINTON (FTus)","of":7166,"source":"name","found":["EPSG",7166]}
+{"kind":"conversion","name":"InGCS Jasper-Porter (ftUS)","of":7206,"source":"name","found":["EPSG",7206]}
+{"kind":"conversion","name":"iNgcs jASPER-pORTER (FTus)","of":7206,"source":"name","found":["EPSG",7206]}
+{"kind":"conversion","name":"InGCS Steuben (ftUS)","of":7246,"source":"name","found":["EPSG",7246]}
+{"kind":"conversion","name":"iNgcs sTEUBEN (FTus)","of":7246,"source":"name","found":["EPSG",7246]}
+{"kind":"conversion","name":"Italy zone 1","of":18121,"source":"name","found":["EPSG",18121]}
+{"kind":"conversion","name":"iTALY ZONE 1","of":18121,"source":"name","found":["EPSG",18121]}
+{"kind":"conversion","name":"Japan Plane Rectangular CS zone II","of":17802,"source":"name","found":["EPSG",17802]}
+{"kind":"conversion","name":"jAPAN pLANE rECTANGULAR cs ZONE ii","of":17802,"source":"name","found":["EPSG",17802]}
+{"kind":"conversion","name":"Kelantan Grid 2006","of":12313,"source":"name","found":["EPSG",12313]}
+{"kind":"conversion","name":"kELANTAN gRID 2006","of":12313,"source":"name","found":["EPSG",12313]}
+{"kind":"conversion","name":"Kerala NSF TM","of":7748,"source":"name","found":["EPSG",7748]}
+{"kind":"conversion","name":"kERALA nsf tm","of":7748,"source":"name","found":["EPSG",7748]}
+{"kind":"conversion","name":"Leticia urban grid","of":6223,"source":"name","found":["EPSG",6223]}
+{"kind":"conversion","name":"lETICIA URBAN GRID","of":6223,"source":"name","found":["EPSG",6223]}
+{"kind":"conversion","name":"Lindis Peak Circuit","of":17923,"source":"name","found":["EPSG",17923]}
+{"kind":"conversion","name":"lINDIS pEAK cIRCUIT","of":17923,"source":"name","found":["EPSG",17923]}
+{"kind":"conversion","name":"Local coordinate system of Donetsk region","of":9801,"source":"name","found":["EPSG",9801]}
+{"kind":"conversion","name":"lOCAL COORDINATE SYSTEM OF dONETSK REGION","of":9801,"source":"name","found":["EPSG",9801]}
+{"kind":"conversion","name":"Map Grid of Australia zone 44","of":6728,"source":"name","found":["EPSG",6728]}
+{"kind":"conversion","name":"mAP gRID OF aUSTRALIA ZONE 44","of":6728,"source":"name","found":["EPSG",6728]}
+{"kind":"conversion","name":"Map Grid of Australia zone 44 (deprecated)","of":6728,"source":"name","found":["EPSG",6728]}
+{"kind":"conversion","name":"Mauritius Grid","of":19899,"source":"name","found":["EPSG",19899]}
+{"kind":"conversion","name":"mAURITIUS gRID","of":19899,"source":"name","found":["EPSG",19899]}
+{"kind":"conversion","name":"Michigan State Plane West zone","of":12103,"source":"name","found":["EPSG",12103]}
+{"kind":"conversion","name":"mICHIGAN sTATE pLANE wEST ZONE","of":12103,"source":"name","found":["EPSG",12103]}
+{"kind":"conversion","name":"Montana Fort Belknap (meter)","of":7095,"source":"name","found":["EPSG",7095]}
+{"kind":"conversion","name":"mONTANA fORT bELKNAP (METER)","of":7095,"source":"name","found":["EPSG",7095]}
+{"kind":"conversion","name":"NIWA Albers","of":9190,"source":"name","found":["EPSG",9190]}
+{"kind":"conversion","name":"niwa aLBERS","of":9190,"source":"name","found":["EPSG",9190]}
+{"kind":"conversion","name":"Norway TM zone 10","of":4850,"source":"name","found":["EPSG",5140]}
+{"kind":"conversion","name":"nORWAY tm ZONE 10","of":4850,"source":"name","found":["EPSG",5140]}
+{"kind":"conversion","name":"Norway TM zone 10 (deprecated)","of":4850,"source":"name","found":["EPSG",4850]}
+{"kind":"conversion","name":"Norway TM zone 18","of":5148,"source":"name","found":["EPSG",5148]}
+{"kind":"conversion","name":"nORWAY tm ZONE 18","of":5148,"source":"name","found":["EPSG",5148]}
+{"kind":"conversion","name":"Oregon Salem zone (meter)","of":6777,"source":"name","found":["EPSG",6777]}
+{"kind":"conversion","name":"oREGON sALEM ZONE (METER)","of":6777,"source":"name","found":["EPSG",6777]}
+{"kind":"conversion","name":"Oregon Ukiah-Fox zone (meter)","of":8303,"source":"name","found":["EPSG",8303]}
+{"kind":"conversion","name":"oREGON uKIAH-fOX ZONE (METER)","of":8303,"source":"name","found":["EPSG",8303]}
+{"kind":"conversion","name":"Palestine Grid","of":18201,"source":"name","found":["EPSG",18201]}
+{"kind":"conversion","name":"pALESTINE gRID","of":18201,"source":"name","found":["EPSG",18201]}
+{"kind":"conversion","name":"RGNC91-93 geocentric to geog3D","of":15538,"source":"name","found":["EPSG",15538]}
+{"kind":"conversion","name":"rgnc91-93 GEOCENTRIC TO GEOG3d","of":15538,"source":"name","found":["EPSG",15538]}
+{"kind":"conversion","name":"RGNC91-93 geocentric to geog3D (deprecated)","of":15538,"source":"name","found":["EPSG",15538]}
+{"kind":"conversion","name":"S34-reconstruction","of":10159,"source":"name","found":["EPSG",10159]}
+{"kind":"conversion","name":"s34-RECONSTRUCTION","of":10159,"source":"name","found":["EPSG",10159]}
+{"kind":"conversion","name":"SCAR IMW SR43-44","of":17233,"source":"name","found":["EPSG",17233]}
+{"kind":"conversion","name":"scar imw sr43-44","of":17233,"source":"name","found":["EPSG",17233]}
+{"kind":"conversion","name":"SCAR IMW ST53-56","of":17273,"source":"name","found":["EPSG",17273]}
+{"kind":"conversion","name":"scar imw st53-56","of":17273,"source":"name","found":["EPSG",17273]}
+{"kind":"conversion","name":"SPCS2022 California zone 1 (meter)","of":11973,"source":"name","found":["EPSG",11973]}
+{"kind":"conversion","name":"spcs2022 cALIFORNIA ZONE 1 (METER)","of":11973,"source":"name","found":["EPSG",11973]}
+{"kind":"conversion","name":"SPCS2022 Illinois Pontiac zone (meter)","of":12157,"source":"name","found":["EPSG",12157]}
+{"kind":"conversion","name":"spcs2022 iLLINOIS pONTIAC ZONE (METER)","of":12157,"source":"name","found":["EPSG",12157]}
+{"kind":"conversion","name":"SPCS2022 Illinois Robinson zone (meter)","of":12237,"source":"name","found":["EPSG",12237]}
+{"kind":"conversion","name":"spcs2022 iLLINOIS rOBINSON ZONE (METER)","of":12237,"source":"name","found":["EPSG",12237]}
+{"kind":"conversion","name":"SPCS2022 Indiana Clark-Floyd-Scott zone (meter)","of":12369,"source":"name","found":["EPSG",12369]}
+{"kind":"conversion","name":"spcs2022 iNDIANA cLARK-fLOYD-sCOTT ZONE (METER)","of":12369,"source":"name","found":["EPSG",12369]}
+{"kind":"conversion","name":"SPCS2022 Iowa Mason City zone (meter)","of":12479,"source":"name","found":["EPSG",12479]}
+{"kind":"conversion","name":"spcs2022 iOWA mASON cITY ZONE (METER)","of":12479,"source":"name","found":["EPSG",12479]}
+{"kind":"conversion","name":"SPCS2022 Kansas Great Bend zone (foot)","of":12528,"source":"name","found":["EPSG",12528]}
+{"kind":"conversion","name":"spcs2022 kANSAS gREAT bEND ZONE (FOOT)","of":12528,"source":"name","found":["EPSG",12528]}
+{"kind":"conversion","name":"SPCS2022 Maine East zone (meter)","of":12585,"source":"name","found":["EPSG",12585]}
+{"kind":"conversion","name":"spcs2022 mAINE eAST ZONE (METER)","of":12585,"source":"name","found":["EPSG",12585]}
+{"kind":"conversion","name":"SPCS2022 Nevada zone (foot)","of":12976,"source":"name","found":["EPSG",12976]}
+{"kind":"conversion","name":"spcs2022 nEVADA ZONE (FOOT)","of":12976,"source":"name","found":["EPSG",12976]}
+{"kind":"conversion","name":"SPCS2022 Ohio Cuyahoga zone (foot)","of":13110,"source":"name","found":["EPSG",13110]}
+{"kind":"conversion","name":"spcs2022 oHIO cUYAHOGA ZONE (FOOT)","of":13110,"source":"name","found":["EPSG",13110]}
+{"kind":"conversion","name":"SPCS2022 Ohio Highland zone (foot)","of":13150,"source":"name","found":["EPSG",13150]}
+{"kind":"conversion","name":"spcs2022 oHIO hIGHLAND ZONE (FOOT)","of":13150,"source":"name","found":["EPSG",13150]}
+{"kind":"conversion","name":"SPCS2022 Ohio Monroe zone (foot)","of":13190,"source":"name","found":["EPSG",13190]}
+{"kind":"conversion","name":"spcs2022 oHIO mONROE ZONE (FOOT)","of":13190,"source":"name","found":["EPSG",13190]}
+{"kind":"conversion","name":"SPCS2022 Ohio Shelby zone (foot)","of":13244,"source":"name","found":["EPSG",13244]}
+{"kind":"conversion","name":"spcs2022 oHIO sHELBY ZONE (FOOT)","of":13244,"source":"name","found":["EPSG",13244]}
+{"kind":"conversion","name":"SPCS2022 Ohio zone (foot)","of":13066,"source":"name","found":["EPSG",13066]}
+{"kind":"conversion","name":"spcs2022 oHIO ZONE (FOOT)","of":13066,"source":"name","found":["EPSG",13066]}
+{"kind":"conversion","name":"SPCS2022 Oregon Bend-Klamath Falls zone (foot)","of":13356,"source":"name","found":["EPSG",13356]}
+{"kind":"conversion","name":"spcs2022 oREGON bEND-kLAMATH fALLS ZONE (FOOT)","of":13356,"source":"name","found":["EPSG",13356]}
+{"kind":"conversion","name":"SPCS2022 Oregon Ochoco Summit zone (foot)","of":13400,"source":"name","found":["EPSG",13400]}
+{"kind":"conversion","name":"spcs2022 oREGON oCHOCO sUMMIT ZONE (FOOT)","of":13400,"source":"name","found":["EPSG",13400]}
+{"kind":"conversion","name":"SPCS2022 Pennsylvania zone (foot)","of":13440,"source":"name","found":["EPSG",13440]}
+{"kind":"conversion","name":"spcs2022 pENNSYLVANIA ZONE (FOOT)","of":13440,"source":"name","found":["EPSG",13440]}
+{"kind":"conversion","name":"SPCS2022 Wisconsin Calumet-Fond du Lac-Outagamie-Winnebago zone (foot)","of":14136,"source":"name","found":["EPSG",14136]}
+{"kind":"conversion","name":"spcs2022 wISCONSIN cALUMET-fOND DU lAC-oUTAGAMIE-wINNEBAGO ZONE (FOOT)","of":14136,"source":"name","found":["EPSG",14136]}
+{"kind":"conversion","name":"SPCS2022 Wisconsin Kewaunee-Manitowoc-Sheboygan zone (foot)","of":14176,"source":"name","found":["EPSG",14176]}
+{"kind":"conversion","name":"spcs2022 wISCONSIN kEWAUNEE-mANITOWOC-sHEBOYGAN ZONE (FOOT)","of":14176,"source":"name","found":["EPSG",14176]}
+{"kind":"conversion","name":"SPCS2022 Wisconsin Rock zone (foot)","of":14244,"source":"name","found":["EPSG",14244]}
+{"kind":"conversion","name":"spcs2022 wISCONSIN rOCK ZONE (FOOT)","of":14244,"source":"name","found":["EPSG",14244]}
+{"kind":"conversion","name":"SPCS2022 Wyoming East zone (foot)","of":14288,"source":"name","found":["EPSG",14288]}
+{"kind":"conversion","name":"spcs2022 wYOMING eAST ZONE (FOOT)","of":14288,"source":"name","found":["EPSG",14288]}
+{"kind":"conversion","name":"SPCS83 Alaska zone 9 (meter)","of":15039,"source":"name","found":["EPSG",15039]}
+{"kind":"conversion","name":"spcs83 aLASKA ZONE 9 (METER)","of":15039,"source":"name","found":["EPSG",15039]}
+{"kind":"conversion","name":"SPCS83 Connecticut zone (meter)","of":10630,"source":"name","found":["EPSG",10630]}
+{"kind":"conversion","name":"spcs83 cONNECTICUT ZONE (METER)","of":10630,"source":"name","found":["EPSG",10630]}
+{"kind":"conversion","name":"SPCS83 Georgia East zone (US survey foot)","of":15321,"source":"name","found":["EPSG",15321]}
+{"kind":"conversion","name":"spcs83 gEORGIA eAST ZONE (us SURVEY FOOT)","of":15321,"source":"name","found":["EPSG",15321]}
+{"kind":"conversion","name":"SPCS83 Missouri Central zone (meter)","of":12432,"source":"name","found":["EPSG",12432]}
+{"kind":"conversion","name":"spcs83 mISSOURI cENTRAL ZONE (METER)","of":12432,"source":"name","found":["EPSG",12432]}
+{"kind":"conversion","name":"SPCS83 South Carolina zone (meter)","of":13930,"source":"name","found":["EPSG",13930]}
+{"kind":"conversion","name":"spcs83 sOUTH cAROLINA ZONE (METER)","of":13930,"source":"name","found":["EPSG",13930]}
+{"kind":"conversion","name":"SPCS83 Texas South zone (US survey foot)","of":15361,"source":"name","found":["EPSG",15361]}
+{"kind":"conversion","name":"spcs83 tEXAS sOUTH ZONE (us SURVEY FOOT)","of":15361,"source":"name","found":["EPSG",15361]}
+{"kind":"conversion","name":"SWEREF 99 TM","of":17333,"source":"name","found":["EPSG",17333]}
+{"kind":"conversion","name":"sweref 99 tm","of":17333,"source":"name","found":["EPSG",17333]}
+{"kind":"conversion","name":"SZCTW-TM","of":11468,"source":"name","found":["EPSG",11468]}
+{"kind":"conversion","name":"szctw-tm","of":11468,"source":"name","found":["EPSG",11468]}
+{"kind":"conversion","name":"South West African Survey Grid zone 13","of":17613,"source":"name","found":["EPSG",17613]}
+{"kind":"conversion","name":"sOUTH wEST aFRICAN sURVEY gRID ZONE 13","of":17613,"source":"name","found":["EPSG",17613]}
+{"kind":"conversion","name":"TM 12 NE","of":16412,"source":"name","found":["EPSG",16412]}
+{"kind":"conversion","name":"tm 12 ne","of":16412,"source":"name","found":["EPSG",16412]}
+{"kind":"conversion","name":"TM Emilia-Romagna","of":5658,"source":"name","found":["EPSG",5658]}
+{"kind":"conversion","name":"tm eMILIA-rOMAGNA","of":5658,"source":"name","found":["EPSG",5658]}
+{"kind":"conversion","name":"TM Zone 21N (US survey foot)","of":8034,"source":"name","found":["EPSG",8034]}
+{"kind":"conversion","name":"tm zONE 21n (us SURVEY FOOT)","of":8034,"source":"name","found":["EPSG",8034]}
+{"kind":"conversion","name":"Trongsa TM","of":5290,"source":"name","found":["EPSG",5290]}
+{"kind":"conversion","name":"tRONGSA tm","of":5290,"source":"name","found":["EPSG",5290]}
+{"kind":"conversion","name":"UTM zone 18N","of":16018,"source":"name","found":["EPSG",16018]}
+{"kind":"conversion","name":"utm ZONE 18n","of":16018,"source":"name","found":["EPSG",16018]}
+{"kind":"conversion","name":"UTM zone 49S","of":16149,"source":"name","found":["EPSG",16149]}
+{"kind":"conversion","name":"utm ZONE 49s","of":16149,"source":"name","found":["EPSG",16149]}
+{"kind":"conversion","name":"UTM zone 58N","of":16058,"source":"name","found":["EPSG",16058]}
+{"kind":"conversion","name":"utm ZONE 58n","of":16058,"source":"name","found":["EPSG",16058]}
+{"kind":"conversion","name":"UTM zone 9S","of":16109,"source":"name","found":["EPSG",16109]}
+{"kind":"conversion","name":"utm ZONE 9s","of":16109,"source":"name","found":["EPSG",16109]}
+{"kind":"conversion","name":"WISCRS Buffalo County (ftUS)","of":7431,"source":"name","found":["EPSG",7431]}
+{"kind":"conversion","name":"wiscrs bUFFALO cOUNTY (FTus)","of":7431,"source":"name","found":["EPSG",7431]}
+{"kind":"conversion","name":"WISCRS Trempealeau County (ftUS)","of":7479,"source":"name","found":["EPSG",7479]}
+{"kind":"conversion","name":"wiscrs tREMPEALEAU cOUNTY (FTus)","of":7479,"source":"name","found":["EPSG",7479]}
+{"kind":"conversion","name":"WISCRS Vernon County (ftUS)","of":7519,"source":"name","found":["EPSG",7519]}
+{"kind":"conversion","name":"wiscrs vERNON cOUNTY (FTus)","of":7519,"source":"name","found":["EPSG",7519]}
+{"kind":"conversion","name":"Wisconsin CS27 Central zone","of":14802,"source":"name","found":["EPSG",14802]}
+{"kind":"conversion","name":"wISCONSIN cs27 cENTRAL ZONE","of":14802,"source":"name","found":["EPSG",14802]}
+{"kind":"conversion","name":"axis order change (2D)","of":15498,"source":"name","found":["EPSG",15498]}
+{"kind":"conversion","name":"AXIS ORDER CHANGE (2d)","of":15498,"source":"name","found":["EPSG",15498]}
