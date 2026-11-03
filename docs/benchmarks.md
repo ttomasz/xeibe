@@ -87,6 +87,8 @@ the benchmarks measure a correct read.
 | | `transform_new` | Choosing the operation for each of those pairs | |
 | | `crs` | `Crs` from an EPSG code, PROJJSON, WKT2, WKT1 and a PROJ string; WKT2 and WKT1 written | |
 | | `geodesic` | Karney's inverse and direct problems on WGS 84 | problems |
+| | `arrow/convert_array` | GeoArrow arrays converted in their own layout (`xeibe_reproject::arrow`, behind its `arrow` feature): 10,000 polygons of 32 vertices in EPSG:2180, separated, interleaved and WKB, and their 320,000 vertices as points, to EPSG:4258; `convert_xy` on the same coordinates as the baseline | coordinates |
+| | `arrow/extent` | The pass over the same arrays that finds the box to load grids for | coordinates |
 
 Benchmark names hold no machine-dependent values: the thread counts are
 `1` and `all` (`xeibe_core::parallel::default_threads`, one worker per
@@ -123,10 +125,25 @@ runs on one machine.
 | `transform_new/2180_to_32634` | 5.9 ms | |
 | `crs/from_epsg/2180` | 50 µs | |
 | `geodesic/inverse` | 13.9 ms | 717 K problems/s |
+| `arrow/convert_array/baseline/convert_xy` | 70.7 ms | 4.5 M coordinates/s |
+| `arrow/convert_array/polygon/separated` | 72.1 ms | 4.4 M coordinates/s |
+| `arrow/convert_array/polygon/interleaved` | 72.7 ms | 4.4 M coordinates/s |
+| `arrow/convert_array/polygon/wkb` | 76.8 ms | 4.2 M coordinates/s |
+| `arrow/convert_array/point/interleaved` | 73.9 ms | 4.3 M coordinates/s |
+| `arrow/convert_array/point/wkb` | 84.1 ms | 3.8 M coordinates/s |
+| `arrow/extent/polygon/separated` | 1.6 ms | 201 M coordinates/s |
+| `arrow/extent/point/wkb` | 13.7 ms | 23 M coordinates/s |
 
 Choosing an operation is cheap on one datum and takes milliseconds across
 datums, where the candidate operations are looked up and ranked; a read
 does it once per CRS.
+
+Converting a GeoArrow array costs 2–5% more than `convert_xy` on its
+coordinates alone for the native layouts, which are converted in a copy of
+their buffers as they are, and 9–19% more for WKB, which is parsed for its
+coordinates first; one small value per point is the worst case. These
+numbers came after the first version, which gathered every coordinate
+into new buffers and back, and cost 27% (native) to 45% (WKB points) more.
 
 ## Adding a benchmark
 

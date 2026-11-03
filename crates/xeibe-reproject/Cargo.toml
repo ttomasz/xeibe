@@ -13,16 +13,23 @@ license = "CC0-1.0 AND MIT"
 publish.workspace = true
 
 [features]
-default = ["esri"]
+default = ["esri", "arrow"]
 # Esri's names of EPSG objects, for reading ESRI WKT (docs/crs-wkt.md).
 # xeibe-esri's data is Apache-2.0; without it, ESRI names are matched to
 # EPSG's by normalising them only.
 esri = ["dep:xeibe-esri"]
+# GeoArrow arrays converted in their own layout (`arrow`, for
+# xeibe_proj.arrow; docs/pyproj-phase3.md, GeoArrow). Only xeibe-proj-py
+# turns it on in the workspace.
+arrow = ["dep:arrow-array", "dep:arrow-buffer", "dep:arrow-schema"]
 
 [dependencies]
 xeibe-crs.workspace = true
 xeibe-esri = { workspace = true, optional = true }
 flate2.workspace = true
+arrow-array = { workspace = true, optional = true }
+arrow-buffer = { workspace = true, optional = true }
+arrow-schema = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

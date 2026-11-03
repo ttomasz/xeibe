@@ -92,7 +92,9 @@ GeoArrow arrays are converted (step 7) and there is a Pyodide wheel
     passes its tests but four ([pyproj-phase3.md](pyproj-phase3.md#geopandas)).
   - `xeibe_proj.arrow`: GeoArrow's native encodings, WKB and boxes converted
     through the Arrow PyCapsule interface, over arrow-rs's C Data Interface
-    (0.31 MB of the wheel), with no Arrow library imported
+    (0.31 MB of the wheel), with no Arrow library imported, by
+    `xeibe_reproject::arrow` (its `arrow` feature), 2–5% slower than
+    `convert_xy` alone for native arrays
     ([pyproj-phase3.md](pyproj-phase3.md#geoarrow)).
 - **The Rust changes phase 1 needed are made**:
   - `Transform::operation_info`, `operation_index_for` and

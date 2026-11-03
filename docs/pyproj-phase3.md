@@ -839,9 +839,16 @@ Decision 17 picks the FFI code.
 
 ### Implementation
 
-`crates/xeibe-proj-py/src/arrow.rs` (`_native.ArrowData`) and
-`python/xeibe_proj/arrow.py`. What the design above left open was decided
-so:
+The conversion is `xeibe_reproject::arrow` (`convert_array`,
+`convert_chunks`, `extent`), behind the crate's `arrow` feature: on for the
+crate itself, off for the workspace's dependents but `xeibe-proj-py`, as
+`esri` is. It has its own tests (`crates/xeibe-reproject/tests/it/arrow.rs`)
+and benchmarks (`arrow/` in `benches/reproject.rs`, [benchmarks.md](benchmarks.md)).
+`xeibe-proj-py`'s `src/arrow.rs` (`_native.ArrowData`) imports and exports
+through the C interfaces, and `python/xeibe_proj/arrow.py` reads the
+metadata. It is not in `xeibe-arrow`, whose `xeibe-core` brings `zstd-sys`,
+C code the Pyodide wheel would have to compile. What the design above left
+open was decided so:
 
 - **The layout decides the encoding**, not the extension name: lists (and
   large lists) down to interleaved `FixedSizeList<double>` or separated
@@ -886,6 +893,13 @@ so:
 - **Grids**: the extent of every coordinate is taken first, and the grid
   data for it loaded as for `Transformer.transform` (`GridsNeeded`), before
   anything is converted.
+- **Speed.** Where every coordinate of a layer belongs to a live geometry
+  (no nulls, no slice), the copied buffers are converted as they are:
+  `convert_xy` for separated ones, `convert_interleaved` for interleaved
+  ones (XYM through separate buffers, since a third value would be taken
+  as z). Otherwise the live coordinates are gathered and scattered back.
+  On 320,000 coordinates, the native layouts cost 2–5% more than
+  `convert_xy` alone, WKB 9–19% ([benchmarks.md](benchmarks.md#reference-numbers)).
 - **Chunked arrays.** arrow-rs reads and writes streams of record batches
   only, and a chunked column is a stream of arrays, so the C Stream
   Interface is done by hand for that (about 100 lines). A `ChunkedArray`
