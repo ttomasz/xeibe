@@ -192,8 +192,15 @@ impl Parser<'_> {
     }
 
     fn arg(&mut self, depth: usize) -> Result<Arg, Error> {
+        if let Some(date) = self.date_time() {
+            return Ok(Arg::Word(date));
+        }
         match self.peek() {
             Some(b'"') => self.quoted().map(Arg::Text),
+            // ISO 19162's other quotes, which PROJ reads too.
+            _ if self.text[self.pos..].starts_with('\u{201c}') => {
+                self.curly_quoted().map(Arg::Text)
+            }
             Some(b) if b.is_ascii_digit() || matches!(b, b'+' | b'-' | b'.') => {
                 self.number().map(Arg::Number)
             }
@@ -210,6 +217,37 @@ impl Parser<'_> {
             }
             _ => Err(self.error("expected a value")),
         }
+    }
+
+    /// A date or date-time, unquoted as in `TIMEORIGIN[1979-12-29T00Z]`:
+    /// four digits and a `-` or `T`, up to the next `,` or bracket.
+    fn date_time(&mut self) -> Option<String> {
+        let rest = &self.text.as_bytes()[self.pos..];
+        let is_date = rest.len() > 4
+            && rest[..4].iter().all(u8::is_ascii_digit)
+            && matches!(rest[4], b'-' | b'T');
+        if !is_date {
+            return None;
+        }
+        let len = rest
+            .iter()
+            .position(|b| matches!(b, b',' | b']' | b')') || b.is_ascii_whitespace())
+            .unwrap_or(rest.len());
+        let date = self.text[self.pos..self.pos + len].to_owned();
+        self.pos += len;
+        Some(date)
+    }
+
+    /// A string in `“` and `”`, which can't hold one.
+    fn curly_quoted(&mut self) -> Result<String, Error> {
+        self.pos += '\u{201c}'.len_utf8();
+        let rest = &self.text[self.pos..];
+        let Some(at) = rest.find('\u{201d}') else {
+            return Err(self.error("unterminated string"));
+        };
+        let out = rest[..at].to_owned();
+        self.pos += at + '\u{201d}'.len_utf8();
+        Ok(out)
     }
 
     fn quoted(&mut self) -> Result<String, Error> {

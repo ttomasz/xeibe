@@ -25,6 +25,7 @@ pub(crate) fn crs(node: &Node) -> Result<Value, Error> {
         "PROJCRS" | "PROJECTEDCRS" => projected(node),
         "VERTCRS" | "VERTICALCRS" => vertical(node),
         "ENGCRS" | "ENGINEERINGCRS" => engineering(node),
+        "TIMECRS" | "TEMPORALCRS" => temporal(node),
         "COMPOUNDCRS" => compound(node),
         "DERIVEDPROJCRS" | "DERIVEDPROJECTEDCRS" => derived_projected(node),
         "BOUNDCRS" => bound(node),
@@ -107,18 +108,7 @@ pub(crate) fn object(node: &Node) -> Result<Value, Error> {
             ids(node, &mut o)?;
             Ok(Value::Object(o))
         }
-        "TDATUM" | "TIMEDATUM" => {
-            node.only(&[&["CALENDAR", "TIMEORIGIN", "ID"]])?;
-            let mut o = named("TemporalDatum", node)?;
-            if let Some(c) = node.child(&["CALENDAR"]) {
-                o.insert("calendar".into(), json!(c.text(0)?));
-            }
-            if let Some(t) = node.child(&["TIMEORIGIN"]) {
-                o.insert("time_origin".into(), json!(t.text(0)?));
-            }
-            ids(node, &mut o)?;
-            Ok(Value::Object(o))
-        }
+        "TDATUM" | "TIMEDATUM" => Ok(typed("TemporalDatum", temporal_datum(node)?)),
         "ENSEMBLE" => Ok(typed("DatumEnsemble", ensemble(node)?)),
         "CONVERSION" => Ok(typed(
             "Conversion",
@@ -370,7 +360,12 @@ pub(super) fn unit(node: &Node) -> Result<Unit, Error> {
     };
     node.only(&[&["ID"]])?;
     let name = node.text(0)?;
-    let factor = node.number(1)?;
+    // A calendar unit (`TIMEUNIT["year"]`) has no factor, which PROJ
+    // gives as 0.
+    let factor = match (kind, node.args.get(1)) {
+        (UnitKind::Time, None | Some(Arg::Node(_))) => 0.0,
+        _ => node.number(1)?,
+    };
     let close = |want: f64| (factor - want).abs() <= 1e-12 * want;
     let shorthand = match kind {
         UnitKind::Linear | UnitKind::Any if name == "metre" && factor == 1.0 => Some("metre"),
@@ -808,7 +803,8 @@ fn axis_name(label: &str, direction: &str) -> (String, String) {
             ("X", "geocentricX") => "Geocentric X",
             ("Y", "geocentricY") => "Geocentric Y",
             ("Z", "geocentricZ") => "Geocentric Z",
-            (other, _) => other,
+            // Others stay unnamed (`"(T)"`), as in PROJ.
+            _ => "",
         };
         return (name.to_owned(), abbreviation.to_owned());
     }
@@ -1350,6 +1346,46 @@ fn engineering(node: &Node) -> Result<Value, Error> {
     ids(d, &mut datum)?;
     let mut o = named("EngineeringCRS", node)?;
     o.insert("datum".into(), Value::Object(datum));
+    o.insert("coordinate_system".into(), coordinate_system(node)?);
+    finish(node, &mut o)?;
+    Ok(Value::Object(o))
+}
+
+/// `TDATUM`: its calendar, PROJ's "proleptic Gregorian" when it has
+/// none, and its time origin as written (a year, a date, a date-time or
+/// text).
+fn temporal_datum(node: &Node) -> Result<Value, Error> {
+    node.only(&[&["CALENDAR", "TIMEORIGIN", "ID"]])?;
+    let mut o = Obj::new();
+    o.insert("name".into(), json!(node.text(0)?));
+    let calendar = match node.child(&["CALENDAR"]) {
+        Some(c) => c.text(0)?,
+        None => "proleptic Gregorian",
+    };
+    o.insert("calendar".into(), json!(calendar));
+    if let Some(t) = node.child(&["TIMEORIGIN"]) {
+        let origin = match t.args.first() {
+            Some(Arg::Text(s) | Arg::Word(s)) => s.clone(),
+            // A year: `TIMEORIGIN[0000]`.
+            Some(Arg::Number(v)) if v.fract() == 0.0 && (0.0..10000.0).contains(v) => {
+                format!("{v:04}")
+            }
+            _ => return Err(t.invalid("expected a time origin")),
+        };
+        o.insert("time_origin".into(), json!(origin));
+    }
+    ids(node, &mut o)?;
+    Ok(Value::Object(o))
+}
+
+/// `TIMECRS`: a temporal datum and a temporal coordinate system.
+fn temporal(node: &Node) -> Result<Value, Error> {
+    node.only(&[&["TDATUM", "TIMEDATUM"], UNITS, USAGE, &["CS", "AXIS"]])?;
+    let d = node
+        .child(&["TDATUM", "TIMEDATUM"])
+        .ok_or_else(|| node.invalid("no TDATUM"))?;
+    let mut o = named("TemporalCRS", node)?;
+    o.insert("datum".into(), temporal_datum(d)?);
     o.insert("coordinate_system".into(), coordinate_system(node)?);
     finish(node, &mut o)?;
     Ok(Value::Object(o))

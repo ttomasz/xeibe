@@ -7,10 +7,12 @@ metres."""
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterable
 from typing import Any, Self
 
 from xeibe_proj._json import JsonDict
+from xeibe_proj.crs._conversion import FALSE as _FALSE
+from xeibe_proj.crs._conversion import ORIGIN as _ORIGIN
+from xeibe_proj.crs._conversion import conversion
 from xeibe_proj.crs._objects import CoordinateOperation, PartBuilder, nested_json
 from xeibe_proj.exceptions import CRSError
 
@@ -41,79 +43,6 @@ __all__ = [
     "VerticalPerspectiveConversion",
 ]
 
-# EPSG's methods the conversions use, by code.
-_METHODS = {
-    1028: "Equidistant Cylindrical",
-    9801: "Lambert Conic Conformal (1SP)",
-    9802: "Lambert Conic Conformal (2SP)",
-    9804: "Mercator (variant A)",
-    9805: "Mercator (variant B)",
-    9807: "Transverse Mercator",
-    9810: "Polar Stereographic (variant A)",
-    9815: "Hotine Oblique Mercator (variant B)",
-    9820: "Lambert Azimuthal Equal Area",
-    9822: "Albers Equal Area",
-    9829: "Polar Stereographic (variant B)",
-    9832: "Modified Azimuthal Equidistant",
-    9835: "Lambert Cylindrical Equal Area",
-    9838: "Vertical Perspective",
-    9840: "Orthographic",
-}
-
-# EPSG's parameters, by code: name and unit.
-_PARAMETERS = {
-    8801: ("Latitude of natural origin", "degree"),
-    8802: ("Longitude of natural origin", "degree"),
-    8805: ("Scale factor at natural origin", "unity"),
-    8806: ("False easting", "metre"),
-    8807: ("False northing", "metre"),
-    8811: ("Latitude of projection centre", "degree"),
-    8812: ("Longitude of projection centre", "degree"),
-    8813: ("Azimuth at projection centre", "degree"),
-    8814: ("Angle from Rectified to Skew Grid", "degree"),
-    8815: ("Scale factor at projection centre", "unity"),
-    8816: ("Easting at projection centre", "metre"),
-    8817: ("Northing at projection centre", "metre"),
-    8821: ("Latitude of false origin", "degree"),
-    8822: ("Longitude of false origin", "degree"),
-    8823: ("Latitude of 1st standard parallel", "degree"),
-    8824: ("Latitude of 2nd standard parallel", "degree"),
-    8826: ("Easting at false origin", "metre"),
-    8827: ("Northing at false origin", "metre"),
-    8832: ("Latitude of standard parallel", "degree"),
-    8833: ("Longitude of origin", "degree"),
-    8834: ("Latitude of topocentric origin", "degree"),
-    8835: ("Longitude of topocentric origin", "degree"),
-    8836: ("Ellipsoidal height of topocentric origin", "metre"),
-    8840: ("Viewpoint height", "metre"),
-}
-
-# The natural origin's, the most common.
-_ORIGIN = (8801, 8802)
-_FALSE = (8806, 8807)
-
-
-def _conversion(method: int | str, values: Iterable[tuple[int | tuple[str, str], float]], name: str = "unknown") -> JsonDict:
-    """A conversion of EPSG's method (by code) or PROJ's (by name), with
-    parameters in the order given: EPSG's by code, others as their
-    ``(name, unit)``."""
-    out: JsonDict = {"type": "Conversion", "name": name}
-    out["method"] = (
-        {"name": method}
-        if isinstance(method, str)
-        else {"name": _METHODS[method], "id": {"authority": "EPSG", "code": method}}
-    )
-    parameters: list[JsonDict] = []
-    for key, value in values:
-        if isinstance(key, int):
-            pname, unit = _PARAMETERS[key]
-            parameters.append({"name": pname, "value": value, "unit": unit, "id": {"authority": "EPSG", "code": key}})
-        else:
-            parameters.append({"name": key[0], "value": value, "unit": key[1]})
-    out["parameters"] = parameters
-    return out
-
-
 class AlbersEqualAreaConversion(PartBuilder, CoordinateOperation):
     """Albers Equal Area (EPSG 9822, ``+proj=aea``)."""
 
@@ -129,7 +58,7 @@ class AlbersEqualAreaConversion(PartBuilder, CoordinateOperation):
         """The parallels (``lat_1``, ``lat_2``), the false origin (``lat_0``,
         ``lon_0``) and its easting and northing (``x_0``, ``y_0``)."""
         return cls.from_json_dict(
-            _conversion(
+            conversion(
                 9822,
                 {
                     8821: latitude_false_origin,
@@ -156,7 +85,7 @@ class AzimuthalEquidistantConversion(PartBuilder, CoordinateOperation):
         """The natural origin (``lat_0``, ``lon_0``) and false easting and
         northing (``x_0``, ``y_0``)."""
         values = zip((*_ORIGIN, *_FALSE), (latitude_natural_origin, longitude_natural_origin, false_easting, false_northing))
-        return cls.from_json_dict(_conversion(9832, values))
+        return cls.from_json_dict(conversion(9832, values))
 
 
 class GeostationarySatelliteConversion(PartBuilder, CoordinateOperation):
@@ -186,7 +115,7 @@ class GeostationarySatelliteConversion(PartBuilder, CoordinateOperation):
             )
         origin = zip((*_ORIGIN, *_FALSE), (latitude_natural_origin, longitude_natural_origin, false_easting, false_northing))
         values: list[tuple[int | tuple[str, str], float]] = [(("Satellite height", "metre"), satellite_height), *origin]
-        return cls.from_json_dict(_conversion(f"Geostationary Satellite (Sweep {sweep})", values))
+        return cls.from_json_dict(conversion(f"Geostationary Satellite (Sweep {sweep})", values))
 
 
 class LambertAzimuthalEqualAreaConversion(PartBuilder, CoordinateOperation):
@@ -202,7 +131,7 @@ class LambertAzimuthalEqualAreaConversion(PartBuilder, CoordinateOperation):
         """The natural origin (``lat_0``, ``lon_0``) and false easting and
         northing (``x_0``, ``y_0``)."""
         values = zip((*_ORIGIN, *_FALSE), (latitude_natural_origin, longitude_natural_origin, false_easting, false_northing))
-        return cls.from_json_dict(_conversion(9820, values))
+        return cls.from_json_dict(conversion(9820, values))
 
 
 class LambertConformalConic2SPConversion(PartBuilder, CoordinateOperation):
@@ -220,7 +149,7 @@ class LambertConformalConic2SPConversion(PartBuilder, CoordinateOperation):
         """The parallels (``lat_1``, ``lat_2``), the false origin (``lat_0``,
         ``lon_0``) and its easting and northing (``x_0``, ``y_0``)."""
         return cls.from_json_dict(
-            _conversion(
+            conversion(
                 9802,
                 {
                     8823: latitude_first_parallel,
@@ -237,7 +166,7 @@ class LambertConformalConic2SPConversion(PartBuilder, CoordinateOperation):
 def _scaled(method: int | str, latitude: float, longitude: float, scale: float, easting: float, northing: float) -> JsonDict:
     """A conversion with a natural origin, a scale factor at it, and false
     easting and northing, in EPSG's order."""
-    return _conversion(method, {8801: latitude, 8802: longitude, 8805: scale, 8806: easting, 8807: northing}.items())
+    return conversion(method, {8801: latitude, 8802: longitude, 8805: scale, 8806: easting, 8807: northing}.items())
 
 
 class LambertConformalConic1SPConversion(PartBuilder, CoordinateOperation):
@@ -271,7 +200,7 @@ class LambertCylindricalEqualAreaConversion(PartBuilder, CoordinateOperation):
         """The standard parallel (``lat_ts``), the central meridian
         (``lon_0``) and false easting and northing (``x_0``, ``y_0``)."""
         values = zip((8823, 8802, *_FALSE), (latitude_first_parallel, longitude_natural_origin, false_easting, false_northing))
-        return cls.from_json_dict(_conversion(9835, values))
+        return cls.from_json_dict(conversion(9835, values))
 
 
 class LambertCylindricalEqualAreaScaleConversion(PartBuilder, CoordinateOperation):
@@ -334,7 +263,7 @@ class MercatorBConversion(PartBuilder, CoordinateOperation):
         """The standard parallel (``lat_ts``), the central meridian
         (``lon_0``) and false easting and northing (``x_0``, ``y_0``)."""
         values = zip((8823, 8802, *_FALSE), (latitude_first_parallel, longitude_natural_origin, false_easting, false_northing))
-        return cls.from_json_dict(_conversion(9805, values))
+        return cls.from_json_dict(conversion(9805, values))
 
 
 class HotineObliqueMercatorBConversion(PartBuilder, CoordinateOperation):
@@ -381,7 +310,7 @@ class HotineObliqueMercatorBConversion(PartBuilder, CoordinateOperation):
         if azimuth_projection_centre is None:
             raise ValueError("azimuth_projection_centre or azimuth_initial_line must be provided.")
         return cls.from_json_dict(
-            _conversion(
+            conversion(
                 9815,
                 {
                     8811: latitude_projection_centre,
@@ -409,7 +338,7 @@ class OrthographicConversion(PartBuilder, CoordinateOperation):
         """The natural origin (``lat_0``, ``lon_0``) and false easting and
         northing (``x_0``, ``y_0``)."""
         values = zip((*_ORIGIN, *_FALSE), (latitude_natural_origin, longitude_natural_origin, false_easting, false_northing))
-        return cls.from_json_dict(_conversion(9840, values))
+        return cls.from_json_dict(conversion(9840, values))
 
 
 class PolarStereographicAConversion(PartBuilder, CoordinateOperation):
@@ -444,7 +373,7 @@ class PolarStereographicBConversion(PartBuilder, CoordinateOperation):
         """The standard parallel (``lat_ts``), the central meridian
         (``lon_0``) and false easting and northing (``x_0``, ``y_0``)."""
         values = zip((8832, 8833, *_FALSE), (latitude_standard_parallel, longitude_origin, false_easting, false_northing))
-        return cls.from_json_dict(_conversion(9829, values))
+        return cls.from_json_dict(conversion(9829, values))
 
 
 class SinusoidalConversion(PartBuilder, CoordinateOperation):
@@ -454,7 +383,7 @@ class SinusoidalConversion(PartBuilder, CoordinateOperation):
         """The central meridian (``lon_0``) and false easting and northing
         (``x_0``, ``y_0``)."""
         values = zip((8802, *_FALSE), (longitude_natural_origin, false_easting, false_northing))
-        return cls.from_json_dict(_conversion("Sinusoidal", values))
+        return cls.from_json_dict(conversion("Sinusoidal", values))
 
 
 class StereographicConversion(PartBuilder, CoordinateOperation):
@@ -524,7 +453,7 @@ class VerticalPerspectiveConversion(PartBuilder, CoordinateOperation):
             8806: false_easting,
             8807: false_northing,
         }
-        return cls.from_json_dict(_conversion(9838, values.items()))
+        return cls.from_json_dict(conversion(9838, values.items()))
 
 
 class RotatedLatitudeLongitudeConversion(PartBuilder, CoordinateOperation):
@@ -534,7 +463,7 @@ class RotatedLatitudeLongitudeConversion(PartBuilder, CoordinateOperation):
         """The new pole's latitude and longitude (``o_lat_p``, ``o_lon_p``)
         and the rotation about it (``lon_0``)."""
         values = {(k, "degree"): v for k, v in (("o_lat_p", o_lat_p), ("o_lon_p", o_lon_p), ("lon_0", lon_0))}
-        return cls.from_json_dict(_conversion("PROJ ob_tran o_proj=longlat", values.items()))
+        return cls.from_json_dict(conversion("PROJ ob_tran o_proj=longlat", values.items()))
 
 
 class PoleRotationNetCDFCFConversion(PartBuilder, CoordinateOperation):
@@ -555,7 +484,7 @@ class PoleRotationNetCDFCFConversion(PartBuilder, CoordinateOperation):
             ("Grid north pole longitude (netCDF CF convention)", "degree"): grid_north_pole_longitude,
             ("North pole grid longitude (netCDF CF convention)", "degree"): north_pole_grid_longitude,
         }
-        return cls.from_json_dict(_conversion(name, values.items(), name))
+        return cls.from_json_dict(conversion(name, values.items(), name))
 
 
 class EquidistantCylindricalConversion(PartBuilder, CoordinateOperation):
@@ -576,7 +505,7 @@ class EquidistantCylindricalConversion(PartBuilder, CoordinateOperation):
             (8823, *_ORIGIN, *_FALSE),
             (latitude_first_parallel, latitude_natural_origin, longitude_natural_origin, false_easting, false_northing),
         )
-        return cls.from_json_dict(_conversion(1028, values))
+        return cls.from_json_dict(conversion(1028, values))
 
 
 PlateCarreeConversion = EquidistantCylindricalConversion

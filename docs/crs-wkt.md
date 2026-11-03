@@ -481,6 +481,13 @@ From a PROJJSON value:
   an ellipsoid, a prime meridian, a datum of any kind, an ensemble or a
   conversion, and a datum with its `DYNAMIC` or `PRIMEM` as written
   above, which PROJ can't read back when it is `DYNAMIC`.
+- **Temporal CRSs** (`TIMECRS`) are read and written as PROJ does: the
+  calendar "proleptic Gregorian" when none is given, the time origin as
+  written (`TIMEORIGIN[1979-12-29T00Z]` unquoted, a year as four digits), a
+  calendar unit without a factor (`TIMEUNIT["year"]`, PROJJSON's factor
+  0), a date-time axis without a unit. They can't be converted. As in
+  PROJ, strings may be quoted with `“` and `”` too, and an axis given only
+  an abbreviation PROJ doesn't name (`"(T)"`) stays unnamed.
 
   Some CRSs WKT1 can't express, such as geographic and projected 3D CRSs,
   engineering CRSs with non-metric axes, derived projected CRSs, and

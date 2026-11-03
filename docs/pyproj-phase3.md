@@ -67,7 +67,7 @@ other authorities, PROJ's context and CA bundle, and `get_factors`.
 | 10 | **`+nadgrids=@null` (or `null`) is a Bound CRS with a zero shift to WGS 84**, and PROJ's Web Mercator string is EPSG:3857, as PROJ recognises it. Other `+nadgrids` grids are read when the grid catalog has them under their old PROJ name. | `@null` is the common case, in every Web Mercator `.prj` file. The catalog already maps PROJ's old names (`conus`, `ntv1_can.dat`) to the CDN files ([reprojection.md](reprojection.md)). |
 | 11 | **The builder classes have pyproj's signatures and docstrings (MIT), and bodies of our own**: a conversion is EPSG's method and parameters from one table, built by one function, where pyproj writes each class's PROJJSON out in full. They build PROJJSON and call `from_json_dict`, so they need nothing native. pyproj's tests for them run unchanged, and a differential test builds every class with several sets of arguments in both libraries and compares the PROJJSON. | pyproj's 2,400 lines of builders are mostly the same parameters written out 22 times, and branches on PROJ's version. The interface must be pyproj's; the PROJJSON must be what PROJ makes of pyproj's (pyproj passes each through PROJ), which pyproj's tests check in a few cases only, and the differential test in all. |
 | 12 | **EPSG's ellipsoids, prime meridians, datums and conversions go into a new generated table in `xeibe-crs`** (`data/objects.bin`), each as PROJJSON with its names and aliases. The sub-objects' `from_epsg`, `from_authority`, `from_name`, `from_string` and `from_user_input` read it, and so does `query_geodetic_crs_from_datum`. | Today these objects exist only inside CRSs. EPSG has 55 ellipsoids, 15 prime meridians, 983 datums and datum ensembles, and 3,577 conversions, 206 of them used by no CRS. Compressed, this should be about 100 KB. |
-| 13 | **CF is pyproj's `_cf1x8.py` (MIT), ported.** | It is pure Python over PROJJSON and the builders. xarray and rioxarray use it. |
+| 13 | **CF has pyproj's methods and attributes, from one table of grid mappings that both directions read**, where pyproj writes each grid mapping's reading and writing apart, as decision 11 has the builders. pyproj's choices stay but three that write another CRS than the one given: angles in grads, a Lambert Conic Conformal (1SP) with a scale factor, and a height or `towgs84` with a geographic CRS ([CF](#cf)). | It is pure Python over PROJJSON and the builders. xarray and rioxarray use it, and read what it writes as the CRS it names. |
 | 14 | **`Transformer.from_proj` is implemented**: it is `from_crs` on the two `Proj`s' CRSs, as in pyproj. | pyproj deprecated it in its documentation, but it still works without a warning. Once PROJ strings exist, it costs one line. |
 | 15 | **GeoArrow is `xeibe_proj.arrow`, a module of its own**, not new methods on pyproj's classes. It reads and writes through the Arrow PyCapsule interface, without depending on any Arrow library. | The classes keep pyproj's surface, so the type checks and the shim stay exact. |
 | 16 | **GeoArrow's native encodings and WKB are supported**, not WKT. WKB is rewritten in place: a copy of the buffer, with each coordinate overwritten. | WKB is what GeoParquet and `GeoDataFrame.to_arrow` write by default. Its coordinates have fixed widths, so the offsets don't change. WKT's lengths would change. |
@@ -711,7 +711,7 @@ string it stands for (`+proj=cea +k_0=…`), as in pyproj: PROJ turns the
 scale factor into a standard parallel on the ellipsoid.
 
 **As built.** A conversion is EPSG's method and parameters by code from
-one table (`_METHODS`, `_PARAMETERS` in `crs/coordinate_operation.py`), and
+one table (`crs/_conversion.py`), and
 a coordinate system's axes are made from the enum member's name
 (`…_US_FT`, `NORTHING_…`). Parts' `to_json_dict` has `$schema`, as PROJ
 writes an object at the root, and so has a CRS made from a dict.
@@ -732,9 +732,9 @@ as such CRSs read from WKT do.
 `tests/test_builders.py`: every builder class's signature and every enum
 against pyproj's, every conversion with each argument given and with only
 the required ones, and 40 other builds, their PROJJSON and WKT compared
-with pyproj's. All of pyproj's tests of the builders pass but six of
-coordinate systems' `to_cf` (CF is step 6) and one that identifies a
-geographic 3D CRS as `OGC:CRS84h`, an OGC CRS ours doesn't have.
+with pyproj's. All of pyproj's tests of the builders pass but one that
+identifies a geographic 3D CRS as `OGC:CRS84h`, an OGC CRS ours doesn't
+have.
 
 The comparison found that pyproj's `CRS(4258).datum` depends on what ran
 before it: once a CRS is built on `urn:ogc:def:datum:EPSG::6258`, PROJ's
@@ -743,10 +743,48 @@ The builds that name an ensemble so run in a pyproj process of their own.
 
 ## CF
 
-`crs/_cf1x8.py` is pyproj's, ported: `CRS.to_cf`, `from_cf` and `cs_to_cf`,
-over the builders. The validation is pyproj's `test_crs_cf.py`, and an
-oracle test runs `to_cf` and `from_cf` round trips on every EPSG CRS
-against pyproj's.
+`CRS.to_cf`, `from_cf` and `cs_to_cf`, and `CoordinateSystem.to_cf`, over
+the builders (decision 13). `crs/_cf1x8.py` maps each CF grid mapping to
+an EPSG method's conversion, attribute by parameter, and `from_cf` and
+`to_cf` both read the map. pyproj's attributes and choices stay (an
+oblique Mercator's rectified grid at 90°, a rotated pole's
+`grid_north_pole_longitude` as `lon_0` − 180°, the axes' standard names),
+but where pyproj's attributes are another CRS than the one given:
+
+- **Angles in degrees**, as CF has them. EPSG gives NTF's in grads, which
+  pyproj writes as they are: Lambert zone II's latitude of origin as
+  "52", Paris's prime meridian as "2.5969213".
+- **A Lambert Conic Conformal (1SP) with a scale under 1** is the secant
+  cone through two parallels it is: CF's `lambert_conformal_conic` with
+  both, found where the cone's scale is 1, and the origin as
+  `latitude_of_projection_origin` (NTF's zones, Spain's LCC, 234 of EPSG's
+  CRSs). pyproj writes the parallel of origin as the one standard parallel
+  and leaves the scale out. One with a scale over 1 (low-distortion ground
+  systems: RMTCRS, WISCRS, …) touches no parallel and has no CF
+  attributes: ours writes its `crs_wkt` only.
+- **CF's cone with one standard parallel away from its origin** is the
+  cone through that parallel twice, with its false origin at
+  `latitude_of_projection_origin`; pyproj puts the origin on the parallel.
+- **A height and `towgs84` apply to any horizontal CRS**: pyproj's
+  `from_cf` leaves them off a geographic or rotated one, so a 2D CRS with
+  a height comes back without it.
+- A missing attribute raises `CRSError` naming it, where pyproj raises
+  `KeyError`.
+
+CF's rotated pole ("Pole rotation (netCDF CF convention)") converts, as
+`xeibe-reproject` makes it PROJ's `ob_tran` (`o_lon_p`, `o_lat_p`,
+`lon_0` + 180°), and is written as that PROJ string. A derived geographic
+CRS's `geodetic_crs` is itself, as in PROJ. Temporal CRSs (`TIMECRS`) are
+read and written, for `cs_to_cf`'s time axis ([crs-wkt.md](crs-wkt.md)).
+
+**Validation.** pyproj's `test_crs_cf.py` and coordinate systems' `to_cf`:
+all pass but two with Esri's codes (divergence 6). `tests/test_cf.py`:
+`to_cf` against pyproj's on every fifteenth current EPSG CRS and others,
+the deliberate differences checked on their own (the secant cones convert
+a point as the CRS does, to 1e-6 m); `to_cf` of `from_cf` of every one
+gives the same attributes. Over every EPSG CRS pyproj knows (7,186), ours
+differ from pyproj's only by the newer EPSG's names, the datum of
+vertical CRSs on an ensemble, and the above.
 
 ## GeoArrow
 
@@ -848,7 +886,8 @@ imports no Arrow library.
 5. **The builders**, gated on pyproj's tests for them. **Done**
    (2026-11-03): see [Builders](#builders). pyproj's suite went from 560
    to 667 of 996.
-6. **CF**, gated on pyproj's `test_crs_cf.py`.
+6. **CF**, gated on pyproj's `test_crs_cf.py`. **Done** (2026-11-03): see
+   [CF](#cf). pyproj's suite went from 667 to 723 of 996.
 7. **GeoArrow**: first the wheel-size measurement for decision 17, then
    the module.
 8. **Pyodide.**

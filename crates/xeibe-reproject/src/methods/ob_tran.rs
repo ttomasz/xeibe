@@ -43,6 +43,41 @@ pub(crate) struct ObliqueTransformation {
     oblique: Option<(f64, f64)>,
 }
 
+/// CF's rotated pole ("Pole rotation (netCDF CF convention)") as the
+/// `ob_tran` conversion PROJ makes of it, in degrees: `o_lon_p` the north
+/// pole's grid longitude, `o_lat_p` the grid's north pole latitude, `lon_0`
+/// its longitude plus 180°. `None` for another method.
+pub(crate) fn pole_rotation_as_ob_tran(
+    conversion: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    if conversion["method"]["name"] != "Pole rotation (netCDF CF convention)" {
+        return None;
+    }
+    let degrees = |name: &str| -> Option<f64> {
+        let p = conversion["parameters"].as_array()?.iter().find(|p| {
+            p["name"]
+                .as_str()
+                .is_some_and(|n| n.eq_ignore_ascii_case(name))
+        })?;
+        let value = p["value"].as_f64()?;
+        Some(match p["unit"]["conversion_factor"].as_f64() {
+            Some(factor) => (value * factor).to_degrees(),
+            None => value,
+        })
+    };
+    let parameter = |name: &str, value: f64| serde_json::json!({"name": name, "value": value, "unit": "degree"});
+    Some(serde_json::json!({
+        "type": "Conversion",
+        "name": conversion["name"],
+        "method": {"name": "PROJ ob_tran o_proj=longlat"},
+        "parameters": [
+            parameter("o_lon_p", degrees("North pole grid longitude (netCDF CF convention)")?),
+            parameter("o_lat_p", degrees("Grid north pole latitude (netCDF CF convention)")?),
+            parameter("lon_0", degrees("Grid north pole longitude (netCDF CF convention)")? + 180.0),
+        ],
+    }))
+}
+
 /// Whether a "PROJ" method's name is a rotated pole, a derived geographic
 /// CRS.
 pub(crate) fn is_geographic(name: &str) -> bool {

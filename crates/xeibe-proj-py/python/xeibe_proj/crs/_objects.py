@@ -405,8 +405,9 @@ class AxisInfo:
 
 
 def axis_from_json(axis: JsonDict) -> AxisInfo:
-    """An axis of a PROJJSON coordinate system."""
-    name, factor, auth, code = _unit(axis.get("unit", "unknown"), _AXIS_UNITS)
+    """An axis of a PROJJSON coordinate system; one without a unit (a
+    date-time axis) has an empty unit name, as in pyproj."""
+    name, factor, auth, code = _unit(axis["unit"], _AXIS_UNITS) if "unit" in axis else ("", 1.0, "", "")
     return AxisInfo(
         name=str(axis.get("name", "")),
         abbrev=str(axis.get("abbreviation", "")),
@@ -432,6 +433,13 @@ class CoordinateSystem(_JsonObject):
     @property
     def axis_list(self) -> list[AxisInfo]:
         return [axis_from_json(a) for a in get_dicts(self._json, "axis")]
+
+    def to_cf(self, rotated_pole: bool = False) -> list[JsonDict]:
+        """CF's attributes of each axis; a rotated pole's grid latitude and
+        longitude with ``rotated_pole``."""
+        from xeibe_proj.crs import _cf1x8
+
+        return _cf1x8.coordinate_system_to_cf(self.name, get_dicts(self._json, "axis"), rotated_pole)
 
     def _write(self, version: Any, pretty: bool, output_axis_rule: bool | None) -> str | None:
         """The ``CS`` and ``AXIS`` nodes; empty in WKT1_GDAL, which has no

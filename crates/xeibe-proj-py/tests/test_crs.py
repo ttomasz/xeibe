@@ -258,11 +258,9 @@ def test_deprecated() -> None:
     assert CRS(2172).is_deprecated == pyproj.CRS(2172).is_deprecated
 
 
-def test_not_yet() -> None:
+def test_not_supported() -> None:
     with pytest.raises(NotImplementedError, match="not supported"):
         CRS(4326).to_wkt("WKT1_ESRI")
-    with pytest.raises(NotImplementedError, match="phase 3"):
-        CRS(4326).to_cf()
 
 
 def test_axis_info_is_frozen() -> None:

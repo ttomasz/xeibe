@@ -642,7 +642,8 @@ impl Crs {
             // held as a projection whose output is the turned longitude and
             // latitude, in radians, on an ellipsoidal coordinate system.
             "DerivedGeographicCRS" => {
-                let conversion = &value["conversion"];
+                let cf = methods::pole_rotation_as_ob_tran(&value["conversion"]);
+                let conversion = cf.as_ref().unwrap_or(&value["conversion"]);
                 let method = conversion["method"]["name"]
                     .as_str()
                     .unwrap_or("unnamed method")

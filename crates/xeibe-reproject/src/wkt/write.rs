@@ -216,7 +216,11 @@ fn unit(u: &Value, kind: Kind) -> Result<Node, Error> {
         }
         other => return Err(invalid(&format!("the unit {other}"))),
     };
-    let mut args = vec![text(name), Arg::Number(factor)];
+    // A calendar unit (`TIMEUNIT["year"]`): PROJJSON's factor 0.
+    let mut args = vec![text(name)];
+    if !(kw == "TIMEUNIT" && factor == 0.0) {
+        args.push(Arg::Number(factor));
+    }
     match code {
         Some(c) => args.push(optional_epsg(c)),
         None => optional_id(u, &mut args)?,
@@ -371,6 +375,7 @@ impl Writer {
             "DerivedVerticalCRS" => self.derived_vertical(v),
             "CompoundCRS" => self.compound(v),
             "EngineeringCRS" => self.engineering(v),
+            "TemporalCRS" => self.temporal(v),
             "DerivedProjectedCRS" => self.derived_projected(v),
             "DerivedGeographicCRS" => self.derived_geographic(v),
             "BoundCRS" => bound(v),
@@ -474,6 +479,13 @@ impl Writer {
         self.finish(v, &mut args)?;
         Ok(node("ENGCRS", args))
     }
+
+    fn temporal(&mut self, v: &Value) -> Result<Node, Error> {
+        let mut args = vec![text(str_of(v, "name")?), sub(temporal_datum(&v["datum"])?)];
+        args.extend(cs_args(&v["coordinate_system"])?);
+        self.finish(v, &mut args)?;
+        Ok(node("TIMECRS", args))
+    }
 }
 
 /// A part of a CRS on its own, with its ids, as PROJ writes it: one
@@ -553,13 +565,20 @@ fn anchored_datum(keyword: &str, d: &Value) -> Result<Node, Error> {
     Ok(node(keyword, datum))
 }
 
-/// `TDATUM`, with its calendar and time origin, quoted as text.
+/// `TDATUM`, with its calendar and time origin: a year, date or
+/// date-time unquoted, as PROJ writes it, else quoted text.
 fn temporal_datum(d: &Value) -> Result<Node, Error> {
     let mut datum = vec![text(str_of(d, "name")?)];
-    for (key, keyword) in [("calendar", "CALENDAR"), ("time_origin", "TIMEORIGIN")] {
-        if let Some(s) = d[key].as_str() {
-            datum.push(sub(node(keyword, vec![text(s)])));
-        }
+    if let Some(c) = d["calendar"].as_str() {
+        datum.push(sub(node("CALENDAR", vec![text(c)])));
+    }
+    if let Some(t) = d["time_origin"].as_str() {
+        let date = t.len() >= 4
+            && t.as_bytes()[..4].iter().all(u8::is_ascii_digit)
+            && t.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b':' | b'.' | b'+'));
+        let origin = if date { Arg::Word(t.into()) } else { text(t) };
+        datum.push(sub(node("TIMEORIGIN", vec![origin])));
     }
     Ok(node("TDATUM", datum))
 }
@@ -974,7 +993,7 @@ fn cs_args(cs: &Value) -> Result<Vec<Arg>, Error> {
         // their abbreviations.
         let plain = matches!(name, "Latitude" | "Longitude");
         let label = match (
-            bare_axis(i, name, abbreviation),
+            bare_axis(i, name, abbreviation) || name.is_empty(),
             abbreviation.is_empty() || plain,
         ) {
             (true, _) => format!("({abbreviation})"),
@@ -992,7 +1011,8 @@ fn cs_args(cs: &Value) -> Result<Vec<Arg>, Error> {
         }
         let angular =
             subtype == "ellipsoidal" && matches!(direction, "north" | "south" | "east" | "west");
-        if !a["unit"].is_null() || subtype != "ordinal" {
+        // An ordinal or date-time axis has no unit.
+        if !a["unit"].is_null() || !matches!(subtype, "ordinal" | "TemporalDateTime") {
             let kind = if angular { Kind::Angle } else { Kind::Length };
             ax.push(sub(unit(&a["unit"], kind)?));
         }

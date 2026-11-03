@@ -79,7 +79,9 @@ follows pyproj's `crs/crs.py` in preparing PROJ strings and dicts
 `to_dict`. The builders (`xeibe_proj.crs.coordinate_operation`,
 `coordinate_system`, `datum`, `enums` and the `CustomConstructorCRS`
 classes) have pyproj's `crs/` modules' classes, signatures, defaults and
-enum values. pyproj's licence applies to those parts:
+enum values, and `xeibe_proj.crs._cf1x8` and the CRS's CF methods follow
+pyproj's `crs/_cf1x8.py` and `crs/crs.py` in CF's attributes. pyproj's
+licence applies to those parts:
 
 ```text
 Copyright (c) 2006-2018, Jeffrey Whitaker.

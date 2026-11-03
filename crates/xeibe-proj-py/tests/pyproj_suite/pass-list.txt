@@ -72,6 +72,7 @@ test.crs.test_crs::test_datum__from_string__invalid[3-598y5-98y]
 test.crs.test_crs::test_datum__from_string__invalid[urn:ogc:def:ellipsoid:EPSG::7001]
 test.crs.test_crs::test_datum__from_string__type_name[ENGINEERINGDATUM["Engineering datum"]-Engineering Datum]
 test.crs.test_crs::test_datum__from_string__type_name[PDATUM["Mean Sea Level",ANCHOR["1013.25 hPa at 15\xb0C"]]-Parametric Datum]
+test.crs.test_crs::test_datum__from_string__type_name[TDATUM["Gregorian calendar",CALENDAR["proleptic Gregorian"],TIMEORIGIN[0000-01-01]]-Temporal Datum]
 test.crs.test_crs::test_datum__from_user_input[6326]
 test.crs.test_crs::test_datum__from_user_input[World Geodetic System 1984]
 test.crs.test_crs::test_datum__from_user_input[urn:ogc:def:ensemble:EPSG::6326]
@@ -207,6 +208,55 @@ test.crs.test_crs::test_utm_zone[EPSG:26915+5717]
 test.crs.test_crs::test_utm_zone__none[+proj=tmerc]
 test.crs.test_crs::test_utm_zone__none[epsg:4326]
 test.crs.test_crs::test_whitepace_between_equals
+test.crs.test_crs_cf::test_3d_ellipsoidal_cs_depth
+test.crs.test_crs_cf::test_build_custom_datum
+test.crs.test_crs_cf::test_build_custom_datum__default_ellipsoid
+test.crs.test_crs_cf::test_build_custom_datum__default_prime_meridian
+test.crs.test_crs_cf::test_cartesian_cs
+test.crs.test_crs_cf::test_cf_from_invalid
+test.crs.test_crs_cf::test_cf_from_latlon
+test.crs.test_crs_cf::test_cf_from_latlon__named
+test.crs.test_crs_cf::test_cf_from_numpy_dtypes
+test.crs.test_crs_cf::test_cf_from_utm
+test.crs.test_crs_cf::test_cf_from_utm__nad83
+test.crs.test_crs_cf::test_cf_lambert_conformal_conic_1sp
+test.crs.test_crs_cf::test_cf_lambert_conformal_conic_2sp[25., 30.]
+test.crs.test_crs_cf::test_cf_lambert_conformal_conic_2sp[standard_parallel0]
+test.crs.test_crs_cf::test_cf_rotated_latlon
+test.crs.test_crs_cf::test_cf_rotated_latlon__grid
+test.crs.test_crs_cf::test_count_temporal_crs__coordinate_system
+test.crs.test_crs_cf::test_datetime_temporal_crs__coordinate_system
+test.crs.test_crs_cf::test_decimal_year_temporal_crs__coordinate_system
+test.crs.test_crs_cf::test_ellipsoidal_cs
+test.crs.test_crs_cf::test_ellipsoidal_cs__from_name
+test.crs.test_crs_cf::test_ellipsoidal_cs__geodetic
+test.crs.test_crs_cf::test_export_compound_crs
+test.crs.test_crs_cf::test_export_compound_crs_cs
+test.crs.test_crs_cf::test_from_cf_transverse_mercator[-122.74, -34.27, -22.83, -1.884, -3.4, -3.03, -15.62]
+test.crs.test_crs_cf::test_from_cf_transverse_mercator[towgs84_test0]
+test.crs.test_crs_cf::test_geoid_model_name
+test.crs.test_crs_cf::test_geos_crs_fixed_angle_axis
+test.crs.test_crs_cf::test_geos_crs_sweep
+test.crs.test_crs_cf::test_geos_proj_string
+test.crs.test_crs_cf::test_grib_rotated_pole_to_cf
+test.crs.test_crs_cf::test_lambert_azimuthal_equal_area
+test.crs.test_crs_cf::test_lambert_cylindrical_equal_area
+test.crs.test_crs_cf::test_mercator_a
+test.crs.test_crs_cf::test_mercator_b
+test.crs.test_crs_cf::test_milisecond_temporal_crs__coordinate_system
+test.crs.test_crs_cf::test_ob_tran_not_rotated_latlon
+test.crs.test_crs_cf::test_oblique_mercator
+test.crs.test_crs_cf::test_oblique_mercator_losing_gamma
+test.crs.test_crs_cf::test_orthographic
+test.crs.test_crs_cf::test_osgb_1936
+test.crs.test_crs_cf::test_polar_stereographic_a
+test.crs.test_crs_cf::test_polar_stereographic_b
+test.crs.test_crs_cf::test_rotated_pole_to_cf
+test.crs.test_crs_cf::test_sinusoidal
+test.crs.test_crs_cf::test_stereographic
+test.crs.test_crs_cf::test_to_cf_transverse_mercator
+test.crs.test_crs_cf::test_unix_temporal_crs__coordinate_system
+test.crs.test_crs_cf::test_vertical_perspective
 test.crs.test_crs_coordinate_operation::test_albers_equal_area_operation
 test.crs.test_crs_coordinate_operation::test_albers_equal_area_operation__defaults
 test.crs.test_crs_coordinate_operation::test_azimuthal_equidistant_operation
@@ -261,6 +311,8 @@ test.crs.test_crs_coordinate_operation::test_utm_operation
 test.crs.test_crs_coordinate_operation::test_utm_operation__defaults
 test.crs.test_crs_coordinate_operation::test_vertical_perspective_operation
 test.crs.test_crs_coordinate_operation::test_vertical_perspective_operation__defaults
+test.crs.test_crs_coordinate_system::test_cartesian2dcs_ft_to_cf
+test.crs.test_crs_coordinate_system::test_cartesian2dcs_to_cf
 test.crs.test_crs_coordinate_system::test_cartesian_2d_cs[Cartesian2DCSAxis.NORTHING_EASTING-Northing-north-Easting-east-metre]
 test.crs.test_crs_coordinate_system::test_cartesian_2d_cs[Cartesian2DCSAxis.NORTHING_EASTING_FT-Northing-north-Easting-east-foot]
 test.crs.test_crs_coordinate_system::test_cartesian_2d_cs[Cartesian2DCSAxis.NORTHING_EASTING_US_FT-Northing-north-Easting-east-US survey foot]
@@ -270,6 +322,8 @@ test.crs.test_crs_coordinate_system::test_cartesian_2d_cs[EASTING_NORTHING_FT-Ea
 test.crs.test_crs_coordinate_system::test_cartesian_2d_cs[EASTING_NORTHING_US_FT-Easting-east-Northing-north-US survey foot]
 test.crs.test_crs_coordinate_system::test_cartesian_2d_cs[NORTH_POLE_EASTING_SOUTH_NORTHING_SOUTH-Easting-south-Northing-south-metre]
 test.crs.test_crs_coordinate_system::test_cartesian_2d_cs[WESTING_SOUTHING-Easting-west-Northing-south-metre]
+test.crs.test_crs_coordinate_system::test_ellipsoidal2dcs_to_cf
+test.crs.test_crs_coordinate_system::test_ellipsoidal3dcs_to_cf
 test.crs.test_crs_coordinate_system::test_ellipsoidal_2d_cs[Ellipsoidal2DCSAxis.LATITUDE_LONGITUDE-Latitude-north-Longitude-east]
 test.crs.test_crs_coordinate_system::test_ellipsoidal_2d_cs[Ellipsoidal2DCSAxis.LONGITUDE_LATITUDE-Longitude-east-Latitude-north]
 test.crs.test_crs_coordinate_system::test_ellipsoidal_3d_cs[Ellipsoidal3DCSAxis.LATITUDE_LONGITUDE_HEIGHT-Latitude-north-Longitude-east]
@@ -283,6 +337,8 @@ test.crs.test_crs_coordinate_system::test_vertical_cs[VerticalCSAxis.DEPTH_US_FT
 test.crs.test_crs_coordinate_system::test_vertical_cs[VerticalCSAxis.GRAVITY_HEIGHT_US_FT-up-US survey foot]
 test.crs.test_crs_coordinate_system::test_vertical_cs[VerticalCSAxis.UP-up-metre]
 test.crs.test_crs_coordinate_system::test_vertical_cs[VerticalCSAxis.UP_US_FT-up-US survey foot]
+test.crs.test_crs_coordinate_system::test_verticalcs_depth_to_cf
+test.crs.test_crs_coordinate_system::test_verticalcs_height_to_cf
 test.crs.test_crs_datum::test_custom_datum
 test.crs.test_crs_datum::test_custom_datum__input
 test.crs.test_crs_datum::test_custom_ellipsoid

@@ -34,7 +34,7 @@ _MODULES: dict[str, str] = {
     "crs.coordinate_system": "",
     "crs.datum": "",
     "crs.enums": "",
-    "crs._cf1x8": "not implemented yet (CF is planned for phase 3)",
+    "crs._cf1x8": "",
     "database": "",
     "datadir": "",
     "enums": "",

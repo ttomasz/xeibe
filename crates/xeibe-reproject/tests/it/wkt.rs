@@ -1832,7 +1832,7 @@ fn datums_on_their_own_round_trip() {
             None,
         ),
         (
-            r#"TDATUM["Gregorian calendar",CALENDAR["proleptic Gregorian"],TIMEORIGIN["0000-01-01"]]"#,
+            r#"TDATUM["Gregorian calendar",CALENDAR["proleptic Gregorian"],TIMEORIGIN[0000-01-01]]"#,
             None,
         ),
     ] {
@@ -1889,4 +1889,33 @@ fn ids_inside_a_crs_without_one() {
     )
     .unwrap();
     assert_eq!(epsg.matches(r#"ID["EPSG""#).count(), 1, "{epsg}");
+}
+
+/// Temporal CRSs, as PROJ reads and writes them: typographic quotes and
+/// unquoted dates read, the calendar PROJ's default, a calendar unit
+/// without a factor.
+#[test]
+fn temporal_crss_as_proj_reads_them() {
+    for (text, written) in [
+        (
+            r#"TIMECRS["Decimal Years CE",TDATUM["Common Era",CALENDAR["proleptic Gregorian"],TIMEORIGIN[0000]],CS[TemporalMeasure,1],AXIS["decimal years (a)",future,TIMEUNIT["year"]]]"#,
+            r#"TIMECRS["Decimal Years CE",TDATUM["Common Era",CALENDAR["proleptic Gregorian"],TIMEORIGIN[0000]],CS[TemporalMeasure,1],AXIS["decimal years (a)",future,TIMEUNIT["year"]]]"#,
+        ),
+        (
+            "TIMECRS[\u{201c}DateTime\u{201d},TDATUM[\u{201c}Gregorian Calendar\u{201d}],CS[TemporalDateTime,1],AXIS[\"Time (T)\",future]]",
+            r#"TIMECRS["DateTime",TDATUM["Gregorian Calendar",CALENDAR["proleptic Gregorian"]],CS[TemporalDateTime,1],AXIS["time (T)",future]]"#,
+        ),
+        (
+            r#"TIMECRS["GPS milliseconds",TDATUM["GPS time origin",TIMEORIGIN[1980-01-01T00:00:00.0Z]],CS[TemporalCount,1],AXIS["(T)",future,TIMEUNIT["millisecond",0.001]]]"#,
+            r#"TIMECRS["GPS milliseconds",TDATUM["GPS time origin",CALENDAR["proleptic Gregorian"],TIMEORIGIN[1980-01-01T00:00:00.0Z]],CS[TemporalCount,1],AXIS["(T)",future,TIMEUNIT["millisecond",0.001]]]"#,
+        ),
+    ] {
+        let json = wkt::to_projjson(text).unwrap();
+        let value: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["type"], "TemporalCRS");
+        let back =
+            wkt::from_projjson_value(&value, wkt::Version::Wkt2_2019, false, wkt::AxisRule::Auto)
+                .unwrap();
+        assert_eq!(back, written);
+    }
 }
