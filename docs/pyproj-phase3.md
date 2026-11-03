@@ -6,8 +6,8 @@
 > [Order of work](#order-of-work)); PROJ's own methods and other
 > celestial bodies, 2026-10-31 (step 2b); `install_as_pyproj()` and
 > GeoPandas, 2026-11-01 (step 3); the objects table and the sub-objects'
-> constructors, 2026-11-03 (step 4); the Pyodide wheel, 2026-11-03
-> (step 8).** This is phase 3 of
+> constructors, 2026-11-03 (step 4); GeoArrow, 2026-11-03 (step 7); the
+> Pyodide wheel, 2026-11-03 (step 8). All of it is done.** This is phase 3 of
 > [pyproj-compat.md](pyproj-compat.md#phases). Facts about PROJ, pyproj
 > and GeoPandas were checked against PROJ 9.8.1 through pyproj 3.8.0 and
 > GeoPandas 1.2.0, with the oracle database
@@ -72,7 +72,7 @@ other authorities, PROJ's context and CA bundle, and `get_factors`.
 | 14 | **`Transformer.from_proj` is implemented**: it is `from_crs` on the two `Proj`s' CRSs, as in pyproj. | pyproj deprecated it in its documentation, but it still works without a warning. Once PROJ strings exist, it costs one line. |
 | 15 | **GeoArrow is `xeibe_proj.arrow`, a module of its own**, not new methods on pyproj's classes. It reads and writes through the Arrow PyCapsule interface, without depending on any Arrow library. | The classes keep pyproj's surface, so the type checks and the shim stay exact. |
 | 16 | **GeoArrow's native encodings and WKB are supported**, not WKT. WKB is rewritten in place: a copy of the buffer, with each coordinate overwritten. | WKB is what GeoParquet and `GeoDataFrame.to_arrow` write by default. Its coordinates have fixed widths, so the offsets don't change. WKT's lengths would change. |
-| 17 | **The Arrow code uses `arrow-array` and `arrow-schema` with `ffi`** (`xeibe-py` already does), if the wheel grows by less than 0.5 MB. If it grows more, the C Data Interface is written by hand for the few layouts needed. | That is the measurement phase 0 was to make. Writing the FFI by hand costs time, and is only worth it if the size matters. |
+| 17 | **The Arrow code uses `arrow-array` and `arrow-schema` with `ffi`** (`xeibe-py` already does), if the wheel grows by less than 0.5 MB. If it grows more, the C Data Interface is written by hand for the few layouts needed. **Measured** (2026-11-03, Linux x86_64, `--profile dist`): the wheel grew from 3.59 to 3.90 MB (+0.31 MB) with arrow-rs, so arrow-rs it is. pyo3-arrow, which would also read chunked arrays, pulled in `arrow-cast`, `arrow-select` and `chrono-tz`: +2.74 MB. | That is the measurement phase 0 was to make. Writing the FFI by hand costs time, and is only worth it if the size matters. |
 | 18 | **Pyodide gets its own wheel**, built by maturin for Emscripten, with grids fetched through the browser's synchronous `XMLHttpRequest`. | Pyodide needs a wheel for its PyEmscripten platform; it is still abi3. `urllib` has no sockets there, and `pyodide.http.pyxhr`, Pyodide's synchronous client, garbles binary responses ([Pyodide](#pyodide)). |
 
 ## `install_as_pyproj()`
@@ -835,10 +835,85 @@ out = arrow.to_crs(table["geometry"], 4326)   # source CRS from the field's GeoA
   meaning.
 
 The conversion runs in Rust without the GIL, over the coordinate buffers.
-Decision 17 picks the FFI code. The tests run each encoding through
-pyarrow and arro3 and check it against `Transformer.transform` on the same
-coordinates. A bare-install test checks that `xeibe_proj.arrow` itself
-imports no Arrow library.
+Decision 17 picks the FFI code.
+
+### Implementation
+
+The conversion is `xeibe_reproject::arrow` (`convert_array`,
+`convert_chunks`, `extent`), behind the crate's `arrow` feature: on for the
+crate itself, off for the workspace's dependents but `xeibe-proj-py`, as
+`esri` is. It has its own tests (`crates/xeibe-reproject/tests/it/arrow.rs`)
+and benchmarks (`arrow/` in `benches/reproject.rs`, [benchmarks.md](benchmarks.md)).
+`xeibe-proj-py`'s `src/arrow.rs` (`_native.ArrowData`) imports and exports
+through the C interfaces, and `python/xeibe_proj/arrow.py` reads the
+metadata. It is not in `xeibe-arrow`, whose `xeibe-core` brings `zstd-sys`,
+C code the Pyodide wheel would have to compile. What the design above left
+open was decided so:
+
+- **The layout decides the encoding**, not the extension name: lists (and
+  large lists) down to interleaved `FixedSizeList<double>` or separated
+  `Struct<x, y, [z], [m]>` coordinates; `Binary`, `LargeBinary` and
+  `BinaryView` are WKB; a struct with `xmin`, `ymin`, `xmax` and `ymax` is
+  a box. A point and a linestring convert alike, so arrays without
+  GeoArrow's metadata (a plain pyarrow array, a `ChunkedArray`, which has no
+  field) convert too, and come out without metadata. Interleaved
+  dimensions come from the child's name (`xy`, `xyz`, `xym`, `xyzm`), else
+  from the list size (2, 3 or 4: XY, XYZ, XYZM).
+- **Easting first, always.** `transform` uses the transformer with
+  `always_xy` (made once and kept on it), whatever the one passed has: a
+  GeoArrow coordinate is never latitude first. `direction` is taken as in
+  `Transformer.transform`. A `Proj` raises `TypeError`: it has no CRSs to
+  check the metadata against.
+- **Nulls.** Coordinates under a null geometry at any level, and those a
+  sliced array's offsets don't reach, are left as they are, because they
+  may hold anything (an infinite value under a null point must not raise).
+  NaN coordinates (GeoArrow's empty point) pass through.
+- **CRSs in the metadata**: PROJJSON as an object or text, WKT, and
+  authority codes are read with `CRS.from_user_input`; `"crs_type":
+  "srid"` raises, because an SRID names a CRS only in its producer's
+  database. A CRS that is the source one with another axis order (OGC:CRS84
+  for EPSG:4326) counts as the same. `to_crs` without a CRS raises and
+  points to `transform`.
+- **Edges**: anything but `"planar"` (or none) raises, the geodesic edge
+  types of GeoArrow 0.2 as well as `"spherical"`.
+- **Extension names**: `geoarrow.wkt`, `geoarrow.geometry` and
+  `geoarrow.geometrycollection` raise, and so do non-GeoArrow ones.
+- **WKB**: each geometry's own byte order; ISO and EWKB types, the SRID
+  flag included; points, linestrings, polygons, triangles, multi-geometries,
+  collections, polyhedral surfaces and TINs. Curves raise rather than
+  convert their control points. Values with bytes left over, or that end
+  inside a geometry, raise `ValueError` naming the geometry. A
+  `BinaryView`'s views stay as they are: they keep a value's first four
+  bytes (byte order and type), which don't change.
+- **Boxes**: each converted as `transform_bounds` converts one, with 21
+  points on each edge. Z and M bounds pass through. A geographic result
+  with `xmin > xmax` crosses the antimeridian, as GeoArrow's boxes may.
+- **Errors** name the geometry, counted over all chunks: `ProjError:
+  geometry 4: coordinate (10, 95): …`.
+- **Grids**: the extent of every coordinate is taken first, and the grid
+  data for it loaded as for `Transformer.transform` (`GridsNeeded`), before
+  anything is converted.
+- **Speed.** Where every coordinate of a layer belongs to a live geometry
+  (no nulls, no slice), the copied buffers are converted as they are:
+  `convert_xy` for separated ones, `convert_interleaved` for interleaved
+  ones (XYM through separate buffers, since a third value would be taken
+  as z). Otherwise the live coordinates are gathered and scattered back.
+  On 320,000 coordinates, the native layouts cost 2–5% more than
+  `convert_xy` alone, WKB 9–19% ([benchmarks.md](benchmarks.md#reference-numbers)).
+- **Chunked arrays.** arrow-rs reads and writes streams of record batches
+  only, and a chunked column is a stream of arrays, so the C Stream
+  Interface is done by hand for that (about 100 lines). A `ChunkedArray`
+  has `__arrow_c_stream__` only, so that `pyarrow.array` doesn't take it
+  for one array; an `Array` has both. Chunks stay chunks.
+
+The tests (`tests/test_arrow.py`, 108) build every native encoding at every
+depth, interleaved and separated, in XY, XYZ, XYM and XYZM, and WKB of
+every geometry type in both byte orders, ISO and EWKB, in all three binary
+storages, and compare with `Transformer.transform` on the same coordinates:
+the native ones value for value, WKB byte for byte. pyarrow 26.0.1 and arro3
+0.9.1 produce and read the arrays, arro3 for the field metadata a chunked
+array keeps. A test in a new interpreter checks that importing the module
+imports no Arrow library (nor numpy).
 
 ## Pyodide
 
@@ -943,7 +1018,8 @@ Emscripten 5.0.3), pyodide-build 0.39.3, Node 22 and Chromium 153.
    [CF](#cf). pyproj's suite went from 667 to 718 of 996 (723, of which
    five assert pyproj's vertical standard names).
 7. **GeoArrow**: first the wheel-size measurement for decision 17, then
-   the module.
+   the module. **Done** (2026-11-03): see [GeoArrow](#geoarrow). arrow-rs
+   costs 0.31 MB of the wheel.
 8. **Pyodide.** **Done** (2026-11-03): the wheel, the grid fetch through
    `XMLHttpRequest`, and CI in Node and Chromium ([Pyodide](#pyodide)).
 

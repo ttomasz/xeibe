@@ -42,6 +42,8 @@
 //! The math follows PROJ, which serves as the test oracle; see `PROJ-NOTICE.md`
 //! for the parts ported from it.
 
+#[cfg(feature = "arrow")]
+pub mod arrow;
 mod bounds;
 mod crs;
 mod datum;

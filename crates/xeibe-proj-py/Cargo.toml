@@ -23,6 +23,11 @@ crate-type = ["cdylib"]
 [dependencies]
 xeibe-crs.workspace = true
 xeibe-esri.workspace = true
-xeibe-reproject = { workspace = true, features = ["esri"] }
+xeibe-reproject = { workspace = true, features = ["esri", "arrow"] }
 pyo3.workspace = true
 serde_json.workspace = true
+# GeoArrow through the C Data Interface (xeibe_proj.arrow): 0.31 MB of the
+# wheel with xeibe-reproject's `arrow` feature, which converts the arrays
+# (docs/pyproj-phase3.md, decision 17).
+arrow-array = { workspace = true, features = ["ffi"] }
+arrow-schema = { workspace = true, features = ["ffi"] }

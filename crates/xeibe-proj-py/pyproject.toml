@@ -31,8 +31,9 @@ Documentation = "https://github.com/ttomasz/xeibe/blob/main/docs/pyproj-compat.m
 [project.optional-dependencies]
 # Declares the dependency only: numpy arrays work without it being imported.
 numpy = ["numpy>=1.26"]
-# The differential tests compare with pyproj.
-test = ["pytest>=8", "pyproj>=3.7", "numpy>=1.26"]
+# The differential tests compare with pyproj; pyarrow and arro3 hand
+# GeoArrow arrays to xeibe_proj.arrow, which needs neither.
+test = ["pytest>=8", "pyproj>=3.7", "numpy>=1.26", "pyarrow>=26", "arro3-core>=0.9"]
 all = ["xeibe-proj[numpy]"]
 
 [tool.maturin]

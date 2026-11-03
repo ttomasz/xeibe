@@ -1,6 +1,8 @@
 //! `xeibe-reproject` against `docs/reprojection.md`, levels 1 to 3.
 
 mod api;
+#[cfg(feature = "arrow")]
+mod arrow;
 mod equivalent;
 mod explain;
 mod geodesic;

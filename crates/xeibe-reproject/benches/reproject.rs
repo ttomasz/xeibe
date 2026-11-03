@@ -11,6 +11,9 @@ use xeibe_reproject::wkt::{self, Version};
 use xeibe_reproject::{AxisOrder, Crs, Transform};
 
 /// Points per conversion benchmark.
+#[cfg(feature = "arrow")]
+mod arrow;
+
 const POINTS: usize = 10_000;
 
 /// Source and target CRSs, with a box of longitudes and latitudes inside
@@ -200,11 +203,20 @@ fn bench_geodesic(c: &mut Criterion) {
     group.finish();
 }
 
+/// GeoArrow arrays converted in their own layout (`benches/arrow/mod.rs`).
+fn bench_arrow(c: &mut Criterion) {
+    #[cfg(feature = "arrow")]
+    arrow::bench(c);
+    #[cfg(not(feature = "arrow"))]
+    let _ = c;
+}
+
 criterion_group!(
     benches,
     bench_convert,
     bench_select,
     bench_crs,
-    bench_geodesic
+    bench_geodesic,
+    bench_arrow
 );
 criterion_main!(benches);

@@ -19,6 +19,9 @@ definitions and coordinate operations in
 - Grid-based transformations, with PROJ-data's grids, which the caller loads.
 - Vertical and compound CRSs: geoid models, vertical offsets and offset grids.
 - Engineering CRSs, on their own datum and through EPSG's operations.
+- GeoArrow arrays (native encodings, WKB and boxes) converted in their own
+  layout, with the `arrow` feature (`xeibe_reproject::arrow`, on by
+  default).
 
 When no EPSG transformation applies, setting up the transform fails; a
 ballpark approximation is never used. Operations that need a coordinate

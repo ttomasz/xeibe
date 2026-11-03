@@ -72,6 +72,7 @@ class Proj(Transformer):
         self._backward = None
         self._natives = {}
         self._logged = set()
+        self._xy = None
 
     def __call__(
         self,
