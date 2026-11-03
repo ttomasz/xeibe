@@ -10,7 +10,6 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread::ThreadId;
 
-use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyFloat, PyInt, PyTuple};
@@ -208,18 +207,16 @@ pub(crate) fn convert<C: Convert>(
     radians: bool,
     check_grids: bool,
 ) -> PyResult<()> {
-    let bx = PyBuffer::<f64>::get(x)?;
-    let by = PyBuffer::<f64>::get(y)?;
-    let bz = z.map(PyBuffer::<f64>::get).transpose()?;
-    let rx = writable(&bx, "x")?;
-    let ry = writable(&by, "y")?;
-    let rz = bz.as_ref().map(|b| writable(b, "z")).transpose()?;
+    let (_bx, rx) = writable(x, "x")?;
+    let (_by, ry) = writable(y, "y")?;
+    let bz = z.map(|z| writable(z, "z")).transpose()?;
+    let rz = bz.as_ref().map(|b| b.1);
     if rx.1 != ry.1 || rz.is_some_and(|rz| rz.1 != rx.1) {
         return Err(PyValueError::new_err(
             "the coordinate arrays differ in length",
         ));
     }
-    if rx.0 == ry.0 || rz.is_some_and(|rz| rz.0 == rx.0 || rz.0 == ry.0) {
+    if rx.1 > 0 && (rx.0 == ry.0 || rz.is_some_and(|rz| rz.0 == rx.0 || rz.0 == ry.0)) {
         return Err(PyValueError::new_err("the coordinate arrays share memory"));
     }
     let (into, out) = calls.factors(radians);

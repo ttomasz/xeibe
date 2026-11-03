@@ -114,9 +114,9 @@ one expects equal CRSs to hash differently.
 - **A newer EPSG release** than pyproj's bundled `proj.db`:
   `xeibe_proj.EPSG_VERSION`. Names and operations can differ.
 - **No PROJ version**: `proj_version_str` and `PROJ_VERSION` don't exist.
-- **WKT is written in two versions**, `WKT2_2019` and `WKT1_GDAL`; the
-  others raise `NotImplementedError`. The output is PROJ's, but for ids PROJ
-  looks up in its database.
+- **WKT1_ESRI isn't written**: `to_wkt("WKT1_ESRI")` raises
+  `NotImplementedError`. The other versions are PROJ's output, but for ids
+  PROJ looks up in its database.
 - **`Proj` follows EPSG**, where pyproj's follows the CRS's PROJ string:
   full-precision parameters, EPSG's prime meridians and the CRS's own
   datum. Results differ by up to 0.35 mm (kilometres for EASE-Grid). `srs`

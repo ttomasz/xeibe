@@ -222,15 +222,7 @@ fn morph(name: &str) -> String {
 /// A datum's WKT1 name: an ensemble's traditional name, and EPSG's names
 /// with underscores, as GDAL 2 wrote them.
 fn datum_name(d: &Value) -> Result<String, Error> {
-    let written = str_of(d, "name")?;
-    let name = match written {
-        "World Geodetic System 1984 ensemble" => "World Geodetic System 1984",
-        "European Terrestrial Reference System 1989 ensemble" => {
-            "European Terrestrial Reference System 1989"
-        }
-        "Greenland Reference 1996 ensemble" => "Greenland 1996",
-        other => other,
-    };
+    let name = super::datums::traditional(str_of(d, "name")?);
     let epsg = d["id"]["authority"] == "EPSG";
     let known = d["id"].is_null()
         && super::datums::by_name(name, xeibe_crs::DatumKind::Geodetic)

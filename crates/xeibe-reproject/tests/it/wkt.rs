@@ -473,6 +473,9 @@ const KNOWN_WKT1_WRITING: &[(&[u32], &str)] = &[
 fn check_writing(path: &Path, version: wkt::Version) -> (usize, usize, String) {
     let key = match version {
         wkt::Version::Wkt1Gdal => "WKT1_GDAL",
+        wkt::Version::Wkt2_2015 => "WKT2_2015",
+        wkt::Version::Wkt2_2019Simplified => "WKT2_2019_SIMPLIFIED",
+        wkt::Version::Wkt2_2015Simplified => "WKT2_2015_SIMPLIFIED",
         _ => "WKT2_2019",
     };
     let mut same = 0;
@@ -553,6 +556,60 @@ fn every_epsg_crs_writes_as_proj_writes_it() {
     );
     println!("{written} written, {same} as PROJ writes them (or a listed difference)\n{report}");
     assert_eq!(same, written, "{report}");
+}
+
+#[test]
+fn epsg_crss_write_wkt2_2015_as_proj_writes_them() {
+    let (written, same, report) = check_writing(
+        &xeibe_testkit::data_dir().join("crs-wkt/wkt.jsonl"),
+        wkt::Version::Wkt2_2015,
+    );
+    assert!(written > 80, "{written}");
+    assert_eq!(same, written, "{report}");
+}
+
+#[test]
+#[ignore = "needs target/crs-wkt/wkt.jsonl (scripts/gen_wkt_vectors.py --all)"]
+fn every_epsg_crs_writes_wkt2_2015_as_proj_writes_it() {
+    let (written, same, report) = check_writing(
+        &xeibe_testkit::data_dir().join("../../target/crs-wkt/wkt.jsonl"),
+        wkt::Version::Wkt2_2015,
+    );
+    println!("{written} written, {same} as PROJ writes them (or a listed difference)\n{report}");
+    assert_eq!(same, written, "{report}");
+}
+
+#[test]
+fn epsg_crss_write_simplified_wkt2_as_proj_writes_them() {
+    for version in [
+        wkt::Version::Wkt2_2019Simplified,
+        wkt::Version::Wkt2_2015Simplified,
+    ] {
+        let (written, same, report) = check_writing(
+            &xeibe_testkit::data_dir().join("crs-wkt/wkt.jsonl"),
+            version,
+        );
+        assert!(written > 80, "{written}");
+        assert_eq!(same, written, "{version:?}\n{report}");
+    }
+}
+
+#[test]
+#[ignore = "needs target/crs-wkt/wkt.jsonl (scripts/gen_wkt_vectors.py --all)"]
+fn every_epsg_crs_writes_simplified_wkt2_as_proj_writes_it() {
+    for version in [
+        wkt::Version::Wkt2_2019Simplified,
+        wkt::Version::Wkt2_2015Simplified,
+    ] {
+        let (written, same, report) = check_writing(
+            &xeibe_testkit::data_dir().join("../../target/crs-wkt/wkt.jsonl"),
+            version,
+        );
+        println!(
+            "{version:?}: {written} written, {same} as PROJ writes them (or a listed difference)\n{report}"
+        );
+        assert_eq!(same, written, "{version:?}\n{report}");
+    }
 }
 
 #[test]

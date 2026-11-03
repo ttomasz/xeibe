@@ -72,3 +72,18 @@ def test_units_map_matches_pyproj(kwargs: dict[str, object]) -> None:
     )
     assert list(ours) == list(theirs)
     assert database.get_units_map(auth_name="ESRI") == {}
+
+
+def test_arguments_of_the_wrong_type() -> None:
+    """As pyproj's typed arguments: a TypeError for an authority or
+    category that isn't a string, and a ValueError for an unknown type,
+    whatever the authority."""
+    with pytest.raises(TypeError):
+        database.get_codes(123, PJType.BOUND_CRS)  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        database.query_crs_info(123, PJType.BOUND_CRS)  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        database.query_crs_info("ITRF", "frank")
+    for auth, category in ((None, 1), (1, None)):
+        with pytest.raises(TypeError):
+            database.get_units_map(auth_name=auth, category=category)  # type: ignore[arg-type]

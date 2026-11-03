@@ -10,6 +10,7 @@ pub(crate) mod datums;
 pub(crate) mod esri;
 mod names;
 mod parse;
+mod variants;
 pub(crate) mod wkt1;
 pub(crate) mod wkt2;
 mod write;
@@ -70,6 +71,14 @@ pub fn object_to_projjson(text: &str) -> Result<String, Error> {
 pub enum Version {
     /// ISO 19162:2019, as PROJ writes it by default (`WKT2_2019`).
     Wkt2_2019,
+    /// ISO 19162:2015 (`WKT2_2015`): as 2019, but for what 2015 doesn't
+    /// have (datum ensembles, dynamic frames, several usages).
+    Wkt2_2015,
+    /// PROJ's shorter WKT2 2019 (`WKT2_2019_SIMPLIFIED`): ids on the
+    /// outermost object only, and units only where they aren't implied.
+    Wkt2_2019Simplified,
+    /// PROJ's shorter WKT2 2015 (`WKT2_2015_SIMPLIFIED`).
+    Wkt2_2015Simplified,
     /// WKT1 as GDAL writes it (`WKT1_GDAL`): what pyogrio and rasterio
     /// take. Geographic and projected 3D CRSs (but see [`AxisRule::Never`]),
     /// derived projected CRSs, and methods PROJ gives no WKT1 name, can't
@@ -164,6 +173,19 @@ pub fn from_projjson_value(
         (false, false) => write::object(value)?,
         (false, true) => write1::object(value)?,
     };
+    if matches!(
+        version,
+        Version::Wkt2_2019Simplified | Version::Wkt2_2015Simplified
+    ) {
+        if crs {
+            nodes.iter_mut().for_each(|n| variants::simplify(n, value));
+        } else {
+            variants::simplify_object(&mut nodes);
+        }
+    }
+    if matches!(version, Version::Wkt2_2015 | Version::Wkt2_2015Simplified) {
+        nodes.iter_mut().for_each(variants::to_2015);
+    }
     if axes == AxisRule::Never {
         for n in &mut nodes {
             without_axes(n, wkt1);

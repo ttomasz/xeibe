@@ -53,7 +53,8 @@ constructors (step 4), pyproj's builders exist (step 5), and CF (step 6).
     and keyword arguments included (phase 3), with its properties, parts,
     `repr`, equality, hashing and pickling; `to_proj4` and `to_dict`.
   - WKT: `from_wkt` and WKT wherever a CRS is taken, `to_wkt` in
-    WKT2_2019 and WKT1_GDAL with `output_axis_rule`, `to_wkt` and WKT
+    WKT2_2019, WKT2_2015, their simplified forms and WKT1_GDAL with
+    `output_axis_rule` (not WKT1_ESRI), `to_wkt` and WKT
     `repr` on the parts, `to_epsg`/`to_authority`/`list_authority` with
     `min_confidence`, and Bound CRSs (`TOWGS84`) with pyproj's attributes
     ([crs-wkt.md](crs-wkt.md#implementation), step 7).
@@ -94,7 +95,7 @@ constructors (step 4), pyproj's builders exist (step 5), and CF (step 6).
     EPSG's remarks on CRSs and operations in a file of their own, read on
     first use. The wheel grew from 2.0 to 2.2 MB.
 - **Measured** (see [Testing](#testing)):
-  - pyproj's own suite: 718 of its 996 tests pass: 120 before phase 1's
+  - pyproj's own suite: 739 of its 996 tests pass: 120 before phase 1's
     Rust changes, 129 after, 149 with the WKT part of phase 2, 318 with
     `Geod`, 324 with `Proj`, 335 with `to_2d`/`to_3d`, 348 with
     `get_units_map`, 351 with the selection's options, 356 with
@@ -103,7 +104,11 @@ constructors (step 4), pyproj's builders exist (step 5), and CF (step 6).
     projections PROJ has no CRS method for, 560 with the objects table
     (more of its tests collect), 667 with the builders, 718 with CF (and
     five that assert pyproj's CF names for a vertical axis, in
-    `diverges.txt`).
+    `diverges.txt`), 739 with WKT2 2015 and the simplified forms, and
+    pyproj's errors for wrong input (an area of interest that isn't one,
+    a non-string authority, `CRS.from_string(4326)`, the parts' bare
+    constructors), empty lists and tuples converted, and numpy's integers
+    taken as EPSG codes.
   - Against the oracle `proj.db`, every EPSG CRS reports what PROJ does,
     scopes, area descriptions and remarks included, except four documented
     differences:
@@ -381,7 +386,7 @@ becomes the package's status tracker.
 | `repr`, `str`, `srs`, pickling | 1 | pyproj's multi-line summary. Pickles as PROJJSON, which dask and multiprocessing need. |
 | `to_2d`, `to_3d`, `get_geod` | 2 | PROJ's `demoteTo2D` and `promoteTo3D`, with EPSG's 2D–3D twins ([pyproj-phase2.md](pyproj-phase2.md#to_2d-to_3d-get_non_deprecated)), and the `Geod` of the CRS's ellipsoid. **Done.** |
 | `from_wkt`, objects with `to_wkt()` (rasterio, fiona) | 2 | WKT1 (GDAL and ESRI flavours) and WKT2 2015/2019 → PROJJSON, in Rust ([crs-wkt.md](crs-wkt.md)). **Done.** |
-| `to_wkt(version, pretty, output_axis_rule)`, also on the parts (`Datum`, `Ellipsoid`, …) | 2 | WKT2_2019 and WKT1_GDAL from PROJJSON, what GeoPandas, pyogrio and rioxarray ask for; other versions raise ([crs-wkt.md](crs-wkt.md#writing)). Equivalent to PROJ's output, not byte-identical. **Done**: PROJ's token for token for every EPSG CRS but listed differences. |
+| `to_wkt(version, pretty, output_axis_rule)`, also on the parts (`Datum`, `Ellipsoid`, …) | 2 | WKT2_2019, WKT2_2015, their simplified forms and WKT1_GDAL from PROJJSON; WKT1_ESRI raises ([crs-wkt.md](crs-wkt.md#writing)). Equivalent to PROJ's output, not byte-identical. **Done**: PROJ's token for token for every EPSG CRS but listed differences. |
 | `from_proj4`, `from_dict`, `+proj=…` strings, `CRS(proj=…)` | 3 | Read as PROJ reads them into an EPSG method, with pyproj's preparation and `+init` warning; pipelines and PROJ4 extensions are an error ([pyproj-phase3.md](pyproj-phase3.md#proj-strings)). **Done.** |
 | `to_proj4`, `to_dict`, `to_string` | 3 | PROJ's string, token for token for every EPSG CRS. **Done.** |
 | `Datum`, `Ellipsoid`, `PrimeMeridian`, `CoordinateOperation`: `from_epsg`, `from_authority`, `from_name`, `from_string`, `from_user_input`, `from_json`, `from_json_dict`; `CoordinateSystem` from strings and PROJJSON; equality with what `from_user_input` takes | 3 | From `xeibe-crs`'s table of EPSG's objects, names matched as PROJ's name search matches them but beyond ASCII case (divergence 11), and EPSG's transformations. Esri's names of EPSG objects stay out ([pyproj-phase3.md](pyproj-phase3.md#the-objects-table)). **Done.** |
@@ -606,7 +611,11 @@ These are documented in the package README and in its `NotImplementedError` and
     keeps a height and `towgs84` on a geographic CRS, and a single
     standard parallel's origin where CF puts it. A vertical CRS's axis is
     CF's `height_above_geopotential_datum`, or `depth`, where pyproj names
-    the ellipsoidal height (`height_above_reference_ellipsoid`).
+    the ellipsoidal height (`height_above_reference_ellipsoid`). Kept as
+    pyproj has it, against CF: a vertical CRS with a geoid model gets both
+    `geoid_name` and `geopotential_datum_name`, which CF 1.8 allows only
+    one of, so that `from_cf` keeps both; `to_cf` warns when it writes
+    them.
 
 ## Testing
 

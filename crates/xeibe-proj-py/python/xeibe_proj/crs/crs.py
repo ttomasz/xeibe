@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import math
+import numbers
 import re
 import warnings
 from functools import cached_property
@@ -261,7 +262,9 @@ def _from_proj_string(srs: str) -> JsonDict:
     try:
         return _check_projjson(json.loads(_native.proj_string_to_projjson(srs)))
     except CRSError as e:
-        raise CRSError(f"Invalid projection: {srs}: ({e})") from None
+        # PROJ's words for a pipeline, an operation rather than a CRS.
+        what = "Input is not a CRS" if re.search(r"(^|\s)\+proj=pipeline\b", srs) else "Invalid projection"
+        raise CRSError(f"{what}: {srs}: ({e})") from None
 
 
 def _check_projjson(projjson: object) -> JsonDict:
@@ -354,6 +357,8 @@ class CRS:
     @classmethod
     def from_string(cls, in_crs_string: str) -> Self:
         """A CRS from text: see ``from_user_input``."""
+        if not isinstance(in_crs_string, str):  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise CRSError("CRS input is not a string")
         return cls(in_crs_string)
 
     @classmethod
@@ -963,6 +968,14 @@ class CRS:
                 cf["geoid_name"] = geoid.get("name")
             if self.datum is not None:
                 cf["geopotential_datum_name"] = self.datum.name
+            if "geoid_name" in cf and "geopotential_datum_name" in cf:
+                # Against CF 1.8, which allows one of the two, as pyproj
+                # writes them: from_cf keeps both.
+                warnings.warn(
+                    "geoid_name and geopotential_datum_name are both written, which CF 1.8 doesn't allow, "
+                    "so that from_cf keeps the geoid model and the datum",
+                    stacklevel=2,
+                )
             return cf
         ellipsoid = self.ellipsoid
         if ellipsoid is not None:
@@ -1189,8 +1202,9 @@ def _parse(value: Any) -> tuple[JsonDict, str]:
     """The PROJJSON and ``srs`` of anything ``CRS()`` takes."""
     if isinstance(value, bool):
         raise CRSError(f"Invalid CRS input: {value!r}")
-    if isinstance(value, int):
-        return _epsg_json(value), f"EPSG:{value}"
+    if isinstance(value, numbers.Integral):
+        # An int, or numpy's (an EPSG code read from an array).
+        return _epsg_json(int(value)), f"EPSG:{int(value)}"
     if isinstance(value, str):
         if _is_proj_string(value):
             srs = _prepare_from_proj_string(value)

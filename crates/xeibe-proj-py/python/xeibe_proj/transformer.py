@@ -50,12 +50,15 @@ _NO_OPTIONS: _Options = (None, None, False)
 def _options(area_of_interest: Any, accuracy: float | None, only_best: bool | None) -> _Options:
     area = None
     if area_of_interest is not None:
-        area = (
-            float(area_of_interest.west_lon_degree),
-            float(area_of_interest.south_lat_degree),
-            float(area_of_interest.east_lon_degree),
-            float(area_of_interest.north_lat_degree),
-        )
+        try:
+            area = (
+                float(area_of_interest.west_lon_degree),
+                float(area_of_interest.south_lat_degree),
+                float(area_of_interest.east_lon_degree),
+                float(area_of_interest.north_lat_degree),
+            )
+        except AttributeError:
+            raise ProjError("Area of interest must be of the type pyproj.transformer.AreaOfInterest.") from None
     return area, None if accuracy is None else float(accuracy), bool(only_best)
 
 
@@ -157,7 +160,7 @@ class Transformer:
     _options: _Options
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        raise ProjError("use Transformer.from_crs() to make a Transformer")
+        raise ProjError("Transformer must be initialized using: 'from_crs'.")
 
     @classmethod
     def _make(

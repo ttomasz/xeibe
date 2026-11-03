@@ -168,3 +168,17 @@ def test_vertical_axes_have_cf_names() -> None:
     assert pyproj.CRS.from_epsg(5703).cs_to_cf()[0]["standard_name"] == "height_above_reference_ellipsoid"
     # An ellipsoidal height stays one.
     assert CRS.from_epsg(4979).cs_to_cf()[2]["standard_name"] == "height_above_reference_ellipsoid"
+
+
+def test_geoid_and_datum_names_warn() -> None:
+    """Both, as pyproj writes them, though CF 1.8 allows one: from_cf
+    keeps the geoid model too."""
+    crs = CRS('VERTCRS["NAVD88 height",VDATUM["North American Vertical Datum 1988"],CS[vertical,1],'
+              'AXIS["gravity-related height (H)",up,LENGTHUNIT["metre",1]],GEOIDMODEL["GEOID12B"]]')
+    with pytest.warns(UserWarning, match="CF 1.8"):
+        cf = crs.to_cf()
+    assert cf["geoid_name"] == "GEOID12B"
+    assert cf["geopotential_datum_name"] == "North American Vertical Datum 1988"
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        CRS(5703).to_cf()

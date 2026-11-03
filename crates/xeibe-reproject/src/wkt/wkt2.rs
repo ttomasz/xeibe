@@ -59,7 +59,9 @@ pub(crate) fn object_nodes(nodes: &[Node]) -> Result<Value, Error> {
         ));
     }
     match datum.keyword.as_str() {
-        k if GEODETIC_DATUM.contains(&k) => geodetic_frame(datum, epoch, primem),
+        k if GEODETIC_DATUM.contains(&k) => {
+            geodetic_frame(datum, epoch, primem.map(|pm| (pm, None)))
+        }
         k if VERTICAL_DATUM.contains(&k) && primem.is_none() => vertical_frame(datum, epoch),
         _ => Err(unsupported(datum, "a datum with DYNAMIC or PRIMEM")),
     }
@@ -80,7 +82,7 @@ pub(crate) fn object(node: &Node) -> Result<Value, Error> {
     match node.keyword.as_str() {
         "ELLIPSOID" | "SPHEROID" => Ok(typed("Ellipsoid", ellipsoid(node)?)),
         "PRIMEM" | "PRIMEMERIDIAN" => {
-            let pm = match prime_meridian(node)? {
+            let pm = match prime_meridian(node, None)? {
                 Some(pm) => pm,
                 None => {
                     let mut o = Obj::new();
@@ -556,14 +558,19 @@ fn ellipsoid(node: &Node) -> Result<Value, Error> {
 }
 
 /// `None` for Greenwich, which PROJJSON leaves implicit.
-fn prime_meridian(node: &Node) -> Result<Option<Value>, Error> {
+/// A prime meridian, in `axes` (its CRS's angle unit, in which PROJ's
+/// simplified WKT2 leaves it) when it has no unit, else in degrees.
+fn prime_meridian(node: &Node, axes: Option<&Unit>) -> Result<Option<Value>, Error> {
     node.only(&[UNITS, &["ID"]])?;
     let name = node.text(0)?;
     let mut longitude = node.number(1)?;
     if longitude == 0.0 && name.eq_ignore_ascii_case("Greenwich") {
         return Ok(None);
     }
-    let mut u = own_unit(node)?.unwrap_or_else(Unit::degree);
+    let mut u = match own_unit(node)? {
+        Some(u) => u,
+        None => axes.cloned().unwrap_or_else(Unit::degree),
+    };
     // PROJ's correction for meridians defined in degrees, minutes and
     // seconds: EPSG's export rounds Lisbon to -9.131906111.
     if let Some(degrees) = super::wkt1::sexagesimal(name, longitude) {
@@ -610,7 +617,11 @@ fn dynamic(node: Option<&Node>) -> Result<(Option<f64>, Vec<Value>), Error> {
 }
 
 /// A geodetic reference frame, with the prime meridian WKT puts next to it.
-fn geodetic_frame(node: &Node, epoch: Option<f64>, primem: Option<&Node>) -> Result<Value, Error> {
+fn geodetic_frame(
+    node: &Node,
+    epoch: Option<f64>,
+    primem: Option<(&Node, Option<&Unit>)>,
+) -> Result<Value, Error> {
     node.only(&[&["ELLIPSOID", "SPHEROID", "ANCHOR", "ANCHOREPOCH", "ID"]])?;
     let kind = if epoch.is_some() {
         "DynamicGeodeticReferenceFrame"
@@ -626,7 +637,11 @@ fn geodetic_frame(node: &Node, epoch: Option<f64>, primem: Option<&Node>) -> Res
         .ok_or_else(|| node.invalid("no ELLIPSOID"))?;
     o.insert("ellipsoid".into(), ellipsoid(e)?);
     anchors(node, &mut o)?;
-    if let Some(pm) = primem.map(prime_meridian).transpose()?.flatten() {
+    if let Some(pm) = primem
+        .map(|(pm, axes)| prime_meridian(pm, axes))
+        .transpose()?
+        .flatten()
+    {
         o.insert("prime_meridian".into(), pm);
     }
     ids(node, &mut o)?;
@@ -686,6 +701,22 @@ fn geodetic_datum(node: &Node) -> Result<(&'static str, Value, Vec<Value>), Erro
     let d = node
         .child(GEODETIC_DATUM)
         .ok_or_else(|| node.invalid("no DATUM or ENSEMBLE"))?;
+    // The CRS's angle unit: after its axes or (in a base CRS) its datum,
+    // else its first axis's; a plain `UNIT` in an ellipsoidal CS.
+    let ellipsoidal = node.child(&["CS"]).is_none_or(|cs| {
+        cs.word(0)
+            .is_ok_and(|w| w.eq_ignore_ascii_case("ellipsoidal"))
+    });
+    let axes = match own_unit(node)? {
+        Some(u) => Some(u),
+        None => node.child(&["AXIS"]).map(own_unit).transpose()?.flatten(),
+    }
+    .filter(|u| match u.kind {
+        UnitKind::Angular => true,
+        UnitKind::Any => ellipsoidal,
+        _ => false,
+    });
+    let primem = primem.map(|pm| (pm, axes.as_ref()));
     Ok(("datum", geodetic_frame(d, epoch, primem)?, models))
 }
 

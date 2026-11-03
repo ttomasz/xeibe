@@ -42,8 +42,8 @@ class BaseEnum(Enum):
 
 
 class WktVersion(BaseEnum):
-    """WKT flavours. ``WKT2_2019`` (and ``WKT2_2018``, the same) and ``WKT1_GDAL``
-    are written; the others raise ``NotImplementedError``."""
+    """WKT flavours. All but ``WKT1_ESRI`` are written; it raises
+    ``NotImplementedError``. ``WKT2_2018`` is ``WKT2_2019``."""
 
     WKT2_2015 = "WKT2_2015"
     WKT2_2015_SIMPLIFIED = "WKT2_2015_SIMPLIFIED"

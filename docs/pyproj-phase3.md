@@ -777,6 +777,13 @@ but where pyproj's attributes are another CRS than the one given:
 - A missing attribute raises `CRSError` naming it, where pyproj raises
   `KeyError`.
 
+Kept for now, against CF: a vertical CRS with a geoid model (NAVD88 with
+GEOID12B) gets both `geoid_name` and `geopotential_datum_name`, as in
+pyproj, though CF 1.8's Table F.1 says they "cannot both be specified".
+Writing only the datum's name would follow CF, but a round trip through
+`from_cf` would lose the geoid model. `to_cf` warns (`UserWarning`) when
+it writes both.
+
 CF's rotated pole ("Pole rotation (netCDF CF convention)") converts, as
 `xeibe-reproject` makes it PROJ's `ob_tran` (`o_lon_p`, `o_lat_p`,
 `lon_0` + 180°), and is written as that PROJ string. A derived geographic

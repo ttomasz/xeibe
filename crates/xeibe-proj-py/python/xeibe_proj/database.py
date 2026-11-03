@@ -76,6 +76,13 @@ def get_authorities() -> list[str]:
     return ["EPSG", "OGC"]
 
 
+def _text(name: str, value: object) -> None:
+    """A TypeError for an argument that isn't a string, as pyproj's typed
+    arguments raise."""
+    if value is not None and not isinstance(value, str):
+        raise TypeError(f"{name} must be a string, not {type(value).__name__}")
+
+
 def _types(pj_types: PJType | str | list[PJType] | list[str] | None) -> set[PJType]:
     if pj_types is None:
         return _GROUPS[PJType.CRS]
@@ -89,8 +96,9 @@ def _types(pj_types: PJType | str | list[PJType] | list[str] | None) -> set[PJTy
 
 def get_codes(auth_name: str, pj_type: PJType | str, allow_deprecated: bool = False) -> list[str]:
     """The codes of one authority's CRSs of a type."""
-    auth = auth_name.upper()
+    _text("auth_name", auth_name)
     types = _types(pj_type)
+    auth = auth_name.upper()
     codes: list[str] = []
     if auth in ("EPSG", "ANY"):
         codes += [
@@ -135,9 +143,10 @@ def query_crs_info(
 ) -> list[CRSInfo]:
     """The CRSs of these types (all by default) whose area of use
     intersects (or with ``contains``, holds) ``area_of_interest``."""
+    _text("auth_name", auth_name)
+    types = _types(pj_types)
     if auth_name is not None and auth_name.upper() not in ("EPSG", "ANY"):
         return []
-    types = _types(pj_types)
     out: list[CRSInfo] = []
     for r in _epsg.records().values():
         t = _KIND_TYPES.get(r.kind)
@@ -246,6 +255,8 @@ def get_units_map(auth_name: str | None = None, category: str | None = None, all
     known), as PROJ's database lists them. ``category`` is one of
     ``linear``, ``angular``, ``scale``, ``time`` and their ``_per_time``
     forms. A name used twice is the later unit's."""
+    _text("auth_name", auth_name)
+    _text("category", category)
     out: dict[str, Unit] = {}
     for auth, code, name, kind, factor, short_name, deprecated in _native.units():
         if auth_name and auth != auth_name:

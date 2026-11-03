@@ -102,7 +102,10 @@ class _JsonObject:
     # numbers in SI units, rather than as PROJJSON.
     _by_numbers: ClassVar[bool] = False
 
-    def __init__(self, projjson: JsonDict) -> None:
+    def __init__(self, projjson: JsonDict | None = None) -> None:
+        if projjson is None:
+            name = type(self).__name__
+            raise RuntimeError(f"{name} can only be initialized like '{name}.from_*()'.")
         self._setup(projjson)
 
     def _setup(self, projjson: JsonDict) -> None:

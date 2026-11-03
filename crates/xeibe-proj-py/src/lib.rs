@@ -14,7 +14,7 @@ mod json;
 mod proj;
 
 use pyo3::buffer::PyBuffer;
-use pyo3::exceptions::{PyTypeError, PyValueError};
+use pyo3::exceptions::{PyBufferError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyTuple};
 use xeibe_reproject::wkt::{self, AxisRule, Version};
@@ -193,6 +193,9 @@ fn to_wkt(
 ) -> PyResult<String> {
     let version = match version {
         "WKT2_2019" => Version::Wkt2_2019,
+        "WKT2_2015" => Version::Wkt2_2015,
+        "WKT2_2019_SIMPLIFIED" => Version::Wkt2_2019Simplified,
+        "WKT2_2015_SIMPLIFIED" => Version::Wkt2_2015Simplified,
         "WKT1_GDAL" => Version::Wkt1Gdal,
         other => return Err(PyValueError::new_err(format!("not written: {other}"))),
     };
@@ -360,10 +363,25 @@ fn clear_grids() {
     xeibe_reproject::clear_grids();
 }
 
-/// A writable, C-contiguous float64 buffer: its start and length. The
-/// pointer is passed as an integer so the conversion can run without the
-/// GIL; the caller keeps `buffer` alive meanwhile.
-fn writable(buffer: &PyBuffer<f64>, name: &str) -> PyResult<(usize, usize)> {
+/// A buffer to hold while its memory is used (`None` for an empty one
+/// without memory), and its start and length.
+type Writable = (Option<PyBuffer<f64>>, (usize, usize));
+
+/// A writable, C-contiguous float64 buffer of `object`. The pointer is passed as an integer
+/// so the conversion can run without the GIL. An empty `array.array` has
+/// no memory, whose null pointer PyO3 rejects as misaligned: it gives no
+/// buffer and length 0.
+fn writable(object: &Bound<'_, PyAny>, name: &str) -> PyResult<Writable> {
+    let buffer = match PyBuffer::<f64>::get(object) {
+        Ok(buffer) => buffer,
+        Err(e)
+            if e.is_instance_of::<PyBufferError>(object.py())
+                && object.len().is_ok_and(|n| n == 0) =>
+        {
+            return Ok((None, (0, 0)));
+        }
+        Err(e) => return Err(e),
+    };
     if buffer.readonly() {
         return Err(PyTypeError::new_err(format!(
             "{name}: the buffer is read-only"
@@ -374,7 +392,8 @@ fn writable(buffer: &PyBuffer<f64>, name: &str) -> PyResult<(usize, usize)> {
             "{name}: the buffer is not C-contiguous"
         )));
     }
-    Ok((buffer.buf_ptr() as usize, buffer.item_count()))
+    let raw = (buffer.buf_ptr() as usize, buffer.item_count());
+    Ok((Some(buffer), raw))
 }
 
 /// # Safety
