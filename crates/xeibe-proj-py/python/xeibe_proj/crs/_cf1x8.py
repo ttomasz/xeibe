@@ -467,10 +467,15 @@ def coordinate_system_to_cf(kind: str, axes: list[JsonDict], rotated_pole: bool)
                     {"standard_name": name, "long_name": f"{name} coordinate", "units": f"degrees_{axis['direction']}", "axis": letter}
                 )
     elif kind == "vertical":
+        # A vertical CRS's datum is a geopotential one (CF's
+        # `geopotential_datum_name`): CF's height above it, or depth, which
+        # CF has no name for below one but its own. (pyproj writes
+        # `height_above_reference_ellipsoid`, another coordinate.)
         for axis in axes:
+            down = axis.get("direction") == "down"
             out.append(
                 {
-                    "standard_name": "height_above_reference_ellipsoid",
+                    "standard_name": "depth" if down else "height_above_geopotential_datum",
                     "long_name": axis["name"],
                     "units": linear_unit(axis),
                     "positive": axis["direction"],

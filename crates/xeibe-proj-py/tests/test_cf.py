@@ -155,3 +155,16 @@ def test_missing_attributes_say_which() -> None:
         CRS.from_cf({"grid_mapping_name": "vertical_perspective"})
     with pytest.raises(CRSError, match="Unsupported grid mapping name: nonsense"):
         CRS.from_cf({"grid_mapping_name": "nonsense"})
+
+
+def test_vertical_axes_have_cf_names() -> None:
+    """A vertical CRS's height is CF's height above its geopotential datum
+    and a depth CF's depth; pyproj names both the ellipsoidal height."""
+    height = CRS.from_epsg(5703).cs_to_cf()
+    assert [a["standard_name"] for a in height] == ["height_above_geopotential_datum"]
+    assert height[0]["positive"] == "up"
+    depth = CRS.from_epsg(5715).cs_to_cf()
+    assert [(a["standard_name"], a["positive"]) for a in depth] == [("depth", "down")]
+    assert pyproj.CRS.from_epsg(5703).cs_to_cf()[0]["standard_name"] == "height_above_reference_ellipsoid"
+    # An ellipsoidal height stays one.
+    assert CRS.from_epsg(4979).cs_to_cf()[2]["standard_name"] == "height_above_reference_ellipsoid"

@@ -94,14 +94,16 @@ constructors (step 4), pyproj's builders exist (step 5), and CF (step 6).
     EPSG's remarks on CRSs and operations in a file of their own, read on
     first use. The wheel grew from 2.0 to 2.2 MB.
 - **Measured** (see [Testing](#testing)):
-  - pyproj's own suite: 723 of its 996 tests pass: 120 before phase 1's
+  - pyproj's own suite: 718 of its 996 tests pass: 120 before phase 1's
     Rust changes, 129 after, 149 with the WKT part of phase 2, 318 with
     `Geod`, 324 with `Proj`, 335 with `to_2d`/`to_3d`, 348 with
     `get_units_map`, 351 with the selection's options, 356 with
     `Transformer.to_json` and `to_wkt`, 438 with PROJ strings, 439 with
     PROJ's own methods and other celestial bodies, 444 with the
     projections PROJ has no CRS method for, 560 with the objects table
-    (more of its tests collect), 667 with the builders, 723 with CF.
+    (more of its tests collect), 667 with the builders, 718 with CF (and
+    five that assert pyproj's CF names for a vertical axis, in
+    `diverges.txt`).
   - Against the oracle `proj.db`, every EPSG CRS reports what PROJ does,
     scopes, area descriptions and remarks included, except four documented
     differences:
@@ -602,7 +604,9 @@ These are documented in the package README and in its `NotImplementedError` and
     under 1 as the cone through two parallels it is (pyproj leaves the
     scale out), and only `crs_wkt` for one with a scale over 1; `from_cf`
     keeps a height and `towgs84` on a geographic CRS, and a single
-    standard parallel's origin where CF puts it.
+    standard parallel's origin where CF puts it. A vertical CRS's axis is
+    CF's `height_above_geopotential_datum`, or `depth`, where pyproj names
+    the ellipsoidal height (`height_above_reference_ellipsoid`).
 
 ## Testing
 
@@ -617,7 +621,9 @@ These are documented in the package README and in its `NotImplementedError` and
     statement, so it still yields the tests it can.
   - The committed `pass-list.txt` is the compatibility measure. The run
     exits 1 when a listed test fails, and `--update` adds new passes, so
-    the list only grows.
+    the list only grows, but for tests that fail because ours differs on
+    purpose: those are in `diverges.txt` under the divergence, and the run
+    exits 1 when one of them passes.
 - **Differential tests** (`tests/test_oracle.py`, marked `oracle`) against
   pyproj with the `proj.db` that `scripts/build_proj_oracle.py` builds from
   our EPSG archive, so both sides see the same EPSG data:

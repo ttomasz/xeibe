@@ -768,6 +768,12 @@ but where pyproj's attributes are another CRS than the one given:
 - **A height and `towgs84` apply to any horizontal CRS**: pyproj's
   `from_cf` leaves them off a geographic or rotated one, so a 2D CRS with
   a height comes back without it.
+- **A vertical CRS's axis** is CF's `height_above_geopotential_datum`
+  (its datum is a geopotential one, CF's `geopotential_datum_name`), or
+  `depth` for a depth, which CF has no name for below such a datum but
+  its own. pyproj writes `height_above_reference_ellipsoid`, the height
+  above the ellipsoid, for both. pyproj's five tests of them are in the
+  suite's `diverges.txt`.
 - A missing attribute raises `CRSError` naming it, where pyproj raises
   `KeyError`.
 
@@ -778,7 +784,8 @@ CRS's `geodetic_crs` is itself, as in PROJ. Temporal CRSs (`TIMECRS`) are
 read and written, for `cs_to_cf`'s time axis ([crs-wkt.md](crs-wkt.md)).
 
 **Validation.** pyproj's `test_crs_cf.py` and coordinate systems' `to_cf`:
-all pass but two with Esri's codes (divergence 6). `tests/test_cf.py`:
+all pass but two with Esri's codes (divergence 6) and five of the
+vertical standard names (divergence 13). `tests/test_cf.py`:
 `to_cf` against pyproj's on every fifteenth current EPSG CRS and others,
 the deliberate differences checked on their own (the secant cones convert
 a point as the CRS does, to 1e-6 m); `to_cf` of `from_cf` of every one
@@ -887,7 +894,8 @@ imports no Arrow library.
    (2026-11-03): see [Builders](#builders). pyproj's suite went from 560
    to 667 of 996.
 6. **CF**, gated on pyproj's `test_crs_cf.py`. **Done** (2026-11-03): see
-   [CF](#cf). pyproj's suite went from 667 to 723 of 996.
+   [CF](#cf). pyproj's suite went from 667 to 718 of 996 (723, of which
+   five assert pyproj's vertical standard names).
 7. **GeoArrow**: first the wheel-size measurement for decision 17, then
    the module.
 8. **Pyodide.**

@@ -230,11 +230,8 @@ test.crs.test_crs_cf::test_decimal_year_temporal_crs__coordinate_system
 test.crs.test_crs_cf::test_ellipsoidal_cs
 test.crs.test_crs_cf::test_ellipsoidal_cs__from_name
 test.crs.test_crs_cf::test_ellipsoidal_cs__geodetic
-test.crs.test_crs_cf::test_export_compound_crs
-test.crs.test_crs_cf::test_export_compound_crs_cs
 test.crs.test_crs_cf::test_from_cf_transverse_mercator[-122.74, -34.27, -22.83, -1.884, -3.4, -3.03, -15.62]
 test.crs.test_crs_cf::test_from_cf_transverse_mercator[towgs84_test0]
-test.crs.test_crs_cf::test_geoid_model_name
 test.crs.test_crs_cf::test_geos_crs_fixed_angle_axis
 test.crs.test_crs_cf::test_geos_crs_sweep
 test.crs.test_crs_cf::test_geos_proj_string
@@ -337,8 +334,6 @@ test.crs.test_crs_coordinate_system::test_vertical_cs[VerticalCSAxis.DEPTH_US_FT
 test.crs.test_crs_coordinate_system::test_vertical_cs[VerticalCSAxis.GRAVITY_HEIGHT_US_FT-up-US survey foot]
 test.crs.test_crs_coordinate_system::test_vertical_cs[VerticalCSAxis.UP-up-metre]
 test.crs.test_crs_coordinate_system::test_vertical_cs[VerticalCSAxis.UP_US_FT-up-US survey foot]
-test.crs.test_crs_coordinate_system::test_verticalcs_depth_to_cf
-test.crs.test_crs_coordinate_system::test_verticalcs_height_to_cf
 test.crs.test_crs_datum::test_custom_datum
 test.crs.test_crs_datum::test_custom_datum__input
 test.crs.test_crs_datum::test_custom_ellipsoid
