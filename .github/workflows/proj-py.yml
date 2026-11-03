@@ -163,8 +163,10 @@ jobs:
 
       - name: Build the wheel
         working-directory: crates/xeibe-proj-py
+        # pyodide build makes the output directory but not its parents.
         run: |
           source "$EMSDK_ENV"
+          mkdir -p ../../target/pyodide-wheels
           pyodide build -o ../../target/pyodide-wheels
 
       - name: Bare install

@@ -438,6 +438,7 @@ jobs:
         run: |
           source "$EMSDK_ENV"
           cd "$(dirname "$MANIFEST")"
+          mkdir -p "$GITHUB_WORKSPACE/dist"
           pyodide build -o "$GITHUB_WORKSPACE/dist"
 
       - name: Check the wheel's licence files
