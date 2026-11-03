@@ -51,7 +51,7 @@ TOKEN = re.compile(r'"(?:[^"]|"")*"|[-+]?\d+(?:\.\d*)?(?:[eE][-+]?\d+)?|[^\s\d"]
 
 
 def load(name: str) -> list[dict[str, Any]]:
-    with (VECTORS / name).open() as f:
+    with (VECTORS / name).open(encoding="utf-8") as f:
         return [json.loads(line) for line in list(f)[1:]]
 
 

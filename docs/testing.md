@@ -25,7 +25,7 @@ Benchmarks are separate: `cargo bench`, on synthetic data from
 | `crates/<crate>/tests/it/` | One integration-test binary per crate, with a module per topic and a `support` module. Everything goes through the public API |
 | `crates/<crate>/tests/it/samples.rs` | The same crate tested against the real samples in `tests/data` |
 | `crates/xeibe-py/tests/*.py` | The Python package, run against a built wheel: `smoke.py` (`scan`, `read`, settings, options) and `sedona.py` (`xeibe.sedona` in SedonaDB). Not part of `cargo test`; see below |
-| `crates/xeibe-proj-py/tests/` | The pyproj-compatible package, with pytest against a built wheel: CRSs and transformations compared with pyproj (also on the oracle `proj.db`), the container rules, grids from a local HTTP server, a bare import without numpy. `tests/typing/` holds `assert_type` checks for mypy and pyright, `tests/pyproj_suite/` runs pyproj's own tests, `tests/geopandas_suite/` GeoPandas' through the shim. Not part of `cargo test`; see below |
+| `crates/xeibe-proj-py/tests/` | The pyproj-compatible package, with pytest against a built wheel: CRSs and transformations compared with pyproj (also on the oracle `proj.db`), the container rules, grids from a local HTTP server and through a fake `XMLHttpRequest`, a bare import without numpy. `tests/pyodide_browser/` checks the Pyodide wheel's grid fetch in Chromium. `tests/typing/` holds `assert_type` checks for mypy and pyright, `tests/pyproj_suite/` runs pyproj's own tests, `tests/geopandas_suite/` GeoPandas' through the shim. Not part of `cargo test`; see below |
 | `crates/xeibe-wasm/tests/it/` | The web page's session run natively: scan, read, the map's buffers, grids loaded from `tests/data/reprojection/grids`, the table's rows. The JavaScript in `web/` has no automated tests yet: `npm run check` type-checks it |
 
 The Python tests are PEP 723 scripts. Build the wheel first, then run each
@@ -68,6 +68,26 @@ whatever there isn't Cargo's.
 macOS and Windows, and checks a bare install on Python 3.11 with no numpy.
 The type checks, pyproj's suite and GeoPandas' run on Linux only. The
 oracle tests skip there.
+
+Its `pyodide` job builds the Pyodide wheel and runs the same tests in a
+Pyodide venv in Node ([pyproj-phase3.md](pyproj-phase3.md#pyodide)).
+Locally, with Node, Rust's `wasm32-unknown-emscripten` target and
+pyodide-build (its host Python is 3.14):
+
+```sh
+uv tool install --python 3.14 pyodide-cli==0.5.0 --with pyodide-build==0.39.3
+pyodide xbuildenv install 314.0.7 && pyodide xbuildenv install-emscripten
+(cd crates/xeibe-proj-py && source "$(pyodide config get emsdk_dir)/emsdk_env.sh" \
+  && pyodide build -o ../../target/pyodide-wheels)
+pyodide venv target/pyodide-venv
+target/pyodide-venv/bin/pip install target/pyodide-wheels/xeibe_proj-*.whl pytest numpy pyproj
+target/pyodide-venv/bin/python -m pytest crates/xeibe-proj-py/tests -p no:cacheprovider
+crates/xeibe-proj-py/tests/pyodide_browser/run.py \
+  --wheel target/pyodide-wheels/xeibe_proj-*.whl --pyodide "$(pyodide config get dist_dir)"
+```
+
+The last command checks the grid fetch through the browser's
+`XMLHttpRequest` in Playwright's Chromium, which Node can't.
 
 Each test module names the section of the design docs it comes from. A test
 that deviates from a document deliberately says why in a comment (see the GDAL

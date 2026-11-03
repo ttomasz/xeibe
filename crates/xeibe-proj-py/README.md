@@ -143,6 +143,27 @@ import logging
 logging.basicConfig(level=logging.INFO)
 ```
 
+## Pyodide
+
+There is a wheel for Pyodide 314 (`pyemscripten_2026_0_wasm32`), so the
+package runs in the browser and in Node:
+
+```python
+import micropip
+await micropip.install("xeibe-proj")
+
+from xeibe_proj import Transformer
+Transformer.from_crs(4326, 2180).transform(52.0, 21.0)
+```
+
+Grids are fetched with the browser's synchronous `XMLHttpRequest` and
+cached in memory until the page is reloaded. A synchronous request blocks
+the page while it runs on the main thread, so convert in a web worker when
+the transformation may need grids. Node has no `XMLHttpRequest`: there,
+put the grids in a data directory (`PROJ_DATA`, `set_data_dir`), or turn
+the network off. See
+[`docs/pyproj-phase3.md`](https://github.com/ttomasz/xeibe/blob/main/docs/pyproj-phase3.md#pyodide).
+
 ## Types
 
 The package is fully typed (`py.typed`) and checked with mypy and pyright in

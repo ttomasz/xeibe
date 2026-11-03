@@ -1,6 +1,8 @@
 # xeibe-proj, the pyproj-compatible package (docs/pyproj-compat.md): an abi3
 # wheel built on Linux, macOS and Windows, installed bare and tested on each,
-# plus the strict type checks and pyproj's own suite on Linux. The wheels
+# plus the strict type checks and pyproj's own suite on Linux, and the
+# Pyodide wheel, tested in Node and its grid fetch in Chromium
+# (docs/pyproj-phase3.md, Pyodide). The wheels
 # are for testing, not release: the Linux one is tagged for the runner's
 # glibc, not built in a manylinux container. release.yml builds the release
 # wheels (docs/releasing.md). test_oracle.py skips, because
@@ -112,3 +114,89 @@ jobs:
       - name: GeoPandas' suite through install_as_pyproj()
         if: runner.os == 'Linux'
         run: crates/xeibe-proj-py/tests/geopandas_suite/run.py --wheel target/proj-py-wheels/xeibe_proj-*.whl
+
+  # The Pyodide wheel (docs/pyproj-phase3.md, Pyodide), for the Pyodide
+  # release PYODIDE names: built by pyodide-build, which runs maturin with
+  # that release's Emscripten. Then a bare install and the package's tests
+  # in a Pyodide venv in Node, with Pyodide's own numpy and pyproj (3.7.2,
+  # not 3.8.0), and the grid fetch through XMLHttpRequest in Chromium.
+  pyodide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PYODIDE: "314.0.7"
+      PYODIDE_BUILD: "0.39.3"
+    steps:
+      - uses: actions/checkout@v7
+
+      # Stable, not the 1.93 Pyodide 314 names: the workspace's MSRV is
+      # higher, and the Emscripten target's ABI hasn't changed since.
+      - name: Rust with the Emscripten target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-emscripten
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.3"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # Pyodide 314's host Python is 3.14. The `pyodide` command is
+      # pyodide-cli's; pyodide-build adds `build`, `venv` and `xbuildenv`.
+      - name: pyodide-build
+        run: |
+          uv tool install --python 3.14 pyodide-cli==0.5.0 --with "pyodide-build==$PYODIDE_BUILD"
+          uv tool dir --bin >> "$GITHUB_PATH"
+
+      - name: Cross-build environment and Emscripten
+        run: |
+          pyodide xbuildenv install "$PYODIDE"
+          pyodide xbuildenv install-emscripten
+          echo "EMSDK_ENV=$(pyodide config get emsdk_dir)/emsdk_env.sh" >> "$GITHUB_ENV"
+          echo "PYODIDE_DIST=$(pyodide config get dist_dir)" >> "$GITHUB_ENV"
+
+      # The wheel and the venvs go in RUNNER_TEMP, not target/: rust-cache
+      # saves target/ but prunes what isn't Cargo's, and a venv it brings
+      # back half-deleted makes `pyodide venv` fail. pyodide build makes
+      # the output directory but not its parents.
+      - name: Build the wheel
+        working-directory: crates/xeibe-proj-py
+        run: |
+          source "$EMSDK_ENV"
+          mkdir -p "$RUNNER_TEMP/pyodide-wheels"
+          pyodide build -o "$RUNNER_TEMP/pyodide-wheels"
+
+      - name: Bare install
+        run: |
+          pyodide venv "$RUNNER_TEMP/pyodide-bare"
+          "$RUNNER_TEMP/pyodide-bare/bin/pip" install "$RUNNER_TEMP"/pyodide-wheels/xeibe_proj-*.whl
+          PROJ_NETWORK=OFF "$RUNNER_TEMP/pyodide-bare/bin/python" - <<'EOF'
+          import importlib.util
+          import sys
+
+          from xeibe_proj import CRS, Transformer
+
+          assert sys.platform == "emscripten"
+          assert importlib.util.find_spec("numpy") is None, "numpy is installed"
+          assert CRS("EPSG:2180").name == "ETRS89 / PL-1992"
+          x, y = Transformer.from_crs(4326, 2180).transform([52.0], [21.0])
+          assert abs(x[0] - 461_197.24) < 1 and abs(y[0] - 637_253.16) < 1, (x, y)
+          EOF
+
+      - name: Tests
+        run: |
+          pyodide venv "$RUNNER_TEMP/pyodide-venv"
+          "$RUNNER_TEMP/pyodide-venv/bin/pip" install "$RUNNER_TEMP"/pyodide-wheels/xeibe_proj-*.whl pytest numpy pyproj
+          "$RUNNER_TEMP/pyodide-venv/bin/python" -m pytest crates/xeibe-proj-py/tests -p no:cacheprovider
+
+      - name: Grid fetch in Chromium
+        run: |
+          uv run --no-project --isolated --with playwright==1.63.0 playwright install --with-deps chromium
+          crates/xeibe-proj-py/tests/pyodide_browser/run.py \
+            --wheel "$RUNNER_TEMP"/pyodide-wheels/xeibe_proj-*.whl --pyodide "$PYODIDE_DIST"

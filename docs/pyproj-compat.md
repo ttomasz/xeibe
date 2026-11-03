@@ -41,7 +41,8 @@ as of 2026-10-24 all of it is done: the geodesic port, `Geod`, `Proj`,
 read and written (its steps 1 and 2), as of 2026-11-01
 `install_as_pyproj()` runs GeoPandas (step 3), and as of 2026-11-03 EPSG's
 ellipsoids, prime meridians, datums and operations have their own
-constructors (step 4), pyproj's builders exist (step 5), and CF (step 6).
+constructors (step 4), pyproj's builders exist (step 5), CF too (step 6),
+and there is a Pyodide wheel (step 8).
 
 - **Done.**
   - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
@@ -49,6 +50,9 @@ constructors (step 4), pyproj's builders exist (step 5), and CF (step 6).
     wheel on Linux, macOS and Windows. Its wheels aren't release builds;
     `.github/workflows/release.yml` builds and publishes those
     ([releasing.md](releasing.md)).
+  - A Pyodide wheel (abi3, `pyemscripten_2026_0_wasm32`, for Pyodide
+    314), tested in Node and, for the grid fetch, in Chromium
+    ([pyproj-phase3.md](pyproj-phase3.md#pyodide)).
   - `CRS` from every input form in the table below, PROJ strings, dicts
     and keyword arguments included (phase 3), with its properties, parts,
     `repr`, equality, hashing and pickling; `to_proj4` and `to_dict`.
@@ -467,8 +471,9 @@ use of a grid is logged:
   directories set with `set_data_dir` are searched alone; otherwise the
   user data directory (`get_user_data_dir()`, where `download_grids` puts
   files) comes first, then `PROJ_DATA`.
-- In Pyodide `urllib` has no sockets, so phase 3 adds a fetch path through
-  `pyodide.http`.
+- In Pyodide `urllib` has no sockets, so grids are fetched with the
+  browser's synchronous `XMLHttpRequest`, and the cache lasts until the
+  page is reloaded ([pyproj-phase3.md](pyproj-phase3.md#pyodide)).
 
 Logging goes through the standard `logging` module under the logger
 `xeibe_proj.grids`, and the package adds no handlers:

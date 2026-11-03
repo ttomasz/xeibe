@@ -8,7 +8,9 @@ import http.server
 import json
 import logging
 import os
+import sys
 import threading
+import types
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -17,7 +19,7 @@ import pytest
 from xeibe_proj import Transformer, _grids, _native, datadir, network
 from xeibe_proj.exceptions import ProjError
 
-from .conftest import GRIDS, ROOT
+from .conftest import EMSCRIPTEN, GRIDS, ROOT
 
 # St. George Island to NAD83 (2) (EPSG:8546, NADCON5), the operation chosen
 # with every grid available: PROJ's results.
@@ -66,18 +68,116 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
         pass
 
 
-@pytest.fixture
-def cdn(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
+# The browser's XMLHttpRequest, as _grids uses it under Pyodide, on the
+# committed grids at FAKE_CDN. Runs everywhere, Pyodide in Node included.
+FAKE_CDN = "https://cdn.invalid/"
+
+# The x-user-defined charset: bytes below 0x80 as they are, the others at
+# U+F780 to U+F7FF.
+_X_USER_DEFINED = {b: 0xF700 + b for b in range(0x80, 0x100)}
+
+
+class _FakeXMLHttpRequest:
+    requests: list[str] = []
+    files: dict[str, bytes] = {}
+
+    @classmethod
+    def new(cls) -> _FakeXMLHttpRequest:
+        return cls()
+
+    def __init__(self) -> None:
+        self.headers: dict[str, str] = {}
+        self.mime: str | None = None
+        self.status = 0
+        self.statusText = ""
+        self.responseText = ""
+
+    def open(self, method: str, url: str, is_async: bool) -> None:
+        assert method == "GET" and not is_async
+        self.url = url
+
+    def overrideMimeType(self, mime: str) -> None:
+        self.mime = mime
+
+    def setRequestHeader(self, name: str, value: str) -> None:
+        assert name.lower() == "range", f"{name} isn't allowed by cdn.proj.org's CORS"
+        self.headers[name] = value
+
+    def send(self) -> None:
+        if not self.url.startswith(FAKE_CDN):
+            raise RuntimeError("NetworkError: Failed to execute 'send' on 'XMLHttpRequest'")
+        name = self.url.removeprefix(FAKE_CDN)
+        self.requests.append(f"/{name}")
+        if name not in self.files:
+            self.status, self.statusText = 404, "Not Found"
+            return
+        data = self.files[name]
+        if "Range" in self.headers:
+            start, _, end = self.headers["Range"].removeprefix("bytes=").partition("-")
+            data = data[int(start) : int(end) + 1 if end else len(data)]
+            self.status, self.statusText = 206, "Partial Content"
+        else:
+            self.status, self.statusText = 200, "OK"
+        assert self.mime == "text/plain; charset=x-user-defined"
+        self.responseText = data.decode("latin-1").translate(_X_USER_DEFINED)
+
+
+def _install_fake_xhr(monkeypatch: pytest.MonkeyPatch, files: dict[str, bytes]) -> list[str]:
+    js = types.ModuleType("js")
+    js.XMLHttpRequest = _FakeXMLHttpRequest  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "js", js)
+    monkeypatch.setattr(_grids, "_EMSCRIPTEN", True)
+    monkeypatch.setattr(_FakeXMLHttpRequest, "requests", [])
+    monkeypatch.setattr(_FakeXMLHttpRequest, "files", files)
+    return _FakeXMLHttpRequest.requests
+
+
+@pytest.fixture(params=["urllib", "xhr"])
+def cdn(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
+    """The committed grids served as cdn.proj.org serves them: over HTTP to
+    urllib, and to the browser's XMLHttpRequest under Pyodide. Yields the
+    paths requested."""
+    _native.clear_grids()
+    network.set_network_enabled(True)
+    if request.param == "xhr":
+        files = {p.name: p.read_bytes() for p in GRIDS.iterdir() if p.is_file()}
+        requests = _install_fake_xhr(monkeypatch, files)
+        monkeypatch.setattr(_grids, "CDN", FAKE_CDN)
+        yield requests
+        _native.clear_grids()
+        return
+    if EMSCRIPTEN:
+        pytest.skip("Pyodide has no sockets")
     handler = functools.partial(_Handler, directory=str(GRIDS))
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     monkeypatch.setattr(_grids, "CDN", f"http://127.0.0.1:{server.server_address[1]}/")
     _Handler.requests = []
-    _native.clear_grids()
-    network.set_network_enabled(True)
     yield _Handler.requests
     server.shutdown()
+    _native.clear_grids()
+
+
+def test_xhr_reads_every_byte_value(monkeypatch: pytest.MonkeyPatch) -> None:
+    data = bytes(range(256)) * 3
+    _install_fake_xhr(monkeypatch, {"all.bin": data})
+    assert _grids._xhr_get(f"{FAKE_CDN}all.bin", {}) == (200, data)  # pyright: ignore[reportPrivateUsage]
+    assert _grids._xhr_get(f"{FAKE_CDN}all.bin", {"Range": "bytes=250-261"}) == (206, data[250:262])  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(OSError, match="404"):
+        _grids._xhr_get(f"{FAKE_CDN}missing.bin", {})  # pyright: ignore[reportPrivateUsage]
+
+
+def test_no_xhr_in_node(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    """Pyodide in Node has no XMLHttpRequest: grids can't be fetched, and
+    the error says to put them in a data directory."""
+    monkeypatch.setitem(sys.modules, "js", types.ModuleType("js"))
+    monkeypatch.setattr(_grids, "_EMSCRIPTEN", True)
+    network.set_network_enabled(True)
+    _native.clear_grids()
+    with pytest.raises(ProjError, match="no XMLHttpRequest"):
+        _check(Transformer.from_crs(4138, 4269))
+    assert any(r.levelno == logging.ERROR for r in caplog.records)
     _native.clear_grids()
 
 

@@ -31,6 +31,8 @@ import xeibe_proj.crs.coordinate_system  # noqa: E402
 import xeibe_proj.crs.datum  # noqa: E402
 import xeibe_proj.crs.enums  # noqa: E402
 
+from .conftest import EMSCRIPTEN  # noqa: E402
+
 
 def _lib(root: Any) -> SimpleNamespace:
     return SimpleNamespace(
@@ -280,6 +282,8 @@ print(json.dumps({case: [crs.to_json_dict(), crs.to_wkt()] for case, crs in buil
 
 @pytest.fixture(scope="module")
 def separate() -> dict[str, list[Any]]:
+    if EMSCRIPTEN:
+        pytest.skip("Pyodide can't start the process pyproj needs here")
     run = subprocess.run(
         [sys.executable, "-c", PYPROJ_SIDE, json.dumps(SEPARATE)], capture_output=True, text=True, check=True
     )
@@ -298,6 +302,10 @@ def test_builders_in_a_process_of_their_own(case: str, separate: dict[str, list[
 
 @pytest.mark.parametrize("case", sorted(CASES))
 def test_builders(case: str) -> None:
+    if case == "derived-geographic" and pyproj.__version__ != "3.8.0":
+        # Pyodide's pyproj 3.7.2 (PROJ 9.6) leaves out the base CRS's ID,
+        # which pyproj 3.8.0, whose API is followed, writes.
+        pytest.skip("pyproj 3.8.0's WKT")
     # PROJ writes these three axes without their abbreviations, `(h)`,
     # alone of coordinate systems; ours as every other.
     check(CASES[case], wkt=case != "Ellipsoidal3DCS-LATITUDE_LONGITUDE_HEIGHT")
