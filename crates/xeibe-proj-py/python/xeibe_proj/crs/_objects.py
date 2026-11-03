@@ -14,6 +14,7 @@ from typing import Any, ClassVar, Self, cast
 
 from xeibe_proj import _native, _wkt
 from xeibe_proj._json import JsonDict, as_dict, as_list, dumps, get_dict, get_dicts, ident
+from xeibe_proj._operation_json import SCHEMA
 from xeibe_proj.aoi import AreaOfUse
 from xeibe_proj.exceptions import CRSError
 
@@ -102,7 +103,18 @@ class _JsonObject:
     _by_numbers: ClassVar[bool] = False
 
     def __init__(self, projjson: JsonDict) -> None:
+        self._setup(projjson)
+
+    def _setup(self, projjson: JsonDict) -> None:
         self._json = projjson
+
+    @classmethod
+    def _of(cls, *args: Any) -> Self:
+        """``cls(*args)``, past the ``__new__`` and ``__init__`` of a builder
+        (``CustomEllipsoid``, …), which take the builder's arguments."""
+        made = object.__new__(cls)
+        made._setup(*args)
+        return made
 
     @classmethod
     def from_json_dict(cls, projjson_dict: JsonDict) -> Self:
@@ -110,7 +122,7 @@ class _JsonObject:
         d = as_dict(projjson_dict)
         if d is None or str(d.get("type", "")) not in cls._types:
             raise CRSError(f"Invalid {cls._what} string: {json.dumps(projjson_dict, default=str)}")
-        return cls(json.loads(json.dumps(d)))
+        return cls._of({k: v for k, v in json.loads(json.dumps(d)).items() if k != "$schema"})
 
     @classmethod
     def from_json(cls, projjson_str: str) -> Self:
@@ -144,7 +156,7 @@ class _JsonObject:
             doc = None if check is None else cls._by_code(m["auth"].upper(), m["code"], urn_type)
             if doc is None or check is None or not check(doc):
                 raise invalid
-            return cls(doc)
+            return cls._of(doc)
         if _WKT.match(text):
             try:
                 doc = json.loads(_native.wkt_object_to_projjson(text))
@@ -152,7 +164,7 @@ class _JsonObject:
                 raise invalid from None
             if str(doc.get("type", "")) not in cls._types:
                 raise invalid
-            return cls(doc)
+            return cls._of(doc)
         raise invalid
 
     @classmethod
@@ -196,11 +208,16 @@ class _JsonObject:
         return None if scope is None else str(scope)
 
     def to_json_dict(self) -> JsonDict:
-        """The PROJJSON as a dict (a copy)."""
+        """The PROJJSON as a dict (a copy), with ``$schema``, as PROJ
+        writes an object at the root."""
         out: JsonDict = json.loads(json.dumps(self._json))
-        if self._type and "type" not in out:
-            out = {"type": self._type, **out}
-        return out
+        if "type" not in out and self._default_type():
+            out = {"type": self._default_type(), **out}
+        return {"$schema": SCHEMA, **out}
+
+    def _default_type(self) -> str:
+        """The type of PROJJSON that has none, as a CRS's parts don't."""
+        return self._type
 
     def to_json(self, pretty: bool = False, indentation: int = 2) -> str:
         """The PROJJSON as text."""
@@ -295,7 +312,7 @@ class _EpsgObject(_JsonObject):
         doc = cls._by_code(auth_name, code)
         if doc is None:
             raise CRSError(f"Invalid authority or code ({auth_name}, {code})")
-        return cls(doc)
+        return cls._of(doc)
 
     @classmethod
     def from_epsg(cls, code: int | str) -> Self:
@@ -317,7 +334,7 @@ class _EpsgObject(_JsonObject):
         found = cls._named(name, auth_name)
         if not found:
             raise CRSError(f"Invalid {cls._what} name: {name}")
-        return cls(found[0])
+        return cls._of(found[0])
 
     @classmethod
     def from_string(cls, text: str) -> Self:
@@ -333,6 +350,35 @@ class _EpsgObject(_JsonObject):
 
 def _always(doc: JsonDict) -> bool:
     return True
+
+
+class PartBuilder:
+    """A builder of a part (``CustomEllipsoid``, ``Ellipsoidal2DCS``,
+    ``TransverseMercatorConversion``, …): its ``__new__`` takes pyproj's
+    arguments and makes the part, which ``__init__`` then leaves as it is."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+
+# The types PROJ leaves out of a nested part, which its key implies
+# (`ellipsoid`, `coordinate_system`, …); a datum and a CRS keep theirs.
+_IMPLIED_TYPES = frozenset(
+    {"Ellipsoid", "PrimeMeridian", "CoordinateSystem", "Conversion", "DatumEnsemble", "Transformation"}
+)
+
+
+def nested_json(part: Any) -> JsonDict:
+    """A part's or CRS's PROJJSON inside another's, as PROJ writes it:
+    without ``$schema`` and usages, which only the outermost object has,
+    and without a type its key implies. Nested ids stay, as in our CRSs'
+    PROJJSON, where PROJ leaves out those inside an object with an id; the
+    WKT writer leaves them out as PROJ does."""
+    doc: JsonDict = part.to_json_dict()
+    drop = {"$schema", "usages", "scope", "area", "bbox"}
+    if doc.get("type") in _IMPLIED_TYPES:
+        drop.add("type")
+    return {k: v for k, v in doc.items() if k not in drop}
 
 
 @dataclass(frozen=True)
@@ -411,7 +457,7 @@ class Ellipsoid(_EpsgObject):
         ``+ellps`` names or their descriptions (``intl``)."""
         found = cls._named(name, auth_name)
         if found:
-            return cls(found[0])
+            return cls._of(found[0])
         if auth_name not in (None, "PROJ"):
             raise CRSError(f"Invalid ellipsoid name: {name}")
         from xeibe_proj.list import get_ellps_map
@@ -426,7 +472,7 @@ class Ellipsoid(_EpsgObject):
             doc["inverse_flattening"] = params["rf"]
         else:
             doc["semi_minor_axis"] = params["b"]
-        return cls(doc)
+        return cls._of(doc)
 
     @property
     def semi_major_metre(self) -> float:
@@ -502,6 +548,31 @@ def _datum_types(doc: JsonDict) -> set[str]:
     return {name, name.removeprefix("DYNAMIC_")}
 
 
+# The names PROJ gives three ensembles as datums
+# (`ensembleNameToNonEnsembleName`); the others keep theirs.
+_ENSEMBLE_DATUM_NAMES = {
+    "World Geodetic System 1984 ensemble": "World Geodetic System 1984",
+    "European Terrestrial Reference System 1989 ensemble": "European Terrestrial Reference System 1989",
+    "Greenland Reference 1996 ensemble": "Greenland 1996",
+}
+
+
+def _ensemble_as_datum(ensemble: JsonDict) -> JsonDict:
+    """An ensemble as one datum, as PROJ's ``DatumEnsemble::asDatum``
+    makes it: geodetic with its ellipsoid, or vertical, with its id. (PROJ's
+    has the usage of EPSG's record too, which the objects table, as PROJ's
+    ensembles, doesn't keep.)"""
+    name = str(ensemble.get("name", ""))
+    out: JsonDict = {
+        "type": "GeodeticReferenceFrame" if "ellipsoid" in ensemble else "VerticalReferenceFrame",
+        "name": _ENSEMBLE_DATUM_NAMES.get(name, name),
+    }
+    for key in ("ellipsoid", "id"):
+        if key in ensemble:
+            out[key] = ensemble[key]
+    return out
+
+
 def _enum_name(value: object) -> str:
     """An enum member's name, or a string as pyproj's ``BaseEnum.create``
     takes it."""
@@ -530,6 +601,15 @@ class Datum(_EpsgObject):
     _urns = {"datum": _always, "ensemble": lambda d: d.get("type") == "DatumEnsemble"}
 
     @classmethod
+    def _by_code(cls, auth_name: str, code: int | str, urn_type: str | None = None) -> JsonDict | None:
+        """A datum or ensemble; an ensemble a URN names as a ``datum``
+        (``urn:ogc:def:datum:EPSG::6326``) as a datum, as in PROJ."""
+        doc = super()._by_code(auth_name, code, urn_type)
+        if doc is not None and (urn_type or "").lower() == "datum" and doc.get("type") == "DatumEnsemble":
+            return _ensemble_as_datum(doc)
+        return doc
+
+    @classmethod
     def from_name(cls, name: str, auth_name: str | None = None, datum_type: Any = None) -> Self:
         """By name or alias, as ``from_name`` finds any object, of
         ``datum_type`` (a ``DatumType`` or its name) when given. Of datums
@@ -545,7 +625,7 @@ class Datum(_EpsgObject):
             found = [doc for doc in found if wanted in _datum_types(doc)]
         if not found:
             raise CRSError(f"Invalid datum name: {name}")
-        return cls(found[0])
+        return cls._of(found[0])
 
     @property
     def type_name(self) -> str:
@@ -572,11 +652,9 @@ class Datum(_EpsgObject):
             return None
         return PrimeMeridian(as_dict(self._json.get("prime_meridian")) or _GREENWICH)
 
-    def to_json_dict(self) -> JsonDict:
-        out = super().to_json_dict()
-        if "members" in out and "type" not in out:
-            out = {"type": "DatumEnsemble", **out}
-        return out
+    def _default_type(self) -> str:
+        # A CRS's `datum_ensemble`.
+        return "DatumEnsemble" if "members" in self._json else ""
 
 
 @dataclass(frozen=True)
@@ -775,7 +853,7 @@ class CoordinateOperation(_EpsgObject):
         scope = usage.get("scope")
         if doc.get("type") == "Conversion":
             doc = {k: v for k, v in doc.items() if k not in ("scope", "area", "bbox", "usages")}
-        return cls(doc, area, _grids_of(doc, proj_names), None if scope is None else str(scope))
+        return cls._of(doc, area, _grids_of(doc, proj_names), None if scope is None else str(scope))
 
     @classmethod
     def _of_crs(cls, conversion: JsonDict, crs_code: int | None) -> CoordinateOperation:
@@ -799,7 +877,16 @@ class CoordinateOperation(_EpsgObject):
         grids: list[Grid] | None = None,
         scope: str | None = None,
     ) -> None:
-        super().__init__(projjson)
+        self._setup(projjson, area_of_use, grids, scope)
+
+    def _setup(
+        self,
+        projjson: JsonDict,
+        area_of_use: AreaOfUse | None = None,
+        grids: list[Grid] | None = None,
+        scope: str | None = None,
+    ) -> None:
+        super()._setup(projjson)
         self._area = area_of_use
         self._grids = grids or []
         self._scope = scope

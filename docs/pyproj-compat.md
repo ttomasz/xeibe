@@ -41,7 +41,7 @@ as of 2026-10-24 all of it is done: the geodesic port, `Geod`, `Proj`,
 read and written (its steps 1 and 2), as of 2026-11-01
 `install_as_pyproj()` runs GeoPandas (step 3), and as of 2026-11-03 EPSG's
 ellipsoids, prime meridians, datums and operations have their own
-constructors (step 4).
+constructors (step 4), and pyproj's builders exist (step 5).
 
 - **Done.**
   - The crate, abi3 wheel (2.0 MB with `--profile dist`), and the strict
@@ -74,6 +74,11 @@ constructors (step 4).
     EPSG codes, names, URNs, WKT and PROJJSON, `CoordinateSystem` from
     PROJJSON, and `query_geodetic_crs_from_datum`
     ([pyproj-phase3.md](pyproj-phase3.md#the-objects-table)).
+  - The builders: `GeographicCRS`, `ProjectedCRS` and the other
+    `CustomConstructorCRS` classes, the 22 conversions and
+    `ToWGS84Transformation`, `CustomDatum`, `CustomEllipsoid`,
+    `CustomPrimeMeridian`, the coordinate systems and `crs.enums`
+    ([pyproj-phase3.md](pyproj-phase3.md#builders)).
   - `xeibe_proj.compat.install_as_pyproj()`, under which GeoPandas 1.2.0
     passes its tests but four ([pyproj-phase3.md](pyproj-phase3.md#geopandas)).
 - **The Rust changes phase 1 needed are made**:
@@ -87,13 +92,14 @@ constructors (step 4).
     EPSG's remarks on CRSs and operations in a file of their own, read on
     first use. The wheel grew from 2.0 to 2.2 MB.
 - **Measured** (see [Testing](#testing)):
-  - pyproj's own suite: 444 of its 963 tests pass: 120 before phase 1's
+  - pyproj's own suite: 667 of its 996 tests pass: 120 before phase 1's
     Rust changes, 129 after, 149 with the WKT part of phase 2, 318 with
     `Geod`, 324 with `Proj`, 335 with `to_2d`/`to_3d`, 348 with
     `get_units_map`, 351 with the selection's options, 356 with
     `Transformer.to_json` and `to_wkt`, 438 with PROJ strings, 439 with
     PROJ's own methods and other celestial bodies, 444 with the
-    projections PROJ has no CRS method for.
+    projections PROJ has no CRS method for, 560 with the objects table
+    (more of its tests collect), 667 with the builders.
   - Against the oracle `proj.db`, every EPSG CRS reports what PROJ does,
     scopes, area descriptions and remarks included, except four documented
     differences:
@@ -375,7 +381,7 @@ becomes the package's status tracker.
 | `from_proj4`, `from_dict`, `+proj=…` strings, `CRS(proj=…)` | 3 | Read as PROJ reads them into an EPSG method, with pyproj's preparation and `+init` warning; pipelines and PROJ4 extensions are an error ([pyproj-phase3.md](pyproj-phase3.md#proj-strings)). **Done.** |
 | `to_proj4`, `to_dict`, `to_string` | 3 | PROJ's string, token for token for every EPSG CRS. **Done.** |
 | `Datum`, `Ellipsoid`, `PrimeMeridian`, `CoordinateOperation`: `from_epsg`, `from_authority`, `from_name`, `from_string`, `from_user_input`, `from_json`, `from_json_dict`; `CoordinateSystem` from strings and PROJJSON; equality with what `from_user_input` takes | 3 | From `xeibe-crs`'s table of EPSG's objects, names matched as PROJ's name search matches them but beyond ASCII case (divergence 11), and EPSG's transformations. Esri's names of EPSG objects stay out ([pyproj-phase3.md](pyproj-phase3.md#the-objects-table)). **Done.** |
-| Builder classes (`GeographicCRS`, `ProjectedCRS`, `CompoundCRS`, `*Conversion`) | 3 | For the methods `xeibe-reproject` implements. |
+| Builder classes (`GeographicCRS`, `ProjectedCRS`, `CompoundCRS`, `*Conversion`) | 3 | pyproj's signatures, PROJJSON as PROJ makes of pyproj's, checked class by class against pyproj ([pyproj-phase3.md](pyproj-phase3.md#builders), divergence 12). A CRS with a method `xeibe-reproject` doesn't implement is built but can't be converted. **Done.** |
 | `to_cf`, `from_cf`, `cs_to_cf` | 3, if asked | pyproj's implementation is pure Python over PROJJSON (MIT), so it could be ported. |
 | Other authorities (`ESRI:`, `IGNF:`, `IAU_2015:`, `NKG:`) | Out | Not in EPSG. Exception, in phase 2: the 987 old ESRI codes that are now EPSG codes (`ESRI:102100` → 3857), from `xeibe-esri` ([crs-wkt.md](crs-wkt.md#esri-names)). **Done.** |
 
@@ -579,6 +585,15 @@ These are documented in the package README and in its `NotImplementedError` and
     which PROJ leaves out. An ellipsoid, a prime meridian or a datum hashes
     as its class does, so that equal ones, compared by their numbers, hash
     equal.
+12. **The builders' objects are of their class**: pyproj's
+    `TransverseMercatorConversion(…)` is a plain `CoordinateOperation`
+    (and `CustomEllipsoid(…)` an `Ellipsoid`), ours an instance of the
+    class called, a subclass of it. Albers' false easting and northing are
+    in PROJJSON's `metre`, where pyproj names a unit of its own "Metre".
+    WKT of the builders' CRSs leaves out the usage and remarks of their
+    components, as PROJ's PROJJSON of them does but its WKT doesn't, and
+    a coordinate system of latitude, longitude and ellipsoidal height
+    keeps its axes' abbreviations, which PROJ drops there alone.
 
 ## Testing
 

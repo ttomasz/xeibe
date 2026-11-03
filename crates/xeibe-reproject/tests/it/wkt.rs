@@ -1858,3 +1858,35 @@ fn datums_on_their_own_round_trip() {
         .is_err()
     );
 }
+
+/// A CRS without an id (pyproj's builders make them) has the ids of what
+/// is inside it, as PROJ writes them: a compound CRS's components' and an
+/// ensemble's, its members' and its ellipsoid's, but none inside an object
+/// with an id.
+#[test]
+fn ids_inside_a_crs_without_one() {
+    let without_id = |code: u32| {
+        let mut v: Value = serde_json::from_str(xeibe_crs::projjson(code).unwrap()).unwrap();
+        v.as_object_mut().unwrap().remove("id");
+        wkt::from_projjson_value(&v, wkt::Version::Wkt2_2019, false, wkt::AxisRule::Auto).unwrap()
+    };
+    let compound = without_id(5498);
+    assert!(compound.contains(r#"ID["EPSG",4269]"#), "{compound}");
+    assert!(!compound.contains(r#"ID["EPSG",9001]"#), "{compound}");
+    let geographic = without_id(4326);
+    for id in [
+        r#"ID["EPSG",6326]"#,
+        r#"ID["EPSG",1166]"#,
+        r#"ID["EPSG",7030]"#,
+    ] {
+        assert!(geographic.contains(id), "{id} in {geographic}");
+    }
+    // With its id, none of them.
+    let epsg = wkt::from_projjson(
+        xeibe_crs::projjson(4326).unwrap(),
+        wkt::Version::Wkt2_2019,
+        false,
+    )
+    .unwrap();
+    assert_eq!(epsg.matches(r#"ID["EPSG""#).count(), 1, "{epsg}");
+}

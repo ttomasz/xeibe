@@ -21,6 +21,7 @@ from typing import Any, NamedTuple, Self, cast
 
 from xeibe_proj import _epsg, _native, _wkt
 from xeibe_proj._json import JsonDict, as_dict, as_list, dumps, get_dict, get_dicts, ident
+from xeibe_proj._operation_json import SCHEMA
 from xeibe_proj._unsupported import not_yet, out
 from xeibe_proj.aoi import AreaOfUse
 from xeibe_proj.crs import _dimension
@@ -31,12 +32,25 @@ from xeibe_proj.crs._objects import (
     Datum,
     Ellipsoid,
     PrimeMeridian,
+    nested_json,
     axis_from_json,
 )
+from xeibe_proj.crs.coordinate_system import Cartesian2DCS, Ellipsoidal2DCS, VerticalCS
 from xeibe_proj.exceptions import CRSError
 from xeibe_proj.geod import Geod
 
-__all__ = ["CRS", "AuthorityMatchInfo"]
+__all__ = [
+    "CRS",
+    "AuthorityMatchInfo",
+    "BoundCRS",
+    "CompoundCRS",
+    "CustomConstructorCRS",
+    "DerivedGeographicCRS",
+    "GeocentricCRS",
+    "GeographicCRS",
+    "ProjectedCRS",
+    "VerticalCRS",
+]
 
 
 
@@ -400,7 +414,7 @@ class CRS:
     def srs(self) -> str:
         """The input the CRS was made from: its text, or the PROJJSON of a
         dict as text."""
-        return json.dumps(self._projjson) if self._srs is None else self._srs
+        return json.dumps(self._schema_first()) if self._srs is None else self._srs
 
     @property
     def name(self) -> str:
@@ -758,13 +772,20 @@ class CRS:
     # Output -------------------------------------------------------------------
 
     def to_json_dict(self) -> dict[str, Any]:
-        """The PROJJSON as a dict (a copy)."""
-        out_: JsonDict = json.loads(json.dumps(self._projjson))
+        """The PROJJSON as a dict (a copy), with ``$schema``."""
+        out_: JsonDict = json.loads(json.dumps(self._schema_first()))
         return out_
 
     def to_json(self, pretty: bool = False, indentation: int = 2) -> str:
         """The PROJJSON as text, as PROJ writes it (``_json.dumps``)."""
-        return dumps(self._projjson, pretty, indentation)
+        return dumps(self._schema_first(), pretty, indentation)
+
+    def _schema_first(self) -> JsonDict:
+        """The PROJJSON with ``$schema`` first, as PROJ writes it; a CRS
+        made from a dict may have none."""
+        if "$schema" in self._projjson:
+            return self._projjson
+        return {"$schema": SCHEMA, **self._projjson}
 
     def to_wkt(self, version: Any = "WKT2_2019", pretty: bool = False, output_axis_rule: bool | None = None) -> str:
         """The CRS as WKT, written as PROJ writes it: ``WKT2_2019`` (or
@@ -955,7 +976,7 @@ class CRS:
             other_crs = CRS.from_user_input(other)
         except (CRSError, NotImplementedError, TypeError, ValueError):
             return False
-        return self._projjson == other_crs._projjson
+        return self._schema_first() == other_crs._schema_first()
 
     def __reduce__(self) -> tuple[Any, tuple[str | None, str]]:
         return CRS._restore, (self._srs, self.to_json())
@@ -1044,3 +1065,249 @@ def _parse(value: Any) -> tuple[JsonDict, str]:
             auth, code = str(pair[0]), str(pair[1])
             return _from_authority(auth, code), f"{auth}:{code}"
     raise CRSError(f"Invalid CRS input: {value!r}")
+
+
+# Builders: pyproj 3.8.0's classes and arguments (MIT, see NOTICE.md),
+# each making PROJJSON for CRS.__init__.
+
+
+def _nested_crs(value: Any) -> JsonDict:
+    return nested_json(CRS.from_user_input(value))
+
+
+class CustomConstructorCRS(CRS):
+    """A CRS class whose constructor takes other arguments than ``CRS``'s.
+    Its ``from_*`` methods make an instance of the class from what
+    ``CRS``'s take, and raise ``CRSError`` for a CRS of another type."""
+
+    # The `type_name`s of the CRSs the class holds: each subclass's own.
+    _expected_types: tuple[str, ...] | None = None
+
+    def _check_type(self) -> None:
+        if self._expected_types is None:
+            raise NotImplementedError(f"{type(self).__name__} gives no _expected_types")
+        if self.type_name not in self._expected_types:
+            raise CRSError(f"Invalid type {self.type_name}. Expected {self._expected_types}.")
+
+    @classmethod
+    def _from_projjson(cls, projjson: JsonDict, srs: str | None = None) -> Self:
+        crs = super()._from_projjson(projjson, srs)
+        crs._check_type()
+        return crs
+
+    @classmethod
+    def from_user_input(cls, value: Any, **kwargs: Any) -> Self:
+        if isinstance(value, cls):
+            return value
+        crs = cls.__new__(cls)
+        CRS.__init__(crs, value, **kwargs)
+        crs._check_type()
+        return crs
+
+    @classmethod
+    def from_string(cls, in_crs_string: str) -> Self:
+        return cls.from_user_input(in_crs_string)
+
+
+class GeographicCRS(CustomConstructorCRS):
+    """A geographic CRS of a datum and an ellipsoidal coordinate system."""
+
+    _expected_types = ("Geographic CRS", "Geographic 2D CRS", "Geographic 3D CRS")
+
+    def __init__(
+        self,
+        name: str = "undefined",
+        datum: Any = "urn:ogc:def:ensemble:EPSG::6326",
+        ellipsoidal_cs: Any | None = None,
+    ) -> None:
+        """
+        Parameters
+        ----------
+        name: str, default="undefined"
+            The CRS's name.
+        datum: Any, default="urn:ogc:def:ensemble:EPSG::6326"
+            What :meth:`Datum.from_user_input` takes, or a ``CustomDatum``.
+        ellipsoidal_cs: Any, optional
+            What :meth:`CoordinateSystem.from_user_input` takes;
+            ``Ellipsoidal2DCS()`` by default.
+        """
+        d = Datum.from_user_input(datum)
+        super().__init__(
+            {
+                "type": "GeographicCRS",
+                "name": name,
+                "datum_ensemble" if d.type_name == "Datum Ensemble" else "datum": nested_json(d),
+                "coordinate_system": nested_json(CoordinateSystem.from_user_input(ellipsoidal_cs or Ellipsoidal2DCS())),
+            }
+        )
+
+
+class DerivedGeographicCRS(CustomConstructorCRS):
+    """A geographic CRS derived from another by a conversion (a rotated
+    pole)."""
+
+    _expected_types = ("Derived Geographic CRS", "Derived Geographic 2D CRS", "Derived Geographic 3D CRS")
+
+    def __init__(self, base_crs: Any, conversion: Any, ellipsoidal_cs: Any | None = None, name: str = "undefined") -> None:
+        """
+        Parameters
+        ----------
+        base_crs: Any
+            The geographic CRS it is derived from: what
+            :meth:`CRS.from_user_input` takes.
+        conversion: Any
+            What :meth:`CoordinateOperation.from_user_input` takes.
+        ellipsoidal_cs: Any, optional
+            ``Ellipsoidal2DCS()`` by default.
+        name: str, default="undefined"
+            The CRS's name.
+        """
+        super().__init__(
+            {
+                "type": "DerivedGeographicCRS",
+                "name": name,
+                "base_crs": _nested_crs(base_crs),
+                "conversion": nested_json(CoordinateOperation.from_user_input(conversion)),
+                "coordinate_system": nested_json(CoordinateSystem.from_user_input(ellipsoidal_cs or Ellipsoidal2DCS())),
+            }
+        )
+
+
+class GeocentricCRS(CustomConstructorCRS):
+    """A geocentric CRS of a datum, in metres."""
+
+    _expected_types = ("Geocentric CRS",)
+
+    def __init__(self, name: str = "undefined", datum: Any = "urn:ogc:def:datum:EPSG::6326") -> None:
+        """
+        Parameters
+        ----------
+        name: str, default="undefined"
+            The CRS's name.
+        datum: Any, default="urn:ogc:def:datum:EPSG::6326"
+            What :meth:`Datum.from_user_input` takes, or a ``CustomDatum``.
+        """
+        axes = [
+            {"name": f"Geocentric {c}", "abbreviation": c, "direction": f"geocentric{c}", "unit": "metre"}
+            for c in "XYZ"
+        ]
+        super().__init__(
+            {
+                "type": "GeodeticCRS",
+                "name": name,
+                "datum": nested_json(Datum.from_user_input(datum)),
+                "coordinate_system": {"subtype": "Cartesian", "axis": axes},
+            }
+        )
+
+
+class ProjectedCRS(CustomConstructorCRS):
+    """A projected CRS: a geodetic CRS and a conversion."""
+
+    _expected_types = ("Projected CRS", "Derived Projected CRS")
+
+    def __init__(
+        self,
+        conversion: Any,
+        name: str = "undefined",
+        cartesian_cs: Any | None = None,
+        geodetic_crs: Any | None = None,
+    ) -> None:
+        """
+        Parameters
+        ----------
+        conversion: Any
+            What :meth:`CoordinateOperation.from_user_input` takes, or a
+            conversion of ``xeibe_proj.crs.coordinate_operation``.
+        name: str, default="undefined"
+            The CRS's name.
+        cartesian_cs: Any, optional
+            ``Cartesian2DCS()`` by default.
+        geodetic_crs: Any, optional
+            The base CRS; ``GeographicCRS()`` (WGS 84) by default.
+        """
+        super().__init__(
+            {
+                "type": "ProjectedCRS",
+                "name": name,
+                "base_crs": _nested_crs(geodetic_crs or GeographicCRS()),
+                "conversion": nested_json(CoordinateOperation.from_user_input(conversion)),
+                "coordinate_system": nested_json(CoordinateSystem.from_user_input(cartesian_cs or Cartesian2DCS())),
+            }
+        )
+
+
+class VerticalCRS(CustomConstructorCRS):
+    """A vertical CRS of a vertical datum, optionally with a geoid model."""
+
+    _expected_types = ("Vertical CRS",)
+
+    def __init__(self, name: str, datum: Any, vertical_cs: Any | None = None, geoid_model: str | None = None) -> None:
+        """
+        Parameters
+        ----------
+        name: str
+            The CRS's name.
+        datum: Any
+            What :meth:`Datum.from_user_input` takes.
+        vertical_cs: Any, optional
+            ``VerticalCS()`` by default.
+        geoid_model: str, optional
+            The geoid model's name.
+        """
+        doc: JsonDict = {
+            "type": "VerticalCRS",
+            "name": name,
+            "datum": nested_json(Datum.from_user_input(datum)),
+            "coordinate_system": nested_json(CoordinateSystem.from_user_input(vertical_cs or VerticalCS())),
+        }
+        if geoid_model is not None:
+            doc["geoid_model"] = {"name": geoid_model}
+        super().__init__(doc)
+
+
+class CompoundCRS(CustomConstructorCRS):
+    """A compound CRS of horizontal and vertical CRSs."""
+
+    _expected_types = ("Compound CRS",)
+
+    def __init__(self, name: str, components: list[Any]) -> None:
+        """
+        Parameters
+        ----------
+        name: str
+            The CRS's name.
+        components: list[Any]
+            The CRSs, each what :meth:`CRS.from_user_input` takes.
+        """
+        super().__init__({"type": "CompoundCRS", "name": name, "components": [_nested_crs(c) for c in components]})
+
+
+class BoundCRS(CustomConstructorCRS):
+    """A CRS with a transformation to another (``+towgs84``)."""
+
+    _expected_types = ("Bound CRS",)
+
+    def __init__(self, source_crs: Any, target_crs: Any, transformation: Any) -> None:
+        """
+        Parameters
+        ----------
+        source_crs: Any
+            The CRS: what :meth:`CRS.from_user_input` takes.
+        target_crs: Any
+            The CRS its transformation goes to.
+        transformation: Any
+            What :meth:`CoordinateOperation.from_user_input` takes, or a
+            ``ToWGS84Transformation``.
+        """
+        # PROJJSON's abridged transformation: the Bound CRS's are its CRSs.
+        operation = nested_json(CoordinateOperation.from_user_input(transformation))
+        abridged = {k: v for k, v in operation.items() if k not in ("source_crs", "target_crs")}
+        super().__init__(
+            {
+                "type": "BoundCRS",
+                "source_crs": _nested_crs(source_crs),
+                "target_crs": _nested_crs(target_crs),
+                "transformation": abridged,
+            }
+        )

@@ -431,7 +431,10 @@ From a PROJJSON value:
     id (PROJ's `outputId`). An EPSG CRS shows only its own ids; one from
     a PROJ string, with none, shows its datum's, ellipsoid's and units':
     `LENGTHUNIT["metre",1,ID["EPSG",9001]]`, Greenwich as 8901, degree as
-    9122, unity as 9201. None on compound components or members;
+    9122, unity as 9201. A compound CRS's components and an ensemble's
+    members have theirs under the same rule: none in an EPSG CRS, theirs
+    in one built without an id (pyproj's `CompoundCRS`, `GeographicCRS`).
+    An ensemble's own id doesn't keep its members' and ellipsoid's out;
   - every axis with its own unit, and `ORDER` when there are several;
   - axis names with a lower-case first letter, and left out for Easting
     (E) as the first axis, Northing (N) as the second, and Geocentric X,

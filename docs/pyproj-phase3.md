@@ -65,7 +65,7 @@ other authorities, PROJ's context and CA bundle, and `get_factors`.
 | 8 | **A CRS whose datum is unknown still can't be converted to a CRS on another datum**: there is no zero datum shift, as PROJ's "Ballpark geographic offset" would apply. "Unknown" means a PROJ string with an ellipsoid but no `+datum` or `+towgs84`, a WKT datum that is identified with no EPSG datum (`D_unknown`), or one of EPSG's "Not specified (based on … ellipsoid)" datums. The `ProjError` says that the datum is unknown, and that giving the CRS as an EPSG code, or adding `+datum` or `+towgs84`, fixes it. Between two CRSs on the same unknown datum (`+proj=longlat +ellps=GRS80` to `+proj=utm +zone=33 +ellps=GRS80`), no datum change is needed, and the conversion works. | Such a definition doesn't say where its datum is, and a zero shift is off by the whole datum shift when the data is really on a local datum. Measured against EPSG's operations to WGS 84: 0 m for GRS80 data in ETRS89, but 54 m for NTF in Paris, 117 m for S-JTSK in Prague, 125 m for OSGB36 in London and 128 m for Pulkovo 1942(58) in Warsaw. An error is better than such numbers. Divergence 1 stays as it is. `+proj=utm +zone=30` isn't affected: with no ellipsoid, PROJ's default is the WGS 84 datum, which is known. |
 | 9 | **`+init=epsg:CODE` gives the EPSG CRS with longitude first**, as PROJ does, with pyproj's `FutureWarning`. Other `+init` files raise. | PROJ 6 and later read `+init=epsg:` from the database and keep the old axis order. pyproj warns about it. |
 | 10 | **`+nadgrids=@null` (or `null`) is a Bound CRS with a zero shift to WGS 84**, and PROJ's Web Mercator string is EPSG:3857, as PROJ recognises it. Other `+nadgrids` grids are read when the grid catalog has them under their old PROJ name. | `@null` is the common case, in every Web Mercator `.prj` file. The catalog already maps PROJ's old names (`conus`, `ntv1_can.dat`) to the CDN files ([reprojection.md](reprojection.md)). |
-| 11 | **The builder classes are pyproj's own Python (MIT), ported** as `geod.py` was. They build PROJJSON and call `from_json_dict`, so they need nothing native. | It gives pyproj's behaviour, and pyproj's tests for these classes then run unchanged. |
+| 11 | **The builder classes have pyproj's signatures and docstrings (MIT), and bodies of our own**: a conversion is EPSG's method and parameters from one table, built by one function, where pyproj writes each class's PROJJSON out in full. They build PROJJSON and call `from_json_dict`, so they need nothing native. pyproj's tests for them run unchanged, and a differential test builds every class with several sets of arguments in both libraries and compares the PROJJSON. | pyproj's 2,400 lines of builders are mostly the same parameters written out 22 times, and branches on PROJ's version. The interface must be pyproj's; the PROJJSON must be what PROJ makes of pyproj's (pyproj passes each through PROJ), which pyproj's tests check in a few cases only, and the differential test in all. |
 | 12 | **EPSG's ellipsoids, prime meridians, datums and conversions go into a new generated table in `xeibe-crs`** (`data/objects.bin`), each as PROJJSON with its names and aliases. The sub-objects' `from_epsg`, `from_authority`, `from_name`, `from_string` and `from_user_input` read it, and so does `query_geodetic_crs_from_datum`. | Today these objects exist only inside CRSs. EPSG has 55 ellipsoids, 15 prime meridians, 983 datums and datum ensembles, and 3,577 conversions, 206 of them used by no CRS. Compressed, this should be about 100 KB. |
 | 13 | **CF is pyproj's `_cf1x8.py` (MIT), ported.** | It is pure Python over PROJJSON and the builders. xarray and rioxarray use it. |
 | 14 | **`Transformer.from_proj` is implemented**: it is `from_crs` on the two `Proj`s' CRSs, as in pyproj. | pyproj deprecated it in its documentation, but it still works without a warning. Once PROJ strings exist, it costs one line. |
@@ -683,10 +683,13 @@ ours not `DATUM[…],PRIMEM[…]`; ours reads both now.
 
 ### Builders
 
-Ports of pyproj's modules:
+pyproj's modules, with its signatures and docstrings and our own bodies
+(decision 11):
 
+- `crs/enums.py`: `DatumType`, `CoordinateOperationType` and the axis
+  enums;
 - `crs/coordinate_system.py`: `Ellipsoidal2DCS`, `Ellipsoidal3DCS`,
-  `Cartesian2DCS`, `VerticalCS` and their axis enums;
+  `Cartesian2DCS`, `VerticalCS`;
 - `crs/datum.py`: `CustomDatum`, `CustomEllipsoid`, `CustomPrimeMeridian`;
 - `crs/coordinate_operation.py`: the 22 conversion classes (`UTMConversion`
   among them, a `from_name` lookup) and `ToWGS84Transformation`;
@@ -694,15 +697,49 @@ Ports of pyproj's modules:
   `DerivedGeographicCRS`, `GeocentricCRS`, `ProjectedCRS`, `VerticalCRS`,
   `CompoundCRS` and `BoundCRS`.
 
-Each builds PROJJSON and calls `from_json_dict`. A CRS built with a method
+Each builds PROJJSON and calls `from_json_dict`, and its output is what PROJ
+makes of pyproj's: a part nested in another without `$schema` and usage,
+and without the `type` its key implies (`ellipsoid`, `coordinate_system`,
+`conversion`, `datum_ensemble`); a datum without Greenwich as its prime
+meridian; a Bound CRS's transformation without its source and target
+CRSs (PROJJSON's abridged transformation). Nested ids stay, as in our
+CRSs' PROJJSON, where PROJ's has none inside an object with an id but an
+ensemble's, its members', a method's and its parameters'. Mercator
+(variant A) refuses a latitude of origin, as PROJ does.
+`LambertCylindricalEqualAreaScaleConversion` is the conversion of the PROJ
+string it stands for (`+proj=cea +k_0=…`), as in pyproj: PROJ turns the
+scale factor into a standard parallel on the ellipsoid.
+
+**As built.** A conversion is EPSG's method and parameters by code from
+one table (`_METHODS`, `_PARAMETERS` in `crs/coordinate_operation.py`), and
+a coordinate system's axes are made from the enum member's name
+(`…_US_FT`, `NORTHING_…`). Parts' `to_json_dict` has `$schema`, as PROJ
+writes an object at the root, and so has a CRS made from a dict.
+`urn:ogc:def:datum:EPSG::6326` is the ensemble as a datum, as PROJ makes
+it (`World Geodetic System 1984`, its ellipsoid and id), where
+`urn:ogc:def:ensemble:…` and `Datum.from_epsg(6326)` are the ensemble.
+The WKT writer writes a compound CRS's components' ids, and an ensemble's
+and its members' in a CRS, where nothing around them has an id, as PROJ
+does for a CRS built without one. Divergence 12 in
+[pyproj-compat.md](pyproj-compat.md#deliberate-divergences-from-pyproj)
+lists where the builders differ from pyproj's. A CRS built with a method
 that `xeibe-reproject` doesn't implement (`GeostationarySatelliteConversion`,
 `VerticalPerspectiveConversion`) works as a CRS, but raises when converted,
 as such CRSs read from WKT do.
 
 **Validation.** pyproj's `test_crs_maker.py`, `test_crs_coordinate_operation.py`,
-`test_crs_coordinate_system.py`, `test_crs_datum.py` and `test_datum.py`
-in the suite. An oracle test compares each sub-object of every EPSG CRS,
-read by code and by name, with pyproj's.
+`test_crs_coordinate_system.py` and `test_crs_datum.py` in the suite, and
+`tests/test_builders.py`: every builder class's signature and every enum
+against pyproj's, every conversion with each argument given and with only
+the required ones, and 40 other builds, their PROJJSON and WKT compared
+with pyproj's. All of pyproj's tests of the builders pass but six of
+coordinate systems' `to_cf` (CF is step 6) and one that identifies a
+geographic 3D CRS as `OGC:CRS84h`, an OGC CRS ours doesn't have.
+
+The comparison found that pyproj's `CRS(4258).datum` depends on what ran
+before it: once a CRS is built on `urn:ogc:def:datum:EPSG::6258`, PROJ's
+cache gives the ETRS89 datum for the ensemble for the rest of the process.
+The builds that name an ensemble so run in a pyproj process of their own.
 
 ## CF
 
@@ -808,7 +845,9 @@ imports no Arrow library.
    object. **Done** (2026-11-03): see [the objects table](#the-objects-table).
    pyproj's suite went from 444 to 560 of 994 (more of its tests collect
    now).
-5. **The builders**, gated on pyproj's tests for them.
+5. **The builders**, gated on pyproj's tests for them. **Done**
+   (2026-11-03): see [Builders](#builders). pyproj's suite went from 560
+   to 667 of 996.
 6. **CF**, gated on pyproj's `test_crs_cf.py`.
 7. **GeoArrow**: first the wheel-size measurement for decision 17, then
    the module.

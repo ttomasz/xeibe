@@ -42,7 +42,9 @@ fn settle_ids(n: &mut Node, inside_id: bool) {
         }
         _ => true,
     });
-    let has_id = n.args.iter().any(|a| is_id(a, "ID"));
+    // An ensemble's id doesn't keep its members' and ellipsoid's out, as
+    // in PROJ.
+    let has_id = n.keyword != "ENSEMBLE" && n.args.iter().any(|a| is_id(a, "ID"));
     for a in &mut n.args {
         if let Arg::Node(c) = a
             && c.keyword != "ID"
@@ -331,10 +333,11 @@ impl Writer {
     }
 
     /// The usages, id and remarks that close a CRS. Only the outermost CRS
-    /// writes them, as PROJ does.
+    /// writes them, as PROJ does; a compound CRS's component its id where
+    /// nothing around it has one (`settle_ids`).
     fn finish(&self, v: &Value, args: &mut Vec<Arg>) -> Result<(), Error> {
         if !self.root {
-            return Ok(());
+            return optional_id(v, args);
         }
         if self.ids_only {
             return ids(v, args);
@@ -676,13 +679,16 @@ fn ellipsoid(e: &Value) -> Result<Node, Error> {
 }
 
 /// `ENSEMBLE`, its members and ellipsoid with their ids when
-/// `member_ids`, as PROJ writes an ensemble on its own.
+/// `member_ids`, as PROJ writes an ensemble on its own, else their ids
+/// and its own as optional ones, which a CRS without an id has.
 fn ensemble(e: &Value, member_ids: bool) -> Result<Node, Error> {
     let mut args = vec![text(str_of(e, "name")?)];
     for m in e["members"].as_array().into_iter().flatten() {
         let mut member = vec![text(str_of(m, "name")?)];
         if member_ids {
             ids(m, &mut member)?;
+        } else {
+            optional_id(m, &mut member)?;
         }
         args.push(sub(node("MEMBER", member)));
     }
@@ -700,6 +706,9 @@ fn ensemble(e: &Value, member_ids: bool) -> Result<Node, Error> {
         other => Arg::Number(num_of(other)?),
     };
     args.push(sub(node("ENSEMBLEACCURACY", vec![accuracy])));
+    if !member_ids {
+        optional_id(e, &mut args)?;
+    }
     Ok(node("ENSEMBLE", args))
 }
 
