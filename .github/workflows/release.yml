@@ -7,10 +7,10 @@
 #
 # Everything is built and tested before anything is published, because
 # neither registry takes a release back: crates.io only yanks, and PyPI never
-# reuses a version. The publishing jobs run in the `crates-io` and `pypi`
-# environments, which need an approval. Dispatched by hand, the workflow is a
-# dry run: it builds and tests the series at the chosen ref and publishes
-# nothing, except to TestPyPI if asked.
+# reuses a version. The publishing jobs run in the `crates-io`, `pypi` and
+# `pypi-xeibe-proj` environments, which need an approval. Dispatched by hand,
+# the workflow is a dry run: it builds and tests the series at the chosen ref
+# and publishes nothing, except to TestPyPI if asked.
 name: Release
 
 on:
@@ -575,8 +575,10 @@ jobs:
           || (needs.plan.outputs.series == 'workspace' && needs.pyodide-wheel.result == 'skipped'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # One environment per package: PyPI takes only one pending trusted
+    # publisher per workflow and environment (docs/releasing.md).
     environment:
-      name: pypi
+      name: ${{ needs.plan.outputs.series == 'workspace' && 'pypi' || 'pypi-xeibe-proj' }}
       url: https://pypi.org/project/${{ needs.plan.outputs.series == 'workspace' && 'xeibe' || 'xeibe-proj' }}/${{ needs.plan.outputs.version }}/
     permissions:
       id-token: write
@@ -604,7 +606,7 @@ jobs:
           || (needs.plan.outputs.series == 'workspace' && needs.pyodide-wheel.result == 'skipped'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: testpypi
+    environment: ${{ needs.plan.outputs.series == 'workspace' && 'testpypi' || 'testpypi-xeibe-proj' }}
     permissions:
       id-token: write
     steps:

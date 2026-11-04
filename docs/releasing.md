@@ -55,7 +55,7 @@ GitHub release is marked as a pre-release.
    - run `cargo check` so `Cargo.lock` follows.
 2. Tag that commit and push the tag: `git tag v0.2.0 && git push origin v0.2.0`.
 3. Approve the `crates-io` and `pypi` deployments in the workflow run once
-   the builds are green.
+   the builds are green (`pypi-xeibe-proj` for `xeibe-proj-v*`).
 
 The workflow refuses a tag that doesn't match the version, a version with
 no changelog section, and a commit that isn't on `main`. Afterwards, add a
@@ -202,15 +202,21 @@ To see it locally:
 
 Before the first release:
 
-1. **GitHub environments** `crates-io`, `pypi` and `testpypi`
-   (Settings → Environments), each with the maintainer as a required
-   reviewer.
+1. **GitHub environments** `crates-io`, `pypi`, `pypi-xeibe-proj`,
+   `testpypi` and `testpypi-xeibe-proj` (Settings → Environments), each
+   with the maintainer as a required reviewer. The two PyPI packages
+   publish from separate environments because PyPI takes only one pending
+   trusted publisher per repository, workflow and environment. The
+   `crates-io` and `pypi*` environments can be limited to the release tags
+   (`v*`, `xeibe-proj-v*`); the `testpypi*` ones can't, as dry runs run
+   from branches.
 2. **A tag ruleset** (Settings → Rules → Rulesets) that lets only the
    maintainer create `v*` and `xeibe-proj-v*` tags.
 3. **PyPI and TestPyPI:** a pending trusted publisher for `xeibe` and for
-   `xeibe-proj`, with owner `ttomasz`, repository `xeibe`, workflow
-   `release.yml`, and environment `pypi` (`testpypi` on TestPyPI). No PyPI
-   token is ever needed.
+   `xeibe-proj`, with owner `ttomasz`, repository `xeibe` and workflow
+   `release.yml`. The environment is `pypi` for `xeibe` and
+   `pypi-xeibe-proj` for `xeibe-proj` (`testpypi` and
+   `testpypi-xeibe-proj` on TestPyPI). No PyPI token is ever needed.
 4. **crates.io.** Trusted publishing can only be set up for crates that
    exist, so the first `v*` release needs a token.
    - Create an API token with the `publish-new` and `publish-update`
