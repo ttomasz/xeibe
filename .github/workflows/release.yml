@@ -204,10 +204,15 @@ jobs:
         with:
           version: "0.12.3"
 
-      # From PyPI, which brings Zig along as the `ziglang` package.
+      # From PyPI, which brings Zig along as the `ziglang` package. That lands
+      # in the tool's own environment, and cargo-zigbuild runs
+      # `python3 -m ziglang` with the system Python unless told which one.
       - name: cargo-zigbuild
         if: runner.os == 'Linux'
-        run: uv tool install cargo-zigbuild==0.24.0
+        run: |
+          set -euo pipefail
+          uv tool install cargo-zigbuild==0.24.0
+          echo "CARGO_ZIGBUILD_PYTHON_PATH=$(uv tool dir)/cargo-zigbuild/bin/python" >> "$GITHUB_ENV"
 
       - name: Build
         run: |
