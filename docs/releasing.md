@@ -66,12 +66,14 @@ new `## Unreleased` section.
 ```mermaid
 flowchart LR
     plan --> test
+    plan --> pkg["package<br/>v* only"]
     plan --> licenses
     licenses --> cli["cli<br/>4 targets, v* only"]
     licenses --> wheels["wheels<br/>4 targets"]
     licenses --> pyw["pyodide-wheel<br/>xeibe-proj-v* only"]
     licenses --> sdist
     test --> pc
+    pkg --> pc
     cli --> pc["publish-crates<br/>v* only, approval"]
     wheels --> pc
     sdist --> pc
@@ -84,11 +86,12 @@ flowchart LR
 
 - **plan.** `scripts/release.py plan` works out the series, version and
   Python package from the tag, and checks that the tag is on `main`.
-- **test.**
-  - `cargo test --workspace` for `v*` tags; the `xeibe-crs`, `xeibe-esri`
-    and `xeibe-reproject` tests for `xeibe-proj-v*` tags.
-  - For `v*` tags, also `cargo check` on the MSRV, and `cargo package` for
-    every published crate, which builds each one from its package alone.
+- **test.** `cargo test --workspace` for `v*` tags; the `xeibe-crs`,
+  `xeibe-esri` and `xeibe-reproject` tests for `xeibe-proj-v*` tags.
+- **package.** For `v*` tags, `cargo check` on the MSRV, and `cargo package`
+  for every published crate, which builds each one from its package alone.
+  It runs on a runner of its own, without debug info: after the test job's
+  builds, a runner's disk is too small for it.
 - **licenses.** cargo-about writes `THIRD-PARTY-LICENSES.md` for the CLI and
   the Python package (see [Licences](#licences)).
 - **cli.**
@@ -116,7 +119,7 @@ flowchart LR
   gets an attestation (`gh attestation verify <file> -R ttomasz/xeibe`).
 - **publish-crates.** `scripts/release.py publish-crates` publishes each
   crate whose version isn't on crates.io yet, in dependency order.
-  - It uses `--no-verify`, because the test job already built them.
+  - It uses `--no-verify`, because the package job already built them.
   - It retries when crates.io's limit on new crates stops it. The limit
     allows a few new crates at once, then about one every 10 minutes, so
     the first release, with 12 new crates, takes over an hour.

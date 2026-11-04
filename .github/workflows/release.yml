@@ -110,19 +110,37 @@ jobs:
             cargo test -p xeibe-crs -p xeibe-esri -p xeibe-reproject --locked
           fi
 
+  # The checks of what crates.io gets, on a runner of their own: on the test
+  # job's runner, its builds left too little disk for these.
+  package:
+    needs: plan
+    if: needs.plan.outputs.series == 'workspace'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # Only whether they build matters here, and debug info would take most
+      # of the disk.
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.3"
+
       # The crates on crates.io promise `rust-version`; see ci.yml.
       - name: MSRV
-        if: needs.plan.outputs.series == 'workspace'
         run: |
           msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)
           rustup toolchain install "$msrv" --profile minimal --no-self-update
           cargo "+$msrv" check --workspace --locked
+          cargo clean
 
       # Builds each crate from its package alone, as crates.io will have it,
       # which catches files missing from `include`. publish-crates relies on
       # this and publishes with --no-verify.
       - name: Package the crates
-        if: needs.plan.outputs.series == 'workspace'
         run: cargo package --locked $(scripts/release.py crates | awk '{ print "-p", $1 }')
 
   # THIRD-PARTY-LICENSES.md, the licences of the Rust crates compiled into the
@@ -529,7 +547,7 @@ jobs:
           if-no-files-found: error
 
   publish-crates:
-    needs: [plan, test, cli, wheels, sdist]
+    needs: [plan, test, package, cli, wheels, sdist]
     if: needs.plan.outputs.publish == 'true' && needs.plan.outputs.series == 'workspace'
     runs-on: ubuntu-latest
     # A first release of every crate waits out crates.io's limit on new
