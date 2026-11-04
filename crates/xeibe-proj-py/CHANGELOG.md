@@ -4,7 +4,7 @@
 xeibe repository). Each entry names the EPSG Dataset version it embeds
 (docs/pyproj-compat.md, Versioning).
 
-## Unreleased
+## 0.1.0
 
 - First release, with EPSG Dataset 13.106.
 - `xeibe_proj.arrow`: GeoArrow arrays (native encodings, WKB and boxes)
