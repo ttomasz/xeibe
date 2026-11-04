@@ -55,7 +55,7 @@ GitHub release is marked as a pre-release.
    - run `cargo check` so `Cargo.lock` follows.
 2. Tag that commit and push the tag: `git tag v0.2.0 && git push origin v0.2.0`.
 3. Approve the `crates-io` and `pypi` deployments in the workflow run once
-   the builds are green.
+   the builds are green (`pypi-xeibe-proj` for `xeibe-proj-v*`).
 
 The workflow refuses a tag that doesn't match the version, a version with
 no changelog section, and a commit that isn't on `main`. Afterwards, add a
@@ -66,12 +66,14 @@ new `## Unreleased` section.
 ```mermaid
 flowchart LR
     plan --> test
+    plan --> pkg["package<br/>v* only"]
     plan --> licenses
     licenses --> cli["cli<br/>4 targets, v* only"]
     licenses --> wheels["wheels<br/>4 targets"]
     licenses --> pyw["pyodide-wheel<br/>xeibe-proj-v* only"]
     licenses --> sdist
     test --> pc
+    pkg --> pc
     cli --> pc["publish-crates<br/>v* only, approval"]
     wheels --> pc
     sdist --> pc
@@ -84,11 +86,12 @@ flowchart LR
 
 - **plan.** `scripts/release.py plan` works out the series, version and
   Python package from the tag, and checks that the tag is on `main`.
-- **test.**
-  - `cargo test --workspace` for `v*` tags; the `xeibe-crs`, `xeibe-esri`
-    and `xeibe-reproject` tests for `xeibe-proj-v*` tags.
-  - For `v*` tags, also `cargo check` on the MSRV, and `cargo package` for
-    every published crate, which builds each one from its package alone.
+- **test.** `cargo test --workspace` for `v*` tags; the `xeibe-crs`,
+  `xeibe-esri` and `xeibe-reproject` tests for `xeibe-proj-v*` tags.
+- **package.** For `v*` tags, `cargo check` on the MSRV, and `cargo package`
+  for every published crate, which builds each one from its package alone.
+  It runs on a runner of its own, without debug info: after the test job's
+  builds, a runner's disk is too small for it.
 - **licenses.** cargo-about writes `THIRD-PARTY-LICENSES.md` for the CLI and
   the Python package (see [Licences](#licences)).
 - **cli.**
@@ -116,7 +119,7 @@ flowchart LR
   gets an attestation (`gh attestation verify <file> -R ttomasz/xeibe`).
 - **publish-crates.** `scripts/release.py publish-crates` publishes each
   crate whose version isn't on crates.io yet, in dependency order.
-  - It uses `--no-verify`, because the test job already built them.
+  - It uses `--no-verify`, because the package job already built them.
   - It retries when crates.io's limit on new crates stops it. The limit
     allows a few new crates at once, then about one every 10 minutes, so
     the first release, with 12 new crates, takes over an hour.
@@ -202,15 +205,21 @@ To see it locally:
 
 Before the first release:
 
-1. **GitHub environments** `crates-io`, `pypi` and `testpypi`
-   (Settings → Environments), each with the maintainer as a required
-   reviewer.
+1. **GitHub environments** `crates-io`, `pypi`, `pypi-xeibe-proj`,
+   `testpypi` and `testpypi-xeibe-proj` (Settings → Environments), each
+   with the maintainer as a required reviewer. The two PyPI packages
+   publish from separate environments because PyPI takes only one pending
+   trusted publisher per repository, workflow and environment. The
+   `crates-io` and `pypi*` environments can be limited to the release tags
+   (`v*`, `xeibe-proj-v*`); the `testpypi*` ones can't, as dry runs run
+   from branches.
 2. **A tag ruleset** (Settings → Rules → Rulesets) that lets only the
    maintainer create `v*` and `xeibe-proj-v*` tags.
 3. **PyPI and TestPyPI:** a pending trusted publisher for `xeibe` and for
-   `xeibe-proj`, with owner `ttomasz`, repository `xeibe`, workflow
-   `release.yml`, and environment `pypi` (`testpypi` on TestPyPI). No PyPI
-   token is ever needed.
+   `xeibe-proj`, with owner `ttomasz`, repository `xeibe` and workflow
+   `release.yml`. The environment is `pypi` for `xeibe` and
+   `pypi-xeibe-proj` for `xeibe-proj` (`testpypi` and
+   `testpypi-xeibe-proj` on TestPyPI). No PyPI token is ever needed.
 4. **crates.io.** Trusted publishing can only be set up for crates that
    exist, so the first `v*` release needs a token.
    - Create an API token with the `publish-new` and `publish-update`

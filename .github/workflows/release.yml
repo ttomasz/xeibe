@@ -7,10 +7,10 @@
 #
 # Everything is built and tested before anything is published, because
 # neither registry takes a release back: crates.io only yanks, and PyPI never
-# reuses a version. The publishing jobs run in the `crates-io` and `pypi`
-# environments, which need an approval. Dispatched by hand, the workflow is a
-# dry run: it builds and tests the series at the chosen ref and publishes
-# nothing, except to TestPyPI if asked.
+# reuses a version. The publishing jobs run in the `crates-io`, `pypi` and
+# `pypi-xeibe-proj` environments, which need an approval. Dispatched by hand,
+# the workflow is a dry run: it builds and tests the series at the chosen ref
+# and publishes nothing, except to TestPyPI if asked.
 name: Release
 
 on:
@@ -110,19 +110,37 @@ jobs:
             cargo test -p xeibe-crs -p xeibe-esri -p xeibe-reproject --locked
           fi
 
+  # The checks of what crates.io gets, on a runner of their own: on the test
+  # job's runner, its builds left too little disk for these.
+  package:
+    needs: plan
+    if: needs.plan.outputs.series == 'workspace'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # Only whether they build matters here, and debug info would take most
+      # of the disk.
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.3"
+
       # The crates on crates.io promise `rust-version`; see ci.yml.
       - name: MSRV
-        if: needs.plan.outputs.series == 'workspace'
         run: |
           msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)
           rustup toolchain install "$msrv" --profile minimal --no-self-update
           cargo "+$msrv" check --workspace --locked
+          cargo clean
 
       # Builds each crate from its package alone, as crates.io will have it,
       # which catches files missing from `include`. publish-crates relies on
       # this and publishes with --no-verify.
       - name: Package the crates
-        if: needs.plan.outputs.series == 'workspace'
         run: cargo package --locked $(scripts/release.py crates | awk '{ print "-p", $1 }')
 
   # THIRD-PARTY-LICENSES.md, the licences of the Rust crates compiled into the
@@ -204,10 +222,15 @@ jobs:
         with:
           version: "0.12.3"
 
-      # From PyPI, which brings Zig along as the `ziglang` package.
+      # From PyPI, which brings Zig along as the `ziglang` package. That lands
+      # in the tool's own environment, and cargo-zigbuild runs
+      # `python3 -m ziglang` with the system Python unless told which one.
       - name: cargo-zigbuild
         if: runner.os == 'Linux'
-        run: uv tool install cargo-zigbuild==0.24.0
+        run: |
+          set -euo pipefail
+          uv tool install cargo-zigbuild==0.24.0
+          echo "CARGO_ZIGBUILD_PYTHON_PATH=$(uv tool dir)/cargo-zigbuild/bin/python" >> "$GITHUB_ENV"
 
       - name: Build
         run: |
@@ -524,7 +547,7 @@ jobs:
           if-no-files-found: error
 
   publish-crates:
-    needs: [plan, test, cli, wheels, sdist]
+    needs: [plan, test, package, cli, wheels, sdist]
     if: needs.plan.outputs.publish == 'true' && needs.plan.outputs.series == 'workspace'
     runs-on: ubuntu-latest
     # A first release of every crate waits out crates.io's limit on new
@@ -575,8 +598,10 @@ jobs:
           || (needs.plan.outputs.series == 'workspace' && needs.pyodide-wheel.result == 'skipped'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # One environment per package: PyPI takes only one pending trusted
+    # publisher per workflow and environment (docs/releasing.md).
     environment:
-      name: pypi
+      name: ${{ needs.plan.outputs.series == 'workspace' && 'pypi' || 'pypi-xeibe-proj' }}
       url: https://pypi.org/project/${{ needs.plan.outputs.series == 'workspace' && 'xeibe' || 'xeibe-proj' }}/${{ needs.plan.outputs.version }}/
     permissions:
       id-token: write
@@ -604,7 +629,7 @@ jobs:
           || (needs.plan.outputs.series == 'workspace' && needs.pyodide-wheel.result == 'skipped'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: testpypi
+    environment: ${{ needs.plan.outputs.series == 'workspace' && 'testpypi' || 'testpypi-xeibe-proj' }}
     permissions:
       id-token: write
     steps:
