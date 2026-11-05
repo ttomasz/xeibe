@@ -4219,7 +4219,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "xeibe-arrow"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -4243,7 +4243,7 @@ dependencies = [
 
 [[package]]
 name = "xeibe-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-ipc",
@@ -4265,7 +4265,7 @@ dependencies = [
 
 [[package]]
 name = "xeibe-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "criterion",
@@ -4293,7 +4293,7 @@ dependencies = [
 
 [[package]]
 name = "xeibe-datafusion"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "datafusion",
@@ -4313,7 +4313,7 @@ version = "0.1.0"
 
 [[package]]
 name = "xeibe-export"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -4335,7 +4335,7 @@ dependencies = [
 
 [[package]]
 name = "xeibe-geom"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "fast-float2",
@@ -4352,7 +4352,7 @@ dependencies = [
 
 [[package]]
 name = "xeibe-io"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "futures-util",
@@ -4368,7 +4368,7 @@ dependencies = [
 
 [[package]]
 name = "xeibe-proj-py"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -4380,7 +4380,7 @@ dependencies = [
 
 [[package]]
 name = "xeibe-py"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -4396,7 +4396,7 @@ dependencies = [
 
 [[package]]
 name = "xeibe-reproject"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -4413,7 +4413,7 @@ dependencies = [
 
 [[package]]
 name = "xeibe-schema"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-schema",
  "bitflags",
@@ -4429,7 +4429,7 @@ dependencies = [
 
 [[package]]
 name = "xeibe-testkit"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4437,7 +4437,7 @@ dependencies = [
 
 [[package]]
 name = "xeibe-wasm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-cast",
@@ -4466,7 +4466,7 @@ dependencies = [
 
 [[package]]
 name = "xeibe-wasm-reproject"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde_json",
  "wasm-bindgen",
@@ -4476,7 +4476,7 @@ dependencies = [
 
 [[package]]
 name = "xeibe-wfs"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "flate2",

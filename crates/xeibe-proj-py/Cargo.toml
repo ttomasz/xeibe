@@ -5,7 +5,7 @@ description = "Python package xeibe-proj: a pyproj-compatible API over xeibe-crs
 # publishes and when its pyproj-compatible API changes (docs/pyproj-compat.md,
 # Versioning). maturin reads it for the wheel. No `+epsg-…` build metadata:
 # PyPI rejects local version labels.
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 repository.workspace = true

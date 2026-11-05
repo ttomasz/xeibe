@@ -6,7 +6,7 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
 ([crates/xeibe-crs/CHANGELOG.md](crates/xeibe-crs/CHANGELOG.md)), and
 `xeibe-proj` its own ([crates/xeibe-proj-py/CHANGELOG.md](crates/xeibe-proj-py/CHANGELOG.md)).
 
-## Unreleased
+## 0.2.0
 
 - `xeibe-reproject`: `Crs::from_user_input` reads a CRS from text in any
   form pyproj's `CRS.from_user_input` takes: EPSG codes in their usual

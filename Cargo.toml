@@ -38,7 +38,7 @@ default-members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 # geoarrow-array/geoarrow-schema 0.9 need 1.95 (DataFusion 55 needs 1.94).
 rust-version = "1.95"
@@ -53,19 +53,19 @@ publish = true
 # The versions are what crates.io gets: a published crate depends on its
 # siblings' releases, not their paths. The crates share the workspace version,
 # except xeibe-crs and xeibe-esri, which have their own (docs/releasing.md).
-xeibe-core = { path = "crates/xeibe-core", version = "0.1.0" }
+xeibe-core = { path = "crates/xeibe-core", version = "0.2.0" }
 xeibe-crs = { path = "crates/xeibe-crs", version = "0.4.0" }
 xeibe-esri = { path = "crates/xeibe-esri", version = "0.1.0" }
 # Without its `esri` feature (Esri's Apache-2.0 names, for reading ESRI WKT):
 # crates that take EPSG codes only don't need them. xeibe-proj-py turns it on.
-xeibe-reproject = { path = "crates/xeibe-reproject", version = "0.1.0", default-features = false }
-xeibe-geom = { path = "crates/xeibe-geom", version = "0.1.0" }
-xeibe-schema = { path = "crates/xeibe-schema", version = "0.1.0" }
-xeibe-arrow = { path = "crates/xeibe-arrow", version = "0.1.0" }
-xeibe-export = { path = "crates/xeibe-export", version = "0.1.0" }
-xeibe-io = { path = "crates/xeibe-io", version = "0.1.0", default-features = false }
-xeibe-wfs = { path = "crates/xeibe-wfs", version = "0.1.0" }
-xeibe-datafusion = { path = "crates/xeibe-datafusion", version = "0.1.0" }
+xeibe-reproject = { path = "crates/xeibe-reproject", version = "0.2.0", default-features = false }
+xeibe-geom = { path = "crates/xeibe-geom", version = "0.2.0" }
+xeibe-schema = { path = "crates/xeibe-schema", version = "0.2.0" }
+xeibe-arrow = { path = "crates/xeibe-arrow", version = "0.2.0" }
+xeibe-export = { path = "crates/xeibe-export", version = "0.2.0" }
+xeibe-io = { path = "crates/xeibe-io", version = "0.2.0", default-features = false }
+xeibe-wfs = { path = "crates/xeibe-wfs", version = "0.2.0" }
+xeibe-datafusion = { path = "crates/xeibe-datafusion", version = "0.2.0" }
 # Unpublished and used only as a dev-dependency, so no version: cargo drops
 # it from the published manifests.
 xeibe-testkit = { path = "crates/xeibe-testkit" }

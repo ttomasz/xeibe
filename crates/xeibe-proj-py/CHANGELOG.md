@@ -4,8 +4,9 @@
 xeibe repository). Each entry names the EPSG Dataset version it embeds
 (docs/pyproj-compat.md, Versioning).
 
-## Unreleased
+## 0.2.0
 
+- EPSG Dataset 13.106, as in 0.1.0.
 - CRS text (`CRS(...)`, `from_user_input`, `from_string`,
   `from_authority`) is read by `xeibe-reproject`'s `Crs::from_user_input`,
   in the same forms as before.
