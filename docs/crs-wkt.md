@@ -308,6 +308,63 @@ Mollweide, …). Some need methods `xeibe-reproject` doesn't have, or datums
 only Esri's own transformations reach. That would mean supporting a second
 authority, which is beyond this design.
 
+**Measured (2026-11-05): what Esri's own CRSs would take.** The question
+came from the
+[rust-proj-capability](https://github.com/mdsumner/rust-proj-capability)
+CRS study: three of its fixtures, `ESRI:54042` (Winkel Tripel NGS),
+`ESRI:54052` (Goode Homolosine Land) and `ESRI:102020` (South Pole LAEA),
+fail only for lack of data. Read from Esri's WKT in `pe_list_projcs.csv`,
+xeibe already matches PROJ's `ESRI:` codes on them (9e-10 m, 0, 0).
+
+- **Definitions.** The CSVs we already download carry the WKT of every
+  Esri CRS. Esri's own (3,085 rows, deprecated ones included) are 1.2 MB
+  of WKT, 76 KB compressed.
+- **What xeibe makes of them today**, as WKT through `xeibe_proj`, to
+  WGS 84:
+
+  | Live Esri-only CRSs | Read and transform | Read, no transformation | Not read |
+  |---|---|---|---|
+  | 1,211 projected | 650 | 552 | 9 (Hammer-Aitoff, Fuller, `lat_1` = 0, …) |
+  | 256 geographic | 9 | 247 | 0 |
+  | 266 vertical | — | 12 read | 254 |
+
+  "No transformation" is an unknown datum (532) or no EPSG transformation
+  between the datums (265; PROJ uses a ballpark for these).
+- **Datums.** By `pe_list_datum.csv`'s authority, 564 of the 1,467
+  projected and geographic ones are on EPSG datums. (Some datums Esri lists
+  as its own match EPSG's by name, hence the 650 above.) The other 903 are
+  on 256 Esri-only datums. An Esri datum is only a name and an ellipsoid.
+  Where it sits comes from transformations, in `pe_list_geogtran.csv`
+  (4 MB, not downloaded now; `pe_list_verttran.csv` for heights):
+  - 35 of those datums (450 CRSs) have one to WGS 84, nearly all Helmert
+    kinds xeibe runs (`Geocentric_Translation`, `Coordinate_Frame`,
+    `Position_Vector`), one NTv2;
+  - 221 (453 CRSs) have none: spheres, 35 planetary bodies (Moon 2000,
+    Mars 2000), the Minnesota and Wisconsin county-adjusted NAD83 (HARN)
+    datums, and some recent national frames (BTRS, HTRS07, PANAMA08).
+    These would stay refused, since a ballpark is never used.
+
+That gives three levels:
+
+1. **EPSG only** (now): Esri's names and old codes map onto EPSG objects.
+2. **Esri's map projections on EPSG datums**: 564 CRSs. Esri adds
+   definitions, but EPSG's operations stay the only ones. This covers the
+   three fixtures and `ESRI:54009`, which GeoPandas users reach for with
+   `to_crs("ESRI:54009")`. It still needs a stated boundary, ESRI ids in
+   the PROJJSON, and a divergence: identification wouldn't search ESRI
+   codes, as PROJ's `list_authority` does.
+3. **Esri as a second authority**: its datums and transformations too,
+   about 1,000 usable CRSs. Esri then supplies operations, not only
+   definitions. Matching PROJ, which counts Esri's transformations among
+   its candidates, would mean selecting among EPSG's and Esri's together,
+   with Esri's areas and accuracies (in the CSV).
+
+**Decided (2026-11-05): level 1 stays for now.** Three benchmark fixtures
+are no reason to change the rule. It is likely to change, though: when users
+need Esri's world projections (`ESRI:54009` and the like), level 2 is the
+next step, taken as a decision of its own. Level 3 only if Esri-based data
+becomes a goal.
+
 `xeibe-reproject` uses `xeibe-esri` through a default feature, `esri`. A
 project that can't take Apache-2.0 (a GPLv2-only one) turns the feature off.
 In the workspace the feature is off for dependents (the workspace
@@ -911,4 +968,5 @@ of the same day (`docs/pyproj-compat.md`).
 ## Later, if asked
 
 - Writing WKT1_ESRI (decision 3).
-- CRSs only Esri defines ([ESRI names](#esri-names)).
+- CRSs only Esri defines ([ESRI names](#esri-names)): measured 2026-11-05,
+  likely to come back as level 2 (Esri's map projections on EPSG datums).
