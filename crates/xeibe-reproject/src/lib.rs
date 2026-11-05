@@ -64,6 +64,7 @@ mod projection;
 mod registry;
 mod select;
 mod transform;
+pub mod user_input;
 pub mod wkt;
 
 pub use bounds::DEFAULT_DENSIFY;

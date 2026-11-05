@@ -12,5 +12,6 @@ mod parts;
 mod proj_string;
 mod support;
 mod transformations;
+mod user_input;
 mod vectors;
 mod wkt;

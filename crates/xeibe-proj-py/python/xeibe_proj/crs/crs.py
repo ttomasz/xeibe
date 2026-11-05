@@ -24,7 +24,6 @@ from typing import Any, NamedTuple, Self, cast
 from xeibe_proj import _epsg, _native, _wkt
 from xeibe_proj._json import JsonDict, as_dict, as_list, dumps, get_dict, get_dicts, ident
 from xeibe_proj._operation_json import SCHEMA
-from xeibe_proj._unsupported import out
 from xeibe_proj.aoi import AreaOfUse
 from xeibe_proj.crs import _cf1x8, _dimension
 from xeibe_proj.crs._objects import (
@@ -64,18 +63,6 @@ class AuthorityMatchInfo(NamedTuple):
     confidence: int
 
 
-# Authorities whose codes aren't in EPSG.
-_OTHER_AUTHORITIES = {"ESRI", "IGNF", "IAU_2015", "NKG", "PROJ", "OGC", "NRCAN"}
-
-_AUTH_CODE = re.compile(r"(?P<auth>[A-Za-z_0-9]+)\s*:\s*(?P<code>[^:]+)")
-_URN = re.compile(r"urn:ogc:def:crs:(?P<auth>[^:]+):[^:]*:(?P<code>[^:]+)", re.IGNORECASE)
-_URN_COMPOUND = re.compile(r"urn:ogc:def:crs,(?P<parts>.+)", re.IGNORECASE)
-_URN_PART = re.compile(r"crs:(?P<auth>[^:]+):[^:]*:(?P<code>[^:,]+)", re.IGNORECASE)
-_URL = re.compile(
-    r"https?://www\.opengis\.net/def/crs/(?P<auth>[^/]+)/[^/]*/(?P<code>[^/?#]+)/?", re.IGNORECASE
-)
-_URL_COMPOUND = re.compile(r"https?://www\.opengis\.net/def/crs-compound\?(?P<query>.+)", re.IGNORECASE)
-_GML_SRS = re.compile(r"https?://www\.opengis\.net/gml/srs/epsg\.xml#(?P<code>\d+)", re.IGNORECASE)
 # The CRS keywords of WKT1 (GDAL's and ESRI's) and WKT2: a string that
 # starts with one is read as WKT, and the reader names what it doesn't read.
 _WKT = re.compile(
@@ -106,45 +93,22 @@ def _epsg_version() -> str:
     return _native.epsg_version()
 
 
-def _compound(codes: list[int]) -> JsonDict:
-    """``EPSG:<horizontal>+<vertical>``: EPSG's compound CRS of the two if
-    there is one, else one built from them as PROJ builds it."""
-    if len(codes) != 2:
-        raise CRSError(f"a compound CRS needs two components, not {len(codes)}")
-    code = _epsg.compounds().get((codes[0], codes[1]))
-    if code is not None:
-        return _epsg_json(code)
-    h, v = _epsg_json(codes[0]), _epsg_json(codes[1])
+def _compound(horizontal: int, vertical: int) -> JsonDict:
+    """``EPSG:<horizontal>+<vertical>``: a compound CRS of the two as PROJ
+    builds it, named "A + B" and without a code, even when EPSG registers
+    the pair (``user_input::UserInput::Compound`` in ``xeibe-reproject``),
+    in PROJ's key order."""
+    h, v = _epsg_json(horizontal), _epsg_json(vertical)
     return {
+        "$schema": h.get("$schema", SCHEMA),
         "type": "CompoundCRS",
         "name": f"{h['name']} + {v['name']}",
-        "components": [h, v],
+        "components": [{k: x for k, x in c.items() if k != "$schema"} for c in (h, v)],
     }
 
 
 def _from_authority(auth: str, code: str) -> JsonDict:
-    auth = auth.strip().upper()
-    code = code.strip()
-    if auth == "EPSG":
-        if "+" in code:
-            return _compound([_epsg_code(c) for c in code.split("+")])
-        return _epsg_json(_epsg_code(code))
-    if auth == "OGC":
-        projjson = _epsg.ogc_projjson(code)
-        if projjson is not None:
-            return projjson
-    if auth == "ESRI" and code.isdigit():
-        # Esri's old codes of CRSs EPSG has since defined: ESRI:102100 is
-        # EPSG:3857, and reads as it.
-        moved = _native.esri_code(int(code))
-        if moved is not None:
-            return _epsg_json(moved)
-    if auth in _OTHER_AUTHORITIES or auth == "OGC":
-        raise out(
-            f"{auth}:{code}",
-            "only EPSG codes, OGC:CRS84, CRS83 and CRS27, and Esri's old codes of EPSG CRSs are known",
-        )
-    raise CRSError(f"unknown authority {auth!r} in {auth}:{code}")
+    return _from_string(f"{auth.strip()}:{code.strip()}")
 
 
 def _epsg_code(text: str) -> int:
@@ -162,43 +126,32 @@ def _from_wkt(text: str) -> JsonDict:
 
 
 def _from_string(text: str) -> JsonDict:
+    """Text in any form ``Crs::from_user_input`` in ``xeibe-reproject``
+    takes, which tells which it is; an EPSG CRS is its shared PROJJSON
+    (``_epsg.projjson``), and a PROJ string is prepared as pyproj prepares
+    it."""
+    try:
+        kind, codes, ogc = _native.user_input(text)
+    except CRSError as e:
+        raise CRSError(f"Invalid projection: {e}") from None
+    if kind == "epsg":
+        return _epsg_json(codes[0])
+    if kind == "compound":
+        return _compound(codes[0], codes[1])
+    if kind == "ogc":
+        projjson = _epsg.ogc_projjson(ogc or "")
+        if projjson is None:
+            raise CRSError(f"Invalid projection: {text}: OGC:{ogc} is not in the EPSG tables")
+        return projjson
     s = text.strip()
-    if s.startswith("{"):
+    if kind == "projjson":
         try:
-            projjson = json.loads(s)
+            return _check_projjson(json.loads(s))
         except json.JSONDecodeError as e:
             raise CRSError(f"invalid PROJJSON: {e}") from None
-        return _check_projjson(projjson)
-    if _is_proj_string(s):
+    if kind == "proj":
         return _from_proj_string(_prepare_from_proj_string(s))
-    if _WKT.match(s):
-        return _from_wkt(text)
-    if m := _GML_SRS.fullmatch(s):
-        return _epsg_json(int(m["code"]))
-    if m := _URN_COMPOUND.fullmatch(s):
-        parts = [_URN_PART.fullmatch(p.strip()) for p in re.split(r",(?=crs:)", m["parts"])]
-        if any(p is None or p["auth"].upper() != "EPSG" for p in parts):
-            raise CRSError(f"unsupported compound URN: {text!r}")
-        return _compound([_epsg_code(p["code"]) for p in parts if p is not None])
-    if m := _URN.fullmatch(s):
-        return _from_authority(m["auth"], m["code"])
-    if m := _URL_COMPOUND.fullmatch(s):
-        urls = [q.split("=", 1)[-1] for q in m["query"].split("&")]
-        parts = [_URL.fullmatch(u) for u in urls]
-        if any(p is None or p["auth"].upper() != "EPSG" for p in parts):
-            raise CRSError(f"unsupported compound URL: {text!r}")
-        return _compound([_epsg_code(p["code"]) for p in parts if p is not None])
-    if m := _URL.fullmatch(s):
-        return _from_authority(m["auth"], m["code"])
-    if m := _AUTH_CODE.fullmatch(s):
-        return _from_authority(m["auth"], m["code"])
-    # A bare number is an EPSG code, as in pyproj.
-    if s.isdigit():
-        return _epsg_json(int(s))
-    code = _epsg.code_for_name(s)
-    if code is not None:
-        return _epsg_json(code)
-    raise CRSError(f"Invalid projection: {text}: not an EPSG code, OGC CRS, WKT, PROJJSON or EPSG name")
+    return _from_wkt(text)
 
 
 # PROJ strings. `_prepare_from_dict` and `_prepare_from_proj_string` are

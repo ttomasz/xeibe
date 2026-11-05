@@ -63,7 +63,13 @@ Not everything that looks like one family is one datum, though:
 ### API
 
 `Crs::from_epsg(code)` or `Crs::from_projjson(json)` (or
-`Crs::from_projjson_value` for PROJJSON already parsed), then
+`Crs::from_projjson_value` for PROJJSON already parsed), or
+`Crs::from_user_input(text)` for text in any form pyproj's
+`CRS.from_user_input` takes: EPSG codes in their usual spellings (`2180`,
+`EPSG:2180`, OGC URNs and URLs, `EPSG:2180+9650`), OGC's CRS84, CRS83 and
+CRS27, EPSG names and aliases, Esri's old codes of EPSG CRSs
+(`ESRI:102100`), PROJ strings (read as CRSs, `+type=crs` or not), WKT and
+PROJJSON (`user_input::parse` says which a text is without reading it), then
 `Transform::new(&src, &dst, AxisOrder::EastFirst)` and `convert`,
 `convert_xy`, `convert_xyz` or `convert_interleaved` on GeoArrow-shaped buffers,
 in place. Heights take part when a CRS has them: a geographic 3D or compound

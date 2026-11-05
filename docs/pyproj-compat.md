@@ -388,7 +388,7 @@ becomes the package's status tracker.
 
 | API | Phase | Notes |
 |---|---|---|
-| `CRS(x)`, `from_user_input`, `from_string`, `from_epsg`, `from_authority("EPSG", …)` | 1 | Integers, `"EPSG:2180"`, `"epsg:2180"`, OGC URNs and URLs (the parsing `xeibe-geom` already does for `srsName`), EPSG aliases (`xeibe_crs::alias`), another `CRS`. |
+| `CRS(x)`, `from_user_input`, `from_string`, `from_epsg`, `from_authority("EPSG", …)` | 1 | Integers, `"EPSG:2180"`, `"epsg:2180"`, OGC URNs and URLs, `EPSG:2180+9650` (a compound CRS built as PROJ builds it, without a code), EPSG names and aliases (`xeibe_crs::alias`), another `CRS`. Text is read by `xeibe-reproject`'s `Crs::from_user_input` (`user_input::parse`), which tells the Python side what it names. |
 | `OGC:CRS84`, `OGC:CRS83`, `OGC:CRS27` | 1 | Longitude-first variants of 4326, 4269 and 4267. |
 | `from_json`, `from_json_dict`, PROJJSON dict input | 1 | The subset `xeibe-reproject` reads, plus any PROJJSON kept as is for its metadata. |
 | `name`, `type_name`, `is_geographic` / `is_projected` / `is_geocentric` / `is_vertical` / `is_compound` / `is_engineering` / `is_derived` / `is_bound`, `is_deprecated`, `utm_zone`, `remarks`, `scope` | 1 | From PROJJSON and `CrsRecord`. |

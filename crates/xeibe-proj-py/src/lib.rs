@@ -1,8 +1,8 @@
 //! The native part of the Python package `xeibe_proj` (`xeibe_proj._native`).
 //!
 //! Kept narrow (`docs/pyproj-compat.md`, Naming and layout): EPSG records and
-//! PROJJSON from `xeibe-crs`, `xeibe-reproject`'s transforms, WKT and
-//! identification, and Esri's old codes from `xeibe-esri`. The
+//! PROJJSON from `xeibe-crs`, `xeibe-reproject`'s transforms, WKT,
+//! identification and reading of CRS text in pyproj's forms. The
 //! pyproj-shaped API is Python over PROJJSON. Conversion takes plain
 //! numbers, or works in place on float64 buffers the Python side has
 //! already copied and releases the GIL (`convert`), or on GeoArrow arrays
@@ -43,6 +43,7 @@ fn error(py: Python<'_>, error: Error) -> PyErr {
         | Error::Projjson { .. }
         | Error::Wkt { .. }
         | Error::ProjString { .. }
+        | Error::UserInput { .. }
         | Error::Unsupported { .. } => "CRSError",
         _ => "ProjError",
     };
@@ -100,12 +101,6 @@ fn operations_json() -> &'static str {
 #[pyfunction]
 fn replacements(code: u32) -> Vec<u32> {
     xeibe_crs::replacements(code).collect()
-}
-
-/// The EPSG code an old Esri code (`ESRI:102100`) moved to, or `None`.
-#[pyfunction]
-fn esri_code(code: u32) -> Option<u32> {
-    xeibe_esri::epsg_code(code)
 }
 
 /// An EPSG object's kind by the name the Python side uses.
@@ -218,6 +213,39 @@ fn to_wkt(
 #[pyfunction]
 fn proj_string_to_projjson(py: Python<'_>, text: &str) -> PyResult<String> {
     xeibe_reproject::proj_string::to_projjson(text).map_err(|e| error(py, e))
+}
+
+/// What a CRS given as text names (`xeibe_reproject::user_input::parse`),
+/// as `(kind, codes, ogc)`: `("epsg", [code], None)`, `("compound",
+/// [horizontal, vertical], None)`, `("ogc", [], "CRS84")`, or `("projjson"
+/// | "wkt" | "proj", [], None)` for text read as it is. A code of another
+/// authority is `NotImplementedError` (`_unsupported.out`), anything else
+/// that isn't read a `CRSError`.
+#[pyfunction]
+fn user_input(
+    py: Python<'_>,
+    text: &str,
+) -> PyResult<(&'static str, Vec<u32>, Option<&'static str>)> {
+    use xeibe_reproject::user_input::{self, UserInput};
+    let input = user_input::parse(text).map_err(|e| match e {
+        Error::Unsupported { crs, what } => match py
+            .import("xeibe_proj._unsupported")
+            .and_then(|m| m.getattr("out"))
+            .and_then(|out| out.call1((crs, what)))
+        {
+            Ok(error) => PyErr::from_value(error),
+            Err(error) => error,
+        },
+        e => error(py, e),
+    })?;
+    Ok(match input {
+        UserInput::Epsg(code) => ("epsg", vec![code], None),
+        UserInput::Compound(horizontal, vertical) => ("compound", vec![horizontal, vertical], None),
+        UserInput::Ogc(code) => ("ogc", vec![], Some(code)),
+        UserInput::Projjson(_) => ("projjson", vec![], None),
+        UserInput::Wkt(_) => ("wkt", vec![], None),
+        UserInput::ProjString(_) => ("proj", vec![], None),
+    })
 }
 
 /// A CRS's PROJJSON, as a dict or text ([`Source`]), as a PROJ string, as
@@ -793,7 +821,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(crs_remarks, m)?)?;
     m.add_function(wrap_pyfunction!(operation_remarks, m)?)?;
     m.add_function(wrap_pyfunction!(clear_grids, m)?)?;
-    m.add_function(wrap_pyfunction!(esri_code, m)?)?;
     m.add_function(wrap_pyfunction!(replacements, m)?)?;
     m.add_function(wrap_pyfunction!(operations_json, m)?)?;
     m.add_function(wrap_pyfunction!(wkt_to_projjson, m)?)?;
@@ -805,6 +832,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(proj_data_file, m)?)?;
     m.add_function(wrap_pyfunction!(to_wkt, m)?)?;
     m.add_function(wrap_pyfunction!(proj_string_to_projjson, m)?)?;
+    m.add_function(wrap_pyfunction!(user_input, m)?)?;
     m.add_function(wrap_pyfunction!(to_proj4, m)?)?;
     m.add_class::<Transform>()?;
     m.add_class::<arrow::ArrowData>()?;

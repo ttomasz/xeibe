@@ -22,7 +22,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 xeibe-crs.workspace = true
-xeibe-esri.workspace = true
 xeibe-reproject = { workspace = true, features = ["esri", "arrow"] }
 pyo3.workspace = true
 serde_json.workspace = true

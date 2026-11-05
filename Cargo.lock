@@ -4375,7 +4375,6 @@ dependencies = [
  "pyo3",
  "serde_json",
  "xeibe-crs",
- "xeibe-esri",
  "xeibe-reproject",
 ]
 

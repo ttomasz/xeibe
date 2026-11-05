@@ -14,6 +14,10 @@ pub enum Error {
     /// A PROJ string PROJ itself wouldn't read as a CRS.
     #[error("invalid PROJ string: {message}")]
     ProjString { message: String },
+    /// Text `Crs::from_user_input` doesn't read as a CRS: none of the forms
+    /// it takes, or a malformed one (`EPSG:x`, a compound of three CRSs).
+    #[error("{input}: {message}")]
+    UserInput { input: String, message: String },
     /// The CRS is valid but uses something this crate doesn't implement: a
     /// projection method, a CRS type, an axis direction.
     #[error("{crs}: {what} is not supported")]

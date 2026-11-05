@@ -544,6 +544,25 @@ impl Crs {
         Ok(crs)
     }
 
+    /// A CRS from text in any form pyproj's `CRS.from_user_input` takes:
+    /// an EPSG code (`EPSG:2180`, `2180`, `EPSG:2180+9650`, an OGC URN or
+    /// URL), OGC's CRS84, CRS83 and CRS27, an EPSG name or alias, an old
+    /// Esri code of an EPSG CRS (`ESRI:102100`), a PROJ string (read as a
+    /// CRS, `+type=crs` or not), WKT or PROJJSON. See
+    /// [`crate::user_input`].
+    ///
+    /// ```
+    /// use xeibe_reproject::Crs;
+    ///
+    /// let crs = Crs::from_user_input("urn:ogc:def:crs:EPSG::2180").unwrap();
+    /// assert_eq!(crs.code(), Some(2180));
+    /// let crs = Crs::from_user_input("+proj=utm +zone=33 +datum=WGS84").unwrap();
+    /// assert!(crs.equivalent(&Crs::from_epsg(32633).unwrap(), false));
+    /// ```
+    pub fn from_user_input(text: &str) -> Result<Self, Error> {
+        crate::user_input::parse(text)?.crs()
+    }
+
     pub(crate) fn from_value(value: &Value) -> Result<Self, Error> {
         let name = value["name"].as_str().unwrap_or("unnamed CRS").to_owned();
         let code = epsg_id(value);

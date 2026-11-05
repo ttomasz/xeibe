@@ -6,6 +6,16 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
 ([crates/xeibe-crs/CHANGELOG.md](crates/xeibe-crs/CHANGELOG.md)), and
 `xeibe-proj` its own ([crates/xeibe-proj-py/CHANGELOG.md](crates/xeibe-proj-py/CHANGELOG.md)).
 
+## Unreleased
+
+- `xeibe-reproject`: `Crs::from_user_input` reads a CRS from text in any
+  form pyproj's `CRS.from_user_input` takes: EPSG codes in their usual
+  spellings (`2180`, `EPSG:2180`, OGC URNs and URLs, `EPSG:2180+9650`),
+  OGC's CRS84, CRS83 and CRS27, EPSG names and aliases, Esri's old codes of
+  EPSG CRSs (`ESRI:102100`), PROJ strings (with or without `+type=crs`),
+  WKT and PROJJSON. `user_input::parse` says which one a text is without
+  reading it.
+
 ## 0.1.0
 
 First release. Experimental: the Rust API, the CLI, the Python module and the
