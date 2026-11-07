@@ -910,9 +910,13 @@ Defaults for `xeibe gml convert` and `xeibe wfs convert` with `--format parquet`
   type **and** GeoParquet 1.1 `geo` metadata (encoding `WKB`, `geometry_types`, CRS
   as PROJJSON or `null` (see [CRS metadata](#crs-metadata)), file bbox). New readers use the row-group statistics, and older
   readers still find the `geo` metadata.
-- `--parquet-geometry native` (📋 planned, P2): GeoParquet 1.1 native encoding. There is no
-  `GEOMETRY` logical type. The x/y leaf columns get ordinary min/max statistics,
-  which work like a covering.
+- No GeoParquet native (GeoArrow) encoding, not even for columns that are native
+  in memory. GeoParquet 2.0.0 removed it ("WKB" is again the only `encoding`) and
+  requires the `GEOMETRY` or `GEOGRAPHY` logical type, which already gives the
+  row-group bbox statistics the native encoding's x/y leaf columns would.
+  Measured on corpus layers (24,026 BDOT10k buildings, the PRG voivodeship
+  boundaries), it was no smaller than WKB, and DuckDB 2.0 reads it as plain
+  structs and lists, not as geometry.
 - `--bbox-column auto|always|never`: GeoParquet 1.1 `bbox` covering column. `auto`
   (default) adds it for non-point columns and leaves it out for points, where it
   would duplicate the coordinates. It helps readers that don't understand
