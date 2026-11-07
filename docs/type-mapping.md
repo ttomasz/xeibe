@@ -17,7 +17,7 @@ scan writes. The alias of each inferred type is given in brackets below.
 
 | Type | Meaning |
 |---|---|
-| `Utf8View` | String (UTF-8), in Arrow's "view" layout, which DataFusion, Polars and DuckDB handle best. `Utf8` (classic layout, `string_view = false`) and `LargeUtf8` (64-bit offsets) are the other string types. All three become the same string column in Parquet |
+| `Utf8View` | String (UTF-8), in Arrow's "view" layout, which DataFusion, Polars and DuckDB handle best. `Utf8` (classic layout, `string_view = false`) and `LargeUtf8` (64-bit offsets) are the other string types. All three become the same string column in Parquet, recorded as `Utf8` ([Output format notes](#output-format-notes)) |
 | `Int64`, `Float64`, `Int32`, … | Integer / floating-point number, with its size in bits |
 | `Date32` | Calendar date (days since 1970-01-01) |
 | `Timestamp(µs, "UTC")`, `Timestamp(µs)` | Date and time in microseconds, with a time zone / without one (local time) |
@@ -165,7 +165,13 @@ keys except `gml:path`, and that only when the column's name isn't its path (see
 ## Output format notes
 
 - **Parquet:**
-  - `Utf8View` is written as a regular `BYTE_ARRAY` string.
+  - `Utf8View` is written as a regular `BYTE_ARRAY` string, and the Arrow schema
+    the file keeps (`ARROW:schema`, which readers use to rebuild the exact types)
+    says `Utf8`, in lists and maps too (`BinaryView` likewise says `Binary`).
+    Readers that follow it then build the classic layout: pyarrow 26 can't
+    convert `list<string_view>` to pandas, so `geopandas.read_parquet` and
+    `pandas.read_parquet` would fail on any file with a list of text. The field
+    metadata is kept. Arrow IPC output keeps the view types.
   - Repeated strings are dictionary-encoded by the Parquet writer on its own (its
     default), so columns with few distinct values stay small without an Arrow
     `Dictionary` type. A `Dictionary` type would depend on what the scan or sample

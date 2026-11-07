@@ -4,7 +4,9 @@
 //! unknown), plus GeoParquet 1.1 `geo` metadata with the CRS as PROJJSON or
 //! `null`. Curves and other non-simple types are an error: neither standard
 //! has them. A geometry column can get a GeoParquet 1.1 `bbox` covering column
-//! ([`BboxColumn`]).
+//! ([`BboxColumn`]). Other columns of a view type (`Utf8View`, `BinaryView`,
+//! also inside lists and structs) are written as the classic type
+//! ([`classic_type`]).
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
@@ -27,6 +29,9 @@ pub(crate) struct GeoColumns {
     primary: Option<String>,
     /// The schema handed to the Parquet writer: geometry columns as WKB.
     output: SchemaRef,
+    /// Columns of a view type, by index, and the classic type they are
+    /// written as.
+    classic: Vec<(usize, DataType)>,
     /// Said once, when the columns are set up.
     pub(crate) warnings: Vec<String>,
 }
@@ -65,6 +70,7 @@ impl GeoColumns {
         let mut columns = Vec::new();
         let mut warnings = Vec::new();
         let mut fields = Vec::new();
+        let mut classic = Vec::new();
         let mut names: HashSet<String> = schema
             .fields()
             .iter()
@@ -72,7 +78,15 @@ impl GeoColumns {
             .collect();
         for (index, field) in schema.fields().iter().enumerate() {
             let Some(typ) = GeoArrowType::from_extension_field(field)? else {
-                fields.push(field.clone());
+                match classic_type(field.data_type()) {
+                    Some(data_type) => {
+                        fields.push(Arc::new(
+                            field.as_ref().clone().with_data_type(data_type.clone()),
+                        ));
+                        classic.push((index, data_type));
+                    }
+                    None => fields.push(field.clone()),
+                }
                 continue;
             };
             let crs = typ.metadata().crs();
@@ -135,6 +149,7 @@ impl GeoColumns {
             columns,
             primary,
             output,
+            classic,
             warnings,
         })
     }
@@ -148,6 +163,9 @@ impl GeoColumns {
     /// collected on the way.
     pub(crate) fn convert(&mut self, batch: &RecordBatch) -> Result<RecordBatch> {
         let mut arrays: Vec<ArrayRef> = batch.columns().to_vec();
+        for (index, data_type) in &self.classic {
+            arrays[*index] = arrow_cast::cast(&arrays[*index], data_type)?;
+        }
         let mut coverings = Vec::new();
         let schema = batch.schema();
         for column in &mut self.columns {
@@ -241,6 +259,46 @@ impl GeoColumns {
             .collect();
         let geo = json!({ "version": "1.1.0", "primary_column": primary, "columns": columns });
         Some(geo.to_string())
+    }
+}
+
+/// The type a column of `data_type` is written as when it is, or holds, a
+/// view type: `Utf8View` as `Utf8`, `BinaryView` as `Binary`; `None` when it
+/// is written as it is.
+///
+/// Parquet stores both layouts the same way, but the Arrow schema it keeps
+/// in the file tells readers which to rebuild, and some can't convert a view
+/// type in a list: pyarrow 26's `to_pandas` (so `geopandas.read_parquet`)
+/// fails on `list<string_view>`.
+fn classic_type(data_type: &DataType) -> Option<DataType> {
+    let item = |field: &Field| {
+        classic_type(field.data_type())
+            .map(|data_type| Arc::new(field.clone().with_data_type(data_type)))
+    };
+    match data_type {
+        DataType::Utf8View => Some(DataType::Utf8),
+        DataType::BinaryView => Some(DataType::Binary),
+        DataType::List(field) => item(field).map(DataType::List),
+        DataType::LargeList(field) => item(field).map(DataType::LargeList),
+        DataType::FixedSizeList(field, size) => {
+            item(field).map(|field| DataType::FixedSizeList(field, *size))
+        }
+        DataType::Map(entries, sorted) => {
+            item(entries).map(|entries| DataType::Map(entries, *sorted))
+        }
+        DataType::Struct(fields) => {
+            let classic: Vec<Option<Arc<Field>>> = fields.iter().map(|f| item(f)).collect();
+            classic.iter().any(Option::is_some).then(|| {
+                DataType::Struct(
+                    fields
+                        .iter()
+                        .zip(classic)
+                        .map(|(field, classic)| classic.unwrap_or_else(|| field.clone()))
+                        .collect(),
+                )
+            })
+        }
+        _ => None,
     }
 }
 

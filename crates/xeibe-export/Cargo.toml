@@ -12,7 +12,7 @@ publish.workspace = true
 
 [features]
 # A feature per file format; none by default.
-parquet = ["dep:parquet", "dep:arrow-buffer", "dep:geoarrow-array", "dep:geoarrow-schema", "dep:serde_json", "dep:xeibe-geom"]
+parquet = ["dep:parquet", "dep:arrow-buffer", "dep:arrow-cast", "dep:geoarrow-array", "dep:geoarrow-schema", "dep:serde_json", "dep:xeibe-geom"]
 ipc = ["dep:arrow-ipc"]
 
 [dependencies]
@@ -20,6 +20,7 @@ arrow-array.workspace = true
 arrow-schema.workspace = true
 thiserror.workspace = true
 arrow-buffer = { workspace = true, optional = true }
+arrow-cast = { workspace = true, optional = true }
 arrow-ipc = { workspace = true, optional = true }
 geoarrow-array = { workspace = true, optional = true }
 geoarrow-schema = { workspace = true, optional = true }

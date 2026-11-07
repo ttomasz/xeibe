@@ -178,3 +178,93 @@ fn a_crs_without_projjson_is_a_warning() {
         summary.warnings
     );
 }
+
+/// Text in Arrow's view layout is written as the classic `Utf8`, in lists
+/// and maps too: the Arrow schema a Parquet file keeps tells readers which
+/// layout to rebuild, and pyarrow 26 can't hand `list<string_view>` to
+/// pandas (`geopandas.read_parquet` fails on it).
+#[test]
+fn view_types_are_written_as_classic_ones() {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    use arrow_array::builder::{ListBuilder, MapBuilder, StringViewBuilder};
+    use arrow_array::cast::AsArray;
+    use arrow_array::{Array, ArrayRef, Int64Array, RecordBatch, StringViewArray};
+    use arrow_schema::{DataType, Field, Schema};
+
+    let id = StringViewArray::from(vec!["p1", "p2"]);
+    let mut tags = ListBuilder::new(StringViewBuilder::new());
+    tags.values().append_value("a");
+    tags.values().append_value("b");
+    tags.append(true);
+    tags.append(false);
+    let tags = tags.finish();
+    let mut map = MapBuilder::new(None, StringViewBuilder::new(), StringViewBuilder::new());
+    map.keys().append_value("street");
+    map.values().append_value("Polna");
+    map.append(true).unwrap();
+    map.append(false).unwrap();
+    let map = map.finish();
+    let count = Int64Array::from(vec![Some(1), None]);
+    let path = HashMap::from([("gml:path".to_string(), "@gml:id".to_string())]);
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("@id", DataType::Utf8View, true).with_metadata(path.clone()),
+        Field::new("tags", tags.data_type().clone(), true),
+        Field::new("address", map.data_type().clone(), true),
+        Field::new("count", DataType::Int64, true),
+    ]));
+    let arrays: Vec<ArrayRef> = vec![Arc::new(id), Arc::new(tags), Arc::new(map), Arc::new(count)];
+    let batch = RecordBatch::try_new(schema.clone(), arrays).unwrap();
+    let mut out = Vec::new();
+    let mut writer = ParquetWriter::new(&mut out, schema, ParquetOptions::default(), Vec::new());
+    writer.write(&batch).unwrap();
+    writer.finish().unwrap();
+
+    // Read back as the file's own Arrow schema says.
+    let read: Vec<RecordBatch> = ParquetRecordBatchReaderBuilder::try_new(Bytes::from(out))
+        .unwrap()
+        .build()
+        .unwrap()
+        .map(|batch| batch.unwrap())
+        .collect();
+    let read = &read[0];
+    let schema = read.schema();
+    assert_eq!(schema.field(0).data_type(), &DataType::Utf8);
+    assert_eq!(
+        schema.field(0).metadata(),
+        &path,
+        "the field metadata is kept"
+    );
+    let DataType::List(item) = schema.field(1).data_type() else {
+        panic!("{:?}", schema.field(1));
+    };
+    assert_eq!(item.data_type(), &DataType::Utf8);
+    let DataType::Map(entries, _) = schema.field(2).data_type() else {
+        panic!("{:?}", schema.field(2));
+    };
+    let DataType::Struct(entry) = entries.data_type() else {
+        panic!("{entries:?}");
+    };
+    assert!(
+        entry
+            .iter()
+            .all(|field| field.data_type() == &DataType::Utf8),
+        "{entry:?}"
+    );
+    assert_eq!(schema.field(3).data_type(), &DataType::Int64);
+
+    // The values are the same.
+    let ids = read.column(0).as_string::<i32>();
+    assert_eq!((ids.value(0), ids.value(1)), ("p1", "p2"));
+    let tags = read.column(1).as_list::<i32>();
+    let first = tags.value(0);
+    let first = first.as_string::<i32>();
+    assert_eq!((first.value(0), first.value(1)), ("a", "b"));
+    assert!(tags.is_null(1));
+    let map = read.column(2).as_map();
+    let entries = map.value(0);
+    assert_eq!(entries.column(0).as_string::<i32>().value(0), "street");
+    assert_eq!(entries.column(1).as_string::<i32>().value(0), "Polna");
+    assert!(map.is_null(1));
+}
