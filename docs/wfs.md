@@ -144,9 +144,9 @@ warns that pages may overlap or skip features without transactional consistency.
 | Case | Structure | Handling |
 |---|---|---|
 | Single query (2.0) | `wfs:FeatureCollection` → `wfs:member` → feature (§11.3.3.4) | Normal |
-| Several queries (2.0) | `wfs:FeatureCollection` → `wfs:member` → `wfs:FeatureCollection` per query, in query order. Inner collections may be inline **or referenced by `xlink:href`**. A feature matching several queries appears in one collection and is referenced from the others (§11.3.3.5) | Inner members become layers as usual. Referenced members are counted and reported, not fetched |
+| Several queries (2.0) | `wfs:FeatureCollection` → `wfs:member` → `wfs:FeatureCollection` per query, in query order. Inner collections may be inline **or referenced by `xlink:href`**. A feature matching several queries appears in one collection and is referenced from the others (§11.3.3.5) | Inner members become layers as usual; a layer spans every query's collection. Referenced members are counted and reported, not fetched |
 | Join (2.0) | `wfs:member` → `wfs:Tuple` (§11.3.3.6) | Not supported |
-| `resolve` used (2.0) | Referenced objects are placed in `wfs:additionalObjects`, and references are changed to point to them (§11.3.4) | Planned P2: read as features of their own layers |
+| `resolve` used (2.0) | Referenced objects are placed in `wfs:additionalObjects`, and references are changed to point to them (§11.3.4) | Their features become layers of their own, like any member; the references hold the `@id` they point to (`#` stripped) |
 | `GetFeatureById` stored query | The bare feature, without any collection element (§11.3.5) | "Single feature as document root" |
 | `resultType=hits` | Empty collection with `numberMatched` (2.0), or `numberOfFeatures` (1.1) holding the **total** | Count only |
 | WFS 1.1 results | `wfs:FeatureCollection` with `numberOfFeatures` = features **in this response** (04-094 §9.3) | Progress only. 1.1 has no total count in results |
