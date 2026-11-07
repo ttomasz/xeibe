@@ -258,7 +258,7 @@ Also:
   the one being read plus the ones fetched ahead of it, in order. They are
   fetched one request at a time. Parallel requests (possible only with
   `startIndex` paging; `next` links can only be followed one after another) and
-  a rate limit are still to do.
+  a rate limit are not planned for now.
 - Authentication: HTTP basic, bearer token, custom headers (`WfsOptions::auth`,
   `headers`; library only, the CLI has no flags for them yet).
 

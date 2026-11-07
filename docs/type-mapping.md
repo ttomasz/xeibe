@@ -172,6 +172,10 @@ keys except `gml:path`, and that only when the column's name isn't its path (see
     convert `list<string_view>` to pandas, so `geopandas.read_parquet` and
     `pandas.read_parquet` would fail on any file with a list of text. The field
     metadata is kept. Arrow IPC output keeps the view types.
+- **Python and Arrow IPC:** tables from `xeibe.read` and IPC files keep `Utf8View`,
+  so pyarrow's `to_pandas` fails on a list of text there. Converting them is not
+  planned for now: the fix belongs in pyarrow. Until it has one, the read option
+  `string_view = false` gives `Utf8`.
   - Repeated strings are dictionary-encoded by the Parquet writer on its own (its
     default), so columns with few distinct values stay small without an Arrow
     `Dictionary` type. A `Dictionary` type would depend on what the scan or sample
