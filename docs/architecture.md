@@ -366,6 +366,9 @@ feature-member containers (`SplitterOptions.member_rules`):
 - `gml:featureMember` (one feature per element)
 - children of `gml:featureMembers` (several features in one element)
 - `wfs:member` (WFS 2.0)
+- `featureMember` as a child of the root and in the root's namespace, the GML
+  Simple Features profile's own collections (10-100r3 §8.4.2), in which each
+  application schema declares its `featureMember`
 - a configurable list for application schemas that define their own collections
 
 A document whose root element *is* a feature, with no collection around it (e.g. a

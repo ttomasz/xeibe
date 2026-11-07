@@ -58,6 +58,10 @@ fn defaults_follow_the_documented_ranges() {
         Some(ns::WFS_20),
         "member"
     ))));
+    // The GML SF profile's own collections (OGC 10-100r3 §8.4.2).
+    assert!(has(MemberRule::OnePerElementInRootNamespace(
+        "featureMember".into()
+    )));
 }
 
 #[test]
@@ -423,6 +427,46 @@ fn a_custom_member_rule_covers_application_collections() {
         ..one_feature_per_chunk()
     };
     assert_eq!(feature_names(&split(&document, options)), ["Parcel"]);
+}
+
+#[test]
+fn simple_features_profile_collections_are_found_by_default() {
+    // OGC 10-100r3 §8.4.2: the application schema declares its own
+    // collection, whose `featureMember` is in the schema's namespace.
+    let document = format!(
+        r#"<app:Dataset gml:id="c1" xmlns:app="{}" xmlns:gml="{}"><app:featureMember>{}</app:featureMember><app:featureMember>{}</app:featureMember></app:Dataset>"#,
+        gml::APP,
+        ns::GML_32,
+        gml::feature("Parcel", "p1", ""),
+        gml::feature("Building", "b1", "")
+    );
+    assert_eq!(
+        feature_names(&split(&document, one_feature_per_chunk())),
+        ["Parcel", "Building"]
+    );
+}
+
+#[test]
+fn a_feature_member_outside_the_root_namespace_or_deeper_is_not_a_member() {
+    // Only a child of the root in the root's own namespace is a profile
+    // member. Elsewhere `featureMember` is an ordinary element, and a
+    // document with no member has no features.
+    let other_namespace = format!(
+        r#"<app:Dataset xmlns:app="{}" xmlns:other="http://example.com/other" xmlns:gml="{}"><other:featureMember>{}</other:featureMember></app:Dataset>"#,
+        gml::APP,
+        ns::GML_32,
+        gml::feature("Parcel", "p1", "")
+    );
+    let deeper = format!(
+        r#"<app:Dataset xmlns:app="{}" xmlns:gml="{}"><app:part><app:featureMember>{}</app:featureMember></app:part></app:Dataset>"#,
+        gml::APP,
+        ns::GML_32,
+        gml::feature("Parcel", "p1", "")
+    );
+    for document in [other_namespace, deeper] {
+        let error = try_split(&document, one_feature_per_chunk()).expect_err("no members");
+        assert!(matches!(error, Error::NoFeatures(_)), "got {error:?}");
+    }
 }
 
 /// A collection envelope in `srs`, as the `boundedBy` element `element`

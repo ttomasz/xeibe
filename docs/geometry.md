@@ -763,8 +763,33 @@ takes any srsName form, `EPSG:25832+7837` included.
 - **Report.** `ReadReport::reprojections` lists, per srsName, the operations
   the transform chooses among and their grids, or why it can't convert; the
   CLI prints one line per srsName.
-- Not done: the operation each coordinate took isn't written into the output,
-  and the web page offers no target CRS (its map converts for display only).
+- Not done: the operation each coordinate took isn't written into the output.
+  The web page converts only in its Export ([web.md](web.md#export)); its map
+  converts for display only.
+
+## GML Simple Features profile
+
+The GML Simple Features profile 2.0 (10-100r3) is the main target, and a
+document that follows it reads with default options at every compliance
+level, with one exception (below). The profile constrains schemas more than
+documents. The clauses that constrain documents, and how they are read
+(`crates/xeibe-arrow/tests/it/gmlsf.rs`):
+
+| Clause | Documents | Read as |
+|---|---|---|
+| §8.4.2 collections | The application's own collection element as the root, with members in its own `featureMember` (the application namespace). Also `wfs:FeatureCollection` (§8.4.4.11.3's example) | A built-in member rule: `featureMember` that is a child of the root, in the root's namespace ([architecture.md](architecture.md#feature-boundary-splitter)) |
+| §8.4.4.1–15 SF-0 property types | Integers, measurements (`uom`), strings, `xml:lang` strings, `date`/`dateTime`, booleans, binary (`mimeType`, `role`), URIs, references (`xlink:href`), code lists (`codeSpace`), reals (`double`, `decimal`) | Typed columns by the generic rules. Constant attributes go to field metadata; `#` is stripped from local references. Booleans in both spellings (`true` and `0`) are text unless inference is `Lossy` ([type-mapping.md](type-mapping.md#scalars)) |
+| §8.4.4.11 Tables 6 and 7 | `Point`, `LineString`, `Curve` of `LineStringSegment`/`Arc`/`Circle`/`CircleByCenterPoint`, `Polygon`, `Surface` of `PolygonPatch`es with `LinearRing` or `Ring` boundaries, `MultiPoint`, `MultiCurve`, `MultiSurface`, `MultiGeometry` with their `*Member` containers; `pos`/`posList`; 1 to 3 dimensions | See the [mapping table](#mapping-table). `CircleByCenterPoint` (and `ArcByCenterPoint`) in a geographic CRS with a radius in metres is not supported yet ([ArcByCenterPoint](#arcbycenterpoint-and-circlebycenterpoint), 🤔) |
+| §8.4.4.11.3 CRS | srsName on the collection's envelope, the feature's or the geometry | [srsName inheritance](#srsname-inheritance) |
+| §9 SF-1 | Complex properties one level deep, repeated properties, `xsi:nil` | Flat columns, lists, null with a `@nilReason` column |
+| §10 SF-2 | No restrictions on non-spatial properties | The generic rules |
+
+Annex D's two instance documents are read verbatim. D.5 gives `descText` and
+its `xml:lang` as aligned lists. D.6 is a single feature as the root, which
+needs `allow_single_feature_root` (in a settings file:
+`"options": {"splitter": {"allow_single_feature_root": true}}`). Its circle is
+in EPSG:4326 with a radius in metres, the unsupported case, so the feature is
+a feature error unless `OnFeatureError::NullGeometry` keeps the rest of it.
 
 ## Envelopes
 

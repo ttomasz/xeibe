@@ -230,8 +230,8 @@ fn gdal_geometry_cases() {
     let mut checked = 0usize;
     let mut skipped = 0usize;
 
-    // The parser panics while its body is `todo!()`; report that per case
-    // instead of ending the whole run.
+    // A case on which the parser panics is reported as a failure of that
+    // case instead of ending the whole run.
     let hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
     let results: Vec<_> = cases

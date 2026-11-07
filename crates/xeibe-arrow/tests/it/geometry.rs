@@ -224,6 +224,85 @@ fn a_z_value_in_an_xy_column_is_a_geometry_error() {
 }
 
 #[test]
+fn gml_2_named_geometry_properties_are_geometry_columns() {
+    // GML 2's named geometry properties (02-069 §5.2.3, kept in 3.1 as
+    // deprecated): geometry columns by the generic rule. A name that an
+    // application property shares keeps its prefix on both columns.
+    let point =
+        r#"<gml:Point srsName="EPSG:2180"><gml:coordinates>1,2</gml:coordinates></gml:Point>"#;
+    let line = r#"<gml:LineString srsName="EPSG:2180"><gml:coordinates>0,0 1,1</gml:coordinates></gml:LineString>"#;
+    let polygon = r#"<gml:Polygon srsName="EPSG:2180"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>0,0 1,0 1,1 0,0</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>"#;
+    let multi_point = format!(
+        r#"<gml:MultiPoint srsName="EPSG:2180"><gml:pointMember>{point}</gml:pointMember></gml:MultiPoint>"#
+    );
+    let multi_line = format!(
+        r#"<gml:MultiLineString srsName="EPSG:2180"><gml:lineStringMember>{line}</gml:lineStringMember></gml:MultiLineString>"#
+    );
+    let multi_polygon = format!(
+        r#"<gml:MultiPolygon srsName="EPSG:2180"><gml:polygonMember>{polygon}</gml:polygonMember></gml:MultiPolygon>"#
+    );
+    let properties: [(&str, &str, &str); 14] = [
+        ("location", point, "POINT (1 2)"),
+        ("centerOf", point, "POINT (1 2)"),
+        ("position", point, "POINT (1 2)"),
+        ("extentOf", polygon, "POLYGON ((0 0,1 0,1 1,0 0))"),
+        ("coverage", polygon, "POLYGON ((0 0,1 0,1 1,0 0))"),
+        ("edgeOf", line, "LINESTRING (0 0,1 1)"),
+        ("centerLineOf", line, "LINESTRING (0 0,1 1)"),
+        ("multiLocation", &multi_point, "MULTIPOINT ((1 2))"),
+        ("multiCenterOf", &multi_point, "MULTIPOINT ((1 2))"),
+        ("multiPosition", &multi_point, "MULTIPOINT ((1 2))"),
+        (
+            "multiCenterLineOf",
+            &multi_line,
+            "MULTILINESTRING ((0 0,1 1))",
+        ),
+        ("multiEdgeOf", &multi_line, "MULTILINESTRING ((0 0,1 1))"),
+        (
+            "multiCoverage",
+            &multi_polygon,
+            "MULTIPOLYGON (((0 0,1 0,1 1,0 0)))",
+        ),
+        (
+            "multiExtentOf",
+            &multi_polygon,
+            "MULTIPOLYGON (((0 0,1 0,1 1,0 0)))",
+        ),
+    ];
+    let mut body: String = properties
+        .iter()
+        .map(|(name, geometry, _)| format!("<gml:{name}>{geometry}</gml:{name}>"))
+        .collect();
+    // GML 3.1's `priorityLocation` too.
+    body.push_str(&format!(
+        r#"<gml:priorityLocation priority="high">{point}</gml:priorityLocation>"#
+    ));
+    body.push_str("<app:location>a street corner</app:location>");
+    let document = gml::gml2_collection(&[&format!(r#"<app:Parcel fid="p1">{body}</app:Parcel>"#)]);
+    let read = read_document(&document, "Parcel");
+
+    for (name, _, wkt) in properties {
+        let column = if name == "location" {
+            "gml:location"
+        } else {
+            name
+        };
+        let geometries = read.geometries(column);
+        assert_wkt(geometries[0].as_ref().expect(name), wkt);
+    }
+    assert_wkt(
+        read.geometries("priorityLocation")[0]
+            .as_ref()
+            .expect("a point"),
+        "POINT (1 2)",
+    );
+    assert_eq!(
+        read.strings("app:location"),
+        [Some("a street corner".into())]
+    );
+}
+
+#[test]
 fn gml_2_generic_geometry_properties_are_geometry_columns() {
     let document = gml::gml2_collection(&[concat!(
         "<app:Parcel fid=\"p1\">",

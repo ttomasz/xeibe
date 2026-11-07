@@ -269,3 +269,58 @@ fn gml_33_descriptions_follow_the_generic_rules() {
     assert_eq!(path(&read, "@lang"), "description/@lang");
     assert_eq!(read.strings("@lang"), [s("fr"), s("nl")]);
 }
+
+#[test]
+fn gml_location_text_forms_and_location_names_follow_the_generic_rules() {
+    // GML 3.1's `gml:location` may hold a keyword or a string instead of a
+    // geometry: text columns named after them, with `codeSpace` as usual.
+    // GML 3.2's `gml:locationName` is text and `gml:locationReference` an
+    // href.
+    let document = gml::gml31_collection(&[
+        &parcel(
+            "p1",
+            r#"<gml:location><gml:LocationKeyWord codeSpace="urn:a">WAW</gml:LocationKeyWord></gml:location>"#,
+        ),
+        &parcel(
+            "p2",
+            concat!(
+                r#"<gml:location><gml:LocationKeyWord codeSpace="urn:b">KRK</gml:LocationKeyWord></gml:location>"#,
+                "<app:note>x</app:note>"
+            ),
+        ),
+        &parcel(
+            "p3",
+            "<gml:location><gml:LocationString>Warsaw centre</gml:LocationString></gml:location>",
+        ),
+    ]);
+    let read = read_document(&document, "Parcel");
+    assert_eq!(read.strings("LocationKeyWord"), [s("WAW"), s("KRK"), None]);
+    assert_eq!(path(&read, "LocationKeyWord"), "location/LocationKeyWord");
+    assert_eq!(read.strings("@codeSpace"), [s("urn:a"), s("urn:b"), None]);
+    assert_eq!(
+        read.strings("LocationString"),
+        [None, None, s("Warsaw centre")]
+    );
+
+    let document = gml::gml32_collection(&[&parcel(
+        "p1",
+        concat!(
+            r#"<gml:locationName codeSpace="urn:names">Warszawa</gml:locationName>"#,
+            r#"<gml:locationReference xlink:href="http://example.com/places/1"/>"#
+        ),
+    )]);
+    let read = read_document(&document, "Parcel");
+    assert_eq!(read.strings("locationName"), [s("Warszawa")]);
+    assert_eq!(
+        read.field("locationName")
+            .metadata()
+            .get(&format!("{}codeSpace", meta::ATTR_PREFIX))
+            .map(String::as_str),
+        Some("urn:names")
+    );
+    assert_eq!(
+        read.strings("locationReference"),
+        [s("http://example.com/places/1")]
+    );
+    assert_eq!(path(&read, "locationReference"), "locationReference/@href");
+}

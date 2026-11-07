@@ -26,17 +26,33 @@ pub enum MemberRule {
     OnePerElement(QName),
     /// Each child element of this container is a feature: `gml:featureMembers`.
     ManyPerElement(QName),
+    /// Like [`OnePerElement`](Self::OnePerElement), for an element with this
+    /// local name that is a child of the root and in the root's namespace,
+    /// whatever that is: the `[prefix:]featureMember` of the GML Simple
+    /// Features profile's own collections (OGC 10-100r3 §8.4.2), which each
+    /// application schema declares in its own namespace.
+    OnePerElementInRootNamespace(Arc<str>),
 }
 
 impl MemberRule {
-    pub fn element(&self) -> &QName {
+    /// Whether `name`, the element at `depth` (the root is 0), is a member
+    /// element under this rule, in a document whose root is `root`.
+    pub fn matches(&self, name: &QName, depth: usize, root: Option<&QName>) -> bool {
         match self {
-            MemberRule::OnePerElement(name) | MemberRule::ManyPerElement(name) => name,
+            MemberRule::OnePerElement(element) | MemberRule::ManyPerElement(element) => {
+                element == name
+            }
+            MemberRule::OnePerElementInRootNamespace(local) => {
+                depth == 1
+                    && name.local == *local
+                    && root.is_some_and(|root| root.ns.is_some() && root.ns == name.ns)
+            }
         }
     }
 
     /// `gml:featureMember` and `gml:featureMembers` in both GML namespaces,
-    /// and WFS 2.0 `wfs:member`.
+    /// WFS 2.0 `wfs:member`, and the GML SF profile's `featureMember` in the
+    /// root's namespace.
     pub fn builtin() -> Vec<MemberRule> {
         vec![
             MemberRule::OnePerElement(QName::new(Some(ns::GML_32), "featureMember")),
@@ -44,6 +60,7 @@ impl MemberRule {
             MemberRule::ManyPerElement(QName::new(Some(ns::GML_32), "featureMembers")),
             MemberRule::ManyPerElement(QName::new(Some(ns::GML), "featureMembers")),
             MemberRule::OnePerElement(QName::new(Some(ns::WFS_20), "member")),
+            MemberRule::OnePerElementInRootNamespace(Arc::from("featureMember")),
         ]
     }
 }
@@ -478,11 +495,13 @@ impl<R: Read> FeatureSplitter<R> {
             return Ok(());
         }
 
+        let root = self.header.as_ref().map(|header| &header.root);
+        let depth = self.stack.len();
         let members = self
             .options
             .member_rules
             .iter()
-            .any(|rule| rule.element() == &name);
+            .any(|rule| rule.matches(&name, depth, root));
         if members || collection {
             self.saw_container = true;
             self.root_candidate = None;

@@ -1,7 +1,8 @@
 # Web page (WebAssembly)
 
 🚧 In progress (P2): the first version ([Phases](#phases)) is built, in
-`crates/xeibe-wasm` and `web/`, and not yet deployed. A static page on GitHub Pages that runs xeibe compiled to
+`crates/xeibe-wasm` and `web/`, and deployed at <https://ttomasz.github.io/xeibe/>
+by `.github/workflows/pages.yml` on every change to `main`. A static page on GitHub Pages that runs xeibe compiled to
 WebAssembly. A user drops a local GML file or a saved WFS response on it and sees
 how xeibe reads it: layers, the inferred schema and why, axis-order decisions,
 the read report, the data on a map and in a table. Nothing is uploaded: the file
@@ -20,8 +21,9 @@ options.
 ## Non-goals
 
 - A general GIS viewer or editor. One file (or zip), one layer at a time.
-- Reprojecting the data. The map converts coordinates for display only (see
-  [Map](#map)); what the page reads stays in the source CRS, as reads do.
+- Reprojecting what the page shows. The map converts coordinates for display
+  only (see [Map](#map)), and the tabs show the source CRS. Only
+  [Export](#export) converts, as `--target-crs` does.
 - Multi-GB inputs. Browser memory limits apply (see [Limits](#limits)). The CLI is
   the tool for those.
 - A hosted service. The page is static files; there is no server side.
@@ -485,6 +487,3 @@ above.
   a debugging page; if it ever draws heavy traffic, another provider.
 - Could `ReadOptions` be described (JSON Schema) so the Options form is
   generated rather than kept in sync by hand?
-- When reads reproject (support matrix, P1), the read must list the grids it
-  needs before it starts, from the scan's CRS and extent, so the worker can
-  fetch them first; a blocking fetch inside the read can't work in the browser.
