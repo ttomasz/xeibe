@@ -13,9 +13,12 @@ pub struct WfsOptions {
     pub srs_name: Option<String>,
     pub bbox: Option<([f64; 4], Option<String>)>,
     pub filter: Option<String>,
-    /// Property to sort by for stable offset paging. Not detected yet: `None`
-    /// sends no `SORTBY`.
-    pub sort_by: Option<String>,
+    /// `SORTBY` keys, sent with every `GetFeature` of a read (not with
+    /// `hits`), so that pages come in one stable order (see
+    /// [`crate::request::parse_sort_by`]). Empty (the default) sends none:
+    /// no property is known to be unique and sortable on every server, so
+    /// none is guessed.
+    pub sort_by: Vec<(String, crate::request::SortOrder)>,
     pub vendor_params: Vec<(String, String)>,
     /// Pages held at once: the one being read plus `concurrency - 1` fetched
     /// ahead of the read, one request at a time, in order. 1 (the default)
@@ -41,7 +44,7 @@ impl Default for WfsOptions {
             srs_name: None,
             bbox: None,
             filter: None,
-            sort_by: None,
+            sort_by: Vec::new(),
             vendor_params: Vec::new(),
             concurrency: 1,
             max_retries: http.max_retries,

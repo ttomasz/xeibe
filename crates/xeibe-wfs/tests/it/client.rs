@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use xeibe_wfs::pages::Progress;
+use xeibe_wfs::request::SortOrder;
 use xeibe_wfs::{Error, PagingStrategy, WfsClient, WfsOptions};
 
 /// `(status, headers, body)`.
@@ -121,6 +122,39 @@ fn no_progress() -> Box<dyn FnMut(&Progress) + Send> {
     Box::new(|_| {})
 }
 
+/// A query parameter of a request line (`GET /wfs?… HTTP/1.1`), decoded;
+/// keys in any case.
+fn param(request: &str, key: &str) -> Option<String> {
+    let target = request.split(' ').nth(1)?;
+    url::Url::parse(&format!("http://host{target}"))
+        .ok()?
+        .query_pairs()
+        .find(|(k, _)| k.eq_ignore_ascii_case(key))
+        .map(|(_, value)| value.into_owned())
+}
+
+type Reports = Arc<Mutex<Vec<Progress>>>;
+type Callback = Box<dyn FnMut(&Progress) + Send>;
+
+/// Progress reports, kept for the test to look at.
+fn recorded() -> (Reports, Callback) {
+    let reports = Arc::new(Mutex::new(Vec::new()));
+    let log = reports.clone();
+    (
+        reports,
+        Box::new(move |p: &Progress| log.lock().unwrap().push(p.clone())),
+    )
+}
+
+fn warnings(reports: &Mutex<Vec<Progress>>) -> Vec<String> {
+    reports
+        .lock()
+        .unwrap()
+        .iter()
+        .flat_map(|report| report.warnings.clone())
+        .collect()
+}
+
 fn read_all(sources: xeibe_core::Sources) -> Result<Vec<String>, xeibe_core::Error> {
     sources
         .map(|source| {
@@ -217,6 +251,8 @@ fn start_index_pages_are_fetched_lazily_until_a_short_page() {
     );
     assert!(requests[3].contains("STARTINDEX=4"), "{}", requests[3]);
 
+    assert!(requests.iter().all(|r| param(r, "SORTBY").is_none()));
+
     let reports = reports.lock().unwrap();
     assert_eq!(reports.len(), 3);
     assert_eq!(reports[2].features, 5);
@@ -224,6 +260,126 @@ fn start_index_pages_are_fetched_lazily_until_a_short_page() {
         reports[1].warnings.iter().any(|w| w.contains("gml:id")),
         "a repeated id is reported: {:?}",
         reports[1].warnings
+    );
+    // Offsets without SORTBY: said once, before the second page.
+    let unsorted = |report: &Progress| {
+        report
+            .warnings
+            .iter()
+            .filter(|w| w.contains("without SORTBY"))
+            .count()
+    };
+    assert_eq!(unsorted(&reports[0]), 1, "{:?}", reports[0].warnings);
+    assert_eq!(reports.iter().map(unsorted).sum::<usize>(), 1);
+}
+
+/// Every request of a read carries the sort keys: the first, the `next` link
+/// the server builds from it, and the offsets the read continues with after
+/// `ResponseCacheExpired`, so the order never changes partway.
+#[test]
+fn sort_keys_go_with_every_request_of_a_read() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}/wfs", listener.local_addr().unwrap());
+    // The server's own link keeps the query, as GeoServer's do.
+    let next = format!("{base}?SORTBY=app%3An%20DESC&page=2");
+    let expired = r#"<ows:ExceptionReport xmlns:ows="http://www.opengis.net/ows/1.1" version="2.0.0"><ows:Exception exceptionCode="ResponseCacheExpired"/></ows:ExceptionReport>"#;
+    let replies = vec![
+        ok(capabilities(true, 2)),
+        ok(page(&[5, 4], "3", Some(&next))),
+        ok(expired),
+        ok(page(&[3], "3", None)),
+    ];
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let log = requests.clone();
+    std::thread::spawn(move || {
+        for (status, headers, body) in replies {
+            let (mut stream, _) = listener.accept().unwrap();
+            log.lock().unwrap().push(request_line(&mut stream));
+            let _ = respond(&mut stream, status, &headers, &body);
+        }
+    });
+    let options = WfsOptions {
+        sort_by: vec![("app:n".into(), SortOrder::Desc)],
+        ..options()
+    };
+    let client = WfsClient::new(&base, options).unwrap();
+    let (reports, progress) = recorded();
+    let pages = read_all(client.pages("app:Parcel", progress).unwrap()).expect("pages");
+    assert_eq!(pages.len(), 2);
+
+    let requests = requests.lock().unwrap();
+    assert_eq!(requests.len(), 4, "{requests:?}");
+    assert_eq!(param(&requests[1], "STARTINDEX").as_deref(), Some("0"));
+    assert_eq!(
+        param(&requests[2], "page").as_deref(),
+        Some("2"),
+        "the next link"
+    );
+    assert_eq!(param(&requests[3], "STARTINDEX").as_deref(), Some("2"));
+    for request in &requests[1..] {
+        assert_eq!(
+            param(request, "SORTBY").as_deref(),
+            Some("app:n DESC"),
+            "{request}"
+        );
+    }
+    let warnings = warnings(&reports);
+    assert!(
+        warnings.iter().any(|w| w.contains("cache expired")),
+        "{warnings:?}"
+    );
+    assert!(
+        !warnings.iter().any(|w| w.contains("without SORTBY")),
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn a_server_that_declares_it_does_not_sort_gets_a_warning() {
+    // A single request (no paging) is sorted too.
+    let capabilities = capabilities(false, 0).replace(
+        "</wfs:WFS_Capabilities>",
+        r#"<fes:Filter_Capabilities xmlns:fes="http://www.opengis.net/fes/2.0"><fes:Conformance>
+    <fes:Constraint name="ImplementsSorting"><ows:NoValues/><ows:DefaultValue>FALSE</ows:DefaultValue></fes:Constraint>
+  </fes:Conformance></fes:Filter_Capabilities></wfs:WFS_Capabilities>"#,
+    );
+    let server = Server::start(vec![ok(capabilities), ok(page(&[1, 2], "2", None))]);
+    let options = WfsOptions {
+        sort_by: vec![("app:n".into(), SortOrder::Asc)],
+        ..options()
+    };
+    let client = WfsClient::new(&server.base, options).unwrap();
+    let (reports, progress) = recorded();
+    read_all(client.pages("app:Parcel", progress).unwrap()).expect("the page");
+    let requests = server.requests();
+    assert_eq!(param(&requests[1], "SORTBY").as_deref(), Some("app:n ASC"));
+    let warnings = warnings(&reports);
+    assert!(
+        warnings.iter().any(|w| w.contains("ImplementsSorting")),
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn wfs_10_cannot_sort_and_says_so() {
+    let capabilities = r#"<WFS_Capabilities xmlns="http://www.opengis.net/wfs" version="1.0.0">
+  <Capability><Request><GetFeature><ResultFormat><GML2/></ResultFormat></GetFeature></Request></Capability>
+  <FeatureTypeList><FeatureType><Name>app:Parcel</Name></FeatureType></FeatureTypeList>
+</WFS_Capabilities>"#;
+    let features = r#"<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs" xmlns:gml="http://www.opengis.net/gml" xmlns:app="http://example.com/app"><gml:featureMember><app:Parcel fid="p1"><app:n>1</app:n></app:Parcel></gml:featureMember></wfs:FeatureCollection>"#;
+    let server = Server::start(vec![ok(capabilities), ok(features)]);
+    let options = WfsOptions {
+        sort_by: vec![("app:n".into(), SortOrder::Asc)],
+        ..options()
+    };
+    let client = WfsClient::new(&server.base, options).unwrap();
+    let (reports, progress) = recorded();
+    read_all(client.pages("app:Parcel", progress).unwrap()).expect("the page");
+    assert_eq!(param(&server.requests()[1], "SORTBY"), None);
+    let warnings = warnings(&reports);
+    assert!(
+        warnings.iter().any(|w| w.contains("WFS 1.0 has no SORTBY")),
+        "{warnings:?}"
     );
 }
 

@@ -236,12 +236,33 @@ pub enum WfsCommand {
         /// e.g. `urn:ogc:def:crs:EPSG::4326`. Default: the type's own CRS.
         #[arg(long, value_name = "SRSNAME", verbatim_doc_comment)]
         srs_name: Option<String>,
-        /// Property to sort the features by (`SORTBY`), e.g. an id
+        /// Sort the features on the server (`SORTBY`), e.g. by an id
         ///
-        /// A server that doesn't sort may repeat or skip features between
-        /// pages. Not sent unless given.
-        #[arg(long, value_name = "PROPERTY", verbatim_doc_comment)]
-        sort_by: Option<String>,
+        /// Format: `PROPERTY [ASC|DESC]`, several separated by commas;
+        /// ascending if no order is given. The property is the feature
+        /// type's, as the server names it (`xeibe wfs layers` lists the
+        /// types; the server's DescribeFeatureType lists the properties).
+        ///
+        /// When pages are requested by position (startIndex), a server
+        /// that returns its features in a different order on each
+        /// request may skip some and repeat others. Sorting by a unique
+        /// property, such as an id, keeps the order the same. Every
+        /// request of the download carries it. Nothing is sorted unless
+        /// this is given: no property is known to be unique on every
+        /// server, so none is guessed. A warning says when the server
+        /// declares it doesn't sort, when the property isn't in the
+        /// type's schema, and when WFS 1.0 (which can't sort) is used.
+        ///
+        /// Examples:
+        ///   --sort-by app:id
+        ///   --sort-by 'name DESC,id'
+        #[arg(
+            long,
+            value_name = "KEYS",
+            value_parser = parse_sort_keys,
+            verbatim_doc_comment
+        )]
+        sort_by: Option<SortKeys>,
         /// Extra query parameter for every request, as `KEY=VALUE`
         ///
         /// For vendor parameters and API keys, e.g. `--param token=abc`.
@@ -261,6 +282,14 @@ pub enum WfsCommand {
         #[command(flatten)]
         read: ReadArgs,
     },
+}
+
+/// `--sort-by`: `SORTBY` keys.
+#[derive(Debug, Clone)]
+pub struct SortKeys(pub Vec<(String, xeibe_wfs::request::SortOrder)>);
+
+fn parse_sort_keys(text: &str) -> Result<SortKeys, String> {
+    xeibe_wfs::request::parse_sort_by(text).map(SortKeys)
 }
 
 #[derive(Debug, Args)]

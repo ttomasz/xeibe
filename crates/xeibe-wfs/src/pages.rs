@@ -10,9 +10,7 @@ use xeibe_core::{BytesSource, Source, Sources};
 
 use crate::exception::ExceptionReport;
 use crate::paging::{self, NextPage, PagingStrategy};
-use crate::request::{
-    GetFeature, ResultType, SortOrder, describe_feature_type_url, get_capabilities_url,
-};
+use crate::request::{GetFeature, ResultType, describe_feature_type_url, get_capabilities_url};
 use crate::response::{self, Response, ResponseInfo};
 use crate::{Capabilities, Error, FeatureTypeInfo, FeatureTypeSchema, WfsOptions, WfsVersion};
 
@@ -145,11 +143,22 @@ impl WfsClient {
             _ => NextPage::Url(template.to_url(&self.endpoint)?.to_string()),
         };
         let constraints = &capabilities.constraints;
+        // Said with the first page.
+        let mut warnings = Vec::new();
+        if !self.options.sort_by.is_empty() {
+            if version == WfsVersion::V1_0_0 {
+                warnings.push("WFS 1.0 has no SORTBY: the features are not sorted".to_string());
+            } else if constraints.implements_sorting == Some(false) {
+                warnings.push(
+                    "the server declares ImplementsSorting = FALSE: it may ignore SORTBY"
+                        .to_string(),
+                );
+            }
+        }
         let pager = Pager {
             http: self.http.clone(),
             base: self.endpoint.clone(),
             template,
-            sort_by: self.options.sort_by.clone(),
             version,
             automatic: self.options.strategy.is_none(),
             strategy,
@@ -167,8 +176,9 @@ impl WfsClient {
             first_matched: None,
             matched_warned: false,
             unsafe_warned: false,
+            unsorted_warned: false,
             previous_ids: HashSet::new(),
-            warnings: Vec::new(),
+            warnings,
             progress: Progress {
                 type_name: feature_type.name.clone(),
                 pages: 0,
@@ -218,7 +228,11 @@ impl WfsClient {
             bbox: self.options.bbox.clone(),
             filter: self.options.filter.clone(),
             property_names: Vec::new(),
-            sort_by: Vec::new(),
+            // Every page in the same order; a count needs none.
+            sort_by: match result_type {
+                ResultType::Results => self.options.sort_by.clone(),
+                ResultType::Hits => Vec::new(),
+            },
             result_type,
             count: None,
             start_index: None,
@@ -264,8 +278,10 @@ fn read_ahead(pager: Pager, concurrency: usize) -> Sources {
 struct Pager {
     http: Arc<crate::http::HttpClient>,
     base: Url,
+    /// Every request of the read: `SORTBY` included, so that `next` links
+    /// (which the server builds from the first request) and a switch to
+    /// offsets after `ResponseCacheExpired` keep the same order.
     template: GetFeature,
-    sort_by: Option<String>,
     version: WfsVersion,
     /// The strategy was chosen, not forced: a `next` link may take over.
     automatic: bool,
@@ -281,6 +297,7 @@ struct Pager {
     first_matched: Option<u64>,
     matched_warned: bool,
     unsafe_warned: bool,
+    unsorted_warned: bool,
     /// Ids of the previous page. Offset paging over changing data shifts
     /// features across a page boundary, so a repeat shows up in the next page;
     /// comparing with one page keeps memory bounded by the page size.
@@ -392,9 +409,6 @@ impl Pager {
         let mut request = self.template.clone();
         request.count = Some(page_size);
         request.start_index = Some(start);
-        if let Some(property) = &self.sort_by {
-            request.sort_by = vec![(property.clone(), SortOrder::Asc)];
-        }
         request.to_url(&self.base)
     }
 
@@ -425,6 +439,18 @@ impl Pager {
         self.fetched += returned;
         self.pages = page;
         self.next = paging::next_page(&self.strategy, self.fetched, info);
+        // Offsets count positions in the server's order: without SORTBY,
+        // nothing says it is the same on every request.
+        if self.template.sort_by.is_empty()
+            && matches!(self.next, NextPage::StartIndex(_))
+            && !self.unsorted_warned
+        {
+            self.unsorted_warned = true;
+            self.warnings.push(
+                "paging by startIndex without SORTBY: unless the server keeps one order across requests, features may be skipped or repeated between pages; sort by an identifier property"
+                    .into(),
+            );
+        }
 
         if page == 1 {
             self.first_matched = info.number_matched;

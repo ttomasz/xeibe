@@ -343,3 +343,120 @@ fn wfs_convert_goes_on_without_a_describe_feature_type() {
     assert!(run.stderr.contains("1 rows written"), "{}", run.stderr);
     assert_eq!(columns(&out), ["@id", "n", "geom"]);
 }
+
+/// A query parameter of a request line (`GET /wfs?… HTTP/1.1`), decoded.
+fn param(request: &str, key: &str) -> Option<String> {
+    let target = request.split(' ').nth(1)?;
+    url::Url::parse(&format!("http://host{target}"))
+        .ok()?
+        .query_pairs()
+        .find(|(k, _)| k.eq_ignore_ascii_case(key))
+        .map(|(_, value)| value.into_owned())
+}
+
+#[test]
+fn wfs_convert_sorts_every_page_on_the_server() {
+    let server = Server::start(vec![
+        capabilities(),
+        describe(),
+        page(&[3, 2], 3),
+        page(&[1], 3),
+    ]);
+    let dir = out_dir("wfs_sort_by");
+    let out = dir.join("parcels.parquet");
+    let run = xeibe_ok(&[
+        "wfs",
+        "convert",
+        &server.base,
+        "--type-name",
+        "app:Parcel",
+        "--page-size",
+        "2",
+        "--sort-by",
+        "n DESC, nme",
+        "--axis-order",
+        "xy",
+        "-o",
+        path_str(&out),
+    ]);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 4, "{requests:?}");
+    for request in &requests[2..] {
+        assert_eq!(
+            param(request, "SORTBY").as_deref(),
+            Some("n DESC,nme ASC"),
+            "{request}"
+        );
+    }
+    // `nme` is no property of the type's schema; `n` is.
+    assert!(
+        run.stderr.contains(
+            "warning: --sort-by nme: the DescribeFeatureType schema declares no such property"
+        ),
+        "{}",
+        run.stderr
+    );
+    assert!(!run.stderr.contains("--sort-by n:"), "{}", run.stderr);
+    assert!(!run.stderr.contains("without SORTBY"), "{}", run.stderr);
+    assert!(run.stderr.contains("3 rows written"), "{}", run.stderr);
+}
+
+#[test]
+fn wfs_convert_without_sort_by_warns_about_offset_paging() {
+    let server = Server::start(vec![
+        capabilities(),
+        describe(),
+        page(&[1, 2], 3),
+        page(&[3], 3),
+    ]);
+    let dir = out_dir("wfs_unsorted");
+    let out = dir.join("parcels.parquet");
+    let run = xeibe_ok(&[
+        "wfs",
+        "convert",
+        &server.base,
+        "--type-name",
+        "app:Parcel",
+        "--page-size",
+        "2",
+        "--axis-order",
+        "xy",
+        "-o",
+        path_str(&out),
+    ]);
+    assert!(
+        server
+            .requests()
+            .iter()
+            .all(|r| param(r, "SORTBY").is_none()),
+        "nothing is sorted unless asked"
+    );
+    assert_eq!(
+        run.stderr.matches("without SORTBY").count(),
+        1,
+        "{}",
+        run.stderr
+    );
+}
+
+#[test]
+fn wfs_convert_rejects_a_malformed_sort_key() {
+    // The flag is checked before anything is requested.
+    let run = xeibe(&[
+        "wfs",
+        "convert",
+        "http://127.0.0.1:9/wfs",
+        "--type-name",
+        "app:Parcel",
+        "--sort-by",
+        "n DOWN",
+        "-o",
+        "unused.parquet",
+    ]);
+    assert!(!run.success);
+    assert!(
+        run.stderr.contains("--sort-by") && run.stderr.contains("ASC or DESC"),
+        "{}",
+        run.stderr
+    );
+}

@@ -54,6 +54,7 @@ What we read from `GetCapabilities`:
 | Paging support | `ImplementsResultPaging` (Table 13) | — | — | Paging strategy |
 | Server page limit | `CountDefault` (Table 14) | — | — | Page size cap |
 | Paging consistency | `PagingIsTransactionSafe` (Table 14, default FALSE) | — | — | Warns that duplicates or skipped features are possible |
+| Sorting support | FES 2.0 `ImplementsSorting` (`fes:Filter_Capabilities/fes:Conformance`) | — | — | A warning when `--sort-by` is given and the server declares FALSE |
 | Page cache lifetime | `ResponseCacheTimeout` (Table 14, seconds) | — | — | Read, not used yet. Resuming after `ResponseCacheExpired` doesn't depend on it |
 | Output formats | `GetFeature` `outputFormat` parameter domain | same | `ResultFormat` (`GML2`) | Format negotiation |
 
@@ -154,13 +155,39 @@ paging and any other server a single request; when the first response carries a
 Offset-based paging is only correct when the order is stable. The standard itself
 warns that pages may overlap or skip features without transactional consistency.
 
-- Send `SORTBY` on an identifier property. Today it is sent only when the user
-  configures one (`WfsOptions::sort_by`, `--sort-by`); detecting one from the data
-  is still to do. `xeibe wfs convert` writes the rows in the order the server
-  sends them (`ReadOptions::preserve_order`): pages are fetched one at a time,
-  so keeping the order costs nothing. Syntax:
+- **`SORTBY` is the user's choice** (`WfsOptions::sort_by`, `--sort-by`). Nothing
+  is sorted unless it is given, and no property is guessed: an id that looks
+  unique may not be, a property may not be sortable on the server (or slow to
+  sort without an index), and `gml:id` is an attribute, not a property, so not every
+  server can sort by it.
+  A wrong guess would look safe while it isn't.
+- The keys are `property [ASC|DESC]`, comma-separated, ascending by default
+  (`name DESC,id`; 1.1's `A`/`D` are read too). They are written in each version's
+  spelling:
   - 2.0: `SORTBY=prop [ASC|DESC],…` (Table 8);
   - 1.1: `SORTBY=prop [A|D],…` (04-094 Table for GetFeature KVP).
+- **Every `GetFeature` of the read carries them**: the first request, whatever the
+  paging strategy (a single request, `startIndex` pages, or the request whose
+  response starts `next` links, which the server builds from it), and the
+  `startIndex` pages after `ResponseCacheExpired`. Sending them on offset pages
+  only would let the order change partway: a `next`-link read would never be
+  sorted, and offsets after the switch would count positions in a different
+  order than the pages before it. `resultType=hits` gets none.
+- Warnings, never errors:
+  - offset paging without `SORTBY`, once, when a second offset page is about to be
+    requested: unless the server keeps one order across requests, features may be
+    skipped or repeated. It suggests sorting by an identifier property and names
+    none;
+  - `SORTBY` given to a server that declares `ImplementsSorting = FALSE`: it may
+    ignore it;
+  - `SORTBY` given for WFS 1.0, which has no `SORTBY`: not sent;
+  - `xeibe wfs convert`: a sort property the type's `DescribeFeatureType`
+    schema doesn't declare (by the local name of its first step; `gml:` and
+    `@` names, from base types outside the schema, are not checked). The server
+    may reject the sort with an exception, which ends the read, or ignore it.
+- `xeibe wfs convert` writes the rows in the order the server sends them
+  (`ReadOptions::preserve_order`): pages are fetched one at a time, so keeping
+  the order costs nothing.
 - Always: check `gml:id` for duplicates across pages and **report** them. Each page
   is compared with the previous one. Removing duplicates (`WfsOptions::dedupe`)
   would need a set of ids and memory proportional to their count; it is not

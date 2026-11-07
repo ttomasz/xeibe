@@ -10,10 +10,42 @@ pub enum ResultType {
     Hits,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortOrder {
     Asc,
     Desc,
+}
+
+/// Sort keys as `SORTBY` takes them: `property [ASC|DESC]`, comma-separated,
+/// e.g. `name DESC,id`. The order defaults to ascending; 1.1's `A` and `D`
+/// are read too, in any case. The property is passed on as written (`app:id`,
+/// `app:address/app:street`).
+pub fn parse_sort_by(text: &str) -> Result<Vec<(String, SortOrder)>, String> {
+    text.split(',')
+        .map(|key| {
+            let mut words = key.split_whitespace();
+            let property = words
+                .next()
+                .ok_or_else(|| format!("{text:?}: an empty sort key"))?;
+            let order = match words.next().map(str::to_ascii_uppercase).as_deref() {
+                None | Some("ASC" | "A") => SortOrder::Asc,
+                Some("DESC" | "D") => SortOrder::Desc,
+                Some(other) => {
+                    return Err(format!(
+                        "{key:?}: the order is ASC or DESC, not {other:?}",
+                        key = key.trim()
+                    ));
+                }
+            };
+            if let Some(extra) = words.next() {
+                return Err(format!(
+                    "{key:?}: expected `property [ASC|DESC]`, found {extra:?} after the order",
+                    key = key.trim()
+                ));
+            }
+            Ok((property.to_string(), order))
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone)]

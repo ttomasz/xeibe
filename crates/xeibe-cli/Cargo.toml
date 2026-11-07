@@ -37,3 +37,5 @@ url.workspace = true
 [dev-dependencies]
 arrow-ipc.workspace = true
 zip.workspace = true
+# Decoding the scripted WFS server's request lines.
+url.workspace = true

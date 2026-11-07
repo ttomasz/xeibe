@@ -7,6 +7,7 @@ use url::Url;
 use xeibe_wfs::WfsVersion;
 use xeibe_wfs::request::{
     GetFeature, ResultType, SortOrder, describe_feature_type_url, get_capabilities_url,
+    parse_sort_by,
 };
 
 fn base() -> Url {
@@ -138,6 +139,30 @@ fn sorting_uses_each_versions_spelling() {
         value(&request.to_url(&base()).expect("a URL"), "SORTBY").as_deref(),
         Some("gml:id D")
     );
+}
+
+#[test]
+fn sort_keys_are_properties_with_an_optional_order() {
+    let keys = |text: &str| parse_sort_by(text).expect("sort keys");
+    assert_eq!(keys("app:id"), [("app:id".to_string(), SortOrder::Asc)]);
+    assert_eq!(
+        keys(" name DESC , app:address/app:street asc,id d,code A"),
+        [
+            ("name".to_string(), SortOrder::Desc),
+            ("app:address/app:street".to_string(), SortOrder::Asc),
+            ("id".to_string(), SortOrder::Desc),
+            ("code".to_string(), SortOrder::Asc),
+        ]
+    );
+    for (text, message) in [
+        ("", "an empty sort key"),
+        ("name,", "an empty sort key"),
+        ("name DOWN", "ASC or DESC"),
+        ("name ASC id", "after the order"),
+    ] {
+        let error = parse_sort_by(text).expect_err(text);
+        assert!(error.contains(message), "{text:?}: {error}");
+    }
 }
 
 #[test]

@@ -33,6 +33,9 @@ pub struct Constraints {
     pub count_default: Option<u64>,
     pub paging_is_transaction_safe: Option<bool>,
     pub response_cache_timeout_s: Option<u64>,
+    /// FES 2.0 `ImplementsSorting` (`fes:Filter_Capabilities/fes:Conformance`),
+    /// WFS 2.0 only.
+    pub implements_sorting: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -241,6 +244,16 @@ fn parse_ows(root: &Element) -> Capabilities {
             count_default: number("CountDefault"),
             paging_is_transaction_safe: flag("PagingIsTransactionSafe"),
             response_cache_timeout_s: number("ResponseCacheTimeout"),
+            implements_sorting: root
+                .path(&["Filter_Capabilities", "Conformance"])
+                .and_then(|conformance| {
+                    conformance.children_named("Constraint").find(|c| {
+                        c.attr("name")
+                            .is_some_and(|n| n.eq_ignore_ascii_case("ImplementsSorting"))
+                    })
+                })
+                .and_then(constraint_value)
+                .and_then(|value| parse_bool(&value)),
         },
     }
 }

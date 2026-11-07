@@ -34,6 +34,12 @@ const WFS_20: &str = r#"<?xml version="1.0"?>
       </ows:WGS84BoundingBox>
     </wfs:FeatureType>
   </wfs:FeatureTypeList>
+  <fes:Filter_Capabilities xmlns:fes="http://www.opengis.net/fes/2.0">
+    <fes:Conformance>
+      <fes:Constraint name="ImplementsQuery"><ows:NoValues/><ows:DefaultValue>TRUE</ows:DefaultValue></fes:Constraint>
+      <fes:Constraint name="ImplementsSorting"><ows:NoValues/><ows:DefaultValue>FALSE</ows:DefaultValue></fes:Constraint>
+    </fes:Conformance>
+  </fes:Filter_Capabilities>
 </wfs:WFS_Capabilities>"#;
 
 const WFS_11: &str = r#"<?xml version="1.0"?>
@@ -84,6 +90,11 @@ fn reads_a_wfs_20_capabilities_document() {
         Some(true)
     );
     assert_eq!(capabilities.constraints.count_default, Some(5000));
+    assert_eq!(
+        capabilities.constraints.implements_sorting,
+        Some(false),
+        "from the filter capabilities' conformance"
+    );
 
     let feature_type = capabilities
         .feature_type("ms:AD.Address")
@@ -179,4 +190,5 @@ fn missing_constraints_are_unknown_rather_than_false() {
     assert_eq!(wfs11.constraints.implements_result_paging, None);
     assert_eq!(wfs11.constraints.count_default, None);
     assert_eq!(wfs11.constraints.paging_is_transaction_safe, None);
+    assert_eq!(wfs11.constraints.implements_sorting, None);
 }

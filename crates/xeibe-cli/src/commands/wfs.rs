@@ -49,10 +49,11 @@ pub fn run(command: WfsCommand) -> super::Result {
             let options = WfsOptions {
                 page_size,
                 srs_name,
-                sort_by,
+                sort_by: sort_by.map(|keys| keys.0).unwrap_or_default(),
                 vendor_params,
                 ..WfsOptions::default()
             };
+            let sort_by = options.sort_by.clone();
             let client = WfsClient::new(&service.url, options)?;
             // `--layer` names the layer in the settings file when it differs
             // from the type name (another prefix, say).
@@ -67,6 +68,11 @@ pub fn run(command: WfsCommand) -> super::Result {
             if schema.is_none() {
                 match client.describe(&type_name) {
                     Ok(declared) => {
+                        for property in undeclared_sort_keys(&sort_by, &declared) {
+                            eprintln!(
+                                "warning: --sort-by {property}: the DescribeFeatureType schema declares no such property; the server may reject or ignore the sort"
+                            );
+                        }
                         settings.options.inference.hint = Some(Arc::new(hint(declared)))
                     }
                     Err(error) => eprintln!(
@@ -82,6 +88,26 @@ pub fn run(command: WfsCommand) -> super::Result {
             Ok(())
         }
     }
+}
+
+/// Sort properties the type's schema doesn't declare, by the local name of
+/// their first step (`app:address/app:street` → `address`). GML's own
+/// properties (`gml:name`, …) and attributes (`@gml:id`) come from base types
+/// outside the schema, so they are not checked.
+fn undeclared_sort_keys<'a>(
+    keys: &'a [(String, xeibe_wfs::request::SortOrder)],
+    declared: &FeatureTypeSchema,
+) -> Vec<&'a str> {
+    keys.iter()
+        .map(|(property, _)| property.as_str())
+        .filter(|property| {
+            let step = property.split('/').next().unwrap_or_default();
+            let (prefix, local) = step.split_once(':').unwrap_or(("", step));
+            !(step.starts_with('@')
+                || prefix == "gml"
+                || declared.properties.iter().any(|p| p.name == local))
+        })
+        .collect()
 }
 
 /// The schema hint for inference: the type's direct properties.
