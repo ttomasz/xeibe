@@ -465,6 +465,7 @@ pub struct GmlOptions {
     pub strip_local_href_hash: bool,   // "#PL.X.1" → "PL.X.1" (default true)
     pub nil_reason: bool,              // keep nilReason as a `<path>/@nilReason` column (default true when seen)
     pub bounded_by: BoundedBy,         // Drop (default) | BoxStruct | Geometry
+    pub geometry_id: IdMode,           // Drop (default) | Column: a geometry's gml:id (GML 2: gid) at `<property>/*/@id`
     pub drop_control_attributes: bool, // drop owns, remoteSchema, aggregationType, xlink:type/show/actuate (default true)
 }
 ```

@@ -840,3 +840,134 @@ fn to_wkb_turns_native_columns_into_wkb_keeping_crs_and_path() {
         "POLYGON ((0 0, 1 0, 1 1, 0 0))",
     );
 }
+
+/// Options that ask for geometry id columns.
+fn with_geometry_ids() -> ReadOptions {
+    let mut options = ReadOptions::default();
+    options.inference.gml.geometry_id = xeibe_schema::options::IdMode::Column;
+    options
+}
+
+#[test]
+fn geometry_ids_are_dropped_by_default_and_a_column_on_request() {
+    let document = gml::gml32_collection(&[
+        &parcel(
+            "p1",
+            r#"<app:geom><gml:Point gml:id="g1" srsName="EPSG:2180"><gml:pos>1 2</gml:pos></gml:Point></app:geom>"#,
+        ),
+        &parcel("p2", &format!("<app:geom>{}</app:geom>", point(3.0, 4.0))),
+    ]);
+    let read = read_document(&document, "Parcel");
+    assert_eq!(read.column_names(), ["@id", "geom"]);
+
+    let read = read_with(&document, "Parcel", None, &with_geometry_ids());
+    assert_eq!(read.column_names(), ["@id", "geom", "geom.@id"]);
+    assert_eq!(
+        read.field("geom.@id")
+            .metadata()
+            .get(meta::PATH)
+            .map(String::as_str),
+        Some("geom/*/@id")
+    );
+    assert_eq!(read.strings("geom.@id"), [Some("g1".into()), None]);
+    let geometries = read.geometries("geom");
+    assert_wkt(geometries[0].as_ref().expect("a point"), "POINT (1 2)");
+}
+
+#[test]
+fn geometry_ids_of_a_repeated_property_are_a_list_aligned_with_it() {
+    let point = |id: &str, x: f64| {
+        format!(
+            r#"<app:pos><gml:Point gml:id="{id}" srsName="EPSG:2180"><gml:pos>{x} 0</gml:pos></gml:Point></app:pos>"#
+        )
+    };
+    let document = gml::gml32_collection(&[
+        &parcel("p1", &format!("{}{}", point("a", 1.0), point("b", 2.0))),
+        &parcel(
+            "p2",
+            &format!(
+                "<app:pos>{}</app:pos>{}",
+                self::point(3.0, 0.0),
+                point("c", 4.0)
+            ),
+        ),
+    ]);
+    let read = read_with(&document, "Parcel", None, &with_geometry_ids());
+    assert_eq!(read.column_names(), ["@id", "pos", "pos.@id"]);
+    let ids = |ids: &[Option<&str>]| Some(ids.iter().map(|id| id.map(String::from)).collect());
+    assert_eq!(
+        read.string_lists("pos.@id"),
+        [ids(&[Some("a"), Some("b")]), ids(&[None, Some("c")])]
+    );
+}
+
+#[test]
+fn a_gml_2_geometry_gid_is_its_id_column() {
+    let document = gml::gml2_collection(&[concat!(
+        "<app:Parcel fid=\"p1\"><app:geom>",
+        "<gml:Point gid=\"g1\" srsName=\"EPSG:2180\"><gml:coordinates>1,2</gml:coordinates></gml:Point>",
+        "</app:geom></app:Parcel>"
+    )]);
+    let read = read_with(&document, "Parcel", None, &with_geometry_ids());
+    assert_eq!(read.column_names(), ["@id", "geom", "geom.@id"]);
+    assert_eq!(
+        read.field("geom.@id")
+            .metadata()
+            .get(meta::PATH)
+            .map(String::as_str),
+        Some("geom/*/@gid")
+    );
+    assert_eq!(read.strings("geom.@id"), [Some("g1".into())]);
+}
+
+#[test]
+fn a_geometry_propertys_own_attributes_follow_the_generic_rules() {
+    // GML 3.1's `priorityLocation` has a `priority`: a column when it
+    // varies, else the geometry column's metadata. A link on the property is
+    // the geometry by reference, not a column.
+    let point = r#"<gml:Point srsName="EPSG:2180"><gml:pos>1 2</gml:pos></gml:Point>"#;
+    let document = gml::gml31_collection(&[
+        &parcel(
+            "p1",
+            &format!(r#"<gml:priorityLocation priority="high">{point}</gml:priorityLocation>"#),
+        ),
+        &parcel(
+            "p2",
+            &format!(r#"<gml:priorityLocation priority="low">{point}</gml:priorityLocation>"#),
+        ),
+        &parcel(
+            "p3",
+            r##"<gml:priorityLocation priority="low" xlink:href="#elsewhere"/>"##,
+        ),
+    ]);
+    let read = read_document(&document, "Parcel");
+    assert_eq!(
+        read.column_names(),
+        ["@id", "priorityLocation", "@priority"]
+    );
+    assert_eq!(
+        read.strings("@priority"),
+        [Some("high".into()), Some("low".into()), Some("low".into())]
+    );
+    assert_eq!(
+        read.field("@priority")
+            .metadata()
+            .get(meta::PATH)
+            .map(String::as_str),
+        Some("priorityLocation/@priority")
+    );
+
+    let constant = gml::gml31_collection(&[&parcel(
+        "p1",
+        &format!(r#"<gml:priorityLocation priority="high">{point}</gml:priorityLocation>"#),
+    )]);
+    let read = read_document(&constant, "Parcel");
+    assert_eq!(read.column_names(), ["@id", "priorityLocation"]);
+    assert_eq!(
+        read.field("priorityLocation")
+            .metadata()
+            .get(&format!("{}priority", meta::ATTR_PREFIX))
+            .map(String::as_str),
+        Some("high")
+    );
+}

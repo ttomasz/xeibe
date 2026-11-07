@@ -251,6 +251,10 @@ pub struct GmlOptions {
     pub strip_local_href_hash: bool,
     pub nil_reason: bool,
     pub bounded_by: BoundedBy,
+    /// The `gml:id` (GML 2: `gid`) of geometry elements: dropped by default;
+    /// `Column` adds a text column next to each geometry column, at
+    /// `<property>/*/@id` (`docs/geometry.md`, "Geometry ids").
+    pub geometry_id: IdMode,
     /// Drop `owns`, `remoteSchema`, `aggregationType`, `xlink:type/show/actuate`.
     pub drop_control_attributes: bool,
 }
@@ -263,6 +267,7 @@ impl Default for GmlOptions {
             strip_local_href_hash: true,
             nil_reason: true,
             bounded_by: BoundedBy::Drop,
+            geometry_id: IdMode::Drop,
             drop_control_attributes: true,
         }
     }

@@ -29,6 +29,10 @@ pub struct GeometrySniff {
     /// First position, as written (no axis decision applied).
     pub first_position: Option<Vec<f64>>,
     pub by_reference: bool,
+    /// The outermost geometry element has a `gml:id` (GML 3), or GML 2's
+    /// `gid`.
+    pub gml_id: bool,
+    pub gid: bool,
     /// No position at all.
     pub empty: bool,
     /// An element in a GML 3.3 namespace (a compact encoding, TIN, …).
@@ -63,6 +67,8 @@ pub fn sniff_geometry_in(
         has_unsupported: kind == GeomKind::Unsupported,
         has_curves: compact_curve(&root.name).is_some(),
         gml_33: root.name.is_gml_33(),
+        gml_id: root.attrs.gml_id,
+        gid: root.attrs.gid,
         ..GeometrySniff::default()
     };
     let mut dialect = DialectTracker::default();

@@ -30,6 +30,11 @@ pub struct GeometryStats {
     /// Geometry given only as `xlink:href`.
     pub by_reference: u64,
     pub empty: u64,
+    /// Geometries whose element has a `gml:id`, and GML 2 ones with a `gid`.
+    #[serde(default)]
+    pub ids: u64,
+    #[serde(default)]
+    pub gids: u64,
 }
 
 impl GeometryStats {
@@ -64,6 +69,8 @@ impl GeometryStats {
         if sniff.empty {
             self.empty += 1;
         }
+        self.ids += u64::from(sniff.gml_id);
+        self.gids += u64::from(sniff.gid);
         let position = sniff.first_position.as_deref().filter(|p| p.len() >= 2);
         let dim = sniff
             .srs_dimension
@@ -149,5 +156,7 @@ impl Merge for GeometryStats {
         }
         self.by_reference += other.by_reference;
         self.empty += other.empty;
+        self.ids += other.ids;
+        self.gids += other.gids;
     }
 }

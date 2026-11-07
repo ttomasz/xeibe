@@ -791,6 +791,21 @@ needs `allow_single_feature_root` (in a settings file:
 in EPSG:4326 with a radius in metres, the unsupported case, so the feature is
 a feature error unless `OnFeatureError::NullGeometry` keeps the rest of it.
 
+## Geometry ids
+
+A geometry element's `gml:id` (GML 3) or `gid` (GML 2) is dropped by default:
+it rarely means anything outside the file. With `GmlOptions::geometry_id =
+Column` (in a settings file, `"options": {"inference": {"gml": {"geometry_id":
+"Column"}}}`), a scan adds a `text` column after each geometry column whose
+geometries had one, at the path `<property>/*/@id` (`<property>/*/@gid`),
+named `<property>.@id` when the feature's `@id` is a column too. Below a
+repeated property it is a `text[]` aligned with the `geometry[]`; a geometry
+without an id is null. An array property (`pointArrayProperty`, …) has no id
+column: its geometries make one value.
+
+The reader takes any attribute of a geometry element that a column's path
+names, so a settings file can also ask for, say, `geom/*/@srsName` as text.
+
 ## Envelopes
 
 - `Envelope` uses `lowerCorner` and `upperCorner`. The older forms (two `pos`,

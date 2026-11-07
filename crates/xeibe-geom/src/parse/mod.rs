@@ -444,6 +444,9 @@ pub(crate) struct Attrs {
     /// `orientation="-"`.
     pub reversed: bool,
     pub href: bool,
+    /// A `gml:id` (GML 3), or GML 2's `gid`.
+    pub gml_id: bool,
+    pub gid: bool,
     pub interpolation: Option<String>,
     pub uom: Option<String>,
     pub axis_labels: Option<String>,
@@ -466,6 +469,8 @@ impl Attrs {
                 (None, "numArc") => out.num_arc = value.trim().parse().ok(),
                 (None, "orientation") => out.reversed = value.trim() == "-",
                 (Some(ns::XLINK), "href") => out.href = true,
+                (Some(ns::GML | ns::GML_32), "id") => out.gml_id = true,
+                (None, "gid") => out.gid = true,
                 (None, "interpolation") => out.interpolation = Some(value.into_owned()),
                 (None, "uom") => out.uom = Some(value.into_owned()),
                 (None, "axisLabels") => out.axis_labels = Some(value.into_owned()),

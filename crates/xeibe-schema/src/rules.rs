@@ -22,7 +22,7 @@ use xeibe_geom::options::{CurveMode, GeomEncoding};
 use xeibe_geom::{AxisKey, GeomKind, SrsName};
 
 use crate::geometry_stats::GeometryStats;
-use crate::node::{Shape, is_gml_id};
+use crate::node::{Shape, is_gml_id, is_link_or_nil_attribute};
 use crate::options::{
     AllNull, AttrSelect, BoundedBy, ConstantAttrs, FieldOverride, IdMode, IntWidth, ListRule,
     Lossless, MixedContent, XlinkMode, string_type,
@@ -195,7 +195,8 @@ struct Col {
     anchor: Option<usize>,
     /// The property holds only an `xlink:href`: the name leaves out `@href`.
     by_reference: bool,
-    /// The feature's GML 2 `fid`: named `@id`, like a `gml:id`.
+    /// The feature's GML 2 `fid`, or a geometry's `gid`: named `@id`, like
+    /// a `gml:id`.
     feature_id: bool,
     kind: ColKind,
     metadata: HashMap<String, String>,
@@ -744,6 +745,7 @@ impl Engine<'_> {
             return;
         }
         if let Some(stats) = &node.geometry {
+            let own = out.len();
             match &plan.data_type {
                 Some(data_type) => out.push(leaf(
                     data_type.clone(),
@@ -751,6 +753,8 @@ impl Engine<'_> {
                 )),
                 None => out.push(self.geometry_col(stats, steps, anchor)),
             }
+            self.geometry_property_attributes(node, steps, anchor, own, out);
+            self.geometry_ids(stats, steps, anchor, out);
             return;
         }
         if node.truncated {
@@ -887,6 +891,103 @@ impl Engine<'_> {
         }
         self.nil_reason(node, steps, anchor, out);
         self.children(node, steps, anchor, out);
+    }
+
+    /// The attributes of a geometry property element itself (GML 3.1's
+    /// `priorityLocation` has `priority`), as for any element: constant ones
+    /// in the metadata of the geometry column (`out[own]`), the others
+    /// columns. Its `xlink:*` and `nilReason` are left out: a link is the
+    /// geometry given by reference.
+    fn geometry_property_attributes(
+        &self,
+        node: &ElementNode,
+        steps: &[Step],
+        anchor: Option<usize>,
+        own: usize,
+        out: &mut Vec<Col>,
+    ) {
+        let mut attributes = self.attributes(node, steps, anchor);
+        let link = |col: &Col| {
+            col.attribute
+                .as_ref()
+                .is_some_and(|(name, _)| is_link_or_nil_attribute(name))
+        };
+        attributes.cols.retain(|col| !link(col));
+        attributes.constants.retain(|(_, _, col)| !link(col));
+        if let Some(col) = out.get_mut(own) {
+            for (key, value, _) in attributes.constants {
+                col.reasons.push(format!(
+                    "its {} attribute is always {value:?}: kept once, in the column's metadata ({key}), not as a column",
+                    key.strip_prefix(meta::ATTR_PREFIX).unwrap_or(&key)
+                ));
+                col.metadata.insert(key, value);
+            }
+        }
+        out.extend(attributes.cols);
+    }
+
+    /// With `geometry_id = Column`, the `gml:id` (GML 2: `gid`) of the
+    /// geometry elements of a property, at `<property>/*/@id`. Not for an
+    /// array property, whose several geometries make one value.
+    fn geometry_ids(
+        &self,
+        stats: &GeometryStats,
+        steps: &[Step],
+        anchor: Option<usize>,
+        out: &mut Vec<Col>,
+    ) {
+        if self.options.gml.geometry_id != IdMode::Column {
+            return;
+        }
+        let property = &steps.last().expect("a property step").name;
+        if xeibe_geom::parse::is_array_property(property) {
+            return;
+        }
+        let geometry = Step {
+            name: QName::new(None, "*"),
+            wrapper: true,
+            prefixed: false,
+        };
+        let id_steps = Self::with_step(steps, geometry);
+        let ids = [
+            (stats.ids, QName::new(Some(ns::GML_32), "id"), "gml:id"),
+            (stats.gids, QName::new(None, "gid"), "gid"),
+        ];
+        for (count, attribute, written) in ids {
+            if count == 0 {
+                continue;
+            }
+            let plan = self.plan(&id_steps, Some(&attribute));
+            if plan.drop {
+                continue;
+            }
+            let mut col = Col::new(
+                &id_steps,
+                anchor,
+                plan.data_type.clone().unwrap_or_else(|| self.string()),
+            );
+            col.attribute = Some((attribute, false));
+            // GML 2's `gid` is named `@id` too.
+            col.feature_id = written == "gid";
+            col.reasons = plan.reasons;
+            col.reasons.insert(
+                0,
+                format!(
+                    "the {written} of the geometry in {}, as the geometry_id setting asks",
+                    property.local
+                ),
+            );
+            if count < stats.count {
+                let missing = stats.count - count;
+                col.reasons.push(format!(
+                    "{} of {} geometries ({}) have none (null)",
+                    thousands(missing),
+                    thousands(stats.count),
+                    share(missing, stats.count)
+                ));
+            }
+            out.push(col);
+        }
     }
 
     fn bounded_by(&self, node: &ElementNode, steps: &[Step], out: &mut Vec<Col>) {

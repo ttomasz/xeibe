@@ -98,6 +98,8 @@ alignment in [Lists and alignment](schema-inference.md#lists-and-alignment).
 | mixed content (text + elements) | `text` containing the raw XML fragment |
 | subtree beyond `Limits` / dynamic element names | one `map` column, `Map(Utf8View → Utf8View)` (relative path → text) |
 | geometry property | GeoArrow extension type (see [geometry.md](geometry.md)). Below a repeated element: `geometry[]`, a list of WKB |
+| geometry property with attributes of its own (`<gml:priorityLocation priority="high">`) | the geometry column and `@priority` (path `priorityLocation/@priority`), by the rules above; `xlink:*` and `nilReason` are left out |
+| `gml:id` of a geometry (`GmlOptions::geometry_id = Column`) | `text` (path `<property>/*/@id`; GML 2's `gid`: `<property>/*/@gid`), named `<property>.@id`; `text[]` below a repeated element. Dropped by default |
 | `gml:boundedBy` (`BoundedBy::BoxStruct`) | `geoarrow.box`: `Struct("xmin": Float64, "ymin": Float64, "xmax": Float64, "ymax": Float64)` (+ `zmin/zmax`) |
 
 The only `Struct`s in a schema are inside GeoArrow types (native coordinates,

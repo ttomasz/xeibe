@@ -314,9 +314,9 @@ impl<'a> FeatureReader<'a> {
                 XmlEvent::Start { name, attrs } => {
                     had_children = true;
                     if wants_geometry && (name.is_gml() || name.is_gml_33()) {
-                        drop(attrs);
                         geometries += 1;
                         if geometries > 1 && !array {
+                            drop(attrs);
                             // A second value where the column holds one.
                             let column = geometry_targets(nodes).next().map(|target| target.column);
                             let name = column.map_or("", |column| {
@@ -329,6 +329,16 @@ impl<'a> FeatureReader<'a> {
                             reader.skip_element()?;
                             continue;
                         }
+                        // The geometry element's own attributes (its
+                        // `gml:id`), for the columns whose paths lead into it.
+                        let mut matched = Vec::new();
+                        for node in nodes {
+                            node.matching_children(&name, &mut matched);
+                        }
+                        if !matched.is_empty() {
+                            self.start(&matched, &attrs, state);
+                        }
+                        drop(attrs);
                         let part = self.geometry(reader, nodes, state)?;
                         parts = parts.zip(part).map(|(mut parts, part)| {
                             parts.push(part);
