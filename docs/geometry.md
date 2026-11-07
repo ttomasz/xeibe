@@ -184,17 +184,39 @@ profile (10-100r3 §8.4.4.11.2, Table 6) explicitly allows `CircleByCenterPoint`
 
 Spec (§10.4.7.8–9): the start and end points of each arc, plus `bulge` and `normal`
 per arc. The number of positions is `numArc + 1`, and the mid-arc points are computed.
-The formula is in ISO 19107:2003 §6.4.17, which we don't have.
+GML 3.2.1 refers to ISO 19107:2003 §6.4.17 for the definition. GML 3.1.1's schema
+quotes it in its annotations (`gml/3.1.1/base/geometryPrimitives.xsd`, in
+`ogc_schemas/`):
 
-**[GDAL]** formula, adopted until verified: for each arc with chord `p0 → p1`,
-- `mid = (p0 + p1) / 2`
-- `n̂` = unit vector perpendicular to the chord, rotated 90° counter-clockwise from
-  `p1 − p0`
-- the arc's middle control point is `mid + n̂ × bulge × normal`, using the first
-  component of `normal`.
+> The midpoint of the resulting arc is given by: midPoint = ((startPoint +
+> endPoint)/2.0) + bulge*normal
 
-> ⚠️ Needs a test case with known geometry before this is marked ✅. It's rare in
-> practice, so it stays P2.
+> In a 2D coordinate system, there are only two possible directions for the normal,
+> and it is often given as a signed real, indicating its length, with a positive sign
+> indicating a left turn angle from the chord line, and a negative sign indicating a
+> right turn from the chord. […] The normal is usually a unit vector, but this is not
+> absolutely necessary. If the normal is a zero vector, the geometric object becomes
+> equivalent to the straight line between the two end points.
+
+So, for each arc with chord `p0 → p1`:
+
+- `mid = (p0 + p1) / 2`;
+- a `normal` of one number `n` is the vector of length `n` perpendicular to the
+  chord, rotated 90° counter-clockwise from `p1 − p0` (a left turn) when `n` is
+  positive. A `normal` of two or more numbers is the vector itself (its first two
+  components; a third, for an arc in 3D, is not used). **[GDAL]** 3.13 reads only
+  the first number, which turns a vector normal such as `0 1` into a straight line;
+- the arc's middle control point is `mid + bulge × normal`. A zero normal or bulge
+  puts it on the chord: a degenerate arc, which linearizes to the chord;
+- it is computed in the coordinates **as written**, before the axes are swapped: the
+  formula is in the CRS's own coordinates, so for a CRS written y/x, "left" turns
+  from the first axis written toward the second. **[GDAL]** does the same (checked
+  with 3.13 on an arc in `urn:ogc:def:crs:EPSG::4326`). Center-point arcs differ:
+  their angles are measured from +x after the swap, as GDAL's arcs meet their
+  neighbours (`parse_curves.rs`, `arc_angles_are_measured_in_output_order`).
+
+The tests work out each expected arc from this definition alone
+(`crates/xeibe-geom/tests/it/parse_curves.rs`, `arcs.rs`, `gml33.rs`).
 
 ## Coordinates
 

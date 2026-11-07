@@ -40,18 +40,44 @@ pub fn circle_by_center_point(center: [f64; 2], radius: f64) -> [[f64; 2]; 5] {
     [180.0, 90.0, 0.0, 270.0, 180.0].map(|deg| point_at_deg(center, radius, deg))
 }
 
-/// `ArcByBulge` middle control point, GDAL formula (unverified against
-/// ISO 19107 §6.4.17): `mid + n̂ · bulge · normal`.
-pub fn arc_by_bulge_midpoint(p0: [f64; 2], p1: [f64; 2], bulge: f64, normal: f64) -> [f64; 2] {
+/// An `ArcByBulge`'s `normal`, perpendicular to the chord.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BulgeNormal {
+    /// One number: the normal's length, positive for a left turn from the
+    /// chord, negative for a right turn.
+    Signed(f64),
+    /// The vector itself (its first two components).
+    Vector([f64; 2]),
+}
+
+/// `ArcByBulge` middle control point, as GML 3.1.1's schema states it
+/// (ISO 19107:2003 §6.4.17's wording, in `geometryPrimitives.xsd`):
+/// `midPoint = ((startPoint + endPoint)/2.0) + bulge*normal`.
+///
+/// In the coordinates as written: "left" turns from the first axis toward
+/// the second. A zero normal (or bulge) gives the chord's midpoint, "the
+/// straight line between the two end points".
+pub fn arc_by_bulge_midpoint(
+    p0: [f64; 2],
+    p1: [f64; 2],
+    bulge: f64,
+    normal: BulgeNormal,
+) -> [f64; 2] {
     let mid = [(p0[0] + p1[0]) / 2.0, (p0[1] + p1[1]) / 2.0];
-    let (dx, dy) = (p1[0] - p0[0], p1[1] - p0[1]);
-    let length = dx.hypot(dy);
-    if length == 0.0 {
-        return mid;
-    }
-    // The chord direction rotated 90° counter-clockwise, as a unit vector.
-    let (nx, ny) = (-dy / length, dx / length);
-    [mid[0] + nx * bulge * normal, mid[1] + ny * bulge * normal]
+    let [nx, ny] = match normal {
+        BulgeNormal::Vector(vector) => vector,
+        BulgeNormal::Signed(length) => {
+            let (dx, dy) = (p1[0] - p0[0], p1[1] - p0[1]);
+            let chord = dx.hypot(dy);
+            if chord == 0.0 {
+                return mid;
+            }
+            // The chord direction rotated 90° counter-clockwise (a left
+            // turn), scaled to the normal's length.
+            [-dy / chord * length, dx / chord * length]
+        }
+    };
+    [mid[0] + bulge * nx, mid[1] + bulge * ny]
 }
 
 /// Geodesic linearization for `ArcByCenterPoint`/`CircleByCenterPoint` in a

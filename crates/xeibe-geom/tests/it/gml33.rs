@@ -404,3 +404,29 @@ fn triangulated_surfaces_and_referenceable_grids_are_unsupported() {
         assert!(matches!(error, Error::Unsupported { .. }), "{snippet}: got {error:?}");
     }
 }
+
+/// §7.9–7.10 define the compact bulge arcs as GML 3.2 `ArcByBulge`
+/// segments, so the same definition gives their geometry:
+/// `midPoint = ((startPoint + endPoint)/2.0) + bulge*normal`.
+#[test]
+fn simple_arcs_by_bulge_follow_the_standards_definition() {
+    let tol = Tol::abs(1e-9);
+    assert_wkt_tol(
+        &g33(concat!(
+            "<gmlce:SimpleArcByBulge><gml:posList>0 0 2 0</gml:posList>",
+            "<gmlce:bulge>1</gmlce:bulge><gmlce:normal>1</gmlce:normal></gmlce:SimpleArcByBulge>"
+        )),
+        "CIRCULARSTRING (0 0,1 1,2 0)",
+        tol,
+    );
+    assert_wkt_tol(
+        &g33(concat!(
+            "<gmlce:SimpleArcStringByBulge><gml:posList>0 0 2 0 4 0</gml:posList>",
+            "<gmlce:bulge>1</gmlce:bulge><gmlce:bulge>1</gmlce:bulge>",
+            "<gmlce:normal>1</gmlce:normal><gmlce:normal>0 -1</gmlce:normal>",
+            "</gmlce:SimpleArcStringByBulge>"
+        )),
+        "CIRCULARSTRING (0 0,1 1,2 0,3 -1,4 0)",
+        tol,
+    );
+}

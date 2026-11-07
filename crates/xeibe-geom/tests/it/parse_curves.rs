@@ -222,15 +222,145 @@ fn a_parameter_arc_without_its_parameters_is_an_error() {
     }
 }
 
-#[test]
-fn arc_by_bulge_uses_the_gdal_formula() {
-    // GDAL case ogr_gml_geom:2290: chord (2,0) → (-2,0), bulge 2, normal -1.
-    let snippet = curve(concat!(
-        "<gml:ArcByBulge><gml:posList>2 0 -2 0</gml:posList><gml:bulge>2</gml:bulge>",
-        "<gml:normal>-1</gml:normal></gml:ArcByBulge>"
-    ));
-    assert_geometry_tol(&snippet, "CIRCULARSTRING (2 0,0 2,-2 0)", Tol::abs(1e-9));
+/// An `ArcByBulge` with `positions`, `bulge` and `normal`.
+fn by_bulge(positions: &str, bulges: &[&str], normals: &[&str]) -> String {
+    let element = if bulges.len() == 1 {
+        "ArcByBulge"
+    } else {
+        "ArcStringByBulge"
+    };
+    let mut content = format!("<gml:{element}><gml:posList>{positions}</gml:posList>");
+    for bulge in bulges {
+        content.push_str(&format!("<gml:bulge>{bulge}</gml:bulge>"));
+    }
+    for normal in normals {
+        content.push_str(&format!("<gml:normal>{normal}</gml:normal>"));
+    }
+    content.push_str(&format!("</gml:{element}>"));
+    curve(&content)
+}
 
+/// The expected arcs are worked out from the standard's definition alone
+/// (GML 3.1.1 `geometryPrimitives.xsd`, quoting ISO 19107:2003 §6.4.17):
+/// `midPoint = ((startPoint + endPoint)/2.0) + bulge*normal`, a signed
+/// normal turning left of the chord when positive.
+#[test]
+fn arc_by_bulge_follows_the_standards_definition() {
+    let tol = Tol::abs(1e-9);
+    // Chord (0,0) → (2,0), offset 1 to the left: the upper half of the
+    // circle around (1,0) of radius 1.
+    assert_geometry_tol(
+        &by_bulge("0 0 2 0", &["1"], &["1"]),
+        "CIRCULARSTRING (0 0,1 1,2 0)",
+        tol,
+    );
+    // To the right: the lower half.
+    assert_geometry_tol(
+        &by_bulge("0 0 2 0", &["1"], &["-1"]),
+        "CIRCULARSTRING (0 0,1 -1,2 0)",
+        tol,
+    );
+    // The offset is the product.
+    assert_geometry_tol(
+        &by_bulge("0 0 2 0", &["0.5"], &["2"]),
+        "CIRCULARSTRING (0 0,1 1,2 0)",
+        tol,
+    );
+    // A longer chord, the same offset: a flatter arc of the circle around
+    // (2,-1.5) of radius 2.5 (2.5² = 2² + 1.5²; 1 - (-1.5) = 2.5).
+    assert_geometry_tol(
+        &by_bulge("0 0 4 0", &["1"], &["1"]),
+        "CIRCULARSTRING (0 0,2 1,4 0)",
+        tol,
+    );
+    // GDAL case ogr_gml_geom:2290: chord (2,0) → (-2,0) heads west, so a
+    // right turn (normal -1) is north.
+    assert_geometry_tol(
+        &by_bulge("2 0 -2 0", &["2"], &["-1"]),
+        "CIRCULARSTRING (2 0,0 2,-2 0)",
+        tol,
+    );
+}
+
+#[test]
+fn an_arc_string_by_bulge_has_a_bulge_and_a_normal_per_arc() {
+    // Left, then right: an S.
+    assert_geometry_tol(
+        &by_bulge("0 0 2 0 4 0", &["1", "1"], &["1", "-1"]),
+        "CIRCULARSTRING (0 0,1 1,2 0,3 -1,4 0)",
+        Tol::abs(1e-9),
+    );
+}
+
+#[test]
+fn a_bulge_normal_may_be_a_vector() {
+    // "it is often given as a signed real": often, not always. GDAL 3.13
+    // uses only the first number, which here would give a straight line.
+    assert_geometry_tol(
+        &by_bulge("0 0 2 0", &["1"], &["0 1"]),
+        "CIRCULARSTRING (0 0,1 1,2 0)",
+        Tol::abs(1e-9),
+    );
+    assert_geometry_tol(
+        &by_bulge("0 0 2 0", &["2"], &["0 -0.5"]),
+        "CIRCULARSTRING (0 0,1 -1,2 0)",
+        Tol::abs(1e-9),
+    );
+}
+
+#[test]
+fn a_zero_normal_is_the_straight_line_between_the_end_points() {
+    // The middle point lies on the chord; linearized, the arc is the chord.
+    let snippet = by_bulge("0 0 2 0", &["1"], &["0"]);
+    assert_geometry_tol(&snippet, "CIRCULARSTRING (0 0,1 0,2 0)", Tol::abs(1e-9));
+    let options = xeibe_geom::GeometryOptions {
+        curves: xeibe_geom::options::CurveMode::Linearize(Default::default()),
+        ..Default::default()
+    };
+    let parsed =
+        crate::support::parse_with(&snippet, &options, &crate::support::FixedAxis::no_swap())
+            .expect("a curve");
+    let line = crate::support::to_g(&parsed.geometry.expect("a geometry"));
+    assert_wkt_tol(&line, "LINESTRING (0 0,1 0,2 0)", Tol::abs(1e-9));
+}
+
+/// The formula is in the CRS's own coordinates: for a CRS written y/x the
+/// mid point is computed before the axes are swapped, so "left" turns from
+/// the first axis written toward the second. GDAL 3.13 gives the same
+/// `CIRCULARSTRING (10 50,11 49,12 50)` for this arc in
+/// `urn:ogc:def:crs:EPSG::4326` (checked with `scripts/gdal ogrinfo`).
+#[test]
+fn a_bulge_is_computed_in_the_written_axis_order() {
+    // Written lat/lon: from (50,10) to (50,12), the second axis grows; a
+    // left turn from it lowers the first: latitude 49.
+    let parsed = crate::support::parse_with(
+        &by_bulge("50 10 50 12", &["1"], &["1"]),
+        &xeibe_geom::GeometryOptions::default(),
+        &crate::support::FixedAxis::swap(),
+    )
+    .expect("a curve");
+    assert_wkt_tol(
+        &crate::support::to_g(&parsed.geometry.expect("a geometry")),
+        "CIRCULARSTRING (10 50,11 49,12 50)",
+        Tol::abs(1e-9),
+    );
+    // A vector normal is in the written order too: (-1, 0) lowers the
+    // latitude.
+    let parsed = crate::support::parse_with(
+        &by_bulge("50 10 50 12", &["1"], &["-1 0"]),
+        &xeibe_geom::GeometryOptions::default(),
+        &crate::support::FixedAxis::swap(),
+    )
+    .expect("a curve");
+    assert_wkt_tol(
+        &crate::support::to_g(&parsed.geometry.expect("a geometry")),
+        "CIRCULARSTRING (10 50,11 49,12 50)",
+        Tol::abs(1e-9),
+    );
+}
+
+#[test]
+fn arc_by_bulge_needs_two_positions_and_a_bulge_and_normal_per_arc() {
     for bad in [
         "<gml:ArcByBulge><gml:posList>2 0</gml:posList><gml:bulge>2</gml:bulge><gml:normal>-1</gml:normal></gml:ArcByBulge>",
         "<gml:ArcByBulge><gml:posList>2 0 -2 0</gml:posList><gml:normal>-1</gml:normal></gml:ArcByBulge>",

@@ -10,8 +10,8 @@ use super::coords::parse_number;
 use super::primitives::append;
 use super::{Elem, Parser, Scope};
 use crate::arcs::{
-    angle_to_degrees, arc_by_bulge_midpoint, arc_by_center_point, circle_by_center_point,
-    uom_to_metres,
+    BulgeNormal, angle_to_degrees, arc_by_bulge_midpoint, arc_by_center_point,
+    circle_by_center_point, uom_to_metres,
 };
 use crate::error::Error;
 use crate::model::{CircularString, Coords, Curve, Dim, LineString};
@@ -334,9 +334,10 @@ impl Parser<'_> {
     }
 
     /// `ArcByBulge`/`ArcStringByBulge`: `numArc + 1` positions, one `bulge`
-    /// and one `normal` per arc; the mid-arc points are computed (GDAL's
-    /// formula, in output order like the center-point arcs). `None` for an
-    /// element with no content if `empty_ok`.
+    /// and one `normal` per arc; the mid-arc points are computed by the
+    /// standard's formula ([`arc_by_bulge_midpoint`]) in the coordinates as
+    /// written, before any axis swap, as GDAL does. `None` for an element
+    /// with no content if `empty_ok`.
     fn arc_string_by_bulge(
         &mut self,
         reader: &mut GmlReader<'_>,
@@ -358,11 +359,14 @@ impl Parser<'_> {
                 "normal" => {
                     let mut vector = Vec::new();
                     self.read_numbers(reader, &mut vector)?;
-                    let first = vector
-                        .first()
-                        .copied()
-                        .ok_or_else(|| self.invalid(reader, "an empty normal"))?;
-                    normals.push(first);
+                    // One number is a signed length; more are the vector (a
+                    // third component, for an arc in 3D, is not used).
+                    let normal = match vector[..] {
+                        [] => return Err(self.invalid(reader, "an empty normal")),
+                        [length] => BulgeNormal::Signed(length),
+                        [x, y, ..] => BulgeNormal::Vector([x, y]),
+                    };
+                    normals.push(normal);
                 }
                 _ => self.skip(reader)?,
             }
@@ -387,14 +391,7 @@ impl Parser<'_> {
             ));
         }
 
-        let swap = self.swap();
-        let xy = |position: &[f64]| {
-            if swap {
-                [position[1], position[0]]
-            } else {
-                [position[0], position[1]]
-            }
-        };
+        let xy = |position: &[f64]| [position[0], position[1]];
         let mut out = Coords {
             dim: coords.dim,
             values: Vec::with_capacity(coords.values.len() * 2),
@@ -403,10 +400,9 @@ impl Parser<'_> {
         out.push(coords.get(0));
         for i in 0..arcs {
             let (p0, p1) = (coords.get(i), coords.get(i + 1));
-            let mut mid = arc_by_bulge_midpoint(xy(p0), xy(p1), bulges[i], normals[i]);
-            if swap {
-                mid.swap(0, 1);
-            }
+            // In the written order: the formula is in the CRS's own
+            // coordinates, and `out` is swapped as a whole later.
+            let mid = arc_by_bulge_midpoint(xy(p0), xy(p1), bulges[i], normals[i]);
             computed.push(out.len());
             match (p0.get(2), p1.get(2)) {
                 (Some(z0), Some(z1)) => out.push(&[mid[0], mid[1], (z0 + z1) / 2.0]),

@@ -2,8 +2,8 @@
 //! parameters"). The conventions are GDAL's, as the docs state.
 
 use xeibe_geom::arcs::{
-    angle_to_degrees, arc_by_bulge_midpoint, arc_by_center_point, circle_by_center_point,
-    circle_closing_midpoint, geodesic_arc, uom_to_metres,
+    BulgeNormal, angle_to_degrees, arc_by_bulge_midpoint, arc_by_center_point,
+    circle_by_center_point, circle_closing_midpoint, geodesic_arc, uom_to_metres,
 };
 
 #[track_caller]
@@ -68,17 +68,41 @@ fn circle_by_center_point_starts_in_the_west() {
     close(points[4], [-1.0, 2.0]);
 }
 
+/// `midPoint = ((startPoint + endPoint)/2.0) + bulge*normal`, a signed normal
+/// being "its length, with a positive sign indicating a left turn angle from
+/// the chord line" (GML 3.1.1 `geometryPrimitives.xsd`, ISO 19107's wording).
 #[test]
-fn arc_by_bulge_uses_the_perpendicular_of_the_chord() {
-    // GDAL case ogr_gml_geom:2290: (2,0) → (-2,0), bulge 2, normal -1 → (0,2).
+fn arc_by_bulge_offsets_the_chord_midpoint_by_bulge_times_normal() {
+    let signed = BulgeNormal::Signed;
+    // Heading east, left is north.
     close(
-        arc_by_bulge_midpoint([2.0, 0.0], [-2.0, 0.0], 2.0, -1.0),
+        arc_by_bulge_midpoint([0.0, 0.0], [2.0, 0.0], 1.0, signed(1.0)),
+        [1.0, 1.0],
+    );
+    close(
+        arc_by_bulge_midpoint([0.0, 0.0], [2.0, 0.0], 1.0, signed(-1.0)),
+        [1.0, -1.0],
+    );
+    // Only the product counts: "simply a multiplier for the normal".
+    close(
+        arc_by_bulge_midpoint([0.0, 0.0], [2.0, 0.0], 0.5, signed(2.0)),
+        [1.0, 1.0],
+    );
+    // GDAL case ogr_gml_geom:2290: heading west, a right turn is north.
+    close(
+        arc_by_bulge_midpoint([2.0, 0.0], [-2.0, 0.0], 2.0, signed(-1.0)),
         [0.0, 2.0],
     );
-    // A positive normal mirrors the bulge.
+    // A vector normal is added as it is.
     close(
-        arc_by_bulge_midpoint([2.0, 0.0], [-2.0, 0.0], 2.0, 1.0),
-        [0.0, -2.0],
+        arc_by_bulge_midpoint([0.0, 0.0], [2.0, 0.0], 1.0, BulgeNormal::Vector([0.0, 1.0])),
+        [1.0, 1.0],
+    );
+    // "If the normal is a zero vector, the geometric object becomes
+    // equivalent to the straight line between the two end points."
+    close(
+        arc_by_bulge_midpoint([0.0, 0.0], [2.0, 0.0], 1.0, signed(0.0)),
+        [1.0, 0.0],
     );
 }
 
