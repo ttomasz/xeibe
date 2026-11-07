@@ -5,7 +5,9 @@
 
 use url::Url;
 use xeibe_wfs::WfsVersion;
-use xeibe_wfs::request::{GetFeature, ResultType, SortOrder, get_capabilities_url};
+use xeibe_wfs::request::{
+    GetFeature, ResultType, SortOrder, describe_feature_type_url, get_capabilities_url,
+};
 
 fn base() -> Url {
     Url::parse("https://example.com/wfs").expect("a URL")
@@ -191,4 +193,57 @@ fn a_capabilities_url_can_ask_for_a_version_or_not() {
 
     let negotiated = get_capabilities_url(&base(), None).expect("a URL");
     assert_eq!(value(&negotiated, "VERSION"), None, "let the server choose");
+}
+
+#[test]
+fn a_describe_feature_type_url_names_the_type_as_get_feature_does() {
+    let namespace = (
+        "ms".to_string(),
+        "http://mapserver.gis.umn.edu/mapserver".to_string(),
+    );
+    let with_query =
+        Url::parse("https://example.com/wfs?map=/data/x.map&TYPENAME=old").expect("a URL");
+    let url = describe_feature_type_url(
+        &with_query,
+        WfsVersion::V2_0_0,
+        "ms:AD.Address",
+        Some(&namespace),
+    )
+    .expect("a URL");
+    assert_eq!(
+        value(&url, "REQUEST").as_deref(),
+        Some("DescribeFeatureType")
+    );
+    assert_eq!(value(&url, "VERSION").as_deref(), Some("2.0.0"));
+    assert_eq!(value(&url, "TYPENAMES").as_deref(), Some("ms:AD.Address"));
+    assert_eq!(value(&url, "TYPENAME"), None, "the base's own is dropped");
+    assert_eq!(
+        value(&url, "NAMESPACES").as_deref(),
+        Some("xmlns(ms,http://mapserver.gis.umn.edu/mapserver)")
+    );
+    assert_eq!(value(&url, "MAP").as_deref(), Some("/data/x.map"));
+    // No output format: the server's default schema language, an XSD.
+    assert_eq!(value(&url, "OUTPUTFORMAT"), None);
+
+    let v11 = describe_feature_type_url(
+        &base(),
+        WfsVersion::V1_1_0,
+        "ms:AD.Address",
+        Some(&namespace),
+    )
+    .expect("a URL");
+    assert_eq!(value(&v11, "TYPENAME").as_deref(), Some("ms:AD.Address"));
+    assert_eq!(
+        value(&v11, "NAMESPACE").as_deref(),
+        Some("xmlns(ms=http://mapserver.gis.umn.edu/mapserver)")
+    );
+    let v10 = describe_feature_type_url(
+        &base(),
+        WfsVersion::V1_0_0,
+        "ms:AD.Address",
+        Some(&namespace),
+    )
+    .expect("a URL");
+    assert_eq!(value(&v10, "TYPENAME").as_deref(), Some("ms:AD.Address"));
+    assert_eq!(value(&v10, "NAMESPACE"), None, "1.0 has no NAMESPACE");
 }

@@ -16,6 +16,7 @@ pub mod bind;
 pub mod error;
 pub mod explain;
 pub mod geometry_stats;
+pub mod hint;
 pub mod merge;
 pub mod node;
 pub mod observation;
@@ -28,6 +29,7 @@ pub mod value;
 
 pub use bind::{ColumnPath, bind_schema};
 pub use error::{Error, Result};
+pub use hint::SchemaHint;
 pub use merge::Merge;
 pub use node::ElementNode;
 pub use observation::{DatasetObservation, LayerObservation};

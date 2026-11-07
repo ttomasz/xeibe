@@ -205,10 +205,15 @@ pub enum WfsCommand {
     /// Download one feature type into Parquet or Arrow IPC
     ///
     /// Requests the features page by page and converts them as they
-    /// arrive. Without `--settings`, the columns and their types are
-    /// inferred from the first features (`--sample-features`). Rows are
-    /// written in the order the server sends them (sorted with
-    /// `--sort-by`).
+    /// arrive. Without a schema for the layer in `--settings`, the
+    /// columns and their types are inferred from the first features
+    /// (`--sample-features`), and the type's DescribeFeatureType schema
+    /// fills what they can't show: a property that never had a value
+    /// gets its declared type, and a declared property they never have
+    /// gets a column. It never changes a type the features show. If the
+    /// server can't describe the type, a warning says so and the
+    /// features alone decide. Rows are written in the order the server
+    /// sends them (sorted with `--sort-by`).
     ///
     /// Example:
     ///   xeibe wfs convert https://example.com/geoserver/wfs \

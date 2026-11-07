@@ -25,6 +25,12 @@ pub struct InferenceOptions {
     /// Per-layer adjustments; later entries win.
     pub layers: Vec<(String, InferenceOptionsPatch)>,
     pub limits: Limits,
+    /// A feature type's declared properties (a WFS `DescribeFeatureType`),
+    /// for what the sample can't show: the type of a property that never had
+    /// a value, and the columns of properties it never saw. Set by the
+    /// caller for one read; not part of the settings file.
+    #[serde(skip)]
+    pub hint: Option<std::sync::Arc<crate::SchemaHint>>,
 }
 
 impl Default for InferenceOptions {
@@ -40,6 +46,7 @@ impl Default for InferenceOptions {
             overrides: Vec::new(),
             layers: Vec::new(),
             limits: Limits::default(),
+            hint: None,
         }
     }
 }

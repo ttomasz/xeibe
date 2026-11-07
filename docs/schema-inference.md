@@ -298,6 +298,7 @@ pub struct InferenceOptions {
     pub overrides: Vec<(PathPattern, FieldOverride)>,
     pub layers: Vec<(String, InferenceOptionsPatch)>,   // per-layer adjustments, by layer name in any notation; later entries win
     pub limits: Limits,
+    pub hint: Option<Arc<SchemaHint>>,  // declared properties (a WFS DescribeFeatureType), set per read; not in the settings file. See wfs.md
 }
 ```
 

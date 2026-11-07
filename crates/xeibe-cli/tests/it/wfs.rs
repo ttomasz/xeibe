@@ -108,6 +108,20 @@ fn page(ids: &[u32], matched: u32) -> String {
     )
 }
 
+/// The type's `DescribeFeatureType` schema: `n` and `geom`, as the pages
+/// have them, and `name`, which no page has.
+fn describe() -> String {
+    r#"<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:app="http://example.com/app" xmlns:gml="http://www.opengis.net/gml/3.2" elementFormDefault="qualified" targetNamespace="http://example.com/app">
+  <xsd:complexType name="ParcelType"><xsd:complexContent><xsd:extension base="gml:AbstractFeatureType"><xsd:sequence>
+    <xsd:element name="n" type="xsd:int"/>
+    <xsd:element name="geom" type="gml:PointPropertyType"/>
+    <xsd:element name="name" minOccurs="0" type="xsd:string"/>
+  </xsd:sequence></xsd:extension></xsd:complexContent></xsd:complexType>
+  <xsd:element name="Parcel" type="app:ParcelType" substitutionGroup="gml:AbstractFeature"/>
+</xsd:schema>"#
+        .to_string()
+}
+
 #[test]
 fn wfs_layers_lists_feature_types() {
     let server = Server::start(vec![capabilities()]);
@@ -147,7 +161,12 @@ fn wfs_count_prints_number_matched() {
 
 #[test]
 fn wfs_convert_streams_every_page_into_parquet() {
-    let server = Server::start(vec![capabilities(), page(&[1, 2], 3), page(&[3], 3)]);
+    let server = Server::start(vec![
+        capabilities(),
+        describe(),
+        page(&[1, 2], 3),
+        page(&[3], 3),
+    ]);
     let dir = out_dir("wfs_convert");
     let out = dir.join("parcels.parquet");
     let run = xeibe_ok(&[
@@ -172,13 +191,17 @@ fn wfs_convert_streams_every_page_into_parquet() {
     );
 
     let requests = server.requests();
-    assert_eq!(requests.len(), 3, "{requests:?}");
+    assert_eq!(requests.len(), 4, "{requests:?}");
     assert!(
-        requests[1].to_ascii_uppercase().contains("STARTINDEX=0"),
+        requests[1].contains("REQUEST=DescribeFeatureType"),
+        "without a schema, the type's own is asked for: {requests:?}"
+    );
+    assert!(
+        requests[2].to_ascii_uppercase().contains("STARTINDEX=0"),
         "{requests:?}"
     );
     assert!(
-        requests[2].to_ascii_uppercase().contains("STARTINDEX=2"),
+        requests[3].to_ascii_uppercase().contains("STARTINDEX=2"),
         "{requests:?}"
     );
 
@@ -218,7 +241,7 @@ fn wfs_convert_of_an_unknown_type_fails() {
 #[test]
 fn wfs_convert_writes_the_rows_in_the_order_the_server_sends() {
     // Six pages, read on four threads.
-    let mut bodies = vec![capabilities()];
+    let mut bodies = vec![capabilities(), describe()];
     bodies.extend((0..6).map(|p| {
         let ids: Vec<u32> = (p * 2 + 1..=(p * 2 + 2).min(11)).collect();
         page(&ids, 11)
@@ -253,4 +276,70 @@ fn wfs_convert_writes_the_rows_in_the_order_the_server_sends() {
         })
         .collect();
     assert_eq!(ids, (1..=11).collect::<Vec<_>>());
+}
+
+/// The column names of a Parquet file.
+fn columns(path: &std::path::Path) -> Vec<String> {
+    let builder = ParquetRecordBatchReaderBuilder::try_new(File::open(path).unwrap()).unwrap();
+    builder
+        .schema()
+        .fields()
+        .iter()
+        .map(|field| field.name().clone())
+        .collect()
+}
+
+#[test]
+fn wfs_convert_adds_the_declared_properties_the_sample_never_saw() {
+    let server = Server::start(vec![capabilities(), describe(), page(&[1, 2], 2)]);
+    let dir = out_dir("wfs_describe");
+    let out = dir.join("parcels.parquet");
+    let run = xeibe_ok(&[
+        "wfs",
+        "convert",
+        &server.base,
+        "--type-name",
+        "app:Parcel",
+        "--axis-order",
+        "xy",
+        "-o",
+        path_str(&out),
+    ]);
+    assert!(run.stderr.contains("2 rows written"), "{}", run.stderr);
+    // `name` is in no feature, but the schema declares it.
+    assert_eq!(columns(&out), ["@id", "n", "geom", "name"]);
+    let batch = ParquetRecordBatchReaderBuilder::try_new(File::open(&out).unwrap())
+        .unwrap()
+        .build()
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(batch.column_by_name("name").unwrap().null_count(), 2);
+}
+
+#[test]
+fn wfs_convert_goes_on_without_a_describe_feature_type() {
+    let exception = r#"<ows:ExceptionReport xmlns:ows="http://www.opengis.net/ows/1.1" version="2.0.0"><ows:Exception exceptionCode="OperationNotSupported"><ows:ExceptionText>DescribeFeatureType is off</ows:ExceptionText></ows:Exception></ows:ExceptionReport>"#;
+    let server = Server::start(vec![capabilities(), exception.to_string(), page(&[1], 1)]);
+    let dir = out_dir("wfs_no_describe");
+    let out = dir.join("parcels.parquet");
+    let run = xeibe_ok(&[
+        "wfs",
+        "convert",
+        &server.base,
+        "--type-name",
+        "app:Parcel",
+        "--axis-order",
+        "xy",
+        "-o",
+        path_str(&out),
+    ]);
+    assert!(
+        run.stderr.contains("warning:") && run.stderr.contains("DescribeFeatureType is off"),
+        "{}",
+        run.stderr
+    );
+    assert!(run.stderr.contains("1 rows written"), "{}", run.stderr);
+    assert_eq!(columns(&out), ["@id", "n", "geom"]);
 }

@@ -22,6 +22,7 @@ use xeibe_geom::options::{CurveMode, GeomEncoding};
 use xeibe_geom::{AxisKey, GeomKind, SrsName};
 
 use crate::geometry_stats::GeometryStats;
+use crate::hint::{Declared, DeclaredProperty, SchemaHint, same_name};
 use crate::node::{Shape, is_gml_id, is_link_or_nil_attribute};
 use crate::options::{
     AllNull, AttrSelect, BoundedBy, ConstantAttrs, FieldOverride, IdMode, IntWidth, ListRule,
@@ -123,6 +124,7 @@ pub fn infer_schema(
         sampled: sampled.filter(|sample| sample.conservative),
         layer_clark: layer.to_clark(),
         prefixes: Prefixes::for_layer(observation, &layer_observation.root),
+        hint: options.hint.as_deref().filter(|hint| hint.is_for(layer)),
     };
     let root = &layer_observation.root;
     let mut cols = Vec::new();
@@ -130,6 +132,7 @@ pub fn infer_schema(
     cols.extend(attributes.cols);
     cols.extend(attributes.constants.into_iter().map(|(_, _, col)| col));
     engine.children(root, &[], None, &mut cols);
+    engine.declared_only(root, &mut cols);
 
     let names = column_names(&cols, &engine.prefixes);
     let mut namespaces = serde_json::Map::new();
@@ -355,6 +358,8 @@ struct Engine<'a> {
     sampled: Option<&'a SampleOptions>,
     layer_clark: String,
     prefixes: Prefixes,
+    /// The layer's declared properties, if the caller has them.
+    hint: Option<&'a SchemaHint>,
 }
 
 impl Engine<'_> {
@@ -684,9 +689,20 @@ impl Engine<'_> {
             ));
         }
         let repeated = node.max_occurs > 1;
-        let list = plan
-            .list
-            .unwrap_or(repeated && self.options.structure.lists == ListRule::Infer);
+        let declared_list = !repeated
+            && self.options.structure.lists == ListRule::Infer
+            && self
+                .declaration(steps, node, &plan)
+                .is_some_and(|(property, _)| property.repeated);
+        if plan.list.is_none() && declared_list {
+            reasons.push(format!(
+                "a list: {} declares it may occur more than once",
+                self.hint.map_or("", |hint| hint.source.as_str())
+            ));
+        }
+        let list = plan.list.unwrap_or(
+            (repeated || declared_list) && self.options.structure.lists == ListRule::Infer,
+        );
         let anchor = if list {
             let at = node
                 .first_multi
@@ -829,8 +845,18 @@ impl Engine<'_> {
         out: &mut Vec<Col>,
     ) {
         let attributes = self.attributes(node, steps, anchor);
+        let declaration = self.declaration(steps, node, plan);
         // The element's own column, if it has one.
         let own = match node.shape() {
+            Shape::Empty if declaration.is_some() && attributes.cols.is_empty() => {
+                let (property, declared) = declaration.expect("checked above");
+                let mut col = self.declared_col(property, declared, steps, anchor);
+                col.reasons.insert(
+                    0,
+                    "no value in the sample, so its type comes from the declaration".to_string(),
+                );
+                Some(col)
+            }
             Shape::TextOnly | Shape::TextAndAttributes => {
                 let scalar = self.scalar(node.text.as_ref());
                 let mut col = Col::new(
@@ -891,6 +917,130 @@ impl Engine<'_> {
         }
         self.nil_reason(node, steps, anchor, out);
         self.children(node, steps, anchor, out);
+    }
+
+    // ---- declared properties (a schema hint) --------------------------------
+
+    /// The declaration of a direct property of the feature that never had a
+    /// value in the sample, and what its type becomes; `None` when the
+    /// settings give the column a type, or the declared type is not one a
+    /// hint fills in.
+    fn declaration(
+        &self,
+        steps: &[Step],
+        node: &ElementNode,
+        plan: &Plan,
+    ) -> Option<(&DeclaredProperty, Declared)> {
+        let [step] = steps else {
+            return None;
+        };
+        if plan.data_type.is_some() || node.shape() != Shape::Empty {
+            return None;
+        }
+        let property = self.hint?.property(&step.name)?;
+        Some((property, property.declared()?))
+    }
+
+    /// The column of a declared property: its declared type, or text where
+    /// the type options leave that type out.
+    fn declared_col(
+        &self,
+        property: &DeclaredProperty,
+        declared: Declared,
+        steps: &[Step],
+        anchor: Option<usize>,
+    ) -> Col {
+        let source = self.hint.map_or("", |hint| hint.source.as_str());
+        let label = property.type_label();
+        if declared == Declared::Geometry {
+            let mut col = self.geometry_col(&GeometryStats::default(), steps, anchor);
+            col.reasons = vec![
+                format!("{source} declares it a geometry ({label})"),
+                "stored as WKB: no geometry seen to pick a type from".to_string(),
+            ];
+            return col;
+        }
+        let unit = self.options.types.timestamps.unit;
+        let (wanted, data_type) = match declared {
+            Declared::Bool => (TypeSet::BOOL, DataType::Boolean),
+            Declared::Int => (TypeSet::INT, DataType::Int64),
+            Declared::UInt => (TypeSet::INT, DataType::UInt64),
+            Declared::Float => (TypeSet::FLOAT, DataType::Float64),
+            Declared::Date => (TypeSet::DATE, DataType::Date32),
+            Declared::Time if matches!(unit, TimeUnit::Second | TimeUnit::Millisecond) => {
+                (TypeSet::TIME, DataType::Time32(unit))
+            }
+            Declared::Time => (TypeSet::TIME, DataType::Time64(unit)),
+            Declared::Text | Declared::DateTime | Declared::Geometry => {
+                (TypeSet::STRING, self.string())
+            }
+        };
+        let mut col = Col::new(steps, anchor, self.string());
+        if declared == Declared::DateTime {
+            col.reasons.push(format!(
+                "{source} declares it {label}: text, since a timestamp column takes values either with a time zone or without one, and the declaration doesn't say which"
+            ));
+        } else if !self.options.types.enabled.contains(wanted) {
+            col.reasons.push(format!(
+                "{source} declares it {label}, but the type options leave that type out: text"
+            ));
+        } else {
+            col.kind = ColKind::Scalar(data_type);
+            col.reasons.push(format!("{source} declares it {label}"));
+        }
+        col
+    }
+
+    /// Columns for the declared properties the sample never saw, after the
+    /// sampled columns, in the order of the declarations.
+    fn declared_only(&self, root: &ElementNode, out: &mut Vec<Col>) {
+        let Some(hint) = self.hint else {
+            return;
+        };
+        for property in &hint.properties {
+            let seen = || {
+                root.children
+                    .keys()
+                    .any(|name| same_name(name, &property.name))
+            };
+            let Some(declared) = property.declared() else {
+                continue;
+            };
+            if seen() {
+                continue;
+            }
+            let steps = [Step {
+                name: property.name.clone(),
+                wrapper: false,
+                prefixed: false,
+            }];
+            let plan = self.plan(&steps, None);
+            if plan.drop {
+                continue;
+            }
+            let list = plan
+                .list
+                .unwrap_or(property.repeated && self.options.structure.lists == ListRule::Infer);
+            let anchor = list.then_some(0);
+            let mut col = match &plan.data_type {
+                Some(data_type) => {
+                    let mut col = Col::new(&steps, anchor, data_type.clone());
+                    col.reasons.push("the settings give its type".to_string());
+                    col
+                }
+                None => self.declared_col(property, declared, &steps, anchor),
+            };
+            let mut reasons = vec![format!(
+                "not in the sample: a column because {} declares it",
+                hint.source
+            )];
+            if list && plan.list.is_none() {
+                reasons.push("a list: it is declared to occur more than once".to_string());
+            }
+            reasons.extend(plan.reasons);
+            col.reasons.splice(0..0, reasons);
+            out.push(col);
+        }
     }
 
     /// The attributes of a geometry property element itself (GML 3.1's

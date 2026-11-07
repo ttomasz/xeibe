@@ -1,9 +1,11 @@
-//! Small XML helpers for capabilities and exception reports: UTF-8 decoding,
-//! the root element's name, and a namespace-resolved element tree.
+//! Small XML helpers for capabilities, exception reports and
+//! `DescribeFeatureType` schemas: UTF-8 decoding, the root element's name, and
+//! a namespace-resolved element tree.
 //!
-//! Both documents are small, and reading them needs prefix resolution inside
-//! text content (`<Name>ms:AD.Address</Name>`), so they are read into a tree
-//! with `quick-xml` directly instead of through `xeibe_core::reader`.
+//! These documents are small, and reading them needs prefix resolution inside
+//! text content (`<Name>ms:AD.Address</Name>`) and attribute values
+//! (`type="xsd:int"`), so they are read into a tree with `quick-xml` directly
+//! instead of through `xeibe_core::reader`.
 
 use std::borrow::Cow;
 use std::io::Read;
@@ -27,13 +29,24 @@ pub(crate) fn utf8(bytes: &[u8]) -> crate::Result<Cow<'_, [u8]>> {
     Ok(Cow::Owned(decoded))
 }
 
+/// An attribute: its local name and value (lookups ignore its namespace).
+#[derive(Debug, Default)]
+pub(crate) struct Attr {
+    pub local: String,
+    pub value: String,
+    /// The value read as a QName (`xsd:int`, or `int` in the default
+    /// namespace): the namespace of its prefix, when it has the form of one
+    /// and the prefix is declared.
+    pub value_ns: Option<String>,
+}
+
 /// An element with its resolved name, attributes, text and children.
 #[derive(Debug, Default)]
 pub(crate) struct Element {
     pub ns: Option<String>,
     pub local: String,
-    /// `(namespace, local name, value)`; namespace declarations left out.
-    pub attrs: Vec<(Option<String>, String, String)>,
+    /// Namespace declarations left out.
+    pub attrs: Vec<Attr>,
     /// Concatenated, trimmed text directly inside the element.
     pub text: String,
     /// Namespace of the prefix in `text`, when `text` looks like a prefixed name.
@@ -73,8 +86,19 @@ impl Element {
     pub fn attr(&self, local: &str) -> Option<&str> {
         self.attrs
             .iter()
-            .find(|(_, l, _)| l == local)
-            .map(|(_, _, v)| v.as_str())
+            .find(|attr| attr.local == local)
+            .map(|attr| attr.value.as_str())
+    }
+
+    /// An attribute whose value is a QName (`type`, `base`, `ref` of an XSD):
+    /// `(namespace, local name)`.
+    pub fn attr_qname(&self, local: &str) -> Option<(Option<&str>, &str)> {
+        let attr = self.attrs.iter().find(|attr| attr.local == local)?;
+        let name = attr
+            .value
+            .split_once(':')
+            .map_or(attr.value.as_str(), |(_, local)| local);
+        Some((attr.value_ns.as_deref(), name))
     }
 
     /// Every descendant named `local`, depth first.
@@ -138,13 +162,21 @@ pub(crate) fn parse(xml: &[u8]) -> crate::Result<Element> {
                     if attr.key.as_namespace_binding().is_some() {
                         continue;
                     }
-                    let (ns, local) = reader.resolver().resolve_attribute(attr.key);
+                    let (_, local) = reader.resolver().resolve_attribute(attr.key);
                     let value = quick_xml::escape::unescape(&attr.value)
                         .map(Cow::into_owned)
                         .unwrap_or_else(|_| attr.value.to_string());
-                    element
-                        .attrs
-                        .push((namespace(ns), local.as_ref().to_string(), value));
+                    let value_ns = is_qname(&value)
+                        .then(|| {
+                            let name = quick_xml::name::QName(value.as_str());
+                            namespace(reader.resolver().resolve_element(name).0)
+                        })
+                        .flatten();
+                    element.attrs.push(Attr {
+                        local: local.as_ref().to_string(),
+                        value,
+                        value_ns,
+                    });
                 }
                 stack.push(element);
             }
@@ -198,6 +230,23 @@ pub(crate) fn parse(xml: &[u8]) -> crate::Result<Element> {
             | Event::Decl(_)
             | Event::DocType(_) => {}
         }
+    }
+}
+
+/// `true` for a value with the form of a QName: a name, or two joined by
+/// one `:`. Nothing is resolved for other values (URLs, numbers, text).
+fn is_qname(value: &str) -> bool {
+    let name = |part: &str| {
+        part.chars()
+            .next()
+            .is_some_and(|c| c.is_alphabetic() || c == '_')
+            && part
+                .chars()
+                .all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.'))
+    };
+    match value.split_once(':') {
+        Some((prefix, local)) => name(prefix) && name(local),
+        None => name(value),
     }
 }
 

@@ -115,6 +115,31 @@ impl GetFeature {
     }
 }
 
+/// `DescribeFeatureType` for one type, in the server's default schema
+/// language (an XSD). `namespace` is `(prefix, uri)`, as for `GetFeature`.
+pub fn describe_feature_type_url(
+    base: &Url,
+    version: WfsVersion,
+    type_name: &str,
+    namespace: Option<&(String, String)>,
+) -> crate::Result<Url> {
+    let v2 = version.is_2();
+    let mut params: Vec<(&str, String)> = vec![
+        ("SERVICE", "WFS".into()),
+        ("VERSION", version.as_str().into()),
+        ("REQUEST", "DescribeFeatureType".into()),
+        (if v2 { "TYPENAMES" } else { "TYPENAME" }, type_name.into()),
+    ];
+    if let Some((prefix, uri)) = namespace {
+        if v2 {
+            params.push(("NAMESPACES", format!("xmlns({prefix},{uri})")));
+        } else if version != WfsVersion::V1_0_0 {
+            params.push(("NAMESPACE", format!("xmlns({prefix}={uri})")));
+        }
+    }
+    Ok(with_params(base, &params))
+}
+
 pub fn get_capabilities_url(base: &Url, version: Option<WfsVersion>) -> crate::Result<Url> {
     let mut params = vec![("SERVICE", "WFS".to_string())];
     // Without a version the server answers with its highest one.

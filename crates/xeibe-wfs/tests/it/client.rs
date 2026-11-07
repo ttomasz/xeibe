@@ -160,6 +160,31 @@ fn layers_and_hits_come_from_the_server() {
 }
 
 #[test]
+fn describe_reads_the_declared_properties_of_the_type() {
+    let xsd = r#"<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:app="http://example.com/app" elementFormDefault="qualified" targetNamespace="http://example.com/app">
+  <xsd:complexType name="ParcelType"><xsd:sequence>
+    <xsd:element name="n" type="xsd:int"/>
+  </xsd:sequence></xsd:complexType>
+  <xsd:element name="Parcel" type="app:ParcelType"/>
+</xsd:schema>"#;
+    let server = Server::start(vec![ok(capabilities(true, 1000)), ok(xsd)]);
+    let client = WfsClient::new(&server.base, options()).expect("a client");
+    let schema = client.describe("app:Parcel").expect("the schema");
+    assert_eq!(schema.name, "Parcel");
+    assert_eq!(schema.namespace.as_deref(), Some("http://example.com/app"));
+    let names: Vec<&str> = schema.properties.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["n"]);
+
+    let request = &server.requests()[1];
+    assert!(request.contains("REQUEST=DescribeFeatureType"), "{request}");
+    assert!(request.contains("TYPENAMES=app%3AParcel"), "{request}");
+    assert!(
+        request.contains("NAMESPACES=xmlns%28app%2Chttp"),
+        "{request}"
+    );
+}
+
+#[test]
 fn start_index_pages_are_fetched_lazily_until_a_short_page() {
     let server = Server::start(vec![
         ok(capabilities(true, 2)),

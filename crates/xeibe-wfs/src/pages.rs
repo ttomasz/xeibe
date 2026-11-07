@@ -10,9 +10,11 @@ use xeibe_core::{BytesSource, Source, Sources};
 
 use crate::exception::ExceptionReport;
 use crate::paging::{self, NextPage, PagingStrategy};
-use crate::request::{GetFeature, ResultType, SortOrder, get_capabilities_url};
+use crate::request::{
+    GetFeature, ResultType, SortOrder, describe_feature_type_url, get_capabilities_url,
+};
 use crate::response::{self, Response, ResponseInfo};
-use crate::{Capabilities, Error, FeatureTypeInfo, WfsOptions, WfsVersion};
+use crate::{Capabilities, Error, FeatureTypeInfo, FeatureTypeSchema, WfsOptions, WfsVersion};
 
 /// Progress callback payload, sent after every page.
 #[derive(Debug, Clone)]
@@ -70,6 +72,26 @@ impl WfsClient {
             Response::Features(info) if version.is_2() => Ok(info.number_matched),
             Response::Features(info) => Ok(info.number_returned),
         }
+    }
+
+    /// `DescribeFeatureType` for `type_name`: the direct properties its schema
+    /// declares, as a hint for inference (`docs/wfs.md`, "Schema hint from
+    /// `DescribeFeatureType`").
+    pub fn describe(&self, type_name: &str) -> crate::Result<FeatureTypeSchema> {
+        let capabilities = self.cached_capabilities()?;
+        let feature_type = find_type(&capabilities, type_name)?;
+        let url = describe_feature_type_url(
+            &self.endpoint,
+            self.version(&capabilities),
+            &feature_type.name,
+            namespace(feature_type).as_ref(),
+        )?;
+        let body = self.http.get(&url)?;
+        let local = feature_type
+            .name
+            .split_once(':')
+            .map_or(feature_type.name.as_str(), |(_, local)| local);
+        FeatureTypeSchema::parse(&body, feature_type.namespace.as_deref(), local)
     }
 
     /// Every page of `type_name`, lazily: the next page is requested when the read
@@ -187,14 +209,10 @@ impl WfsClient {
         feature_type: &FeatureTypeInfo,
         result_type: ResultType,
     ) -> GetFeature {
-        let namespace = match (feature_type.name.split_once(':'), &feature_type.namespace) {
-            (Some((prefix, _)), Some(uri)) => Some((prefix.to_string(), uri.clone())),
-            _ => None,
-        };
         GetFeature {
             version: self.version(capabilities),
             type_name: feature_type.name.clone(),
-            namespace,
+            namespace: namespace(feature_type),
             srs_name: self.options.srs_name.clone(),
             output_format: capabilities.preferred_output_format(feature_type),
             bbox: self.options.bbox.clone(),
@@ -206,6 +224,14 @@ impl WfsClient {
             start_index: None,
             vendor: self.options.vendor_params.clone(),
         }
+    }
+}
+
+/// `(prefix, uri)` of a prefixed type name whose namespace is known.
+fn namespace(feature_type: &FeatureTypeInfo) -> Option<(String, String)> {
+    match (feature_type.name.split_once(':'), &feature_type.namespace) {
+        (Some((prefix, _)), Some(uri)) => Some((prefix.to_string(), uri.clone())),
+        _ => None,
     }
 }
 

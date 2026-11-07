@@ -16,7 +16,9 @@ References (PDFs in `ogc_schemas/`):
 ```mermaid
 flowchart TD
     caps["GetCapabilities"] -.-> capsout["version, KVP support, output formats,<br/>paging constraints, feature types, CRSs"]
-    caps --> hits["GetFeature resultType=hits"]
+    caps --> dft["DescribeFeatureType<br/>(no schema in the settings)"]
+    dft -.-> dftout["declared properties:<br/>a hint for inference"]
+    dft --> hits["GetFeature resultType=hits"]
     hits -.-> hitsout["numberMatched (1.1: numberOfFeatures)<br/>for progress"]
     hits --> pages["GetFeature pages"]
     pages --> mem["each page fetched into memory"] --> lazy["Sources::lazy"]
@@ -57,26 +59,55 @@ What we read from `GetCapabilities`:
 
 ## Schema hint from `DescribeFeatureType`
 
-📋 Planned (P2). A WFS read without a settings file samples its schema from the
-first pages. That leaves two gaps: a property null in every sampled feature
-becomes `text`, and a property that never appears in the sample has no column,
-so it is not read at all (the schema is the projection). The type's
-`DescribeFeatureType` XSD fills them, **as a hint only**:
+A WFS read without a settings file samples its schema from the first pages.
+That leaves two gaps: a property null in every sampled feature becomes `text`,
+and a property that never appears in the sample has no column, so it is not
+read at all (the schema is the projection). The type's `DescribeFeatureType`
+XSD fills them, **as a hint only**. `xeibe wfs convert` asks for it whenever
+the settings file has no schema for the layer, after `GetCapabilities` and
+before the first page (`WfsClient::describe`, then
+`InferenceOptions::hint`).
 
-- Only the feature type's **direct properties with a simple type** are used:
-  `xs:string`, integer types, `xs:double`/`float`/`decimal` (→ `double`),
-  `xs:date`, `xs:dateTime`, `xs:time`, `xs:boolean`, and GML geometry property
-  types (`gml:PointPropertyType`, …, `gml:GeometryPropertyType` → `geometry`,
-  i.e. WKB). `maxOccurs > 1` makes a list.
-- It **types an all-null sampled column** with the declared type, and **adds a
-  column** for a declared property the sample never saw, after the sampled
-  columns in XSD order.
+- The request is `DescribeFeatureType` with the type name and namespace as
+  `GetFeature` sends them (`TYPENAMES`/`NAMESPACES` in 2.0, `TYPENAME`/`NAMESPACE`
+  in 1.1, `TYPENAME` in 1.0) and no `OUTPUTFORMAT`, so the server's default
+  schema language: an XSD.
+- Only the feature type's **direct properties** are read: the elements of its
+  content model (named or inline complex type, `sequence`/`choice`/`all`), after
+  those of a base type the same document defines (a `complexContent`
+  extension). A simple type the document defines, inline or named, is
+  followed to the built-in type it restricts. `maxOccurs > 1` on the element
+  or on a group around it makes a list.
+- Declared types become column types:
+
+  | Declared type | Column |
+  |---|---|
+  | `xs:boolean` | `bool` |
+  | `xs:integer`, `long`, `int`, `short`, `byte` and the other integer types | `int64` (`xs:unsignedLong`: `uint64`) |
+  | `xs:double`, `float`, `decimal` | `double` |
+  | `xs:date` | `date` |
+  | `xs:time` | `time` in the timestamp unit |
+  | `xs:dateTime` | `text`: a timestamp column takes values either with a time zone or without one, and the declaration doesn't say which, so a guess could fail the read |
+  | other built-in simple types (`xs:string`, `token`, `anyURI`, `gYear`, …) | `text` |
+  | GML geometry property types (`gml:PointPropertyType`, …, `gml:GeometryPropertyType`, GML 2 to 3.2) | geometry, WKB |
+  | anything else (complex types, `gml:CodeType`, `gml:MeasureType`, `xs:anyType`) | ignored |
+
+  A type the type options leave out (`types.enabled`, e.g. `--preset strings`)
+  is `text`.
+- It **types a sampled column that never had a value** with the declared type,
+  and **adds a column** for a declared property the sample never saw, after the
+  sampled columns in XSD order. The settings' overrides still apply to both:
+  a dropped path stays out, a typed one takes the settings' type.
 - It **never overrides evidence**: a column the sample typed keeps its type,
   whatever the XSD says. Declared types are not trusted over data.
-- Anything else is ignored: nested complex types, substitution groups, imports
-  beyond the response itself, `xs:any`. A `DescribeFeatureType` that fails or
-  can't be parsed is a warning, and the read goes on with the sample alone.
-- `--explain` names the XSD as the reason for every column it typed or added.
+- Anything else is ignored: nested complex types, references (`ref`, e.g.
+  `gml:boundedBy`), substitution groups, wildcards (`xs:any`), groups, and
+  imports: nothing is fetched beyond the response itself. A
+  `DescribeFeatureType` that fails, is no schema, or doesn't declare the type
+  is a warning, and the read goes on with the sample alone.
+- The reasons of every column it typed or added name the XSD (what
+  `--explain` prints). The settings a read can save keep the columns
+  themselves, not the hint.
 
 This is not XSD-driven mapping, which stays a non-goal
 ([architecture.md](architecture.md#non-goals-and-deliberate-limits)): the data

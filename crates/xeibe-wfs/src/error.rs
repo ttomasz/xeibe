@@ -26,6 +26,10 @@ pub enum Error {
     #[error("response truncated (page {page})")]
     Truncated { page: u64 },
 
+    /// A `DescribeFeatureType` response that is no usable schema of the type.
+    #[error("DescribeFeatureType: {0}")]
+    Describe(String),
+
     #[error("feature type {0} is not in the capabilities")]
     UnknownFeatureType(String),
 
