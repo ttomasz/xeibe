@@ -7,8 +7,13 @@
 //! compiler makes a copy of the choice with the recording gone: the
 //! conversion pays nothing for it. [`Explain`] keeps what it is told, for
 //! one coordinate, and the two can't disagree, as they run the same code.
+//! The step loop (`run`) is generic over it too, for
+//! [`super::trace::Tracer`], whose [`Recorder::TRACE`] is true.
 
+use crate::crs::Crs;
 use crate::error::CoordinateError;
+
+use super::trace::Event;
 
 /// What the per-point choice tells about itself, by index into the
 /// prepared candidates.
@@ -27,6 +32,22 @@ pub(crate) trait Recorder {
     fn fallback(&mut self, _candidate: usize) {}
     /// The choice starts looking again, without the candidates tried.
     fn round(&mut self) {}
+    /// Whether the recorder follows the steps ([`Recorder::step`]): the
+    /// calls are skipped otherwise, with what they would be given.
+    const TRACE: bool = false;
+    /// A candidate's steps start running.
+    fn start_run(&mut self) {}
+    /// A step was run: the coordinates are now `coords`, in `crs`'s
+    /// internal form. `ellipsoidal`: whether the height is ellipsoidal,
+    /// where the step loop knows.
+    fn step(
+        &mut self,
+        _event: Event<'_>,
+        _crs: &Crs,
+        _coords: [f64; 3],
+        _ellipsoidal: Option<bool>,
+    ) {
+    }
 }
 
 /// Converting: nothing kept.

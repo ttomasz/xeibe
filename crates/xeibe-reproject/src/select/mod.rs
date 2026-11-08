@@ -24,11 +24,13 @@ pub(crate) mod crs;
 pub(crate) mod explain;
 pub(crate) mod filter;
 pub(crate) mod search;
+pub(crate) mod trace;
 
 use candidate::{Candidate, SingleKind};
 use crs::CrsCache;
 use crs::CrsRef;
 use explain::{Explain, Explained, Explanation, Outcome, PassReason, Recorder};
+use trace::Event;
 
 /// One step of a runnable pipeline.
 #[derive(Debug, Clone)]
@@ -39,8 +41,10 @@ enum Exec {
     SaveHorizontal,
     /// Put it back (`pop +v_1 +v_2`), with the CRS it was in.
     RestoreHorizontal,
-    /// Apply an operation between two CRSs, either way.
+    /// Apply an operation between two CRSs, either way: registry
+    /// operation `code`.
     Apply {
+        code: u32,
         method: Arc<dyn Method>,
         from: Box<Crs>,
         to: Box<Crs>,
@@ -672,8 +676,9 @@ impl Candidates {
         self.choose(src, dst, internal, &mut ())
     }
 
-    /// [`Candidates::run_with`], telling `rec` how the choice is made.
-    fn choose<R: Recorder>(
+    /// [`Candidates::run_with`], telling `rec` how the choice is made and,
+    /// for a tracing recorder, the steps run.
+    pub(crate) fn choose<R: Recorder>(
         &self,
         src: &Crs,
         dst: &Crs,
@@ -686,7 +691,7 @@ impl Candidates {
             {
                 rec.inside(0, self.contains(&self.list[0], point));
             }
-            let result = run(&self.list[0].steps, src, dst, internal);
+            let result = run(&self.list[0].steps, src, dst, internal, rec);
             rec.tried(0, result.err());
             return result.map(|out| (out, 0));
         }
@@ -703,7 +708,7 @@ impl Candidates {
             let Some(best) = self.suggest(point, &excluded, rec) else {
                 break;
             };
-            let result = run(&self.list[best].steps, src, dst, internal);
+            let result = run(&self.list[best].steps, src, dst, internal, rec);
             rec.tried(best, result.err());
             match result {
                 Ok(out) => return Ok((out, best)),
@@ -721,7 +726,7 @@ impl Candidates {
         // that uses no grid, whatever its area.
         if let Some(i) = self.list.iter().position(|p| !p.has_grids) {
             rec.fallback(i);
-            let result = run(&self.list[i].steps, src, dst, internal);
+            let result = run(&self.list[i].steps, src, dst, internal, rec);
             rec.tried(i, result.err());
             return result.map(|out| (out, i));
         }
@@ -1111,6 +1116,7 @@ fn executable(
                     Height::Changed
                 };
                 steps.push(Exec::Apply {
+                    code: *code,
                     method,
                     from: Box::new(from),
                     to: Box::new(to),
@@ -1220,16 +1226,24 @@ fn is_vertical(crs: &Crs) -> bool {
     matches!(crs.kind, Kind::Vertical { .. })
 }
 
-fn run(
+fn run<R: Recorder>(
     steps: &[Exec],
     src: &Crs,
     dst: &Crs,
     internal: [f64; 3],
+    rec: &mut R,
 ) -> Result<[f64; 3], CoordinateError> {
+    if R::TRACE {
+        rec.start_run();
+    }
     // All of them left out (`drop_identities`): what the loop would end
     // with, without setting it up for every coordinate.
     if steps.is_empty() {
-        return convert(src, dst, internal);
+        let c = convert(src, dst, internal)?;
+        if R::TRACE {
+            rec.step(Event::Convert, dst, c, None);
+        }
+        return Ok(c);
     }
     let mut cur = src;
     let mut c = internal;
@@ -1245,7 +1259,12 @@ fn run(
         && matches!(src.kind, Kind::Geographic { .. } | Kind::Geocentric { .. });
     for (i, step) in steps.iter().enumerate() {
         match step {
-            Exec::SaveHorizontal => horizontal.push(([c[0], c[1]], cur)),
+            Exec::SaveHorizontal => {
+                horizontal.push(([c[0], c[1]], cur));
+                if R::TRACE {
+                    rec.step(Event::Save, cur, c, Some(ellipsoidal));
+                }
+            }
             Exec::RestoreHorizontal => {
                 if let Some((xy, crs)) = horizontal.pop() {
                     // The height went on through the CRSs since: carry it
@@ -1253,15 +1272,22 @@ fn run(
                     let h = convert(cur, crs, c)?[2];
                     c = [xy[0], xy[1], h];
                     cur = crs;
+                    if R::TRACE {
+                        rec.step(Event::Restore, cur, c, Some(ellipsoidal));
+                    }
                 }
             }
             Exec::Convert(to) => {
                 if !is_vertical(to) {
                     c = convert(cur, to, c)?;
                     cur = to;
+                    if R::TRACE {
+                        rec.step(Event::Convert, cur, c, Some(ellipsoidal));
+                    }
                 }
             }
             Exec::Apply {
+                code,
                 method,
                 from,
                 to,
@@ -1272,6 +1298,9 @@ fn run(
                 let keeps_height = height.keeps(input, ellipsoidal);
                 if !is_vertical(input) {
                     c = convert(cur, input, c)?;
+                    if R::TRACE {
+                        rec.step(Event::Convert, input, c, Some(ellipsoidal));
+                    }
                 }
                 if keeps_height {
                     saved.get_or_insert(c[2]);
@@ -1302,11 +1331,32 @@ fn run(
                 } else if is_vertical(input) {
                     ellipsoidal = true;
                 }
+                if R::TRACE {
+                    // Into a vertical CRS, the horizontal position stays
+                    // in the operation's interpolation CRS.
+                    let frame = if !is_vertical(output) {
+                        output
+                    } else if !is_vertical(input) {
+                        input
+                    } else {
+                        cur
+                    };
+                    let event = Event::Apply {
+                        code: *code,
+                        inverse: *inverse,
+                        keeps_height,
+                    };
+                    rec.step(event, frame, c, Some(ellipsoidal));
+                }
                 if !is_vertical(output) {
                     cur = output;
                 }
             }
         }
     }
-    convert(cur, dst, c)
+    let c = convert(cur, dst, c)?;
+    if R::TRACE {
+        rec.step(Event::Convert, dst, c, None);
+    }
+    Ok(c)
 }

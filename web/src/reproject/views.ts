@@ -13,7 +13,20 @@ import {
   plain,
   projectionValue,
 } from './format';
-import type { Card, Conversion, Details, EpsgOperation, Info, Operation, Outcome, Step, Warning } from './types';
+import type {
+  Axis,
+  Card,
+  Conversion,
+  Details,
+  EpsgOperation,
+  Info,
+  Operation,
+  Outcome,
+  Step,
+  Trace,
+  TracedStep,
+  Warning,
+} from './types';
 
 /** The operations' colours, Op. 1 first. None of them reads as a grade
  * or a warning: no green, red, orange or yellow, and no light-to-dark run.
@@ -430,7 +443,131 @@ export function details(
       <table class="grid"><thead><tr><th>Operation</th><th>In area</th><th>Accuracy</th><th>Choice</th><th>Result</th><th>From the chosen</th></tr></thead>
       <tbody>${items}</tbody></table>`;
   }
-  return `${head}<table class="facts">${rows.join('')}</table>${candidates}`;
+  return `${head}<table class="facts">${rows.join('')}</table>${traceHtml(d.trace)}${candidates}`;
+}
+
+/** A value with its axis's unit. */
+function axisValue(v: number, axis: Axis | undefined): string {
+  const unit = axis?.unit ?? '';
+  if (unit === 'degree') return `${plain(v)}°`;
+  if (unit === 'metre') return `${plain(v)} m`;
+  return unit ? `${plain(v)} ${escape(unit)}` : plain(v);
+}
+
+const ARC_SECONDS_PER_DEGREE = 3600;
+/** The mean Earth radius, for a shift's rough size in metres. */
+const EARTH_RADIUS = 6371008.8;
+
+/** The change across a step between CRSs with the same axes: each value's
+ * difference (arc-seconds for degrees), and for latitude and longitude
+ * the rough horizontal distance. */
+function change(before: TracedStep, after: TracedStep): string {
+  const same =
+    before.axes.length >= 2 &&
+    before.axes.slice(0, 2).every((a, i) => a.direction === after.axes[i]?.direction && a.unit === after.axes[i]?.unit);
+  if (!same) return '';
+  const parts: string[] = [];
+  const n = Math.min(before.coords.length, after.coords.length);
+  for (let i = 0; i < n; i++) {
+    const d = after.coords[i] - before.coords[i];
+    const axis = after.axes[i];
+    if (d === 0) continue;
+    const sign = d > 0 ? '+' : '−';
+    const abs = Math.abs(d);
+    // To 0.00001″ (0.3 mm on the ground) and 0.1 mm.
+    const value =
+      axis?.unit === 'degree'
+        ? `${plain(Number((abs * ARC_SECONDS_PER_DEGREE).toFixed(5)))}″`
+        : axisValue(Number(abs.toFixed(4)), axis);
+    parts.push(`Δ${escape(axis?.abbreviation ?? String(i + 1))} ${sign}${value}`);
+  }
+  const lat = after.axes.findIndex((a) => a.direction === 'north' && a.unit === 'degree');
+  const lon = after.axes.findIndex((a) => a.direction === 'east' && a.unit === 'degree');
+  if (lat >= 0 && lon >= 0) {
+    const rad = Math.PI / 180;
+    const dy = (after.coords[lat] - before.coords[lat]) * rad * EARTH_RADIUS;
+    const dx = (after.coords[lon] - before.coords[lon]) * rad * EARTH_RADIUS * Math.cos(after.coords[lat] * rad);
+    const metres = Math.hypot(dx, dy);
+    if (metres > 0) parts.push(`≈ ${distance(metres)} horizontally`);
+  }
+  return parts.length ? `<div class="muted change">${parts.join(', ')}</div>` : '';
+}
+
+/** What a traced step did, in words. */
+function tracedStepText(s: TracedStep, previous: TracedStep | undefined): string {
+  const d = s.detail ?? {};
+  switch (s.kind) {
+    case 'start':
+      return 'As given';
+    case 'convert': {
+      const from = previous?.crs.kind;
+      const to = s.crs.kind;
+      if (from === 'projected' && to !== 'projected') return 'Inverse projection';
+      if (to === 'projected' && from !== 'projected') return 'Projection';
+      if (to === 'geocentric' && from !== 'geocentric') return 'To geocentric X, Y, Z';
+      if (from === 'geocentric' && to !== 'geocentric') return 'From geocentric X, Y, Z';
+      return 'Conversion on one datum';
+    }
+    case 'operation': {
+      const op =
+        d.code !== null && d.code !== undefined
+          ? `${link(operationUrl(d.code, d.name), `EPSG:${d.code}`)} ${escape(d.name ?? '')}`
+          : escape(d.name ?? '');
+      const method = d.method?.name
+        ? `<div class="muted">${link(methodUrl(d.method.code, d.method.name), escape(d.method.name))}${d.inverse ? ', run inverted' : ''}</div>`
+        : '';
+      const kept =
+        d.height_kept && s.height !== 'none'
+          ? '<div class="muted">The height comes back as it went in.</div>'
+          : '';
+      return `${op}${method}${kept}`;
+    }
+    case 'save':
+      return 'Horizontal position kept, for an operation on heights';
+    case 'restore':
+      return 'Horizontal position put back, with the new height';
+    case 'bound':
+      return `${escape(d.name ?? '')}${d.inverse ? ', inverted' : ''} <div class="muted">The CRS's own transformation to its hub (TOWGS84)</div>`;
+  }
+}
+
+const HEIGHTS: Record<TracedStep['height'], string> = {
+  none: '',
+  ellipsoidal: 'ellipsoidal height',
+  gravity_related: 'gravity-related height',
+};
+
+/** Each step the point went through, with the coordinates after it. */
+function traceHtml(trace: Trace | null | undefined): string {
+  if (!trace || trace.steps.length === 0) return '';
+  const rows = trace.steps
+    .map((s, i) => {
+      const previous = trace.steps[i - 1];
+      const coords = s.coords
+        .map((v, j) => {
+          const axis = s.axes[j];
+          return `<div><span class="muted">${escape(axis?.abbreviation ?? '')}</span> ${axisValue(v, axis)}</div>`;
+        })
+        .join('');
+      const shifts = previous && (s.kind === 'operation' || s.kind === 'bound') ? change(previous, s) : '';
+      const height =
+        HEIGHTS[s.height] && s.coords.length > 2 ? `<div class="muted change">${HEIGHTS[s.height]}</div>` : '';
+      const crs = s.crs.code
+        ? link(crsUrl(s.crs.code, s.crs.name), escape(s.crs.label))
+        : escape(s.crs.label);
+      return `<tr><td class="num">${i}</td><td>${tracedStepText(s, previous)}
+          <div class="crs">${i === 0 ? 'in' : 'into'} ${crs} <span class="muted">${escape(s.crs.name)}</span></div></td>
+        <td class="num">${coords}${height}${shifts}</td></tr>`;
+    })
+    .join('');
+  const error = trace.error
+    ? `<tr><td></td><td colspan="2"><span class="error">Stopped: ${escape(trace.error)}</span></td></tr>`
+    : '';
+  return `<h3>Step by step</h3>
+    <p class="muted">The steps this point went through, with the coordinates after each, as the engine ran them: the last row is the result.
+      An operation's change is the difference across it; for a grid, its shift here. Conversions that change nothing are left out.</p>
+    <div class="scroll"><table class="grid trace"><thead><tr><th>#</th><th>Step</th><th>Coordinates after it</th></tr></thead>
+    <tbody>${rows}${error}</tbody></table></div>`;
 }
 
 /** Commands that do the same with PROJ, which xeibe is tested against. */

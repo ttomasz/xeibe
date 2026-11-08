@@ -35,6 +35,13 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
   output keeps the view types.
 - WFS 2.0 responses with several queries, and the features a `resolve`
   adds under `wfs:additionalObjects`, are now tested end to end.
+- `xeibe-reproject`: `Transform::trace_point` returns every step of one
+  point's conversion. Each step is a projection, an operation (named, and
+  marked when run inverted) or a leg through a Bound CRS's hub, and comes
+  with the CRS the point is in after it, its coordinates and the kind of
+  height. A point that fails keeps the steps up to the failure. Conversions
+  are no slower for it. The reproject page shows the steps in each point's
+  details.
 
 ## 0.2.0
 

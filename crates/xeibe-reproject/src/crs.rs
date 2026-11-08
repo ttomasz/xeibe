@@ -831,6 +831,30 @@ impl Crs {
         self.axes.first_is_northing()
     }
 
+    /// What kind of CRS it is: `geographic`, `projected`, `geocentric`,
+    /// `compound`, `vertical` or `engineering`.
+    pub fn kind_name(&self) -> &'static str {
+        match self.kind {
+            Kind::Geographic { .. } => "geographic",
+            Kind::Projected { .. } => "projected",
+            Kind::Geocentric { .. } => "geocentric",
+            Kind::Compound { .. } => "compound",
+            Kind::Vertical { .. } => "vertical",
+            Kind::Engineering { .. } => "engineering",
+        }
+    }
+
+    /// A compound CRS's horizontal and vertical parts.
+    pub fn components(&self) -> Option<(&Crs, &Crs)> {
+        match &self.kind {
+            Kind::Compound {
+                horizontal,
+                vertical,
+            } => Some((horizontal, vertical)),
+            _ => None,
+        }
+    }
+
     /// EPSG's name for the projection method, for a projected CRS (or a
     /// compound CRS whose horizontal part is one).
     pub fn method(&self) -> Option<&str> {
