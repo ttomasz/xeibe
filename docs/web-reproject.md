@@ -1,7 +1,7 @@
 # Web page: a landing page, a GML page and a reproject page
 
-> **Status: first version built, 2026-10-25: pieces 1 to 8, 9.1 and 10.**
-> Pieces 9.2 to 9.4 and 11 (map) aren't started. A plan in
+> **Status: first version built, 2026-10-25: pieces 1 to 8, 9.1 and 10;
+> 9.2 on 2026-11-08.** Pieces 9.3, 9.4 and 11 (map) aren't started. A plan in
 > pieces, each to be gone over on its own. Extends [web.md](web.md). Sizes
 > were measured on 2026-10-24 (see [Two wasm builds](#2-two-wasm-builds));
 > the module as built is 3.7 MB, 1.8 MB gzipped.
@@ -262,7 +262,23 @@ the point, 0.1 m. B: contains it too, 1 m. C: outside its area." From
 `suggest` and the loop in `run_with` (`select/mod.rs`); a Bound CRS's
 transform answers for its hub, as `index_for` does.
 
-**9.2. The steps** (`Transform::trace_point(x, y, z)`): each step the
+**9.2. The steps** (`Transform::trace_point(x, y, z)`, built): a
+`Trace` gives the operation used, the error, and a `Traced` for each step
+run: what it was (`TraceStep`: the start, a conversion on one datum, an
+EPSG operation with PROJ's name and whether the height was kept, the
+horizontal position kept or put back, a Bound CRS's leg to its hub), the
+CRS after it, the coordinates in that CRS's units in the transform's axis
+order, and whether the third value is an ellipsoidal or a gravity-related
+height (`TracedHeight`). Conversions that leave the coordinates as they
+were (between two geographic CRSs on one datum) are left out; the last
+step is always in the target CRS. On an error, the steps of the last
+operation tried, up to where it failed. The page shows them under
+"Step by step" in the point's details, each operation's change across it
+(arc-seconds and roughly metres for latitude and longitude), with links
+to epsg.org; the parameters stay in the operations list (piece 8). On
+every point of the committed selection vectors, the grid ones with the
+committed grids loaded, the last step is `convert`'s result. The plan
+was: each step the
 point went through, with its CRS and the coordinates after it; heights
 (ellipsoidal or gravity-related) and the horizontal position saved and
 restored around a vertical step made explicit. A grid step's shift is the
@@ -305,7 +321,16 @@ Measured on 2026-10-25, a million points, best of 7, before and after:
 ED50 to ETRS89 with 12 candidates 183.7 and 183.9 ns a point (run to run
 ±2%), WGS 84 to PL-1992 499 and 501, a conversion 138 and 137; and on
 every point of the committed selection vectors the explanation names
-the operation `convert` uses. The plan was:
+the operation `convert` uses. Built for 9.2: the step loop (`run` in
+`select/mod.rs`) and a Bound CRS's legs are generic over the same
+`Recorder`, whose `TRACE` constant skips the calls to `step`; the
+tracing recorder is `select/trace.rs`. `Transform::run`, which `convert`
+calls, stays written out for `()` and out of line: as a generic function,
+or inlined into `convert`, a conversion on one datum measured 2 to 4%
+slower. Measured on 2026-11-08, `cargo bench -- convert_xy`, before and
+after interleaved, two rounds: 4258 to 2180 1.282 and 1.281 ms, 4326 to
+3857 875 and 876 µs, 2180 to 32634 (across datums) 2.696 and 2.709 ms
+(run to run ±0.8%). The plan was:
 
 9.1 and 9.2 run the same code as `convert`,
 so they can't disagree with it, and `convert` pays nothing for them. The

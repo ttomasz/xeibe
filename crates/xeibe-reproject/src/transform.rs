@@ -9,7 +9,8 @@ use crate::grid::Grids;
 use crate::methods::{LAT_LIMIT, adjlon};
 use crate::operation::Method;
 use crate::select::crs::CrsRef;
-use crate::select::explain::Explanation;
+use crate::select::explain::{Explanation, Recorder};
+use crate::select::trace::{Event, Trace, Tracer};
 use crate::select::{Candidates, OperationInfo, Selection};
 
 /// The order coordinates are given and returned in.
@@ -71,6 +72,10 @@ struct BoundPlan {
 #[derive(Debug, Clone)]
 struct Leg {
     base: Crs,
+    /// The geodetic CRS the transformation starts from: the base's
+    /// geographic CRS, or the base itself if geocentric.
+    via: Crs,
+    hub: Crs,
     method: Arc<dyn Method>,
     name: String,
 }
@@ -100,6 +105,8 @@ impl Leg {
         })?;
         Ok(Leg {
             base: base.clone(),
+            via,
+            hub: hub.clone(),
             method,
             name,
         })
@@ -111,30 +118,62 @@ impl Leg {
 
     /// With `flow`, the height the transformation produces goes on (see
     /// [`BoundPlan::run`]).
-    fn to_hub(&self, internal: [f64; 3], flow: bool) -> Result<[f64; 3], CoordinateError> {
+    fn to_hub<R: Recorder>(
+        &self,
+        internal: [f64; 3],
+        flow: bool,
+        rec: &mut R,
+    ) -> Result<[f64; 3], CoordinateError> {
         let via = if self.geocentric() {
             internal
         } else {
             to_geographic(&self.base, internal)?
         };
-        if flow {
-            self.method.forward_3d(via)
-        } else {
-            self.method.forward(via)
+        if R::TRACE {
+            rec.step(Event::Convert, &self.via, via, None);
         }
+        let hub = if flow {
+            self.method.forward_3d(via)?
+        } else {
+            self.method.forward(via)?
+        };
+        if R::TRACE {
+            let event = Event::Bound {
+                name: &self.name,
+                inverse: false,
+            };
+            rec.step(event, &self.hub, hub, None);
+        }
+        Ok(hub)
     }
 
-    fn back_from_hub(&self, hub: [f64; 3], flow: bool) -> Result<[f64; 3], CoordinateError> {
+    fn back_from_hub<R: Recorder>(
+        &self,
+        hub: [f64; 3],
+        flow: bool,
+        rec: &mut R,
+    ) -> Result<[f64; 3], CoordinateError> {
         let via = if flow {
             self.method.inverse_3d(hub)?
         } else {
             self.method.inverse(hub)?
         };
-        if self.geocentric() {
-            Ok(via)
-        } else {
-            from_geographic(&self.base, via)
+        if R::TRACE {
+            let event = Event::Bound {
+                name: &self.name,
+                inverse: true,
+            };
+            rec.step(event, &self.via, via, None);
         }
+        let out = if self.geocentric() {
+            via
+        } else {
+            from_geographic(&self.base, via)?
+        };
+        if R::TRACE {
+            rec.step(Event::Convert, &self.base, out, None);
+        }
+        Ok(out)
     }
 }
 
@@ -144,7 +183,11 @@ impl BoundPlan {
     /// then drops the `pop`/`push` of the height between them, and the
     /// height the first produces flows into the second (as between EPSG's
     /// operations in the selection).
-    fn run(&self, internal: [f64; 3]) -> Result<[f64; 3], CoordinateError> {
+    fn run<R: Recorder>(
+        &self,
+        internal: [f64; 3],
+        rec: &mut R,
+    ) -> Result<[f64; 3], CoordinateError> {
         let flow = matches!(self.middle.plan, Plan::Conversion)
             && self
                 .first
@@ -152,12 +195,12 @@ impl BoundPlan {
                 .zip(self.last.as_ref())
                 .is_some_and(|(a, b)| a.method.keeps_height() && b.method.keeps_height());
         let hub = match &self.first {
-            Some(leg) => leg.to_hub(internal, flow)?,
+            Some(leg) => leg.to_hub(internal, flow, rec)?,
             None => internal,
         };
-        let other = self.middle.run(hub)?;
+        let other = self.middle.run_recorded(hub, rec)?;
         match &self.last {
-            Some(leg) => leg.back_from_hub(other, flow),
+            Some(leg) => leg.back_from_hub(other, flow, rec),
             None => Ok(other),
         }
     }
@@ -413,6 +456,30 @@ impl Transform {
         self.explain_internal(internal)
     }
 
+    /// Each step one coordinate goes through, with the CRS and the
+    /// coordinates after it, from the coordinate as given to the result
+    /// (`docs/web-reproject.md`, piece 9.2): the projections, the
+    /// operations between datums, the horizontal position kept and put
+    /// back around an operation on heights, a Bound CRS's transformation
+    /// to its hub. The steps of the operation [`Transform::convert`] uses,
+    /// run by the same code, so the last step's coordinates are its
+    /// result; on an error, the steps up to where the last operation tried
+    /// failed. A grid's shift is the difference across its step.
+    /// [`Transform::operation_info`]'s `chain` describes each operation's
+    /// steps (methods, parameters). `None` for a coordinate that can't be
+    /// placed (not finite).
+    pub fn trace_point(&self, x: f64, y: f64, z: Option<f64>) -> Option<Trace> {
+        let given = [x, y, z.unwrap_or(0.0)];
+        let internal = to_internal(&self.src.axes, self.order, given).ok()?;
+        let mut tracer = Tracer::new(&self.src, self.order, given, internal);
+        let result = self.run_recorded(internal, &mut tracer);
+        let used = match self.plan {
+            Plan::Conversion => None,
+            _ => self.index_for(internal),
+        };
+        Some(tracer.finish(result, used))
+    }
+
     fn explain_internal(&self, internal: [f64; 3]) -> Option<Explanation> {
         match &self.plan {
             Plan::Conversion => None,
@@ -421,7 +488,7 @@ impl Transform {
             }
             Plan::Bound(b) => {
                 let hub = match &b.first {
-                    Some(leg) => leg.to_hub(internal, false).ok()?,
+                    Some(leg) => leg.to_hub(internal, false, &mut ()).ok()?,
                     None => internal,
                 };
                 b.middle.explain_internal(hub)
@@ -433,7 +500,7 @@ impl Transform {
         match &self.plan {
             Plan::Bound(b) => {
                 let hub = match &b.first {
-                    Some(leg) => leg.to_hub(internal, false).ok()?,
+                    Some(leg) => leg.to_hub(internal, false, &mut ()).ok()?,
                     None => internal,
                 };
                 b.middle.index_for(hub)
@@ -552,14 +619,46 @@ impl Transform {
         Ok((x, y, z))
     }
 
-    /// Internal coordinates of the source CRS to the target's.
+    /// Internal coordinates of the source CRS to the target's:
+    /// [`Transform::run_recorded`] with `()`, written out, and kept out of
+    /// line as it was when it called itself for a Bound CRS's middle
+    /// transform. Inlined into `convert`, or as `run_recorded::<()>`, a
+    /// conversion on one datum measured 2 to 4% slower (2026-11-08,
+    /// `cargo bench -- convert_xy`, interleaved with the code before).
+    #[inline(never)]
     fn run(&self, internal: [f64; 3]) -> Result<[f64; 3], CoordinateError> {
         match &self.plan {
             Plan::Conversion => on_one_datum(&self.src, &self.dst, internal),
             Plan::Operations(candidates) | Plan::Via(_, candidates) | Plan::Only(candidates) => {
                 candidates.run(&self.src, &self.dst, internal)
             }
-            Plan::Bound(b) => b.run(internal),
+            Plan::Bound(b) => b.run(internal, &mut ()),
+        }
+    }
+
+    /// [`Transform::run`], telling a tracing `rec` the steps.
+    fn run_recorded<R: Recorder>(
+        &self,
+        internal: [f64; 3],
+        rec: &mut R,
+    ) -> Result<[f64; 3], CoordinateError> {
+        match &self.plan {
+            Plan::Conversion => {
+                let c = on_one_datum(&self.src, &self.dst, internal)?;
+                if R::TRACE {
+                    rec.step(Event::Convert, &self.dst, c, None);
+                }
+                Ok(c)
+            }
+            Plan::Operations(candidates) | Plan::Via(_, candidates) | Plan::Only(candidates) => {
+                if R::TRACE {
+                    return candidates
+                        .choose(&self.src, &self.dst, internal, rec)
+                        .map(|(out, _)| out);
+                }
+                candidates.run(&self.src, &self.dst, internal)
+            }
+            Plan::Bound(b) => b.run(internal, rec),
         }
     }
 

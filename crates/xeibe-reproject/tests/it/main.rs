@@ -11,6 +11,7 @@ mod operations;
 mod parts;
 mod proj_string;
 mod support;
+mod trace;
 mod transformations;
 mod user_input;
 mod vectors;

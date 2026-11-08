@@ -198,3 +198,52 @@ fn a_forced_operation_outside_its_area() {
     let details = s.details((52.52, 13.405, None));
     assert!(details["candidates"][1]["outcome"].is_null());
 }
+
+#[test]
+fn the_details_trace_the_point_step_by_step() {
+    let s = Session::new("4230", "2180", &Options::default()).unwrap();
+    // Warsaw, from ED50 to PL-1992.
+    let details = s.details((52.23, 21.01, None));
+    let steps = details["trace"]["steps"].as_array().unwrap();
+    assert_eq!(steps[0]["kind"], "start", "{details:#}");
+    assert_eq!(steps[0]["crs"]["label"], "EPSG:4230");
+    assert_eq!(steps[0]["coords"], serde_json::json!([52.23, 21.01]));
+    assert_eq!(steps[0]["axes"][0]["direction"], "north");
+    assert!(
+        steps.iter().any(|s| s["kind"] == "operation"
+            && s["detail"]["code"].is_u64()
+            && s["detail"]["method"]["name"].is_string()),
+        "{details:#}"
+    );
+    let last = steps.last().unwrap();
+    assert_eq!(last["crs"]["label"], "EPSG:2180");
+    assert_eq!(last["coords"], details["out"], "{details:#}");
+    assert!(details["trace"]["error"].is_null());
+}
+
+#[test]
+fn the_trace_is_in_the_pages_axis_order() {
+    let options = Options {
+        east_first: true,
+        ..Options::default()
+    };
+    let s = Session::new("4258", "2180", &options).unwrap();
+    let details = s.details((21.01, 52.23, None));
+    let steps = details["trace"]["steps"].as_array().unwrap();
+    assert_eq!(steps[0]["axes"][0]["direction"], "east", "{details:#}");
+    let last = steps.last().unwrap();
+    // PL-1992 is northing first: easting first now, as the result is.
+    assert_eq!(last["axes"][0]["direction"], "east", "{details:#}");
+    assert_eq!(last["coords"], details["out"]);
+}
+
+#[test]
+fn a_point_that_fails_has_the_steps_up_to_the_failure() {
+    // ED50 to ETRS89 in Barcelona: the Catalan grid isn't loaded.
+    let s = Session::new("4230", "4258", &Options::default()).unwrap();
+    let details = s.details((41.3874, 2.1686, None));
+    assert!(details["error"].is_string(), "{details:#}");
+    let trace = &details["trace"];
+    assert!(trace["error"].is_string(), "{details:#}");
+    assert_eq!(trace["steps"][0]["kind"], "start");
+}

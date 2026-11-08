@@ -11,7 +11,7 @@ use xeibe_crs::{CrsKind, FirstAxis};
 use xeibe_reproject::geodesic::Geodesic;
 use xeibe_reproject::{
     AxisOrder, Crs, Explanation, GridRequest, Grids, OperationInfo, OperationStep, Outcome,
-    PassReason, Selection, StepCrs, StepKind, Transform,
+    PassReason, Selection, StepCrs, StepKind, TraceStep, Traced, TracedHeight, Transform,
 };
 
 pub type Result<T> = std::result::Result<T, String>;
@@ -698,6 +698,7 @@ impl Session {
                     "input_lonlat": input,
                     "error": error,
                     "candidates": self.candidates_json(p, explanation.as_ref(), None),
+                    "trace": self.trace_json(p),
                 });
             }
         };
@@ -726,6 +727,21 @@ impl Session {
             "warnings": warnings,
             "candidates": self.candidates_json(p, explanation.as_ref(), Some((out, output))),
             "round_trip": round_trip,
+            "trace": self.trace_json(p),
+        })
+    }
+
+    /// Each step the point goes through in the transform used, with the
+    /// CRS and the coordinates after it (`Transform::trace_point`); `null`
+    /// for a point that can't be placed.
+    fn trace_json(&self, (x, y, z): Point) -> Value {
+        let Some(trace) = self.used.trace_point(x, y, z) else {
+            return Value::Null;
+        };
+        let order = self.used.order();
+        json!({
+            "error": trace.error.map(|e| e.to_string()),
+            "steps": trace.steps.iter().map(|s| traced_json(s, order)).collect::<Vec<_>>(),
         })
     }
 
@@ -778,6 +794,147 @@ impl Session {
             })
             .collect()
     }
+}
+
+/// One step of a trace: what it did, the CRS after it with its axes in
+/// the page's order, and the coordinates.
+fn traced_json(s: &Traced, order: AxisOrder) -> Value {
+    let (kind, detail) = match &s.step {
+        TraceStep::Start => ("start", Value::Null),
+        TraceStep::Convert => ("convert", Value::Null),
+        TraceStep::SaveHorizontal => ("save", Value::Null),
+        TraceStep::RestoreHorizontal => ("restore", Value::Null),
+        TraceStep::Bound { name, inverse } => {
+            ("bound", json!({ "name": name, "inverse": inverse }))
+        }
+        TraceStep::Operation {
+            kind,
+            name,
+            height_kept,
+        } => {
+            let (code, method, inverse) = match *kind {
+                StepKind::Epsg { code, inverse } => {
+                    let method = registry()
+                        .operations
+                        .get(&u64::from(code))
+                        .and_then(|op| op["method"].as_u64())
+                        .map(method_json);
+                    (Some(code), method, inverse)
+                }
+                StepKind::EnsembleIdentity { method, inverse } => {
+                    (None, Some(method_json(u64::from(method))), inverse)
+                }
+                _ => (None, None, false),
+            };
+            (
+                "operation",
+                json!({
+                    "name": name,
+                    "code": code,
+                    "method": method,
+                    "inverse": inverse,
+                    "height_kept": height_kept,
+                }),
+            )
+        }
+    };
+    let mut axes = trace_axes(&s.crs);
+    if order == AxisOrder::EastFirst && s.crs.swapped_east_first() && axes.len() >= 2 {
+        axes.swap(0, 1);
+    }
+    let height = match s.height {
+        TracedHeight::None => "none",
+        TracedHeight::Ellipsoidal => "ellipsoidal",
+        TracedHeight::GravityRelated => "gravity_related",
+    };
+    // A 2D CRS's third value: the height carried along, in metres.
+    let three = s.crs.dimension() == 3 || s.height != TracedHeight::None;
+    if three && axes.len() == 2 {
+        let (name, abbreviation) = match s.height {
+            TracedHeight::GravityRelated => ("Gravity-related height", "H"),
+            _ => ("Ellipsoidal height", "h"),
+        };
+        axes.push(json!({ "name": name, "abbreviation": abbreviation, "direction": "up", "unit": "metre" }));
+    }
+    let coords = if three {
+        s.coords.to_vec()
+    } else {
+        s.coords[..2].to_vec()
+    };
+    json!({
+        "kind": kind,
+        "detail": detail,
+        "crs": {
+            "label": trace_label(&s.crs),
+            "name": s.crs.name(),
+            "code": s.crs.code(),
+            "kind": s.crs.kind_name(),
+        },
+        "axes": axes,
+        "coords": coords,
+        "height": height,
+    })
+}
+
+/// "EPSG:4258", "EPSG:2180+9651" for a compound of two EPSG CRSs, the
+/// name with "(3D)" for a geographic CRS EPSG has in 2D only.
+fn trace_label(crs: &Crs) -> String {
+    if let Some(code) = crs.code() {
+        return format!("EPSG:{code}");
+    }
+    if let Some((h, v)) = crs.components()
+        && let (Some(h), Some(v)) = (h.code(), v.code())
+    {
+        return format!("EPSG:{h}+{v}");
+    }
+    if crs.kind_name() == "geographic" && crs.dimension() == 3 {
+        return format!("{} (3D)", crs.name());
+    }
+    crs.name().to_owned()
+}
+
+/// A traced CRS's axes in its own order: EPSG's, else by its kind.
+fn trace_axes(crs: &Crs) -> Vec<Value> {
+    if let Some(json) = crs
+        .code()
+        .and_then(xeibe_crs::projjson)
+        .and_then(|j| serde_json::from_str::<Value>(j).ok())
+    {
+        let list = axes(&json);
+        if list.len() == crs.dimension() {
+            return list;
+        }
+    }
+    if let Some((h, v)) = crs.components() {
+        let mut list = trace_axes(h);
+        list.extend(trace_axes(v));
+        return list;
+    }
+    let axis = |name: &str, abbreviation: &str, direction: &str, unit: &str| json!({ "name": name, "abbreviation": abbreviation, "direction": direction, "unit": unit });
+    let north_first = crs.swapped_east_first();
+    let mut list = match crs.kind_name() {
+        "geographic" => vec![
+            axis("Geodetic latitude", "Lat", "north", "degree"),
+            axis("Geodetic longitude", "Lon", "east", "degree"),
+        ],
+        "geocentric" => vec![
+            axis("Geocentric X", "X", "geocentricX", "metre"),
+            axis("Geocentric Y", "Y", "geocentricY", "metre"),
+            axis("Geocentric Z", "Z", "geocentricZ", "metre"),
+        ],
+        "vertical" => vec![axis("Gravity-related height", "H", "up", "metre")],
+        _ => vec![
+            axis("Northing", "N", "north", "metre"),
+            axis("Easting", "E", "east", "metre"),
+        ],
+    };
+    if matches!(crs.kind_name(), "geographic" | "projected") && !north_first {
+        list.swap(0, 1);
+    }
+    if crs.kind_name() == "geographic" && crs.dimension() == 3 {
+        list.push(axis("Ellipsoidal height", "h", "up", "metre"));
+    }
+    list
 }
 
 /// What [`Session::check`] finds for a point.

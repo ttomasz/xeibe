@@ -94,6 +94,15 @@ or the only one (used whatever their area), passed over for another and
 why (less accurate, a larger area, offshore…), outside, failed, not
 reached. It runs the same choice as `convert`, which pays nothing for it
 (a generic recorder, `select/explain.rs`).
+`trace_point(x, y, z)` gives each step the coordinate went through, with
+the CRS and the coordinates after it: the projections, the operations
+between datums (EPSG's code, PROJ's name, whether the height was kept),
+the horizontal position kept and put back around an operation on
+heights, a Bound CRS's transformation to its hub, and whether the third
+value is an ellipsoidal or a gravity-related height. The step loop
+tells the same recorder what it runs (`select/trace.rs`), so the last
+step is `convert`'s result; a grid's shift is the difference across its
+step.
 `Crs::equivalent(&other, ignore_axis_order)` compares two CRSs' definitions
 (datum, ellipsoid, prime meridian, projection method and parameters, axes
 and units) whatever their names and ids, to PROJ's relative 1e-10, as

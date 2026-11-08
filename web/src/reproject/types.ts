@@ -200,6 +200,35 @@ export interface Details {
     distance?: number | null;
     operation?: string | null;
   };
+  /** Null for a point that can't be placed. */
+  trace?: Trace | null;
+}
+
+/** One step the point went through (`Transform::trace_point`), with the
+ * CRS and the coordinates after it. */
+export interface TracedStep {
+  kind: 'start' | 'convert' | 'operation' | 'save' | 'restore' | 'bound';
+  detail: {
+    name?: string;
+    /** operation: the EPSG operation; null for PROJ's null operation
+     * between a datum ensemble and a member. */
+    code?: number | null;
+    method?: { code: number; name: string | null } | null;
+    inverse?: boolean;
+    /** operation: the height comes back as it went in. */
+    height_kept?: boolean;
+  } | null;
+  crs: { label: string; name: string; code: number | null; kind: string };
+  /** In the page's axis order, as `coords`. */
+  axes: Axis[];
+  coords: number[];
+  height: 'none' | 'ellipsoidal' | 'gravity_related';
+}
+
+export interface Trace {
+  /** The steps end where the operation failed. */
+  error: string | null;
+  steps: TracedStep[];
 }
 
 export interface GridRequest {
