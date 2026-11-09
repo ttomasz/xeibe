@@ -30,6 +30,18 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
   was only sent with offset pages, so reads that follow `next` links were
   never sorted. There are warnings when paging without a sort order could
   return pages out of order, and when the server can't sort.
+- `xeibe wfs count` and `xeibe wfs convert` take `--filter` (an OGC filter
+  as XML, or `@FILE`). A request whose URL would be longer than 1,800 bytes
+  is sent as an XML `POST` (WFS 1.1 and 2.0; `WfsOptions::method`,
+  `--http-method auto|get|post`). Some servers, ArcGIS Server among them,
+  fail on URLs from about 2,000 bytes. Vendor parameters (`--param`) and a
+  bbox are only sent by `GET`, so a request that must be a `POST` with them
+  fails with a message. `next` links too long to send, which GeoServer
+  writes after a `POST`, give way to `startIndex` paging.
+- A WFS page whose `numberReturned` is below the features it holds (deegree
+  writes `0`), or whose `numberMatched` is below the features received so
+  far, no longer ends a `startIndex` read after the first page. The counted
+  features are used instead, and such a total is treated as unknown.
 - Parquet files with repeated text properties now open in pandas and
   geopandas. View types are written as plain `Utf8`/`Binary`; Arrow IPC
   output keeps the view types.

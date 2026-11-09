@@ -9,3 +9,4 @@ mod describe;
 mod paging;
 mod request;
 mod response;
+mod xml_request;

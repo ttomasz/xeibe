@@ -1,6 +1,7 @@
 //! The client against a scripted local HTTP server (`docs/wfs.md`, "Flow",
-//! "Paging", "Errors and robustness"): capabilities, hits, pages as lazy
-//! sources, exceptions in 200 and 400 responses, truncated pages.
+//! "Paging", "Request encoding (XML POST)", "Errors and robustness"):
+//! capabilities, hits, pages as lazy sources, requests sent by POST,
+//! exceptions in 200 and 400 responses, truncated pages.
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -9,7 +10,7 @@ use std::time::Duration;
 
 use xeibe_wfs::pages::Progress;
 use xeibe_wfs::request::SortOrder;
-use xeibe_wfs::{Error, PagingStrategy, WfsClient, WfsOptions};
+use xeibe_wfs::{Error, HttpMethod, PagingStrategy, WfsClient, WfsOptions};
 
 /// `(status, headers, body)`.
 type Reply = (u16, Vec<(&'static str, &'static str)>, Vec<u8>);
@@ -17,7 +18,7 @@ type Reply = (u16, Vec<(&'static str, &'static str)>, Vec<u8>);
 /// Each connection gets the next reply and is closed.
 struct Server {
     base: String,
-    requests: Arc<Mutex<Vec<String>>>,
+    requests: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 impl Server {
@@ -31,7 +32,7 @@ impl Server {
                 let Ok((mut stream, _)) = listener.accept() else {
                     return;
                 };
-                log.lock().unwrap().push(request_line(&mut stream));
+                log.lock().unwrap().push(read_request(&mut stream));
                 let _ = respond(&mut stream, status, &headers, &body);
             }
         });
@@ -40,11 +41,19 @@ impl Server {
 
     /// Request lines (`GET /wfs?… HTTP/1.1`) received so far.
     fn requests(&self) -> Vec<String> {
-        self.requests.lock().unwrap().clone()
+        let requests = self.requests.lock().unwrap();
+        requests.iter().map(|(line, _)| line.clone()).collect()
+    }
+
+    /// Request bodies received so far, empty for a `GET`.
+    fn bodies(&self) -> Vec<String> {
+        let requests = self.requests.lock().unwrap();
+        requests.iter().map(|(_, body)| body.clone()).collect()
     }
 }
 
-fn request_line(stream: &mut TcpStream) -> String {
+/// The request line and the body (`Content-Length` bytes).
+fn read_request(stream: &mut TcpStream) -> (String, String) {
     let mut head = Vec::new();
     let mut byte = [0];
     while !head.ends_with(b"\r\n\r\n") {
@@ -54,7 +63,19 @@ fn request_line(stream: &mut TcpStream) -> String {
         }
     }
     let head = String::from_utf8_lossy(&head).into_owned();
-    head.lines().next().unwrap_or_default().to_string()
+    let length = head
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse::<usize>().ok())
+                .flatten()
+        })
+        .unwrap_or(0);
+    let mut body = vec![0; length];
+    let _ = stream.read_exact(&mut body);
+    let line = head.lines().next().unwrap_or_default().to_string();
+    (line, String::from_utf8_lossy(&body).into_owned())
 }
 
 fn respond(
@@ -294,7 +315,7 @@ fn sort_keys_go_with_every_request_of_a_read() {
     std::thread::spawn(move || {
         for (status, headers, body) in replies {
             let (mut stream, _) = listener.accept().unwrap();
-            log.lock().unwrap().push(request_line(&mut stream));
+            log.lock().unwrap().push(read_request(&mut stream).0);
             let _ = respond(&mut stream, status, &headers, &body);
         }
     });
@@ -399,7 +420,7 @@ fn a_server_generated_next_link_takes_over() {
     std::thread::spawn(move || {
         for (status, headers, body) in replies {
             let (mut stream, _) = listener.accept().unwrap();
-            log.lock().unwrap().push(request_line(&mut stream));
+            log.lock().unwrap().push(read_request(&mut stream).0);
             let _ = respond(&mut stream, status, &headers, &body);
         }
     });
@@ -511,6 +532,47 @@ fn pages_can_be_fetched_ahead_of_the_read() {
     assert!(pages[2].contains("p3"), "in order");
 }
 
+/// A 2.0 page whose counts are the server's to choose; `numberReturned` is
+/// the true count unless `returned` is given.
+fn page_with_counts(ids: &[u32], matched: &str, returned: Option<&str>) -> String {
+    let returned = returned.map_or(ids.len().to_string(), str::to_string);
+    let members: String = ids
+        .iter()
+        .map(|id| format!(r#"<wfs:member><app:Parcel gml:id="p{id}"><app:n>{id}</app:n></app:Parcel></wfs:member>"#))
+        .collect();
+    format!(
+        r#"<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0" xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:app="http://example.com/app" numberMatched="{matched}" numberReturned="{returned}">{members}</wfs:FeatureCollection>"#
+    )
+}
+
+#[test]
+fn counts_that_contradict_the_pages_do_not_end_the_read() {
+    // deegree: numberReturned="0" on every page. A filtered read whose
+    // numberMatched is 0. Either ended the read after the first page.
+    for (matched, returned) in [("unknown", Some("0")), ("0", None)] {
+        let server = Server::start(vec![
+            ok(capabilities(true, 1000)),
+            ok(page_with_counts(&[1, 2], matched, returned)),
+            ok(page_with_counts(&[3], matched, returned)),
+        ]);
+        let client = WfsClient::new(
+            &server.base,
+            WfsOptions {
+                page_size: Some(2),
+                ..options()
+            },
+        )
+        .unwrap();
+        let (reports, callback) = recorded();
+        let pages = read_all(client.pages("app:Parcel", callback).unwrap()).expect("pages");
+        assert_eq!(pages.len(), 2, "matched={matched} returned={returned:?}");
+        let reports = reports.lock().unwrap();
+        let last = reports.last().expect("a report");
+        assert_eq!(last.features, 3, "matched={matched} returned={returned:?}");
+        assert_eq!(last.number_matched, None, "no total to show");
+    }
+}
+
 #[test]
 fn an_unknown_type_fails_before_any_page() {
     let server = Server::start(vec![ok(capabilities(true, 10))]);
@@ -519,4 +581,232 @@ fn an_unknown_type_fails_before_any_page() {
         client.pages("app:Nope", no_progress()),
         Err(Error::UnknownFeatureType(_))
     ));
+}
+
+/// A FES 2.0 filter on `app:n` whose GET URL is longer than
+/// `MAX_GET_URL_LENGTH`.
+fn long_filter() -> String {
+    let conditions: String = (0..30)
+        .map(|n| format!("<fes:PropertyIsEqualTo><fes:ValueReference>app:n</fes:ValueReference><fes:Literal>{n}</fes:Literal></fes:PropertyIsEqualTo>"))
+        .collect();
+    format!(
+        r#"<fes:Filter xmlns:fes="http://www.opengis.net/fes/2.0"><fes:Or>{conditions}</fes:Or></fes:Filter>"#
+    )
+}
+
+fn post_options(method: HttpMethod) -> WfsOptions {
+    WfsOptions {
+        filter: Some(long_filter()),
+        method,
+        page_size: Some(2),
+        ..options()
+    }
+}
+
+#[test]
+fn a_filter_too_long_for_a_url_is_posted_page_by_page() {
+    let server = Server::start(vec![
+        ok(capabilities(true, 1000)),
+        ok(page(&[1, 2], "3", None)),
+        ok(page(&[3], "3", None)),
+    ]);
+    let client = WfsClient::new(&server.base, post_options(HttpMethod::Auto)).unwrap();
+    let (reports, callback) = recorded();
+    let sources: Vec<_> = client
+        .pages("app:Parcel", callback)
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .expect("pages");
+    assert_eq!(sources.len(), 2);
+    let requests = server.requests();
+    assert!(requests[0].starts_with("GET /wfs?"), "{}", requests[0]);
+    let bodies = server.bodies();
+    for (i, start) in [(1, 0), (2, 2)] {
+        assert_eq!(
+            requests[i], "POST /wfs HTTP/1.1",
+            "no WFS parameters in the URL"
+        );
+        assert!(
+            bodies[i].contains(&format!(r#"count="2" startIndex="{start}""#)),
+            "{}",
+            bodies[i]
+        );
+        assert!(bodies[i].contains(&long_filter()), "{}", bodies[i]);
+    }
+    assert!(
+        sources[1].name().ends_with("/wfs (POST, startIndex=2)"),
+        "{}",
+        sources[1].name()
+    );
+    // The test capabilities advertise no POST endpoint.
+    let warnings = warnings(&reports);
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("doesn't advertise POST")),
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn hits_are_posted_like_the_pages() {
+    let hits = r#"<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0" numberMatched="30" numberReturned="0"/>"#;
+    let server = Server::start(vec![ok(capabilities(true, 1000)), ok(hits)]);
+    let client = WfsClient::new(&server.base, post_options(HttpMethod::Auto)).unwrap();
+    assert_eq!(client.count("app:Parcel").expect("a count"), Some(30));
+    assert_eq!(server.requests()[1], "POST /wfs HTTP/1.1");
+    assert!(
+        server.bodies()[1].contains(r#"resultType="hits""#),
+        "{}",
+        server.bodies()[1]
+    );
+}
+
+#[test]
+fn the_method_can_be_forced_either_way() {
+    let server = Server::start(vec![ok(capabilities(false, 0)), ok(page(&[1], "1", None))]);
+    let client = WfsClient::new(&server.base, post_options(HttpMethod::Get)).unwrap();
+    read_all(client.pages("app:Parcel", no_progress()).unwrap()).expect("pages");
+    assert!(server.requests()[1].starts_with("GET /wfs?"));
+    assert!(server.requests()[1].contains("FILTER="));
+
+    let server = Server::start(vec![ok(capabilities(false, 0)), ok(page(&[1], "1", None))]);
+    let client = WfsClient::new(
+        &server.base,
+        WfsOptions {
+            method: HttpMethod::Post,
+            ..options()
+        },
+    )
+    .unwrap();
+    read_all(client.pages("app:Parcel", no_progress()).unwrap()).expect("pages");
+    assert_eq!(server.requests()[1], "POST /wfs HTTP/1.1");
+    assert!(
+        server.bodies()[1].contains(r#"<wfs:Query typeNames="app:Parcel""#),
+        "{}",
+        server.bodies()[1]
+    );
+}
+
+#[test]
+fn posts_go_where_the_capabilities_came_from() {
+    let server = Server::start(vec![
+        (
+            301,
+            vec![(
+                "Location",
+                "/moved?map=x.map&SERVICE=WFS&REQUEST=GetCapabilities",
+            )],
+            Vec::new(),
+        ),
+        ok(capabilities(false, 0)),
+        ok(page(&[1], "1", None)),
+    ]);
+    let client = WfsClient::new(&server.base, post_options(HttpMethod::Auto)).unwrap();
+    read_all(client.pages("app:Parcel", no_progress()).unwrap()).expect("pages");
+    assert_eq!(server.requests()[2], "POST /moved?map=x.map HTTP/1.1");
+}
+
+#[test]
+fn a_post_redirected_into_a_get_is_an_error_that_says_so() {
+    // The GET arrives without the request; the server answers with its
+    // capabilities, which must not be read as a feature.
+    let server = Server::start(vec![
+        ok(capabilities(false, 0)),
+        (302, vec![("Location", "/elsewhere")], Vec::new()),
+        ok(capabilities(false, 0)),
+    ]);
+    let client = WfsClient::new(&server.base, post_options(HttpMethod::Post)).unwrap();
+    let error = read_all(client.pages("app:Parcel", no_progress()).unwrap()).expect_err("an error");
+    let message = error.to_string();
+    assert!(message.contains("not a feature collection"), "{message}");
+    assert!(message.contains("redirected the POST to"), "{message}");
+    assert!(message.contains("/elsewhere"), "{message}");
+    assert!(server.requests()[2].starts_with("GET /elsewhere"));
+}
+
+#[test]
+fn a_next_link_that_repeats_a_long_request_leaves_offset_paging_alone() {
+    // GeoServer puts the POSTed filter into its `next` links.
+    let long_link = format!("http://example.com/wfs?FILTER={}", "x".repeat(2000));
+    let server = Server::start(vec![
+        ok(capabilities(true, 1000)),
+        ok(page(&[1, 2], "3", Some(&long_link))),
+        ok(page(&[3], "3", None)),
+    ]);
+    let client = WfsClient::new(&server.base, post_options(HttpMethod::Auto)).unwrap();
+    let (reports, callback) = recorded();
+    let pages = read_all(client.pages("app:Parcel", callback).unwrap()).expect("pages");
+    assert_eq!(pages.len(), 2);
+    assert_eq!(server.requests()[2], "POST /wfs HTTP/1.1");
+    assert!(server.bodies()[2].contains(r#"startIndex="2""#));
+    let warnings = warnings(&reports);
+    assert!(
+        !warnings.iter().any(|w| w.contains("next link")),
+        "nothing to say: offsets are what the link held: {warnings:?}"
+    );
+}
+
+#[test]
+fn a_next_link_too_long_to_send_is_left_for_offsets() {
+    let long_link = format!("http://example.com/wfs?FILTER={}", "x".repeat(2000));
+    let server = Server::start(vec![
+        ok(capabilities(true, 1000)),
+        ok(page(&[1, 2], "3", Some(&long_link))),
+        ok(page(&[3], "3", None)),
+    ]);
+    let client = WfsClient::new(
+        &server.base,
+        WfsOptions {
+            strategy: Some(PagingStrategy::NextLink),
+            ..post_options(HttpMethod::Auto)
+        },
+    )
+    .unwrap();
+    let (reports, callback) = recorded();
+    let pages = read_all(client.pages("app:Parcel", callback).unwrap()).expect("pages");
+    assert_eq!(pages.len(), 2);
+    assert_eq!(server.requests()[2], "POST /wfs HTTP/1.1");
+    assert!(server.bodies()[2].contains(r#"startIndex="2""#));
+    let warnings = warnings(&reports);
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("too long to send") && w.contains("startIndex=2")),
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn a_next_link_too_long_to_send_ends_a_read_without_offsets() {
+    let long_link = format!("http://example.com/wfs?FILTER={}", "x".repeat(2000));
+    let server = Server::start(vec![
+        ok(capabilities(false, 0)),
+        ok(page(&[1, 2], "3", Some(&long_link))),
+    ]);
+    let client = WfsClient::new(&server.base, post_options(HttpMethod::Auto)).unwrap();
+    let error = read_all(client.pages("app:Parcel", no_progress()).unwrap()).expect_err("an error");
+    assert!(error.to_string().contains("too long to send"), "{error}");
+    assert_eq!(server.requests().len(), 2, "the link is never requested");
+}
+
+#[test]
+fn vendor_parameters_keep_a_long_request_from_being_posted() {
+    let server = Server::start(vec![ok(capabilities(true, 1000))]);
+    let client = WfsClient::new(
+        &server.base,
+        WfsOptions {
+            vendor_params: vec![("CQL_FILTER".into(), "n=1".into())],
+            ..post_options(HttpMethod::Auto)
+        },
+    )
+    .unwrap();
+    let error = client
+        .pages("app:Parcel", no_progress())
+        .err()
+        .expect("an error before any page");
+    let message = error.to_string();
+    assert!(message.contains("CQL_FILTER"), "{message}");
+    assert!(message.contains("force GET"), "{message}");
+    assert_eq!(server.requests().len(), 1, "only the capabilities");
 }

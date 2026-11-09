@@ -191,7 +191,8 @@ pub enum WfsCommand {
     /// Count the features of one feature type
     ///
     /// Asks the server for the number (`resultType=hits`) and downloads
-    /// no features. Prints `unknown` if the server doesn't say.
+    /// no features. Prints `unknown` if the server doesn't say. With
+    /// `--filter`, counts the features that match it.
     ///
     /// Example:
     ///   xeibe wfs count https://example.com/geoserver/wfs --type-name app:Parcel
@@ -201,6 +202,8 @@ pub enum WfsCommand {
         service: ServiceArgs,
         #[command(flatten)]
         feature_type: TypeNameArgs,
+        #[command(flatten)]
+        query: QueryArgs,
     },
     /// Download one feature type into Parquet or Arrow IPC
     ///
@@ -224,6 +227,8 @@ pub enum WfsCommand {
         service: ServiceArgs,
         #[command(flatten)]
         feature_type: TypeNameArgs,
+        #[command(flatten)]
+        query: QueryArgs,
         /// Features per request. Default: the server's page size, or 5000
         ///
         /// A server that declares a page size of its own (`CountDefault`)
@@ -266,7 +271,9 @@ pub enum WfsCommand {
         /// Extra query parameter for every request, as `KEY=VALUE`
         ///
         /// For vendor parameters and API keys, e.g. `--param token=abc`.
-        /// Give the flag once per parameter.
+        /// Give the flag once per parameter. Only sent by GET: a request
+        /// that has to be a POST (see `--http-method`) can't carry them,
+        /// and fails.
         #[arg(long = "param", value_name = "KEY=VALUE", verbatim_doc_comment)]
         params: Vec<String>,
         /// Name of the layer's schema in `--settings`. Default: the type name
@@ -307,6 +314,67 @@ pub struct TypeNameArgs {
     /// Feature type, as `xeibe wfs layers` prints it, e.g. `app:Parcel`.
     #[arg(long, value_name = "NAME")]
     pub type_name: String,
+}
+
+/// What `wfs count` and `wfs convert` ask the server for, and how.
+#[derive(Debug, Args)]
+pub struct QueryArgs {
+    /// Only the features that match a filter, applied by the server
+    ///
+    /// An OGC filter as XML: one `Filter` element in the encoding of
+    /// the service's WFS version (`xeibe wfs layers` prints it):
+    ///   WFS 2.0  Filter Encoding 2.0, namespace
+    ///            http://www.opengis.net/fes/2.0
+    ///   WFS 1.1  Filter 1.1, namespace http://www.opengis.net/ogc
+    ///   WFS 1.0  Filter 1.0, namespace http://www.opengis.net/ogc
+    /// `@FILE` reads the filter from a file. Properties are named as
+    /// the server names them (its DescribeFeatureType lists them).
+    /// A filter too long for a URL is sent by POST (`--http-method`).
+    ///
+    /// Examples:
+    ///   --filter @parcels-filter.xml
+    ///   --filter '<fes:Filter xmlns:fes="http://www.opengis.net/fes/2.0"><fes:PropertyIsEqualTo><fes:ValueReference>app:n</fes:ValueReference><fes:Literal>7</fes:Literal></fes:PropertyIsEqualTo></fes:Filter>'
+    #[arg(long, value_name = "XML|@FILE", verbatim_doc_comment)]
+    pub filter: Option<String>,
+    /// How the requests for features are sent: auto, get or post
+    ///
+    /// auto sends a GET, unless its URL would be longer than 1800
+    /// bytes (a long `--filter`); then a POST. Some servers fail on
+    /// URLs from about 2000 bytes (ArcGIS Server, with a misleading
+    /// 500 error), others from about 8000. A POST sends the request
+    /// as an XML document (WFS 1.1 and 2.0) and can't carry
+    /// `--param` parameters, so a request that would need both fails
+    /// with a message; `get` sends it anyway. Capabilities and
+    /// DescribeFeatureType requests are always GET.
+    #[arg(
+        long,
+        value_enum,
+        value_name = "METHOD",
+        default_value_t = HttpMethodArg::Auto,
+        verbatim_doc_comment
+    )]
+    pub http_method: HttpMethodArg,
+}
+
+/// `--http-method`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum HttpMethodArg {
+    /// GET, or POST when the URL would be longer than 1800 bytes.
+    Auto,
+    /// Always GET, the request's parameters in the URL, however long.
+    Get,
+    /// Always POST, the request as an XML document (WFS 1.1 and 2.0).
+    Post,
+}
+
+impl From<HttpMethodArg> for xeibe_wfs::HttpMethod {
+    fn from(method: HttpMethodArg) -> Self {
+        match method {
+            HttpMethodArg::Auto => xeibe_wfs::HttpMethod::Auto,
+            HttpMethodArg::Get => xeibe_wfs::HttpMethod::Get,
+            HttpMethodArg::Post => xeibe_wfs::HttpMethod::Post,
+        }
+    }
 }
 
 #[derive(Debug, Args)]

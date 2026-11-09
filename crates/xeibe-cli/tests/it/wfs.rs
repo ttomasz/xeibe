@@ -15,7 +15,7 @@ use crate::support::*;
 /// Each connection gets the next body (HTTP 200) and is closed.
 struct Server {
     base: String,
-    requests: Arc<Mutex<Vec<String>>>,
+    requests: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 impl Server {
@@ -29,7 +29,7 @@ impl Server {
                 let Ok((mut stream, _)) = listener.accept() else {
                     return;
                 };
-                log.lock().unwrap().push(request_line(&mut stream));
+                log.lock().unwrap().push(read_request(&mut stream));
                 let _ = respond(&mut stream, body.as_bytes());
             }
         });
@@ -38,11 +38,19 @@ impl Server {
 
     /// Request lines (`GET /wfs?… HTTP/1.1`) received so far.
     fn requests(&self) -> Vec<String> {
-        self.requests.lock().unwrap().clone()
+        let requests = self.requests.lock().unwrap();
+        requests.iter().map(|(line, _)| line.clone()).collect()
+    }
+
+    /// Request bodies received so far, empty for a `GET`.
+    fn bodies(&self) -> Vec<String> {
+        let requests = self.requests.lock().unwrap();
+        requests.iter().map(|(_, body)| body.clone()).collect()
     }
 }
 
-fn request_line(stream: &mut TcpStream) -> String {
+/// The request line and the body (`Content-Length` bytes).
+fn read_request(stream: &mut TcpStream) -> (String, String) {
     let mut head = Vec::new();
     let mut byte = [0];
     while !head.ends_with(b"\r\n\r\n") {
@@ -52,7 +60,19 @@ fn request_line(stream: &mut TcpStream) -> String {
         }
     }
     let head = String::from_utf8_lossy(&head).into_owned();
-    head.lines().next().unwrap_or_default().to_string()
+    let length = head
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse::<usize>().ok())
+                .flatten()
+        })
+        .unwrap_or(0);
+    let mut body = vec![0; length];
+    let _ = stream.read_exact(&mut body);
+    let line = head.lines().next().unwrap_or_default().to_string();
+    (line, String::from_utf8_lossy(&body).into_owned())
 }
 
 fn respond(stream: &mut TcpStream, body: &[u8]) -> std::io::Result<()> {
@@ -458,5 +478,112 @@ fn wfs_convert_rejects_a_malformed_sort_key() {
         run.stderr.contains("--sort-by") && run.stderr.contains("ASC or DESC"),
         "{}",
         run.stderr
+    );
+}
+
+/// A filter on `n` whose GET URL is too long for `--http-method auto`.
+fn long_filter() -> String {
+    let conditions: String = (0..30)
+        .map(|n| format!("<fes:PropertyIsEqualTo><fes:ValueReference>app:n</fes:ValueReference><fes:Literal>{n}</fes:Literal></fes:PropertyIsEqualTo>"))
+        .collect();
+    format!(
+        r#"<fes:Filter xmlns:fes="http://www.opengis.net/fes/2.0"><fes:Or>{conditions}</fes:Or></fes:Filter>"#
+    )
+}
+
+#[test]
+fn wfs_convert_posts_a_filter_from_a_file_when_it_is_long() {
+    let server = Server::start(vec![
+        capabilities(),
+        describe(),
+        page(&[1, 2], 3),
+        page(&[3], 3),
+    ]);
+    let dir = out_dir("wfs_filter_post");
+    let filter = dir.join("filter.xml");
+    std::fs::write(
+        &filter,
+        format!("<?xml version=\"1.0\"?>\n{}\n", long_filter()),
+    )
+    .unwrap();
+    let out = dir.join("parcels.parquet");
+    let run = xeibe_ok(&[
+        "wfs",
+        "convert",
+        &server.base,
+        "--type-name",
+        "app:Parcel",
+        "--filter",
+        &format!("@{}", path_str(&filter)),
+        "--page-size",
+        "2",
+        "--axis-order",
+        "xy",
+        "-o",
+        path_str(&out),
+    ]);
+    let requests = server.requests();
+    let bodies = server.bodies();
+    // Capabilities and DescribeFeatureType stay GETs.
+    assert!(requests[1].starts_with("GET "), "{requests:?}");
+    for i in [2, 3] {
+        assert_eq!(requests[i], "POST /wfs HTTP/1.1");
+        assert!(bodies[i].contains(&long_filter()), "{}", bodies[i]);
+    }
+    assert!(bodies[3].contains(r#"startIndex="2""#), "{}", bodies[3]);
+    assert!(run.stderr.contains("3 rows written"), "{}", run.stderr);
+}
+
+#[test]
+fn wfs_count_can_be_made_to_send_a_long_filter_by_get() {
+    let hits = r#"<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0" numberMatched="30" numberReturned="0"/>"#;
+    let server = Server::start(vec![capabilities(), hits.to_string()]);
+    let run = xeibe_ok(&[
+        "wfs",
+        "count",
+        &server.base,
+        "--type-name",
+        "app:Parcel",
+        "--filter",
+        &long_filter(),
+        "--http-method",
+        "get",
+    ]);
+    assert_eq!(run.stdout.trim(), "30");
+    let requests = server.requests();
+    assert!(requests[1].starts_with("GET "), "{requests:?}");
+    assert_eq!(param(&requests[1], "FILTER"), Some(long_filter()));
+}
+
+#[test]
+fn wfs_convert_cannot_post_vendor_parameters() {
+    let server = Server::start(vec![capabilities()]);
+    let dir = out_dir("wfs_post_param");
+    let run = xeibe(&[
+        "wfs",
+        "convert",
+        &server.base,
+        "--type-name",
+        "app:Parcel",
+        "--http-method",
+        "post",
+        "--param",
+        "CQL_FILTER=n=1",
+        "-o",
+        path_str(&dir.join("parcels.parquet")),
+    ]);
+    assert!(!run.success);
+    assert!(run.stderr.contains("CQL_FILTER"), "{}", run.stderr);
+    assert!(run.stderr.contains("only sent by GET"), "{}", run.stderr);
+}
+
+#[test]
+fn the_http_method_help_names_the_length_auto_switches_at() {
+    let run = xeibe_ok(&["wfs", "convert", "--help"]);
+    let limit = xeibe_wfs::request::MAX_GET_URL_LENGTH.to_string();
+    assert!(
+        run.stdout.contains(&format!("longer than {limit}")),
+        "{}",
+        run.stdout
     );
 }

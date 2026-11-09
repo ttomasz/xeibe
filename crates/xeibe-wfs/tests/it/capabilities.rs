@@ -10,7 +10,7 @@ const WFS_20: &str = r#"<?xml version="1.0"?>
   <ows:ServiceIdentification><ows:Title>Test service</ows:Title></ows:ServiceIdentification>
   <ows:OperationsMetadata>
     <ows:Operation name="GetFeature">
-      <ows:DCP><ows:HTTP><ows:Get xlink:href="https://example.com/wfs?"/></ows:HTTP></ows:DCP>
+      <ows:DCP><ows:HTTP><ows:Get xlink:href="https://example.com/wfs?"/><ows:Post xlink:href="https://example.com/wfs"/></ows:HTTP></ows:DCP>
       <ows:Parameter name="outputFormat">
         <ows:AllowedValues>
           <ows:Value>application/gml+xml; version=3.2</ows:Value>
@@ -84,6 +84,7 @@ fn reads_a_wfs_20_capabilities_document() {
     assert_eq!(capabilities.version, WfsVersion::V2_0_0);
     assert_eq!(capabilities.service_title.as_deref(), Some("Test service"));
     assert_eq!(capabilities.get_feature_url, "https://example.com/wfs?");
+    assert_eq!(capabilities.get_feature_post_url, "https://example.com/wfs");
     assert_eq!(capabilities.constraints.kvp_encoding, Some(true));
     assert_eq!(
         capabilities.constraints.implements_result_paging,
@@ -130,6 +131,7 @@ fn reads_the_older_versions_spellings() {
     let wfs10 = Capabilities::parse(WFS_10.as_bytes()).expect("parsed");
     assert_eq!(wfs10.version, WfsVersion::V1_0_0);
     assert_eq!(wfs10.get_feature_url, "https://example.com/wfs10?");
+    assert_eq!(wfs10.get_feature_post_url, "", "no POST advertised");
     let feature_type = wfs10
         .feature_type("ogdwien:SCOOTERABSTELLOGD")
         .expect("the type");

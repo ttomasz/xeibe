@@ -30,9 +30,23 @@ pub struct ResponseInfo {
 }
 
 impl ResponseInfo {
-    /// Features in this response: the server's count, else the counted members.
+    /// Features in this response: the server's count, or the features counted
+    /// in it when they are more. No count can be below what the page holds,
+    /// but some servers write one: deegree writes `numberReturned="0"` for
+    /// "unknown", which the 2.0 schema doesn't allow (its responses say so in
+    /// a comment). A larger count stays: referenced members are in it, but
+    /// not among the counted features.
     pub fn returned(&self) -> u64 {
-        self.number_returned.unwrap_or(self.features)
+        self.number_returned
+            .map_or(self.features, |returned| returned.max(self.features))
+    }
+
+    /// `numberMatched`, unless it is less than the `fetched` features
+    /// received so far, this page's included. No total can be below them, so
+    /// a server that writes one (`0` for a filtered request, say) has no
+    /// usable total, as if it had written `unknown`.
+    pub fn plausible_matched(&self, fetched: u64) -> Option<u64> {
+        self.number_matched.filter(|&matched| matched >= fetched)
     }
 }
 

@@ -51,6 +51,89 @@ fn get_returns_the_body_in_memory() {
 }
 
 #[test]
+fn a_post_sends_its_body_and_content_type() {
+    let server = Server::start(vec![Reply::ok("<wfs:FeatureCollection/>")]);
+    let url = server.url("/wfs?map=parcels.map");
+    let (bytes, final_url) = client(0)
+        .post(&url, b"<wfs:GetFeature/>", "text/xml")
+        .expect("a body");
+    assert_eq!(&bytes[..], b"<wfs:FeatureCollection/>");
+    assert_eq!(final_url, url);
+    let request = &server.requests()[0];
+    assert!(
+        request.starts_with("POST /wfs?map=parcels.map HTTP/1.1"),
+        "{request}"
+    );
+    assert!(
+        request
+            .to_ascii_lowercase()
+            .contains("content-type: text/xml"),
+        "{request}"
+    );
+    assert!(request.ends_with("\r\n\r\n<wfs:GetFeature/>"), "{request}");
+}
+
+#[test]
+fn a_post_is_retried_with_its_body() {
+    let server = Server::start(vec![Reply::retry_after(503, 0), Reply::ok("<a/>")]);
+    client(1)
+        .post(&server.url("/wfs"), b"<wfs:GetFeature/>", "text/xml")
+        .expect("a body after one retry");
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    for request in requests {
+        assert!(request.starts_with("POST /wfs"), "{request}");
+        assert!(request.ends_with("<wfs:GetFeature/>"), "{request}");
+    }
+}
+
+fn redirect(status: u16, location: &str) -> Reply {
+    Reply::Full {
+        status,
+        headers: vec![("Location", location.to_string())],
+        body: Vec::new(),
+    }
+}
+
+#[test]
+fn get_with_url_reports_where_a_redirect_led() {
+    let server = Server::start(vec![redirect(301, "/moved/wfs"), Reply::ok("<a/>")]);
+    let (bytes, final_url) = client(0)
+        .get_with_url(&server.url("/wfs?SERVICE=WFS"))
+        .expect("a body");
+    assert_eq!(&bytes[..], b"<a/>");
+    assert_eq!(final_url, server.url("/moved/wfs"));
+}
+
+#[test]
+fn a_post_redirected_by_301_arrives_as_a_get_without_its_body() {
+    // What HTTP clients do (RFC 9110 §15.4.2): the caller sees it in the URL.
+    let server = Server::start(vec![redirect(301, "/moved"), Reply::ok("<a/>")]);
+    let (_, final_url) = client(0)
+        .post(&server.url("/wfs"), b"<wfs:GetFeature/>", "text/xml")
+        .expect("a body");
+    assert_eq!(final_url, server.url("/moved"));
+    let requests = server.requests();
+    assert!(requests[1].starts_with("GET /moved"), "{}", requests[1]);
+    assert!(!requests[1].contains("GetFeature"), "{}", requests[1]);
+}
+
+#[test]
+fn a_post_redirected_by_307_is_repeated() {
+    let server = Server::start(vec![redirect(307, "/moved"), Reply::ok("<a/>")]);
+    client(0)
+        .post(&server.url("/wfs"), b"<wfs:GetFeature/>", "text/xml")
+        .expect("a body");
+    let requests = server.requests();
+    assert!(requests[1].starts_with("POST /moved"), "{}", requests[1]);
+    assert!(
+        requests[1].ends_with("<wfs:GetFeature/>"),
+        "{}",
+        requests[1]
+    );
+}
+
+#[test]
 fn a_5xx_is_retried_before_the_body_starts() {
     let server = Server::start(vec![
         Reply::retry_after(503, 0),

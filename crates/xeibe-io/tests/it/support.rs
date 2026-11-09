@@ -59,8 +59,8 @@ impl Server {
                 let Ok((mut stream, _)) = listener.accept() else {
                     return;
                 };
-                let head = read_head(&mut stream);
-                log.lock().unwrap().push(head);
+                let request = read_request(&mut stream);
+                log.lock().unwrap().push(request);
                 let _ = respond(&mut stream, reply);
             }
         });
@@ -71,22 +71,36 @@ impl Server {
         url::Url::parse(&format!("{}{path}", self.base)).unwrap()
     }
 
-    /// Request heads received so far (request line and headers).
+    /// Requests received so far: request line, headers and body.
     pub fn requests(&self) -> Vec<String> {
         self.requests.lock().unwrap().clone()
     }
 }
 
-fn read_head(stream: &mut TcpStream) -> String {
-    let mut head = Vec::new();
+/// The head, then as many body bytes as `Content-Length` announces.
+fn read_request(stream: &mut TcpStream) -> String {
+    let mut request = Vec::new();
     let mut byte = [0];
-    while !head.ends_with(b"\r\n\r\n") {
+    while !request.ends_with(b"\r\n\r\n") {
         match stream.read(&mut byte) {
-            Ok(1) => head.push(byte[0]),
+            Ok(1) => request.push(byte[0]),
             _ => break,
         }
     }
-    String::from_utf8_lossy(&head).into_owned()
+    let length = String::from_utf8_lossy(&request)
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse::<usize>().ok())
+                .flatten()
+        })
+        .unwrap_or(0);
+    let mut body = vec![0; length];
+    if stream.read_exact(&mut body).is_ok() {
+        request.extend_from_slice(&body);
+    }
+    String::from_utf8_lossy(&request).into_owned()
 }
 
 fn respond(stream: &mut TcpStream, reply: Reply) -> std::io::Result<()> {

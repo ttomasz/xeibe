@@ -84,6 +84,47 @@ fn nested_collections_and_referenced_members_are_counted() {
 }
 
 #[test]
+fn a_returned_count_below_the_features_on_the_page_is_not_believed() {
+    // deegree writes numberReturned="0" for "unknown", filtered or not.
+    let xml = concat!(
+        r#"<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0" "#,
+        r#"xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:app="http://example.com/app" "#,
+        r#"numberMatched="unknown" numberReturned="0">"#,
+        r#"<wfs:member><app:P gml:id="p1"/></wfs:member><wfs:member><app:P gml:id="p2"/></wfs:member>"#,
+        "</wfs:FeatureCollection>"
+    );
+    let deegree = info(xml);
+    assert_eq!(deegree.number_returned, Some(0), "as the server wrote it");
+    assert_eq!(deegree.returned(), 2, "what the page holds");
+
+    // A larger count stays: a referenced member counts on the server's side.
+    let xml = concat!(
+        r#"<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0" "#,
+        r#"xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:app="http://example.com/app" "#,
+        r#"xmlns:xlink="http://www.w3.org/1999/xlink" numberReturned="2">"#,
+        r##"<wfs:member><app:P gml:id="p1"/></wfs:member><wfs:member xlink:href="#p0"/>"##,
+        "</wfs:FeatureCollection>"
+    );
+    assert_eq!(info(xml).returned(), 2);
+}
+
+#[test]
+fn a_total_below_the_features_received_is_not_believed() {
+    let xml = |matched: &str| {
+        format!(
+            r#"<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0" numberMatched="{matched}" numberReturned="2"><wfs:member/><wfs:member/></wfs:FeatureCollection>"#
+        )
+    };
+    let zero = info(&xml("0"));
+    assert_eq!(zero.number_matched, Some(0), "as the server wrote it");
+    assert_eq!(zero.plausible_matched(2), None, "no usable total");
+    let five = info(&xml("5"));
+    assert_eq!(five.plausible_matched(2), Some(5));
+    assert_eq!(five.plausible_matched(5), Some(5), "the last page");
+    assert_eq!(five.plausible_matched(6), None);
+}
+
+#[test]
 fn an_exception_report_inside_a_200_response_is_detected() {
     let xml = concat!(
         r#"<ows:ExceptionReport xmlns:ows="http://www.opengis.net/ows/1.1" version="2.0.0">"#,

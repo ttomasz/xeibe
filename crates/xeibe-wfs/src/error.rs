@@ -33,6 +33,17 @@ pub enum Error {
     #[error("feature type {0} is not in the capabilities")]
     UnknownFeatureType(String),
 
+    /// A filter that can't be put into an XML request as given.
+    #[error("filter: {0}")]
+    Filter(String),
+
+    /// A `POST` that was redirected (to `to`): HTTP clients follow a 301 or
+    /// 302 with a `GET` without the body, so the server never saw the request.
+    #[error(
+        "{error} (the server redirected the POST to {to}, which HTTP clients follow with a GET that leaves the request out; use {to} as the service URL)"
+    )]
+    PostRedirected { to: String, error: Box<Error> },
+
     #[error("{0}")]
     Unsupported(String),
 }

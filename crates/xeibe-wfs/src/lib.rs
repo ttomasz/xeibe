@@ -26,7 +26,7 @@ mod xml;
 pub use capabilities::{Capabilities, FeatureTypeInfo, WfsVersion};
 pub use describe::FeatureTypeSchema;
 pub use error::{Error, Result};
-pub use options::WfsOptions;
+pub use options::{HttpMethod, WfsOptions};
 #[cfg(feature = "http")]
 pub use pages::WfsClient;
 pub use paging::PagingStrategy;

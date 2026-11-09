@@ -1,7 +1,7 @@
 //! Plain HTTP(S) sources (blocking `reqwest`), with retries and backoff
 //! (5xx, 429 + `Retry-After`, network errors) before the body starts. Also used by
-//! `xeibe-wfs`, and for the byte ranges of reprojection grids
-//! ([`HttpClient::get_range`]).
+//! `xeibe-wfs` (whose long requests are `POST`s, [`HttpClient::post`]), and
+//! for the byte ranges of reprojection grids ([`HttpClient::get_range`]).
 
 use std::io::Read;
 use std::sync::Arc;
@@ -61,8 +61,40 @@ impl HttpClient {
     /// Nothing is handed on before the body is complete, so a body that breaks
     /// off is retried like a failed request.
     pub fn get(&self, url: &Url) -> crate::Result<bytes::Bytes> {
-        self.fetch(url, None, |response| {
+        self.fetch(url, Payload::Get(None), |response| {
             response.bytes().map_err(|e| error_chain(&e))
+        })
+    }
+
+    /// [`Self::get`], with the URL the body came from after redirects, e.g.
+    /// the `https://` URL an `http://` endpoint redirects to.
+    pub fn get_with_url(&self, url: &Url) -> crate::Result<(bytes::Bytes, Url)> {
+        self.fetch(url, Payload::Get(None), |response| {
+            let final_url = response.url().clone();
+            let body = response.bytes().map_err(|e| error_chain(&e))?;
+            Ok((body, final_url))
+        })
+    }
+
+    /// One `POST` of `body` as `content_type`, the whole response in memory,
+    /// retried like [`Self::get`]; with the URL the response came from.
+    ///
+    /// Redirects are followed as HTTP clients do: a 307 or 308 repeats the
+    /// `POST`, but a 301 or 302 is followed with a `GET` without the body
+    /// (RFC 9110 §15.4.2–3 allows it). A URL other than `url` therefore means
+    /// the server may never have seen the body; the caller decides what that
+    /// means for the response.
+    pub fn post(
+        &self,
+        url: &Url,
+        body: &[u8],
+        content_type: &str,
+    ) -> crate::Result<(bytes::Bytes, Url)> {
+        let payload = Payload::Post { body, content_type };
+        self.fetch(url, payload, |response| {
+            let final_url = response.url().clone();
+            let body = response.bytes().map_err(|e| error_chain(&e))?;
+            Ok((body, final_url))
         })
     }
 
@@ -82,7 +114,7 @@ impl HttpClient {
             Some(length) => format!("bytes={offset}-{}", offset + length - 1),
             None => format!("bytes={offset}-"),
         };
-        self.fetch(url, Some(&range), |response| {
+        self.fetch(url, Payload::Get(Some(&range)), |response| {
             let partial = response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
             let body = response.bytes().map_err(|e| error_chain(&e))?;
             if partial {
@@ -110,7 +142,7 @@ impl HttpClient {
     /// The response and its first bytes: everything up to and including the first
     /// read is retried.
     fn start_stream(&self, url: &Url) -> crate::Result<(Vec<u8>, reqwest::blocking::Response)> {
-        self.fetch(url, None, |mut response| {
+        self.fetch(url, Payload::Get(None), |mut response| {
             let mut first = vec![0; FIRST_READ];
             loop {
                 match response.read(&mut first) {
@@ -125,23 +157,19 @@ impl HttpClient {
         })
     }
 
-    /// One `GET` with retries, of `range` (a `Range` header value) if given.
-    /// `body` takes a successful response as far as it may still be retried;
-    /// its error is a message and always retried.
+    /// One request with retries. `body` takes a successful response as far as
+    /// it may still be retried; its error is a message and always retried.
+    /// An error status names the URL the response came from, after redirects.
     fn fetch<T>(
         &self,
         url: &Url,
-        range: Option<&str>,
+        payload: Payload<'_>,
         mut body: impl FnMut(reqwest::blocking::Response) -> Result<T, String>,
     ) -> crate::Result<T> {
         let mut attempt = 0;
         loop {
             let retries_left = attempt < self.options.max_retries;
-            let mut request = self.request(url);
-            if let Some(range) = range {
-                request = request.header(reqwest::header::RANGE, range);
-            }
-            let wait = match request.send() {
+            let wait = match self.request(url, payload).send() {
                 Ok(response) if response.status().is_success() => match body(response) {
                     Ok(value) => return Ok(value),
                     Err(_) if retries_left => backoff(attempt),
@@ -153,7 +181,7 @@ impl HttpClient {
                         || status == reqwest::StatusCode::TOO_MANY_REQUESTS;
                     if !(retriable && retries_left) {
                         return Err(crate::Error::HttpStatus {
-                            url: url.to_string(),
+                            url: response.url().to_string(),
                             status: status.as_u16(),
                             body: error_body(response),
                         });
@@ -170,14 +198,37 @@ impl HttpClient {
         }
     }
 
-    fn request(&self, url: &Url) -> reqwest::blocking::RequestBuilder {
-        let request = self.client.get(url.clone());
+    fn request(&self, url: &Url, payload: Payload<'_>) -> reqwest::blocking::RequestBuilder {
+        let request = match payload {
+            Payload::Get(None) => self.client.get(url.clone()),
+            Payload::Get(Some(range)) => self
+                .client
+                .get(url.clone())
+                .header(reqwest::header::RANGE, range),
+            Payload::Post { body, content_type } => self
+                .client
+                .post(url.clone())
+                .header(reqwest::header::CONTENT_TYPE, content_type)
+                .body(body.to_vec()),
+        };
         match &self.options.auth {
             Auth::None => request,
             Auth::Basic { user, password } => request.basic_auth(user, Some(password)),
             Auth::Bearer(token) => request.bearer_auth(token),
         }
     }
+}
+
+/// What a request sends besides its URL and the client's headers.
+#[derive(Clone, Copy)]
+enum Payload<'a> {
+    /// A `GET`, of a byte range (a `Range` header value) if given.
+    Get(Option<&'a str>),
+    /// A `POST` of `body` as `content_type`.
+    Post {
+        body: &'a [u8],
+        content_type: &'a str,
+    },
 }
 
 /// The first bytes, then the rest of the body. Errors name the URL.

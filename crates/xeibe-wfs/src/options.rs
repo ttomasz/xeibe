@@ -2,6 +2,20 @@ use std::time::Duration;
 
 use crate::PagingStrategy;
 
+/// How `GetFeature` requests (pages and hits) are sent (`docs/wfs.md`,
+/// "Request encoding (XML POST)").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HttpMethod {
+    /// `GET`, unless its URL would be longer than
+    /// [`crate::request::MAX_GET_URL_LENGTH`]; then an XML `POST`.
+    #[default]
+    Auto,
+    /// Always `GET` with KVP parameters, however long the URL.
+    Get,
+    /// Always `POST` with an XML body (WFS 2.0 and 1.1).
+    Post,
+}
+
 #[derive(Debug, Clone)]
 pub struct WfsOptions {
     /// Version to request; `None` takes the one the server answers
@@ -12,7 +26,12 @@ pub struct WfsOptions {
     pub strategy: Option<PagingStrategy>,
     pub srs_name: Option<String>,
     pub bbox: Option<([f64; 4], Option<String>)>,
+    /// FES 2.0 (WFS 2.0) or Filter 1.1/1.0 XML, one `Filter` element, sent
+    /// as written: as `FILTER` in a `GET`, inside the query of a `POST`.
     pub filter: Option<String>,
+    /// `GET` or XML `POST` for `GetFeature`; capabilities and
+    /// `DescribeFeatureType` are always `GET`.
+    pub method: HttpMethod,
     /// `SORTBY` keys, sent with every `GetFeature` of a read (not with
     /// `hits`), so that pages come in one stable order (see
     /// [`crate::request::parse_sort_by`]). Empty (the default) sends none:
@@ -44,6 +63,7 @@ impl Default for WfsOptions {
             srs_name: None,
             bbox: None,
             filter: None,
+            method: HttpMethod::Auto,
             sort_by: Vec::new(),
             vendor_params: Vec::new(),
             concurrency: 1,

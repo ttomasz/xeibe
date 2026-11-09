@@ -81,13 +81,18 @@ pub fn page_size(capabilities: &Capabilities, requested: Option<u64>) -> u64 {
 /// Where to continue after a page (or after `ResponseCacheExpired`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum NextPage {
+    /// The read's first request as built, without an offset (`GET` or `POST`).
+    First,
+    /// A server-generated `next` link, always a `GET`.
     Url(String),
     StartIndex(u64),
     Done,
 }
 
 /// Offset paging stops at a short (or empty) page, or once `numberMatched`
-/// features have arrived; `next`-link paging stops at the page without one.
+/// features have arrived (a total below what arrived is not believed, see
+/// [`ResponseInfo::plausible_matched`]); `next`-link paging stops at the page
+/// without one. `fetched_so_far` includes `last`.
 pub fn next_page(strategy: &PagingStrategy, fetched_so_far: u64, last: &ResponseInfo) -> NextPage {
     match strategy {
         PagingStrategy::NextLink => match &last.next {
@@ -99,7 +104,7 @@ pub fn next_page(strategy: &PagingStrategy, fetched_so_far: u64, last: &Response
             let returned = last.returned();
             // With a known total, a short page is not the end: the server may
             // cap pages below the page size without advertising it.
-            let done = match last.number_matched {
+            let done = match last.plausible_matched(fetched_so_far) {
                 Some(matched) => returned == 0 || fetched_so_far >= matched,
                 None => returned == 0 || returned < *page_size,
             };

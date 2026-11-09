@@ -10,9 +10,14 @@ use xeibe_core::{BytesSource, Source, Sources};
 
 use crate::exception::ExceptionReport;
 use crate::paging::{self, NextPage, PagingStrategy};
-use crate::request::{GetFeature, ResultType, describe_feature_type_url, get_capabilities_url};
+use crate::request::{
+    GetFeature, MAX_GET_URL_LENGTH, ResultType, describe_feature_type_url, get_capabilities_url,
+    post_url,
+};
 use crate::response::{self, Response, ResponseInfo};
-use crate::{Capabilities, Error, FeatureTypeInfo, FeatureTypeSchema, WfsOptions, WfsVersion};
+use crate::{
+    Capabilities, Error, FeatureTypeInfo, FeatureTypeSchema, HttpMethod, WfsOptions, WfsVersion,
+};
 
 /// Progress callback payload, sent after every page.
 #[derive(Debug, Clone)]
@@ -31,7 +36,17 @@ pub struct WfsClient {
     options: WfsOptions,
     http: Arc<crate::http::HttpClient>,
     /// Fetched once per client; `count` and `pages` need it too.
-    capabilities: Mutex<Option<Arc<Capabilities>>>,
+    capabilities: Mutex<Option<Service>>,
+}
+
+/// What `GetCapabilities` tells about the service.
+#[derive(Clone)]
+struct Service {
+    capabilities: Arc<Capabilities>,
+    /// Where `POST`s go: the URL the capabilities came from, after redirects
+    /// (a `POST` must not be redirected, see [`crate::http::HttpClient::post`]),
+    /// without the WFS parameters ([`post_url`]).
+    post_url: Url,
 }
 
 impl WfsClient {
@@ -50,21 +65,26 @@ impl WfsClient {
 
     /// `GetCapabilities` for `options.version`, or the server's own choice.
     pub fn capabilities(&self) -> crate::Result<Capabilities> {
-        Ok(self.cached_capabilities()?.as_ref().clone())
+        Ok(self.service()?.capabilities.as_ref().clone())
     }
 
     /// `resultType=hits`: `numberMatched` (2.0) or `numberOfFeatures` (1.1).
     /// `None` when the server says "unknown", and for WFS 1.0, which has no hits
     /// request (nothing is requested then).
     pub fn count(&self, type_name: &str) -> crate::Result<Option<u64>> {
-        let capabilities = self.cached_capabilities()?;
-        let feature_type = find_type(&capabilities, type_name)?;
-        let version = self.version(&capabilities);
+        let service = self.service()?;
+        let capabilities = &service.capabilities;
+        let feature_type = find_type(capabilities, type_name)?;
+        let version = self.version(capabilities);
         if version == WfsVersion::V1_0_0 {
             return Ok(None);
         }
-        let request = self.request(&capabilities, feature_type, ResultType::Hits);
-        let body = self.http.get(&request.to_url(&self.endpoint)?)?;
+        let request = self.request(capabilities, feature_type, ResultType::Hits);
+        let body = if self.use_post(&request)? {
+            self.http.post(&service.post_url, &request.to_xml()?)?
+        } else {
+            self.http.get(&request.to_url(&self.endpoint)?)?
+        };
         match response::inspect(&body)? {
             Response::Exception(report) => Err(Error::Exception(report)),
             Response::Features(info) if version.is_2() => Ok(info.number_matched),
@@ -76,7 +96,7 @@ impl WfsClient {
     /// declares, as a hint for inference (`docs/wfs.md`, "Schema hint from
     /// `DescribeFeatureType`").
     pub fn describe(&self, type_name: &str) -> crate::Result<FeatureTypeSchema> {
-        let capabilities = self.cached_capabilities()?;
+        let capabilities = self.service()?.capabilities;
         let feature_type = find_type(&capabilities, type_name)?;
         let url = describe_feature_type_url(
             &self.endpoint,
@@ -114,11 +134,12 @@ impl WfsClient {
                     .into(),
             ));
         }
-        let capabilities = self.cached_capabilities()?;
-        let feature_type = find_type(&capabilities, type_name)?;
-        let version = self.version(&capabilities);
+        let service = self.service()?;
+        let capabilities = &service.capabilities;
+        let feature_type = find_type(capabilities, type_name)?;
+        let version = self.version(capabilities);
         let strategy = paging::choose(
-            &capabilities,
+            capabilities,
             feature_type,
             self.options.page_size,
             self.options.strategy.clone(),
@@ -128,23 +149,41 @@ impl WfsClient {
                 "spatial tiling is not implemented".into(),
             ));
         }
-        let mut template = self.request(&capabilities, feature_type, ResultType::Results);
+        let mut template = self.request(capabilities, feature_type, ResultType::Results);
         // A forced next-link strategy asks the server to page by setting `count`.
         if strategy == PagingStrategy::NextLink {
             template.count = self
                 .options
                 .page_size
-                .map(|size| paging::page_size(&capabilities, Some(size)));
+                .map(|size| paging::page_size(capabilities, Some(size)));
         }
         let next = match &strategy {
             PagingStrategy::StartIndex { .. } | PagingStrategy::VendorStartIndex { .. } => {
                 NextPage::StartIndex(0)
             }
-            _ => NextPage::Url(template.to_url(&self.endpoint)?.to_string()),
+            _ => NextPage::First,
         };
         let constraints = &capabilities.constraints;
         // Said with the first page.
         let mut warnings = Vec::new();
+        let post = self.use_post(&template)?;
+        if post {
+            // Every page is built from the template: one that can't be sent
+            // fails here, before any request.
+            template.to_xml()?;
+            if capabilities.get_feature_post_url.is_empty() {
+                warnings.push(
+                    "the server doesn't advertise POST for GetFeature; sending the request by POST anyway"
+                        .to_string(),
+                );
+            }
+            if constraints.xml_encoding == Some(false) {
+                warnings.push(
+                    "the server declares XMLEncoding = FALSE; sending the request as XML anyway"
+                        .to_string(),
+                );
+            }
+        }
         if !self.options.sort_by.is_empty() {
             if version == WfsVersion::V1_0_0 {
                 warnings.push("WFS 1.0 has no SORTBY: the features are not sorted".to_string());
@@ -158,6 +197,7 @@ impl WfsClient {
         let pager = Pager {
             http: self.http.clone(),
             base: self.endpoint.clone(),
+            post_url: post.then(|| service.post_url.clone()),
             template,
             version,
             automatic: self.options.strategy.is_none(),
@@ -167,7 +207,7 @@ impl WfsClient {
             // can continue at an offset.
             resume_page_size: (version.is_2()
                 && constraints.implements_result_paging == Some(true))
-            .then(|| paging::page_size(&capabilities, self.options.page_size)),
+            .then(|| paging::page_size(capabilities, self.options.page_size)),
             paging_is_transaction_safe: constraints.paging_is_transaction_safe,
             max_retries: self.options.max_retries,
             attempts: 0,
@@ -192,18 +232,45 @@ impl WfsClient {
         Ok(read_ahead(pager, self.options.concurrency))
     }
 
-    fn cached_capabilities(&self) -> crate::Result<Arc<Capabilities>> {
+    fn service(&self) -> crate::Result<Service> {
         let mut cached = self
             .capabilities
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(capabilities) = cached.as_ref() {
-            return Ok(capabilities.clone());
+        if let Some(service) = cached.as_ref() {
+            return Ok(service.clone());
         }
         let url = get_capabilities_url(&self.endpoint, self.options.version)?;
-        let capabilities = Arc::new(Capabilities::parse(&self.http.get(&url)?)?);
-        *cached = Some(capabilities.clone());
-        Ok(capabilities)
+        let (body, final_url) = self.http.get_with_url(&url)?;
+        let service = Service {
+            capabilities: Arc::new(Capabilities::parse(&body)?),
+            post_url: post_url(&final_url),
+        };
+        *cached = Some(service.clone());
+        Ok(service)
+    }
+
+    /// Whether `request` is sent as an XML `POST` ([`WfsOptions::method`]).
+    /// `Auto` posts a request whose URL would be longer than
+    /// [`MAX_GET_URL_LENGTH`]; one that can't be posted then fails, saying why.
+    fn use_post(&self, request: &GetFeature) -> crate::Result<bool> {
+        match self.options.method {
+            HttpMethod::Get => Ok(false),
+            HttpMethod::Post => Ok(true),
+            HttpMethod::Auto => {
+                let length = request.to_url(&self.endpoint)?.as_str().len();
+                if length <= MAX_GET_URL_LENGTH {
+                    return Ok(false);
+                }
+                match request.to_xml() {
+                    Ok(_) => Ok(true),
+                    Err(Error::Unsupported(reason)) => Err(Error::Unsupported(format!(
+                        "the GetFeature URL would be {length} bytes, longer than many servers accept (over {MAX_GET_URL_LENGTH}), so it would be sent by POST, but {reason}; force GET to send the long URL anyway"
+                    ))),
+                    Err(error) => Err(error),
+                }
+            }
+        }
     }
 
     fn version(&self, capabilities: &Capabilities) -> WfsVersion {
@@ -274,10 +341,20 @@ fn read_ahead(pager: Pager, concurrency: usize) -> Sources {
     Sources::lazy(receiver.into_iter())
 }
 
+/// One page's request.
+enum Request {
+    /// A server-generated `next` link, sent as it is (`GET`).
+    Link(Url),
+    /// A query of the read, sent by the read's method.
+    Query(Box<GetFeature>),
+}
+
 /// The paging loop, one page per `next`.
 struct Pager {
     http: Arc<crate::http::HttpClient>,
     base: Url,
+    /// Where the requests of a `POST` read go; `None` for `GET`.
+    post_url: Option<Url>,
     /// Every request of the read: `SORTBY` included, so that `next` links
     /// (which the server builds from the first request) and a switch to
     /// offsets after `ResponseCacheExpired` keep the same order.
@@ -335,13 +412,23 @@ impl Pager {
     /// half the page size under offset paging.
     fn next_page(&mut self) -> crate::Result<Option<Source>> {
         loop {
-            let url = match &self.next {
+            let request = match &self.next {
                 NextPage::Done => return Ok(None),
-                NextPage::Url(url) => Url::parse(url)?,
-                NextPage::StartIndex(start) => self.offset_url(*start)?,
+                NextPage::First => Request::Query(Box::new(self.template.clone())),
+                NextPage::Url(link)
+                    if self.post_url.is_some() && link.len() > MAX_GET_URL_LENGTH =>
+                {
+                    self.leave_link(link.len())?;
+                    continue;
+                }
+                NextPage::Url(link) => Request::Link(Url::parse(link)?),
+                NextPage::StartIndex(start) => {
+                    Request::Query(Box::new(self.offset_request(*start)))
+                }
             };
             let page = self.pages + 1;
-            let body = match self.http.get(&url) {
+            let (name, fetched) = self.send(&request)?;
+            let body = match fetched {
                 Ok(body) => body,
                 Err(Error::Exception(report)) => {
                     self.resume_after(report)?;
@@ -372,10 +459,7 @@ impl Pager {
             }
             self.attempts = 0;
             self.after_page(page, &info);
-            let source = BytesSource {
-                name: url.to_string(),
-                bytes: body,
-            };
+            let source = BytesSource { name, bytes: body };
             return Ok(Some(Source::Stream(Arc::new(source))));
         }
     }
@@ -400,7 +484,25 @@ impl Pager {
         }
     }
 
-    fn offset_url(&self, start: u64) -> crate::Result<Url> {
+    /// A `next` link too long to send in a `POST` read: the server repeated
+    /// the request in it (GeoServer does). Offsets continue where it left off
+    /// if the server implements paging; otherwise the read can't go on.
+    fn leave_link(&mut self, length: usize) -> crate::Result<()> {
+        let Some(page_size) = self.resume_page_size else {
+            return Err(Error::Unsupported(format!(
+                "the server's next link is {length} bytes, too long to send (it repeats the POSTed request as a URL), and the server doesn't declare ImplementsResultPaging to continue by startIndex"
+            )));
+        };
+        self.strategy = PagingStrategy::StartIndex { page_size };
+        self.next = NextPage::StartIndex(self.fetched);
+        self.warnings.push(format!(
+            "the server's next link is {length} bytes, too long to send (it repeats the POSTed request as a URL); continuing with startIndex={}",
+            self.fetched
+        ));
+        Ok(())
+    }
+
+    fn offset_request(&self, start: u64) -> GetFeature {
         let page_size = match self.strategy {
             PagingStrategy::StartIndex { page_size }
             | PagingStrategy::VendorStartIndex { page_size } => page_size,
@@ -409,7 +511,30 @@ impl Pager {
         let mut request = self.template.clone();
         request.count = Some(page_size);
         request.start_index = Some(start);
-        request.to_url(&self.base)
+        request
+    }
+
+    /// One request of the read, by the read's method: the page source's name
+    /// and the response. Building the request may fail; sending it is
+    /// returned as it went, for the caller to handle exceptions.
+    fn send(&self, request: &Request) -> crate::Result<(String, crate::Result<bytes::Bytes>)> {
+        Ok(match request {
+            Request::Link(url) => (url.to_string(), self.http.get(url)),
+            Request::Query(query) => match &self.post_url {
+                Some(url) => {
+                    let name = match query.start_index {
+                        Some(start) => format!("{url} (POST, startIndex={start})"),
+                        None => format!("{url} (POST)"),
+                    };
+                    (name, self.http.post(url, &query.to_xml()?))
+                }
+                None => {
+                    let url = query.to_url(&self.base)?;
+                    let fetched = self.http.get(&url);
+                    (url.to_string(), fetched)
+                }
+            },
+        })
     }
 
     /// The new page size under offset paging; `None` for other strategies.
@@ -426,17 +551,31 @@ impl Pager {
 
     /// Book-keeping, checks and the progress report for a complete page.
     fn after_page(&mut self, page: u64, info: &ResponseInfo) {
-        // An automatic choice defers to server-generated `next` links (2.0).
+        // An automatic choice defers to server-generated `next` links (2.0),
+        // except to one too long to send in a `POST` read while offsets work:
+        // the server repeated the request in it, and offsets are all it holds
+        // (GeoServer).
+        let link_too_long = self.post_url.is_some()
+            && info
+                .next
+                .as_ref()
+                .is_some_and(|link| link.len() > MAX_GET_URL_LENGTH);
+        let offsets = matches!(
+            self.strategy,
+            PagingStrategy::StartIndex { .. } | PagingStrategy::VendorStartIndex { .. }
+        );
         if self.automatic
             && page == 1
             && self.version.is_2()
             && info.next.is_some()
             && self.strategy != PagingStrategy::NextLink
+            && !(link_too_long && offsets)
         {
             self.strategy = PagingStrategy::NextLink;
         }
         let returned = info.returned();
         self.fetched += returned;
+        let matched = info.plausible_matched(self.fetched);
         self.pages = page;
         self.next = paging::next_page(&self.strategy, self.fetched, info);
         // Offsets count positions in the server's order: without SORTBY,
@@ -452,6 +591,8 @@ impl Pager {
             );
         }
 
+        // The servers' own numbers: a total that dropped below what arrived
+        // may be data deleted during the read, which this is here to report.
         if page == 1 {
             self.first_matched = info.number_matched;
         } else if let (Some(first), Some(now)) = (self.first_matched, info.number_matched)
@@ -464,7 +605,7 @@ impl Pager {
             ));
         }
         if self.strategy == PagingStrategy::Single
-            && let Some(matched) = info.number_matched
+            && let Some(matched) = matched
             && returned < matched
         {
             self.warnings.push(format!(
@@ -498,7 +639,8 @@ impl Pager {
 
         self.progress.pages = self.pages;
         self.progress.features = self.fetched;
-        self.progress.number_matched = info.number_matched.or(self.first_matched);
+        self.progress.number_matched =
+            matched.or(self.first_matched.filter(|&first| first >= self.fetched));
         self.progress.warnings = std::mem::take(&mut self.warnings);
         (self.callback)(&self.progress);
     }

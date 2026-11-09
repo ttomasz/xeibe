@@ -7,7 +7,7 @@ use xeibe_schema::hint::DeclaredProperty;
 use xeibe_wfs::pages::Progress;
 use xeibe_wfs::{FeatureTypeSchema, WfsClient, WfsOptions};
 
-use crate::args::WfsCommand;
+use crate::args::{QueryArgs, WfsCommand};
 
 pub fn run(command: WfsCommand) -> super::Result {
     match command {
@@ -15,8 +15,14 @@ pub fn run(command: WfsCommand) -> super::Result {
         WfsCommand::Count {
             service,
             feature_type,
+            query,
         } => {
-            let client = WfsClient::new(&service.url, WfsOptions::default())?;
+            let options = WfsOptions {
+                filter: filter(&query)?,
+                method: query.http_method.into(),
+                ..WfsOptions::default()
+            };
+            let client = WfsClient::new(&service.url, options)?;
             let mut out = std::io::stdout().lock();
             match client.count(&feature_type.type_name)? {
                 Some(count) => writeln!(out, "{count}")?,
@@ -27,6 +33,7 @@ pub fn run(command: WfsCommand) -> super::Result {
         WfsCommand::Convert {
             service,
             feature_type,
+            query,
             page_size,
             srs_name,
             sort_by,
@@ -47,6 +54,8 @@ pub fn run(command: WfsCommand) -> super::Result {
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             let options = WfsOptions {
+                filter: filter(&query)?,
+                method: query.http_method.into(),
                 page_size,
                 srs_name,
                 sort_by: sort_by.map(|keys| keys.0).unwrap_or_default(),
@@ -87,6 +96,19 @@ pub fn run(command: WfsCommand) -> super::Result {
             eprintln!("{rows} rows written to {}", output.output.display());
             Ok(())
         }
+    }
+}
+
+/// `--filter`: the XML as given, or the contents of the file after `@`.
+fn filter(query: &QueryArgs) -> Result<Option<String>, String> {
+    let Some(filter) = &query.filter else {
+        return Ok(None);
+    };
+    match filter.strip_prefix('@') {
+        Some(path) => std::fs::read_to_string(path)
+            .map(Some)
+            .map_err(|e| format!("--filter @{path}: {e}")),
+        None => Ok(Some(filter.clone())),
     }
 }
 

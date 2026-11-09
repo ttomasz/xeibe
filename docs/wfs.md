@@ -50,7 +50,8 @@ What we read from `GetCapabilities`:
 | Item | WFS 2.0 | WFS 1.1 | WFS 1.0 | Used for |
 |---|---|---|---|---|
 | Feature types | `FeatureTypeList/FeatureType`: `Name`, `Title`, `DefaultCRS`, `OtherCRS`, `OutputFormats`, `ows:WGS84BoundingBox` | same, but `DefaultSRS`/`OtherSRS` | `Name`, `Title`, `SRS`, `LatLongBoundingBox` | `xeibe wfs layers`, default CRS, bbox checks |
-| KVP support | `KVPEncoding` constraint (Table 13) | assumed | assumed | Read, not used yet: requests are always `GET` (`POST` is planned, P2) |
+| KVP support | `KVPEncoding` constraint (Table 13) | assumed | assumed | Read, not used: requests are `GET` unless too long (see [XML POST](#request-encoding-xml-post)) |
+| XML support | `XMLEncoding` constraint (Table 13), `GetFeature` `DCP/HTTP/Post` | `DCP/HTTP/Post` | `DCPType/HTTP/Post` | A `POST` to a server that advertises no `Post` endpoint, or declares `XMLEncoding = FALSE`, is sent anyway, with a warning |
 | Paging support | `ImplementsResultPaging` (Table 13) | — | — | Paging strategy |
 | Server page limit | `CountDefault` (Table 14) | — | — | Page size cap |
 | Paging consistency | `PagingIsTransactionSafe` (Table 14, default FALSE) | — | — | Warns that duplicates or skipped features are possible |
@@ -214,6 +215,19 @@ warns that pages may overlap or skip features without transactional consistency.
 `numberMatched` may be `"unknown"` (§7.7.4.2). If `count` isn't set and the server
 has no `CountDefault`, `numberReturned` equals `numberMatched` (§7.7.4.3).
 
+The counts are not always true, filtered requests especially, and a wrong
+count would end an offset read early without a word:
+
+- **`numberReturned` below the features on the page** is replaced by the
+  features counted in it (`ResponseInfo::returned`). deegree writes `0` for
+  "unknown", which the schema doesn't allow (its responses say so in a
+  comment). A count above them stays: referenced members are in it, but not
+  among the counted features.
+- **`numberMatched` below the features received so far** is no total
+  (`ResponseInfo::plausible_matched`): offset paging stops at a short page
+  instead, as with `unknown`, and progress shows no total. The
+  "`numberMatched` changed" check still compares the server's own numbers.
+
 ## Request encoding (KVP)
 
 | Parameter | 2.0 | 1.1 | 1.0 | Notes |
@@ -239,7 +253,106 @@ parameters (Table 8 notes). We send one query per request instead. It's simpler,
 and paging then applies to one type at a time. Multi-query responses from other
 tools are still read correctly.
 
-`POST` with an XML body is planned (P2) for filters too long for a URL.
+## Request encoding (XML POST)
+
+A filter can be too long for a URL. `GetFeature` (pages and hits) is then sent
+as an XML document in a `POST` (`WfsOptions::method`, `--http-method`):
+
+| Method | Sends |
+|---|---|
+| `Auto` (default) | `GET`, unless its URL would be longer than `request::MAX_GET_URL_LENGTH` (1,800 bytes); then `POST` |
+| `Get` | Always `GET`, however long the URL |
+| `Post` | Always `POST` |
+
+`GetCapabilities` and `DescribeFeatureType` are always `GET`.
+
+How servers treat long URLs decides the threshold. Measured on public
+services (November 2026), none of them says so with a `414` reliably:
+
+| Server | Fails from | With |
+|---|---|---|
+| ArcGIS Server | about 2,000 bytes (1,958 worked, 2,124 failed) | `500` "Xml Parsing failed"; `404` from IIS at about 11,000 |
+| GeoServer, MapServer (behind nginx), deegree | about 10,800 bytes | `414` |
+| Any of them | 50,000 bytes and more | A dropped connection, or a TLS error |
+
+So `Auto` decides by length before sending, rather than retrying a failed `GET`.
+
+### The document
+
+`request::GetFeature::to_xml` builds it (WFS 2.0.2 §7.8, 04-094 §9.2), sent with
+`Content-Type: text/xml` (WFS 2.0.2 Table D.1, 04-094 Table 2b):
+
+```xml
+<wfs:GetFeature xmlns:wfs="http://www.opengis.net/wfs/2.0" xmlns:fes="http://www.opengis.net/fes/2.0"
+    service="WFS" version="2.0.0" count="1000" startIndex="2000" outputFormat="application/gml+xml; version=3.2">
+  <wfs:Query typeNames="app:Parcel" srsName="urn:ogc:def:crs:EPSG::2180" xmlns:app="http://example.com/app">
+    <wfs:PropertyName>app:n</wfs:PropertyName>
+    <fes:Filter>…</fes:Filter>
+    <fes:SortBy><fes:SortProperty><fes:ValueReference>app:n</fes:ValueReference><fes:SortOrder>DESC</fes:SortOrder></fes:SortProperty></fes:SortBy>
+  </wfs:Query>
+</wfs:GetFeature>
+```
+
+| KVP | 2.0 | 1.1 |
+|---|---|---|
+| `TYPENAMES`/`TYPENAME`, `NAMESPACES`/`NAMESPACE` | `Query/@typeNames`, the prefix declared on `wfs:Query` | `Query/@typeName`, same |
+| `COUNT`/`MAXFEATURES`, `STARTINDEX` | `@count`, `@startIndex` | `@maxFeatures`; `@startIndex` is a vendor attribute (GeoServer and ArcGIS honour it, deegree ignores it) |
+| `RESULTTYPE`, `OUTPUTFORMAT` | `@resultType`, `@outputFormat` | same |
+| `SRSNAME` | `Query/@srsName` | same |
+| `PROPERTYNAME` | `wfs:PropertyName` | `wfs:PropertyName` (not `ogc:`) |
+| `FILTER` | the filter's element, inside `wfs:Query` | same |
+| `SORTBY` | `fes:SortBy`, `ValueReference`, `ASC`/`DESC` | `ogc:SortBy`, `PropertyName`, `ASC`/`DESC` (KVP's `A`/`D` are not valid here) |
+
+The documents validate against `wfs/2.0/wfs.xsd` and `wfs/1.1.0/wfs.xsd`
+(the 1.1 `startIndex` aside).
+
+- **The filter** goes in as written, without its XML declaration and the
+  comments and whitespace around it. One that is not one well-formed element,
+  or has a DTD, is an error before anything is sent.
+- **What XML can't carry is an error**, before any request:
+  - WFS 1.0 (the 1.0 `Query` has no `srsName`, and its BBOX needs a property
+    name): requests stay `GET`.
+  - A bbox: XML has no `BBOX` parameter. A filter with a `BBOX` operator does
+    the same, and bbox and filter don't combine in KVP either.
+  - Vendor parameters: GeoServer ignores query parameters next to an XML body
+    (a `CQL_FILTER` was dropped, the read would have been unfiltered).
+
+  With `Auto` the error says the URL was too long and that `Get` sends it
+  anyway.
+
+### Where the POST goes
+
+To the URL the capabilities came from after redirects, without the WFS
+parameters (`SERVICE`, `REQUEST`, `TYPENAMES`, `FILTER`, …; `request::post_url`):
+
+- **Redirects.** HTTP clients follow a `301` or `302` to a `POST` with a `GET`
+  without the body (RFC 9110 §15.4.2–3; reqwest does too). An `http://`
+  endpoint that redirects to `https://` would get a bare `GET`. The
+  capabilities `GET` follows the redirect, so `POST`s go to where it led.
+- **WFS parameters.** MapServer reads a request from the query string when it
+  finds `SERVICE` there, and ignores the body. Other parameters, such as
+  MapServer's `map=`, stay.
+
+A `POST` that is still redirected and then fails, or is answered with
+something other than a feature collection (a bare `GET` may get the
+capabilities, which would otherwise read as one feature), is an error that
+names the URL it went to and suggests it as the service URL.
+
+### Paging
+
+Pages are `POST`s too: the same document with another `startIndex`. `next`
+links are followed as in a `GET` read (they are `GET` URLs), except one longer
+than `MAX_GET_URL_LENGTH`. GeoServer repeats the whole `POST`ed request in its
+links as KVP (155 KB for a filter of 600 conditions), and following one fails.
+
+- Under `startIndex` paging the read doesn't take such a link up: GeoServer's
+  links hold nothing but offsets anyway.
+- Under `next`-link paging (forced, or a server that pages without declaring
+  `ImplementsResultPaging`) the read continues with `startIndex` from the
+  features fetched so far, with a warning, if the server implements paging.
+  Otherwise the read fails.
+
+ArcGIS and deegree send no `next` links; MapServer's come from `GET`s.
 
 ## Errors and robustness
 
@@ -252,6 +365,9 @@ tools are still read correctly.
 | HTTP 5xx, 429, network errors | status | Exponential backoff. Respects `Retry-After` |
 | Changed `numberMatched` | start vs. end | Warning |
 | Duplicate `gml:id` | compared with the previous page | Reported. Removal is planned |
+| `POST` redirected (`301`/`302` turn it into a `GET` without the body) | the response came from another URL, and failed or is no feature collection | Error naming the URL, suggested as the service URL |
+| `next` link too long to send in a `POST` read | longer than `MAX_GET_URL_LENGTH` | Continue by `startIndex` (with a warning unless offsets were the strategy already), or fail |
+| Empty response (one MapServer answered every `POST` with an empty `200`) | no root element | Error ("an empty WFS response") |
 
 Also:
 - gzip/deflate `Content-Encoding`.

@@ -27,6 +27,7 @@ fn capabilities(
         service_title: None,
         feature_types: vec![feature_type()],
         get_feature_url: "https://example.com/wfs".into(),
+        get_feature_post_url: String::new(),
         output_formats: Vec::new(),
         constraints: xeibe_wfs::capabilities::Constraints {
             implements_result_paging: paging,
@@ -132,6 +133,30 @@ fn start_index_paging_stops_at_a_short_page() {
         next_page(&strategy, 40, &response(Some(40), None, None)),
         NextPage::Done,
         "a page shorter than the page size is the last one"
+    );
+}
+
+#[test]
+fn start_index_paging_goes_on_past_a_total_below_what_arrived() {
+    // `numberMatched="0"` with a full page: no usable total, so only a short
+    // page ends the read.
+    let strategy = PagingStrategy::StartIndex { page_size: 100 };
+    assert_eq!(
+        next_page(&strategy, 100, &response(Some(100), Some(0), None)),
+        NextPage::StartIndex(100)
+    );
+    assert_eq!(
+        next_page(&strategy, 130, &response(Some(30), Some(0), None)),
+        NextPage::Done
+    );
+    // deegree's `numberReturned="0"`: the page's features count instead.
+    let deegree = ResponseInfo {
+        features: 100,
+        ..response(Some(0), None, None)
+    };
+    assert_eq!(
+        next_page(&strategy, 100, &deegree),
+        NextPage::StartIndex(100)
     );
 }
 

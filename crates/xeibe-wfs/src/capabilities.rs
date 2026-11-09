@@ -20,6 +20,10 @@ pub struct Capabilities {
     pub feature_types: Vec<FeatureTypeInfo>,
     /// The advertised `GetFeature` GET URL; empty if none is advertised.
     pub get_feature_url: String,
+    /// The advertised `GetFeature` POST URL; empty if none is advertised.
+    /// Only whether there is one is used: POSTs go to the service URL.
+    #[serde(default)]
+    pub get_feature_post_url: String,
     pub output_formats: Vec<String>,
     pub constraints: Constraints,
 }
@@ -194,14 +198,18 @@ fn parse_ows(root: &Element) -> Capabilities {
         m.children_named("Operation")
             .find(|o| o.attr("name") == Some("GetFeature"))
     });
-    let get_feature_url = get_feature
-        .and_then(|op| {
-            op.children_named("DCP")
-                .filter_map(|dcp| dcp.path(&["HTTP", "Get"]))
-                .find_map(|get| get.attr("href"))
-        })
-        .unwrap_or_default()
-        .to_string();
+    let dcp_url = |method: &str| {
+        get_feature
+            .and_then(|op| {
+                op.children_named("DCP")
+                    .filter_map(|dcp| dcp.path(&["HTTP", method]))
+                    .find_map(|dcp| dcp.attr("href"))
+            })
+            .unwrap_or_default()
+            .to_string()
+    };
+    let get_feature_url = dcp_url("Get");
+    let get_feature_post_url = dcp_url("Post");
     // `AllowedValues/Value` in OWS 1.1 (2.0), bare `Value`s in OWS 1.0 (1.1).
     let output_formats = get_feature
         .and_then(|op| {
@@ -236,6 +244,7 @@ fn parse_ows(root: &Element) -> Capabilities {
             .and_then(|s| s.child_text("Title")),
         feature_types: Vec::new(),
         get_feature_url,
+        get_feature_post_url,
         output_formats,
         constraints: Constraints {
             kvp_encoding: flag("KVPEncoding"),
@@ -261,14 +270,18 @@ fn parse_ows(root: &Element) -> Capabilities {
 /// WFS 1.0: `Service`, `Capability/Request/GetFeature`.
 fn parse_10(root: &Element) -> Capabilities {
     let get_feature = root.path(&["Capability", "Request", "GetFeature"]);
-    let get_feature_url = get_feature
-        .and_then(|op| {
-            op.children_named("DCPType")
-                .filter_map(|dcp| dcp.path(&["HTTP", "Get"]))
-                .find_map(|get| get.attr("onlineResource"))
-        })
-        .unwrap_or_default()
-        .to_string();
+    let dcp_url = |method: &str| {
+        get_feature
+            .and_then(|op| {
+                op.children_named("DCPType")
+                    .filter_map(|dcp| dcp.path(&["HTTP", method]))
+                    .find_map(|dcp| dcp.attr("onlineResource"))
+            })
+            .unwrap_or_default()
+            .to_string()
+    };
+    let get_feature_url = dcp_url("Get");
+    let get_feature_post_url = dcp_url("Post");
     // Formats are empty elements: `<ResultFormat><GML2/></ResultFormat>`.
     let output_formats = get_feature
         .and_then(|op| op.child("ResultFormat"))
@@ -279,6 +292,7 @@ fn parse_10(root: &Element) -> Capabilities {
         service_title: root.child("Service").and_then(|s| s.child_text("Title")),
         feature_types: Vec::new(),
         get_feature_url,
+        get_feature_post_url,
         output_formats,
         constraints: Constraints::default(),
     }

@@ -768,8 +768,8 @@ and the second the operation.
 xeibe gml scan    <src>… [--sample N] [--explain] [-o settings.json] [--settings settings.json] [read options…]
 xeibe gml convert <src>… --layer <name> -o out.parquet [--settings settings.json] [--sample-features N] [output options…] [read options…]
 xeibe wfs layers  <url>
-xeibe wfs count   <url> --type-name <name>
-xeibe wfs convert <url> --type-name <name> -o out.parquet [--settings settings.json] [--sample-features N] [--page-size N] [--srs-name …] [--sort-by …] [--param k=v]… [--layer <name>] [output options…] [read options…]
+xeibe wfs count   <url> --type-name <name> [--filter XML|@FILE] [--http-method auto|get|post]
+xeibe wfs convert <url> --type-name <name> -o out.parquet [--settings settings.json] [--sample-features N] [--filter XML|@FILE] [--http-method auto|get|post] [--page-size N] [--srs-name …] [--sort-by …] [--param k=v]… [--layer <name>] [output options…] [read options…]
 ```
 
 | Group | Flags |
