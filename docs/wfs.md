@@ -190,8 +190,9 @@ warns that pages may overlap or skip features without transactional consistency.
   the order costs nothing.
 - Always: check `gml:id` for duplicates across pages and **report** them. Each page
   is compared with the previous one. Removing duplicates (`WfsOptions::dedupe`)
-  would need a set of ids and memory proportional to their count; it is not
-  implemented yet, and setting it fails the read.
+  would need a set of ids and memory proportional to their count. It is not
+  implemented and will be if the need appears; until then, setting it fails
+  the read.
 - A server that doesn't declare `PagingIsTransactionSafe = TRUE` gets a warning
   under offset paging.
 - Compare `numberMatched` at the start and at the end. A changed count means the
