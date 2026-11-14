@@ -209,7 +209,7 @@ const VERTICAL_PAIR_DEVIATIONS: &[(u32, u32)] = &[
 ];
 
 /// With grids: pairs where xeibe's candidates differ from PROJ's on
-/// purpose (or, for the last, for a reason not yet found).
+/// purpose.
 const GRID_PAIR_DEVIATIONS: &[(u32, u32)] = &[
     // A superseded operation whose replacement uses a grid PROJ-data
     // doesn't publish stays usable. PROJ keeps it when it searches direct
@@ -222,8 +222,10 @@ const GRID_PAIR_DEVIATIONS: &[(u32, u32)] = &[
     // NTv1's accuracy instead). 500 km off the Pacific coast only NTv1's grid
     // reaches; xeibe has no operation there.
     (4267, 4269),
-    // Not yet explained: PROJ also composes the steps of EPSG's NAD27 to
-    // ITRF2014 (2), whose own area is offshore, over CONUS.
+    // EPSG's NAD27 to ITRF2014 (2) is for the Gulf of Mexico offshore.
+    // PROJ's datum pivot search flattens it into its steps, whose areas
+    // reach over CONUS, and loses the concatenation's own area; xeibe
+    // keeps it.
     (4267, 7789),
 ];
 

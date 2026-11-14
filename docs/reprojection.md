@@ -1101,10 +1101,23 @@ The level 2 deviations hold. Grids add:
   which puts a depth on the wrong side of the datum (Hong Kong Principal
   Datum height 10 m becomes a Chart Datum depth of +9.854 m, not −10.146 m).
   xeibe refuses them; only `Transform::via` could reach them.
-- **Not yet explained:** for NAD27 to ITRF2014 (geocentric), PROJ also
-  composes the steps of EPSG's "NAD27 to ITRF2014 (2)", whose own area is the
-  Gulf of Mexico offshore, over CONUS; xeibe has only the offshore operation
-  (2 points).
+- **A concatenation keeps its own area and accuracy.** EPSG's "NAD27 to
+  ITRF2014 (2)" (9104) chains five NADCON5 grids, NAD83(2011) to ITRF2008
+  and ITRF2008 to ITRF2014, and EPSG gives it the Gulf of Mexico offshore
+  and 0.2 m, although each step reaches over CONUS. When PROJ's datum
+  pivot search (`createOperationsWithDatumPivot`) puts such an operation
+  into a concatenation of its own, `ConcatenatedOperation::createComputeMetadata`
+  flattens it into its steps and computes the area again as the
+  intersection of theirs and the accuracy as their sum. The concatenation's
+  own area is lost: for NAD27 to ITRF2014 (geocentric), PROJ offers 9104's
+  seven steps over CONUS onshore and the Gulf, at 0.36 m. xeibe takes the
+  area and accuracy EPSG gives the concatenation, so over CONUS it has no
+  operation (2 points). With PROJ's full `proj.db` there is a CONUS route
+  of PROJ's own besides ("NAD27 to NAD83(2011) (NADCON5, CONUS)", a PROJ
+  concatenation, then "ITRF2014 to NAD83(2011) (1)"), which xeibe doesn't
+  have either (EPSG operations only, level 2). Found on 2026-11-14 with
+  pyproj 3.8.0 on its own `proj.db` (EPSG 12.029) cut down as
+  `build_proj_oracle.py` cuts the oracle's.
 
 ### Validation
 
@@ -1273,5 +1286,5 @@ without it the operations and pinned pairs whose grids are committed.
 
 ## Open questions
 
-- Why PROJ composes NAD27 to ITRF2014 (geocentric) over CONUS (level 3,
-  deviations).
+None at the moment. The last, why PROJ composes NAD27 to ITRF2014
+(geocentric) over CONUS, is answered in level 3's deviations.
