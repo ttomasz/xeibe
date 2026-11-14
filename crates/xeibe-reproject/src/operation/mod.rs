@@ -136,10 +136,10 @@ pub(crate) fn is_implemented(method: u32) -> bool {
 }
 
 /// Whether the method works only on a coordinate with an epoch (a
-/// deformation model): without one it fails, where a time-dependent
-/// Helmert runs at its reference epoch.
+/// deformation model, velocities to a target epoch): without one it fails,
+/// where a time-dependent Helmert runs at its reference epoch.
 pub(crate) fn needs_epoch(method: u32) -> bool {
-    defmodel::METHODS.contains(&method)
+    defmodel::METHODS.contains(&method) || method == velocity::TRANSLATION_BY_VELOCITY
 }
 
 /// Whether xeibe can run this operation: its method is implemented and, for

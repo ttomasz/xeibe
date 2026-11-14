@@ -37,7 +37,8 @@ With `--epochs`, coordinates with an epoch each, PROJ's fourth value
 forwards and back, and the automatic choice between CRSs they join, each
 point at one of a few epochs or at none. With `--epochs --grids DIR`, what
 needs an epoch and a grid (`epochs-grids.jsonl`): New Zealand's deformation
-model, forced and chosen, and transformations between two coordinate
+model and the velocities from ETRF2014 at the coordinate's epoch to
+NKG_ETRF14, forced and chosen, and transformations between two coordinate
 epochs (`EPSG:8254@2010` to `EPSG:8254@2002`), which PROJ runs through a
 point motion operation's velocity grid. The committed ones are for
 `tests/data/reprojection/grids/cropped`, grids cut down to a window
@@ -138,6 +139,15 @@ EPOCH_PINNED_PAIRS = [
 DEFORMATION_MODEL_METHODS = {1079}
 MODEL_EPOCHS = [None, 1998.5, 2005.3, 2011.3, 2014.0, 2016.95, 2020.0, 2030.25]
 MODEL_PINNED_PAIRS = [(4917, 4958), (4958, 4917), (8995, 4167), (4167, 8995), (7907, 2193), (2193, 7907)]
+# With --epochs --grids: velocities from the coordinate's epoch to a target
+# epoch (ETRF2014 to NKG_ETRF14), which also need each coordinate's epoch,
+# and pairs whose routes go through them: from ITRF2014 and ITRF2020 to
+# Sweden's ETRS89 (the cropped grid's window), geocentric and geographic.
+EPOCH_VELOCITY_METHODS = {1144}
+EPOCH_VELOCITY_PINNED_PAIRS = [
+    (7789, 10805), (10805, 7789), (7789, 4976), (4976, 7789), (7912, 4977), (4977, 7912),
+    (9988, 4976), (8403, 4977), (7912, 4619),
+]  # fmt: skip
 # With --epochs --grids: CRS pairs with a coordinate epoch each, which PROJ
 # joins through a point motion operation (EPSG's code, with its velocity
 # grid in `MOTION_GRIDS`: the committed points lie in the grid's window,
@@ -722,14 +732,15 @@ def window_points(seed: int, window, count: int) -> list[tuple[float, float]]:
 
 
 def model_records(registry: dict, everything: bool, grids: Path, windows: dict | None) -> list[dict]:
-    """Deformation models: each operation forced (`"kind": "operation"`,
-    as `epoch_records`'), then the automatic choice between the CRSs it
-    joins and a few others (`"kind": "pair"`). With `windows` (a cropped
-    set of grids), the points lie in the model's window."""
+    """Deformation models, and velocities to a target epoch: what needs
+    each coordinate's epoch and a grid. Each operation forced (`"kind":
+    "operation"`, as `epoch_records`'), then the automatic choice between
+    the CRSs it joins and a few others (`"kind": "pair"`). With `windows`
+    (a cropped set of grids), the points lie in the grid's window."""
     records = []
     pairs = []
     for op in registry["operations"]:
-        if op["deprecated"] or op["method"] not in DEFORMATION_MODEL_METHODS:
+        if op["deprecated"] or op["method"] not in DEFORMATION_MODEL_METHODS | EPOCH_VELOCITY_METHODS:
             continue
         code = op["code"]
         try:
@@ -737,7 +748,7 @@ def model_records(registry: dict, everything: bool, grids: Path, windows: dict |
             proj_string = co.to_proj4()
             if proj_string is None:
                 continue
-            files = re.findall(r"\+model=(\S+)", proj_string)
+            files = re.findall(r"\+(?:model|grids)=(\S+)", proj_string)
             if not files or not all((grids / f).exists() for f in files):
                 print(f"operation {code}: skipped (model missing)", file=sys.stderr)
                 continue
@@ -763,7 +774,8 @@ def model_records(registry: dict, everything: bool, grids: Path, windows: dict |
             {"kind": "operation", "op": code, "method": op["method"], "src": op["src"], "dst": op["dst"], "points": points}
         )
         window = windows[files[0]] if windows is not None else None
-        for pair in [(op["src"], op["dst"]), (op["dst"], op["src"]), *MODEL_PINNED_PAIRS]:
+        pinned = MODEL_PINNED_PAIRS if op["method"] in DEFORMATION_MODEL_METHODS else EPOCH_VELOCITY_PINNED_PAIRS
+        for pair in [(op["src"], op["dst"]), (op["dst"], op["src"]), *pinned]:
             if pair not in [p[:2] for p in pairs]:
                 pairs.append((*pair, window))
     for src_code, dst_code, window in pairs:

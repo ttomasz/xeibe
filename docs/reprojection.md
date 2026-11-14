@@ -280,7 +280,8 @@ The epoch comes in two ways, which are PROJ's:
 
 Without either, a time-dependent Helmert runs at its reference epoch, the
 rates unused, as it did before and as PROJ does. A deformation model has no
-such epoch and fails ([below](#deformation-models)).
+such epoch and fails ([below](#deformation-models)), as do velocities to a
+target epoch ([below](#velocities-to-a-target-epoch)).
 
 ```mermaid
 flowchart TD
@@ -420,8 +421,8 @@ versions of Land Information New Zealand's model
 (`nz_linz_nzgd2000-20180701.json` the latest). NZGD2000 is ITRF96 at
 2000.0 with the motion of the plates and the displacement of every large
 earthquake since taken out, so the operation needs to know **when** a
-coordinate in ITRF96 was measured: it is the one kind of operation that
-can't run without an epoch.
+coordinate in ITRF96 was measured: it can't run without an epoch (nor can
+[velocities to a target epoch](#velocities-to-a-target-epoch)).
 
 A model is a JSON master file that lists components. Each has a grid of
 displacements (a GeoTIFF of its own, with nested grids down to 200 m near
@@ -467,6 +468,32 @@ flowchart LR
 - To a CRS without heights (NZTM), `convert` hands back the height given,
   as everywhere; PROJ's pipeline lets the model's vertical shift through
   into the third value.
+
+#### Velocities to a target epoch
+
+**Implemented** (2026-11-14): EPSG's *Geocentric translations using NEU
+velocity grid (gtg)* (method 1144), whose one operation is "ETRF2014 to
+NKG_ETRF14 (1)", the first step of the Nordic Geodetic Commission's
+transformations from ITRF2014 and ITRF2020 to the Nordic and Baltic
+realizations of ETRS89 (14 concatenations, "ITRF2014 to ETRS89-SWE
+[SWEREF 99] (1)" among them). It takes a point of ETRF2014, a dynamic CRS,
+from the coordinate's epoch to NKG_ETRF14's 2000.0 by the NKG_RF17vel
+velocity grid. EPSG gives its source epoch as −999 years, its flag for "the
+coordinate's epoch, user input" (parameter 1068's description), and its
+target epoch as 2000.0.
+
+- **As PROJ writes it**: `+inv +proj=deformation +t_epoch=2000`, the
+  velocities over (epoch − 2000) years taken off. The reverse, NKG_ETRF14
+  to ETRF2014 at an epoch, adds them by the velocity at the point.
+- **Without an epoch it fails** (`MissingEpoch`, `needs_epoch`), as in
+  PROJ, and the choice goes on to the next candidate: from ITRF2014 to
+  SWEREF 99, a coordinate with an epoch takes the NKG route, one without
+  takes what PROJ takes then.
+- **Not marked time-dependent for the search**, as PROJ marks only the
+  time-dependent Helmerts (`requiresPerCoordinateInputTime`): the routes
+  through it compete as any others.
+- PROJ refuses an operation of the method with a source epoch of its own;
+  so does xeibe. EPSG has none.
 
 ### Why selection is the hard part
 
@@ -910,8 +937,9 @@ compound CRSs with their grids (geoid models, vertical offsets).
   does, in PROJ either: an engineering datum has no tie to the Earth.
 - **Operations in time**: point motion operations by velocity grid
   (Canada, the Nordic countries) for a transform between two coordinate
-  epochs, and New Zealand's deformation model, which needs each
-  coordinate's epoch. See [Coordinate epochs](#coordinate-epochs).
+  epochs, and New Zealand's deformation model and the NKG velocities from
+  ETRF2014 to NKG_ETRF14, which need each coordinate's epoch. See
+  [Coordinate epochs](#coordinate-epochs).
 - Not implemented: the point motion operations PROJ-data has no grid for
   (Canada's v8 grid, Indonesia, New Caledonia; see
   [there](#between-two-epochs-point-motion-operations)) and the few other
@@ -1066,8 +1094,15 @@ The level 2 deviations hold. Grids add:
   estimate that came closest, never worse than PROJ's.
 - **The reverse of a velocity grid is a plain fixed-point iteration** on all
   three coordinates. PROJ's `pj_deformation_reverse_shift` steps away from
-  the solution after its first estimate and keeps Z at that estimate; with
-  velocities this smooth the difference stays far below a micrometre.
+  the solution after its first estimate (it adds the residual where it
+  should subtract it, and starts Z with the wrong sign) and keeps Z at that
+  estimate. Over the fixed spans of the NAD83(CSRS) and NKG operations the
+  difference stays far below a micrometre. Over the decades between a
+  coordinate's epoch and 2000.0 in "ETRF2014 to NKG_ETRF14 (1)" it grows:
+  2e-5 m at 2030, 8e-5 m at 2060, where xeibe's result and the first
+  estimate (the velocity read at the point, which is how EPSG applies
+  velocities) agree to 6e-8 m. The tests compare routes through it to
+  0.1 mm.
 - **Heights tie like level 2.** In 201 of 13,044 points with heights, the
   route is PROJ's but for an EPSG variant inside it ("NAD83 to NAD83(HARN)
   (47)" rather than "(1)"): level 2's newer-variant tie-break, met again in

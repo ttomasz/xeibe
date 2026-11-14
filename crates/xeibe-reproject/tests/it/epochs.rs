@@ -432,6 +432,29 @@ fn an_epoch_changes_nothing_without_a_time_dependent_operation() {
 /// micrometre (the full sets agree to 2e-8 m and 2e-13 degrees).
 const GRID_M: f64 = 1e-6;
 
+/// ETRF2014 to NKG_ETRF14 (1), velocities from the coordinate's epoch to
+/// 2000.0, is PROJ's `deformation` backwards, whose iteration steps away
+/// from the solution: 2e-5 m off at 2030 (8e-5 m at 2060), where xeibe's
+/// and the first estimate agree to 6e-8 m (`docs/reprojection.md`, level
+/// 3's deviations). Routes through it are compared to a tenth of a
+/// millimetre, as are the other routes of a transform that has one.
+const TO_NKG_ETRF14: u32 = 10809;
+const REVERSE_VELOCITY_M: f64 = 1e-4;
+
+/// The tolerance for a transform's routes.
+fn grid_tolerance(t: &Transform) -> f64 {
+    let through = |o: &xeibe_reproject::OperationInfo| {
+        o.code == Some((TO_NKG_ETRF14, false))
+            || o.code == Some((TO_NKG_ETRF14, true))
+            || o.steps.iter().any(|&(code, _)| code == TO_NKG_ETRF14)
+    };
+    if t.operation_info().iter().any(through) {
+        REVERSE_VELOCITY_M
+    } else {
+        GRID_M
+    }
+}
+
 /// The cropped grids, and PROJ's vectors on them.
 fn cropped() -> PathBuf {
     xeibe_testkit::data_dir().join("reprojection/grids/cropped")
@@ -463,8 +486,9 @@ fn loaded(t: Transform, dir: &Path) -> Transform {
     t
 }
 
-/// Each deformation model forced, forwards and back. A point without an
-/// epoch has no result in PROJ, and is an error here. Returns how many
+/// Each operation that needs a coordinate epoch and a grid (deformation
+/// models, velocities to a target epoch) forced, forwards and back. A
+/// point without an epoch has no result in PROJ, and is an error here. Returns how many
 /// points were compared.
 fn check_model_operations(path: &Path, dir: &Path) -> usize {
     let records = records(path, "operation");
@@ -477,6 +501,7 @@ fn check_model_operations(path: &Path, dir: &Path) -> usize {
         let via =
             |a: &Crs, b: &Crs| loaded(Transform::via(a, b, op, AxisOrder::Authority).unwrap(), dir);
         let (forward, back) = (via(&src, &dst), via(&dst, &src));
+        let tolerance = grid_tolerance(&forward);
         for point in r["points"].as_array().unwrap() {
             let (input, t) = (numbers(&point["in"]), epoch(point));
             let context = format!("EPSG:{op} at {t}");
@@ -493,11 +518,17 @@ fn check_model_operations(path: &Path, dir: &Path) -> usize {
                 &dst,
                 &convert_at(&forward, &input, t),
                 &want,
-                GRID_M,
+                tolerance,
                 &context,
             );
             let returned = convert_at(&back, &want, t);
-            assert_close(&src, &returned, &numbers(&point["back"]), GRID_M, &context);
+            assert_close(
+                &src,
+                &returned,
+                &numbers(&point["back"]),
+                tolerance,
+                &context,
+            );
             compared += 1;
         }
     }
@@ -520,8 +551,9 @@ fn a_whole_deformation_model_matches_proj() {
     println!("{compared} points");
 }
 
-/// The automatic choice through a deformation model, each coordinate at
-/// its epoch; then the same with the epoch on the transform.
+/// The automatic choice through an operation that needs a coordinate
+/// epoch, each coordinate at its epoch; then the same with the epoch on
+/// the transform. Without an epoch PROJ goes another way, if there is one.
 fn check_model_pairs(path: &Path, dir: &Path) -> usize {
     let records = records(path, "pair");
     assert!(!records.is_empty());
@@ -544,15 +576,25 @@ fn check_model_pairs(path: &Path, dir: &Path) -> usize {
             // given, where PROJ's pipeline lets the model's shift through.
             let n = if dst.dimension() == 3 { input.len() } else { 2 };
             let want = &numbers(&point["out"])[..n];
+            let tolerance = grid_tolerance(&t);
             assert_close(
                 &dst,
                 &convert_at(&t, &input, at)[..n],
                 want,
-                GRID_M,
+                tolerance,
                 &context,
             );
-            // Without an epoch the coordinate goes through no operation.
-            assert_eq!(t.operation_for(input[0], input[1], z), None, "{context}");
+            // Without an epoch, where PROJ goes another way than through
+            // the operations that need one: the same way.
+            if at.is_nan() {
+                assert_eq!(
+                    t.operation_for(input[0], input[1], z),
+                    point["op"].as_str(),
+                    "{context}"
+                );
+                compared += 1;
+                continue;
+            }
             let with = if src.is_dynamic() {
                 t.with_epochs(Some(at), None)
             } else {
@@ -564,9 +606,20 @@ fn check_model_pairs(path: &Path, dir: &Path) -> usize {
                 point["op"].as_str(),
                 "{context}"
             );
+            // An operation that needs the epoch isn't taken without one.
+            let info = with.operation_info();
+            if let Some(i) = with.operation_index_for(input[0], input[1], z)
+                && info[i].needs_epoch
+            {
+                assert_ne!(
+                    t.operation_for(input[0], input[1], z),
+                    point["op"].as_str(),
+                    "{context}"
+                );
+            }
             let (x, y, z) = with.convert(input[0], input[1], z).unwrap();
             let got: Vec<f64> = [Some(x), Some(y), z].into_iter().flatten().collect();
-            assert_close(&dst, &got[..n], want, GRID_M, &context);
+            assert_close(&dst, &got[..n], want, tolerance, &context);
             compared += 1;
         }
     }

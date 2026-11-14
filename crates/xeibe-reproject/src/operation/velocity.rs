@@ -12,6 +12,13 @@
 //! (`+proj=deformation +dt=…`; `SingleOperation::exportToPROJString` and
 //! `src/transformations/deformation.cpp`, MIT, see PROJ-NOTICE.md).
 //!
+//! "Geocentric translations using NEU velocity grid (gtg)" (ETRF2014 to
+//! NKG_ETRF14) does: it takes a point of a dynamic CRS from the
+//! coordinate's epoch to the operation's target epoch, as PROJ's
+//! `+inv +proj=deformation +t_epoch=…` does with the coordinate's fourth
+//! value. Without an epoch it fails, as in PROJ
+//! ([`CoordinateError::MissingEpoch`]).
+//!
 //! Point motion operations ([`PointMotion`]) are the same grids applied
 //! within one CRS over the span between two coordinate epochs: EPSG's
 //! "Point motion (geog3D domain) using NEU velocity grid (NTv2_Vel)"
@@ -38,11 +45,15 @@ pub(super) const METHODS: &[u32] = &[
     GEOG3D_OFFSET_BY_VELOCITY,
     HELMERT_AND_VELOCITY,
     GRID_AND_VELOCITY,
+    TRANSLATION_BY_VELOCITY,
 ];
 
 const GEOG3D_OFFSET_BY_VELOCITY: u32 = 1114;
 const HELMERT_AND_VELOCITY: u32 = 1143;
 pub(crate) const GRID_AND_VELOCITY: u32 = 1142;
+/// "Geocentric translations using NEU velocity grid (gtg)": from the
+/// coordinate's epoch to the target epoch.
+pub(super) const TRANSLATION_BY_VELOCITY: u32 = 1144;
 /// "Geocentric translation file".
 const TRANSLATION_FILE: u32 = 8727;
 /// "Point motion velocity grid file".
@@ -120,8 +131,25 @@ pub(crate) fn is_exportable(op: &Operation) -> bool {
         HELMERT_AND_VELOCITY | GRID_AND_VELOCITY => {
             op.param(SOURCE_EPOCH).is_some() && op.param(TARGET_EPOCH).is_some()
         }
+        // A target epoch of its own, and the coordinate's for the source:
+        // PROJ refuses a source epoch of the operation's own.
+        TRANSLATION_BY_VELOCITY => {
+            op.param(TARGET_EPOCH).is_some_and(|t| !user_defined(t)) && coordinate_source_epoch(op)
+        }
         _ => false,
     }
+}
+
+/// EPSG's flag for an epoch the user gives (the coordinate's): −999 years,
+/// here in seconds as the generator stores epochs.
+fn user_defined(epoch: f64) -> bool {
+    (epoch / YEAR + 999.0).abs() < 1e-6
+}
+
+/// Whether the operation's source epoch is the coordinate's: none, or
+/// EPSG's flag for a user-defined one.
+fn coordinate_source_epoch(op: &Operation) -> bool {
+    op.param(SOURCE_EPOCH).is_none_or(user_defined)
 }
 
 /// The source and target datums' anchor epochs.
@@ -265,7 +293,57 @@ pub(super) fn build(op: &Operation, src: &Crs, dst: &Crs) -> Result<Arc<dyn Meth
                 deformation: Deformation::new(velocity_file(op)?, dt, datum.ellipsoid),
             }))
         }
+        TRANSLATION_BY_VELOCITY => {
+            let Kind::Geocentric { datum } = &src.kind else {
+                return Err(MethodError::WrongCrs("a geocentric CRS"));
+            };
+            if !matches!(dst.kind, Kind::Geocentric { .. }) {
+                return Err(MethodError::WrongCrs("a geocentric CRS"));
+            }
+            if !is_exportable(op) {
+                return Err(MethodError::WrongCrs(
+                    "the coordinate's epoch as the source epoch, and a target epoch",
+                ));
+            }
+            // PROJ reads the grid on the source CRS's ellipsoid.
+            Ok(Arc::new(EpochVelocity {
+                deformation: Deformation::new(velocity_file(op)?, 0.0, datum.ellipsoid),
+                target_epoch: required(op, TARGET_EPOCH)? / YEAR,
+            }))
+        }
         _ => Err(MethodError::NotImplemented),
+    }
+}
+
+/// The velocities from the coordinate's epoch to a fixed target epoch, on
+/// geocentric coordinates: PROJ's `deformation +t_epoch` backwards, so the
+/// forward operation is the iterated reverse shift.
+#[derive(Debug)]
+struct EpochVelocity {
+    deformation: Deformation,
+    /// Decimal year.
+    target_epoch: f64,
+}
+
+impl Method for EpochVelocity {
+    fn forward(&self, _: [f64; 3]) -> Result<[f64; 3], CoordinateError> {
+        Err(CoordinateError::MissingEpoch)
+    }
+
+    fn inverse(&self, _: [f64; 3]) -> Result<[f64; 3], CoordinateError> {
+        Err(CoordinateError::MissingEpoch)
+    }
+
+    fn forward_3d_at(&self, c: [f64; 3], epoch: f64) -> Result<[f64; 3], CoordinateError> {
+        self.deformation.inverse_over(c, epoch - self.target_epoch)
+    }
+
+    fn inverse_3d_at(&self, c: [f64; 3], epoch: f64) -> Result<[f64; 3], CoordinateError> {
+        self.deformation.moved(c, epoch - self.target_epoch)
+    }
+
+    fn grid_files(&self) -> Vec<Arc<GridFile>> {
+        vec![self.deformation.file()]
     }
 }
 
@@ -385,15 +463,20 @@ impl Deformation {
     /// velocities this smooth both stay within a micrometre.) A step that
     /// leaves the grid keeps the estimate so far, as PROJ does.
     fn inverse(&self, input: [f64; 3]) -> Result<[f64; 3], CoordinateError> {
+        self.inverse_over(input, self.dt)
+    }
+
+    /// [`Deformation::inverse`] over `dt` years rather than the step's own.
+    fn inverse_over(&self, input: [f64; 3], dt: f64) -> Result<[f64; 3], CoordinateError> {
         let v = self.velocity(input)?;
-        let mut out: [f64; 3] = std::array::from_fn(|k| input[k] - self.dt * v[k]);
+        let mut out: [f64; 3] = std::array::from_fn(|k| input[k] - dt * v[k]);
         for _ in 0..MAX_ITERATIONS {
             let v = match self.velocity(out) {
                 Ok(v) => v,
                 Err(CoordinateError::OutsideGrid) => break,
                 Err(e) => return Err(e),
             };
-            let next: [f64; 3] = std::array::from_fn(|k| input[k] - self.dt * v[k]);
+            let next: [f64; 3] = std::array::from_fn(|k| input[k] - dt * v[k]);
             let change = (0..3).map(|k| (next[k] - out[k]).powi(2)).sum::<f64>();
             out = next;
             if change <= TOL * TOL {
