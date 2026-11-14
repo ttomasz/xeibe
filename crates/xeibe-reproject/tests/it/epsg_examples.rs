@@ -196,16 +196,29 @@ fn time_specific_coordinate_frame() {
         t.convert_at(input.0, input.1, Some(input.2), 2013.9),
         Err(xeibe_reproject::CoordinateError::EpochOutOfRange)
     );
-    // Only when forced: in the choice it would beat operations PROJ uses.
-    let wgs84 = Transform::new(&crs(4936), &crs(4978), AxisOrder::Authority).unwrap();
-    assert!(
-        wgs84
-            .operations()
-            .iter()
-            .all(|o| !o.contains("WGS 84 to ETRS89 (2)")),
-        "{:?}",
-        wgs84.operations()
+    // In the choice for a coordinate at the epoch only: "WGS 84 to ETRS89
+    // (2)" holds at 2014.81 in the German and Dutch North Sea (0.1 m), where
+    // otherwise the null "ETRS89 to WGS 84 (1)" (1 m) is PROJ's.
+    let t = Transform::new(&crs(4937), &crs(4979), AxisOrder::EastFirst).unwrap();
+    let (lon, lat, h) = (6.5, 54.5, Some(30.0));
+    let through = |t: &Transform| {
+        t.operation_for(lon, lat, h)
+            .is_some_and(|o| o.contains("WGS 84 to ETRS89 (2)"))
+    };
+    assert!(!through(&t));
+    assert!(through(&t.with_epochs(None, Some(2014.81)).unwrap()));
+    assert!(!through(&t.with_epochs(None, Some(2020.0)).unwrap()));
+    // Between ITRF2008 and PZ-90.11 only the time-specific route: a
+    // coordinate needs its epoch.
+    let pz = Transform::new(&itrf2008, &pz90, AxisOrder::Authority).unwrap();
+    assert_eq!(
+        pz.convert(input.0, input.1, Some(input.2)),
+        Err(xeibe_reproject::CoordinateError::MissingEpoch)
     );
+    let got = pz
+        .convert_at(input.0, input.1, Some(input.2), 2010.0)
+        .unwrap();
+    assert_near(got.2.unwrap(), want[2], 1e-6, "chosen at 2010.0");
 }
 
 /// An operation between two EPSG CRSs, forced, in their own axis order.

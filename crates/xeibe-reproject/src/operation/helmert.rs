@@ -326,7 +326,7 @@ struct HelmertOperation {
 }
 
 /// "Transformation reference epoch" of the time-specific methods.
-const TRANSFORMATION_REFERENCE_EPOCH: u32 = 1049;
+pub(crate) const TRANSFORMATION_REFERENCE_EPOCH: u32 = 1049;
 /// How near a coordinate's epoch must be to a time-specific transformation's:
 /// the same thousandth of a year (PROJ's `getRoundedEpochInDecimalYear`).
 const SAME_EPOCH_YEARS: f64 = 5e-4;

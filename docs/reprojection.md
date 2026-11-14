@@ -327,10 +327,11 @@ PROJ's rules, kept:
   static one that EPSG has a point motion operation for (the realizations
   of NAD83(CSRS)). For any other static CRS, `with_epochs` is an error, as
   PROJ's "Coordinate epoch should not be provided for a static CRS".
-- **The epoch has no say in the selection.** Which operations there are and
-  which one a coordinate takes are the same with and without it, but for a
-  coordinate a deformation model can't place: without an epoch, or at one
-  outside the model's time.
+- **The epoch has little say in the selection.** Which operations there
+  are and which one a coordinate takes are the same with and without it,
+  but for a coordinate a deformation model can't place (without an epoch,
+  or at one outside the model's time), and for one at the epoch of a
+  time-specific Helmert (below).
 - An epoch within a millionth of a year of a thousandth is that thousandth
   (`getRoundedEpochInDecimalYear`).
 
@@ -340,7 +341,8 @@ Deviations from PROJ:
   (`inf`); NaN and `-inf`, which give PROJ a NaN result, are read the same.
 
 The time-specific Helmert methods 1065 and 1066, which PROJ can't run,
-run only when forced ([Beyond PROJ](#beyond-proj)).
+hold at one epoch each, and only a coordinate at that epoch takes one
+unforced ([Beyond PROJ](#beyond-proj)).
 
 #### Between two epochs: point motion operations
 
@@ -622,7 +624,8 @@ Details that turned out to matter, each found by the differential:
   step at all when nothing geocentric is next to it, which xeibe
   generalises (see the deviations).
 - **What PROJ can run.** Time-specific Helmert methods (1065, 1066) have no
-  PROJ pipeline and never compete (xeibe runs them only when forced);
+  PROJ pipeline and never compete (xeibe takes them only for a coordinate
+  at their epoch, or when forced);
   time-dependent ones run at their reference epoch when coordinates have no
   epoch, as in PROJ.
 - **PROJ's own operations between a datum ensemble and its members.**
@@ -1348,11 +1351,20 @@ an operation PROJ takes, it runs only when forced (`Transform::via`,
   Helmert there and moves it back; a coordinate here carries no velocity,
   so the Helmert alone runs, for a coordinate without an epoch (taken to
   be at the reference epoch) or at that epoch to the thousandth, and one
-  at another epoch fails (`EpochOutOfRange`). **Only when forced**
-  (`Transform::via`): in the choice "WGS 84 to ETRS89 (2)" (1989.0,
-  0.1 m) would beat PROJ's null "ETRS89 to WGS 84 (1)" (1 m) and move
-  every point between ETRS89 and WGS 84 by up to 0.55 m, for coordinates
-  that aren't at 1989.0. EPSG's example (ITRF2008 to PZ-90.11) gives a Z
+  at another epoch fails (`EpochOutOfRange`), when forced
+  (`Transform::via`). **In the choice only at their epoch**: as ordinary
+  candidates "WGS 84 to ETRS89 (2)" (at 2014.81, 0.1 m, in the German and
+  Dutch North Sea) would beat PROJ's null "ETRS89 to WGS 84 (1)" (1 m) and
+  move every point there by up to 0.55 m, whatever its epoch. So a route
+  through one (found between the two datums the operation joins, with the
+  conversions each side) is a separate candidate, listed with
+  `OperationInfo::only_at_epoch`, that a coordinate takes only when it is
+  at that epoch to the thousandth (±0.0005 year), inside the operation's
+  area, and nothing else there is more accurate. Everything else, and
+  every coordinate without an epoch, chooses as PROJ does. A pair with
+  only such routes fails without an epoch (`MissingEpoch`) or at another
+  one (`EpochOutOfRange`). `xeibe_proj` leaves them out of its lists,
+  which pyproj's don't have. EPSG's example (ITRF2008 to PZ-90.11) gives a Z
   1.2 mm from what its parameters give; PROJ's `helmert` with them agrees
   with xeibe.
 - **Polynomials** (methods 9645, 9648, 9651, 9652, 9653, 9654, 9617; 17

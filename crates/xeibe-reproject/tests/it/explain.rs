@@ -132,7 +132,12 @@ fn a_grid_not_loaded_is_the_error_of_the_operation_tried() {
 #[test]
 fn the_only_operation_is_used_whatever_its_area() {
     let t = transform(4326, 2180, Grids::None);
-    assert_eq!(t.operation_info().len(), 1);
+    // One, and after it the route through "WGS 84 to ETRS89 (2)" for
+    // coordinates at its epoch (2014.81) only.
+    let info = t.operation_info();
+    assert_eq!(info.len(), 2);
+    assert_eq!(info[0].only_at_epoch, None);
+    assert_eq!(info[1].only_at_epoch, Some(2014.81));
     // Cairo, outside ETRS89's Europe.
     let p = (30.0444, 31.2357, None);
     let e = t.explain_point(p.0, p.1, p.2).unwrap();

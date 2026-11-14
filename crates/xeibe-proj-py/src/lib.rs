@@ -680,10 +680,20 @@ impl Transform {
     }
 
     /// Names of the candidate operations, best first; empty on one datum.
+    /// As PROJ lists them: not the routes through a time-specific Helmert,
+    /// which come last and serve only coordinates at its epoch.
     fn operations(&self) -> Vec<String> {
+        let at_epoch: Vec<String> = self
+            .inner
+            .operation_info()
+            .into_iter()
+            .filter(|o| o.only_at_epoch.is_some())
+            .map(|o| o.name)
+            .collect();
         self.inner
             .operations()
             .into_iter()
+            .filter(|n| !at_epoch.iter().any(|a| a == n))
             .map(str::to_owned)
             .collect()
     }
@@ -694,11 +704,13 @@ impl Transform {
         self.inner.operation_for(x, y, z).map(str::to_owned)
     }
 
-    /// The operations this transform chooses among, best first.
+    /// The operations this transform chooses among, best first, as PROJ
+    /// lists them (see `operations`).
     fn operation_info(&self) -> Vec<OperationInfo> {
         self.inner
             .operation_info()
             .into_iter()
+            .filter(|o| o.only_at_epoch.is_none())
             .map(OperationInfo::from)
             .collect()
     }

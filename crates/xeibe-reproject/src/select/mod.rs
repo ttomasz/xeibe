@@ -329,6 +329,11 @@ pub struct OperationInfo {
     /// time. A coordinate without one fails
     /// (`CoordinateError::MissingEpoch`), as in PROJ.
     pub needs_epoch: bool,
+    /// Through a time-specific Helmert, which holds at this one epoch (a
+    /// decimal year): only a coordinate at it, its own epoch or the
+    /// transform's, goes this way; others, and those without an epoch, go
+    /// through the other operations.
+    pub only_at_epoch: Option<f64>,
     /// EPSG's scope of the operation, when it is one EPSG operation (see
     /// `code`). Its remarks: `xeibe_crs::operation_remarks`.
     pub scope: Option<String>,
@@ -467,6 +472,7 @@ impl OperationInfo {
             grids,
             time_dependent: c.requires_time || needs_epoch,
             needs_epoch,
+            only_at_epoch: None,
             scope: c
                 .registry
                 .and_then(|(code, _)| registry().ops.get(&code))
@@ -505,7 +511,13 @@ pub(crate) struct Prepared {
     has_grids: bool,
     /// Used for every coordinate, whatever its area ([`Prepared::everywhere`]).
     everywhere: bool,
+    /// Through a time-specific Helmert: only for a coordinate at this epoch.
+    only_at: Option<f64>,
 }
+
+/// How near a coordinate's epoch must be to a time-specific Helmert's: the
+/// same thousandth of a year.
+const SAME_EPOCH_YEARS: f64 = 5e-4;
 
 /// Options of the search for operations between datums, as PROJ's
 /// operation factory context takes them from `proj_create_crs_to_crs`
@@ -557,6 +569,77 @@ impl CrsBuilder {
     }
 }
 
+/// The routes through EPSG's time-specific Helmerts, which PROJ's choice
+/// never meets: for each one joining the two CRSs' datums, the change into
+/// its source CRS on the one datum, the Helmert, the change out of its
+/// target CRS on the other, with the one epoch it holds at.
+fn time_specific_routes(
+    src: CrsRef,
+    dst: CrsRef,
+    grids: &Grids,
+    selection: &Selection,
+    crs: &mut CrsCache,
+) -> Vec<(Candidate, f64)> {
+    let (Some(ds), Some(dt)) = (crs.datum(src), crs.datum(dst)) else {
+        return Vec::new();
+    };
+    let touched = operation::time_specific_datums();
+    if ds == dt || !touched.contains(&ds) || !touched.contains(&dt) {
+        return Vec::new();
+    }
+    let r = registry();
+    let mut codes: Vec<u32> = r
+        .ops
+        .values()
+        .filter(|op| !op.deprecated && operation::time_specific_epoch(op).is_some())
+        .map(|op| op.code)
+        .collect();
+    codes.sort_unstable();
+    let mut out = Vec::new();
+    for code in codes {
+        let op = &r.ops[&code];
+        let (Some(a), Some(b)) = (op.src, op.dst) else {
+            continue;
+        };
+        let (a, b) = (CrsRef::Epsg(a), CrsRef::Epsg(b));
+        let inverse = match (crs.datum(a), crs.datum(b)) {
+            (Some(x), Some(y)) if x == ds && y == dt => false,
+            (Some(x), Some(y)) if x == dt && y == ds => true,
+            _ => continue,
+        };
+        let (from, to) = if inverse { (b, a) } else { (a, b) };
+        let Some(helmert) = candidate::registry_candidate(code, inverse, crs) else {
+            continue;
+        };
+        // On one datum, each end is a conversion (or nothing).
+        let mut parts = Vec::new();
+        for (x, y) in [(src, from), (to, dst)] {
+            if x != y {
+                let (found, _) = search::create_operations(x, y, grids.clone(), selection);
+                let Some(first) = found.into_iter().next() else {
+                    parts.clear();
+                    break;
+                };
+                parts.push(first);
+            }
+        }
+        let route = match parts.len() {
+            0 if src == from && dst == to => vec![helmert],
+            0 => continue,
+            1 if src == from => vec![helmert, parts.remove(0)],
+            1 => vec![parts.remove(0), helmert],
+            _ => vec![parts.remove(0), helmert, parts.remove(0)],
+        };
+        if let Some(c) = candidate::concatenate(route, true, crs)
+            && filter::is_forcible(&c)
+            && let Some(epoch) = operation::time_specific_epoch(op)
+        {
+            out.push((c, epoch));
+        }
+    }
+    out
+}
+
 fn is_priority(name: &str) -> bool {
     [
         "NAD83 to NAD83(HARN) (47)",
@@ -581,9 +664,11 @@ impl Candidates {
         grids: &Grids,
         selection: &Selection,
     ) -> Result<Candidates, Error> {
-        let (sorted, _) = search::create_operations(src_ref, dst_ref, grids.clone(), selection);
+        let (sorted, mut crs) =
+            search::create_operations(src_ref, dst_ref, grids.clone(), selection);
         let sorted = sorted.into_iter().filter(filter::is_exportable).collect();
-        Candidates::prepare(sorted, src, dst, None)
+        let at_epoch = time_specific_routes(src_ref, dst_ref, grids, selection, &mut crs);
+        Candidates::prepare_with(sorted, at_epoch, src, dst, None)
     }
 
     /// `sorted`, best first, made ready to run: each one's area converted
@@ -594,21 +679,43 @@ impl Candidates {
         dst: &Crs,
         motion: Option<&Motion>,
     ) -> Result<Candidates, Error> {
+        Candidates::prepare_with(sorted, Vec::new(), src, dst, motion)
+    }
+
+    /// [`Candidates::prepare`], with the routes through time-specific
+    /// Helmerts after the others, each with its epoch.
+    fn prepare_with(
+        sorted: Vec<Candidate>,
+        at_epoch: Vec<(Candidate, f64)>,
+        src: &Crs,
+        dst: &Crs,
+        motion: Option<&Motion>,
+    ) -> Result<Candidates, Error> {
         let mut builder = CrsBuilder::default();
         let src_geographic = matches!(src.kind, Kind::Geographic { .. });
         let src_geocentric = matches!(src.kind, Kind::Geocentric { .. });
         let mut list = Vec::new();
         let mut operations = 0;
         let mut first: Option<(Arc<Candidate>, Vec<Exec>, Arc<OperationInfo>)> = None;
-        for c in sorted {
+        let mut ordinary_operations = 0;
+        let all = sorted
+            .into_iter()
+            .map(|c| (c, None))
+            .chain(at_epoch.into_iter().map(|(c, e)| (c, Some(e))));
+        for (c, only_at) in all {
             let Ok(steps) = executable(&c, src, dst, &mut builder, motion) else {
                 continue;
             };
             let index = operations;
             operations += 1;
-            let info = Arc::new(OperationInfo::of(&c, &steps));
+            if only_at.is_none() {
+                ordinary_operations += 1;
+            }
+            let mut info = OperationInfo::of(&c, &steps);
+            info.only_at_epoch = only_at;
+            let info = Arc::new(info);
             let c = Arc::new(c);
-            if first.is_none() {
+            if first.is_none() && only_at.is_none() {
                 first = Some((c.clone(), steps.clone(), info.clone()));
             }
             let extent = c.extent.clone().unwrap_or_else(crate::extent::world);
@@ -649,16 +756,18 @@ impl Candidates {
                     priority: is_priority(&c.name),
                     has_grids: c.has_grids(),
                     everywhere: false,
+                    only_at,
                 });
             }
         }
         // A single operation whose area doesn't convert into the source CRS
         // still serves, as PROJ returns it directly.
-        if list.is_empty()
-            && operations == 1
+        let ordinary = list.iter().filter(|p| p.only_at.is_none()).count();
+        if ordinary == 0
+            && ordinary_operations == 1
             && let Some((c, steps, info)) = first
         {
-            list.push(Prepared::everywhere(c, steps, info));
+            list.insert(0, Prepared::everywhere(c, steps, info));
         }
         if list.is_empty() {
             return Err(Error::NoTransformation {
@@ -667,8 +776,10 @@ impl Candidates {
             });
         }
         // PROJ's `proj_create_crs_to_crs`: a single operation, or a single
-        // prepared one, is returned as the transformation itself.
-        let single = operations == 1 || list.len() == 1;
+        // prepared one, is returned as the transformation itself. Of the
+        // others, those through a time-specific Helmert don't count.
+        let ordinary = list.iter().filter(|p| p.only_at.is_none()).count();
+        let single = ordinary > 0 && (ordinary_operations == 1 || ordinary == 1);
         Ok(Candidates {
             grid_files: grid_files(&list),
             list,
@@ -789,7 +900,8 @@ impl Candidates {
         let mut wrapped = Vec::new();
         let mut last = None;
         for p in &self.list {
-            if last == Some(p.index) {
+            // Between two coordinate epochs, no time-specific Helmert.
+            if last == Some(p.index) || p.only_at.is_some() {
                 continue;
             }
             last = Some(p.index);
@@ -980,6 +1092,17 @@ impl Candidates {
         epoch: Option<f64>,
         rec: &mut R,
     ) -> Result<([f64; 3], usize), CoordinateError> {
+        if let Some(found) = self.choose_at_epoch(src, dst, internal, epoch, rec)? {
+            return Ok(found);
+        }
+        if self.list.iter().all(|p| p.only_at.is_some()) {
+            // Only routes through a time-specific Helmert, and the
+            // coordinate isn't at their epoch.
+            return Err(match epoch {
+                Some(_) => CoordinateError::EpochOutOfRange,
+                None => CoordinateError::MissingEpoch,
+            });
+        }
         if self.single {
             if R::DETAILED
                 && let Ok(point) = self.choice_point(src, internal)
@@ -996,7 +1119,10 @@ impl Candidates {
                 rec.inside(i, self.contains(alt, point));
             }
         }
-        let mut excluded = Vec::new();
+        // The routes through a time-specific Helmert had their turn.
+        let mut excluded: Vec<usize> = (0..self.list.len())
+            .filter(|&i| self.list[i].only_at.is_some())
+            .collect();
         let mut last_error = CoordinateError::OutsideDomain;
         for _ in 0..3 {
             rec.round();
@@ -1019,13 +1145,60 @@ impl Candidates {
         }
         // No candidate covers the point: PROJ falls back to the first one
         // that uses no grid, whatever its area.
-        if let Some(i) = self.list.iter().position(|p| !p.has_grids) {
+        if let Some(i) = self
+            .list
+            .iter()
+            .position(|p| !p.has_grids && p.only_at.is_none())
+        {
             rec.fallback(i);
             let result = run(&self.list[i].steps, src, dst, internal, epoch, rec);
             rec.tried(i, result.err());
             return result.map(|out| (out, i));
         }
         Err(last_error)
+    }
+
+    /// For a coordinate at a time-specific Helmert's epoch, inside the area
+    /// of a route through it, the most accurate such route, if no other
+    /// operation there is more accurate; `None` to go on with the others.
+    fn choose_at_epoch<R: Recorder>(
+        &self,
+        src: &Crs,
+        dst: &Crs,
+        internal: [f64; 3],
+        epoch: Option<f64>,
+        rec: &mut R,
+    ) -> Result<Option<([f64; 3], usize)>, CoordinateError> {
+        let Some(epoch) = epoch else {
+            return Ok(None);
+        };
+        if self.list.iter().all(|p| p.only_at.is_none()) {
+            return Ok(None);
+        }
+        let point = self.choice_point(src, internal)?;
+        let at = |p: &Prepared| {
+            p.only_at
+                .is_some_and(|t| (epoch - t).abs() <= SAME_EPOCH_YEARS)
+                && self.contains(p, point)
+        };
+        let known = |a: f64| if a >= 0.0 { a } else { f64::MAX };
+        let Some(best) = (0..self.list.len())
+            .filter(|&i| at(&self.list[i]))
+            .min_by(|&a, &b| known(self.list[a].accuracy).total_cmp(&known(self.list[b].accuracy)))
+        else {
+            return Ok(None);
+        };
+        let others: Vec<usize> = (0..self.list.len())
+            .filter(|&i| self.list[i].only_at.is_some())
+            .collect();
+        if let Some(o) = self.suggest(point, &others, &mut ())
+            && known(self.list[o].accuracy) < known(self.list[best].accuracy)
+        {
+            return Ok(None);
+        }
+        let result = run(&self.list[best].steps, src, dst, internal, Some(epoch), rec);
+        rec.tried(best, result.err());
+        Ok(result.ok().map(|out| (out, best)))
     }
 
     /// How the operation for one coordinate is chosen, by operation of
@@ -1168,6 +1341,7 @@ impl Prepared {
             unknown_area_name: false,
             priority: false,
             everywhere: true,
+            only_at: None,
         }
     }
 }

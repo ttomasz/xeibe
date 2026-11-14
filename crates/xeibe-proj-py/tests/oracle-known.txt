@@ -8,3 +8,13 @@
 3906->8687  tie, off by 0.153; ours: MGI 1901 to ETRS89-SVN [D96] (12) + UTM zone 33N
 4802->6250  tie, off by 0.00423; ours: Bogota 1975 (Bogota) to Bogota 1975 (1) + Bogota 1975 to MAGNA-SIRGAS (10) + Cartagena urban grid
 6884->8999  tie, off by 1.17e-07; ours: Inverse of ITRF2000 to NAD83(CORS96) (1) + ITRF2000 to ITRF2008 (1), PROJ's goes through ITRF97 to NAD83(CORS96) (1), which EPSG says is replaced
+
+# Lambert Conic Conformal (2SP Belgium) with EPSG's turn of the grid by
+# 29.2985", which PROJ leaves out: BD72 / Belge Lambert 72 745 m apart
+# (reprojection.md, Beyond PROJ).
+25831->31300  2SP Belgium, off by 760; EPSG's worked example holds here
+31300->9755  2SP Belgium, off by 0.0105; EPSG's worked example holds here
+
+# Polynomials in the choice where they do better than PROJ's (reprojection.md,
+# Beyond PROJ): TM75 to WGS 84 (1), OSi's and OSNI's, over PROJ's Helmert.
+4326->29903  TM75 polynomial, off by 0.718; ours: Inverse of TM75 to WGS 84 (1) + Irish Grid

@@ -218,8 +218,10 @@ def test_random_pairs_match(seed: int) -> None:
 # CRSs whose Proj differs from pyproj's beyond the tolerances, with why
 # (docs/pyproj-phase2.md, Proj): pyproj's PROJ string has +R_A (the
 # authalic sphere) for EPSG's spherical LAEA, which PROJ's own conversion
-# of the CRS doesn't use; ours matches that conversion.
-PROJ_KNOWN = {3973, 3974}
+# of the CRS doesn't use; ours matches that conversion. And BD72 / Belge
+# Lambert 72, whose grid EPSG turns by 29.2985", which PROJ leaves out
+# (745 m; docs/reprojection.md, Beyond PROJ).
+PROJ_KNOWN = {3973, 3974, 31300}
 
 
 def test_proj_matches_pyproj() -> None:

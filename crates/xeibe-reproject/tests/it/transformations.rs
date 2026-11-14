@@ -575,6 +575,13 @@ fn check_selection(records: &[Value], world: World) -> (SelectionStats, Vec<Stri
         // (with grids, PROJ may have operations whose grids don't cover the
         // sampled points).
         let only_identity = t.operations().iter().all(|n| n.contains(ENSEMBLE_MEMBER));
+        // Only routes through a time-specific Helmert, which no coordinate
+        // without an epoch takes: none, as for PROJ.
+        let only_at_epoch = t.operation_info().iter().all(|i| i.only_at_epoch.is_some());
+        if !proj_has_any && only_at_epoch {
+            s.no_transform_both += 1;
+            continue;
+        }
         if !proj_has_any && only_identity {
             s.ensemble_only_ours += 1;
         } else if points.is_empty() {

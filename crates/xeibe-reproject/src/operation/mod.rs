@@ -8,7 +8,8 @@
 //! one. `pipeline.rs` gets coordinates into the operation's source CRS and out
 //! of its target CRS.
 
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, OnceLock};
 
 use crate::crs::Crs;
 use crate::error::CoordinateError;
@@ -144,11 +145,14 @@ pub(crate) fn needs_epoch(method: u32) -> bool {
     defmodel::METHODS.contains(&method) || method == velocity::TRANSLATION_BY_VELOCITY
 }
 
-/// Operations run only when forced (`Transform::via`), never in the choice:
-/// the time-specific Helmerts, which hold at one epoch only and which PROJ
-/// can't run, so its choice never meets them. In the choice, "WGS 84 to
-/// ETRS89 (2)" (1989.0, 0.1 m) would beat the null "ETRS89 to WGS 84 (1)"
-/// (1 m) and move every point by half a metre.
+/// Operations PROJ's choice never meets, so neither does the search that
+/// follows it: the time-specific Helmerts, which hold at one epoch only and
+/// which PROJ can't run. They come in afterwards, for coordinates at their
+/// epoch only ([`time_specific_epoch`], `select::time_specific_routes`): for every
+/// coordinate, "WGS 84 to ETRS89 (2)" (2014.81, 0.1 m, the German and Dutch
+/// North Sea) would beat the null "ETRS89 to WGS 84 (1)" (1 m) there and,
+/// as PROJ's fallback for a point no operation covers, elsewhere, moving
+/// points by up to half a metre.
 ///
 /// And EPSG's polynomials, which PROJ doesn't import, but for those that do
 /// better than what PROJ chooses ([`polynomial::COMPETING`]): the others
@@ -177,6 +181,31 @@ pub(crate) fn is_exportable(op: &Operation) -> bool {
         return vertical::is_exportable(op);
     }
     is_implemented(op.method) && !only_forced(op)
+}
+
+/// A time-specific Helmert's epoch, a decimal year, the one epoch it holds
+/// at.
+pub(crate) fn time_specific_epoch(op: &Operation) -> Option<f64> {
+    matches!(op.method, 1065 | 1066)
+        .then(|| op.param(helmert::TRANSFORMATION_REFERENCE_EPOCH))
+        .flatten()
+        .map(|t| t / YEAR)
+}
+
+/// The datums EPSG's live time-specific Helmerts join: only a transform
+/// from or to one of them can go through one.
+pub(crate) fn time_specific_datums() -> &'static HashSet<u32> {
+    static DATUMS: OnceLock<HashSet<u32>> = OnceLock::new();
+    DATUMS.get_or_init(|| {
+        let r = crate::registry::registry();
+        r.ops
+            .values()
+            .filter(|op| !op.deprecated && time_specific_epoch(op).is_some())
+            .flat_map(|op| [op.src, op.dst])
+            .flatten()
+            .filter_map(|c| r.geodetic.get(&c).map(|g| g.datum))
+            .collect()
+    })
 }
 
 /// A geoid model read from a grid (`vgridshift` backwards in PROJ).
