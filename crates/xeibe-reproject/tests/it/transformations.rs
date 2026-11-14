@@ -260,6 +260,17 @@ const GRID_PAIR_DEVIATIONS: &[(u32, u32)] = &[
     (4267, 7789),
 ];
 
+/// Projection methods PROJ has no mapping for, which xeibe runs from EPSG's
+/// formulas (`docs/reprojection.md`, "Beyond PROJ"): PROJ transforms no
+/// pair with a CRS on one of them.
+const PROJECTIONS_BEYOND_PROJ: [u32; 5] = [9816, 9817, 9824, 9826, 9830];
+
+fn projection_beyond_proj(code: u32) -> bool {
+    xeibe_crs::get(code)
+        .and_then(|r| r.method)
+        .is_some_and(|m| PROJECTIONS_BEYOND_PROJ.contains(&m))
+}
+
 fn load(path: &Path) -> Vec<Value> {
     let text = std::fs::read_to_string(path).unwrap_or_else(|e| {
         panic!(
@@ -550,9 +561,10 @@ fn check_selection(records: &[Value], world: World) -> (SelectionStats, Vec<Stri
             s.ensemble_only_ours += 1;
         } else if points.is_empty() {
             // PROJ has no transformation at all, so no points to judge by.
-            if matches!(world, World::Grids(_))
+            if (matches!(world, World::Grids(_))
                 && (GRID_PAIR_DEVIATIONS.contains(&(src, dst))
-                    || VERTICAL_PAIR_DEVIATIONS.contains(&(src, dst)))
+                    || VERTICAL_PAIR_DEVIATIONS.contains(&(src, dst))))
+                || [src, dst].into_iter().any(projection_beyond_proj)
             {
                 s.listed_pairs_proj_none += 1;
             } else {

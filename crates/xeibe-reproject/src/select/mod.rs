@@ -764,7 +764,7 @@ impl Candidates {
             return Err(not_joining());
         };
         let c = candidate::registry_candidate(code, inverse, &mut cache).ok_or_else(not_joining)?;
-        if !filter::is_exportable(&c) {
+        if !filter::is_forcible(&c) {
             return Err(Error::Unsupported {
                 crs: format!("EPSG operation {code}"),
                 what: "its method".into(),

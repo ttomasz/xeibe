@@ -142,6 +142,15 @@ pub(crate) fn needs_epoch(method: u32) -> bool {
     defmodel::METHODS.contains(&method) || method == velocity::TRANSLATION_BY_VELOCITY
 }
 
+/// Methods run only when an operation is forced (`Transform::via`), never in
+/// the choice: the time-specific Helmerts, which hold at one epoch only and
+/// which PROJ can't run, so its choice never meets them. In the choice,
+/// "WGS 84 to ETRS89 (2)" (1989.0, 0.1 m) would beat the null "ETRS89 to
+/// WGS 84 (1)" (1 m) and move every point by half a metre.
+pub(crate) fn only_forced(method: u32) -> bool {
+    matches!(method, 1065 | 1066)
+}
+
 /// Whether xeibe can run this operation: its method is implemented and, for
 /// the few methods with conditions on the operation, PROJ could write it as
 /// a pipeline. Whether its grid is available is a separate question.
@@ -159,7 +168,7 @@ pub(crate) fn is_exportable(op: &Operation) -> bool {
     if vertical::is_method(op.method) {
         return vertical::is_exportable(op);
     }
-    is_implemented(op.method)
+    is_implemented(op.method) && !only_forced(op.method)
 }
 
 /// A geoid model read from a grid (`vgridshift` backwards in PROJ).

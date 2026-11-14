@@ -17,6 +17,15 @@
 //! `update_parameters` computes them; without one they are those at the
 //! reference epoch, the rates unused, which is what PROJ does too.
 //!
+//! The time-specific methods (1065, 1066), which PROJ imports but can't run,
+//! are a plain geocentric Helmert that holds at one epoch, the
+//! transformation reference epoch, and run only when forced
+//! (`operation::only_forced`). EPSG moves a point there and back by its
+//! own velocities (Guidance Note 7-2), which a coordinate here doesn't
+//! carry: a coordinate without an epoch is taken to be at it, and one at
+//! another epoch fails (`CoordinateError::EpochOutOfRange`), so the choice
+//! goes on to the next operation.
+//!
 //! A geographic-domain Helmert of zeros between ellipsoids within
 //! [`SAME_ELLIPSOID_M`] of each other, on one prime meridian, changes the CRS
 //! only: "ETRS89 to WGS 84 (1)", "NAD83 to WGS 84 (1)" and a zero `TOWGS84`
@@ -55,8 +64,9 @@ pub(super) const METHODS: &[u32] = &[
     // coordinate's epoch, or without one at their reference epoch, as in
     // PROJ.
     1053, 1054, 1055, 1056, 1057, 1058, //
-    // Not the time-specific variants (1065, 1066): PROJ can't run them
-    // either, so they never compete in its choice.
+    // Time-specific Position Vector and Coordinate Frame (geocentric),
+    // at their one epoch.
+    1065, 1066, //
     // Coordinate Frame with the full (exact) rotation matrix.
     1132, 1133, 1140, 1149,
 ];
@@ -102,6 +112,8 @@ fn classify(method: u32) -> Option<(Kind7, Domain)> {
         1056 => (CoordinateFrame, Geocentric),
         1057 => (CoordinateFrame, Geog2d),
         1058 => (CoordinateFrame, Geog3d),
+        1065 => (PositionVector, Geocentric),
+        1066 => (CoordinateFrame, Geocentric),
         1132 => (CoordinateFrame, Geocentric),
         1133 => (CoordinateFrame, Geog2d),
         1140 => (CoordinateFrame, Geog3d),
@@ -309,7 +321,15 @@ struct HelmertOperation {
     /// Zeros between two geographic CRSs that [`same_place`] holds for:
     /// the coordinates go through unchanged.
     relabel: bool,
+    /// A time-specific method's epoch, a decimal year.
+    only_at: Option<f64>,
 }
+
+/// "Transformation reference epoch" of the time-specific methods.
+const TRANSFORMATION_REFERENCE_EPOCH: u32 = 1049;
+/// How near a coordinate's epoch must be to a time-specific transformation's:
+/// the same thousandth of a year (PROJ's `getRoundedEpochInDecimalYear`).
+const SAME_EPOCH_YEARS: f64 = 5e-4;
 
 /// Whether two geographic CRSs' ellipsoids and prime meridians are one for
 /// a Helmert of zeros between them.
@@ -361,6 +381,10 @@ pub(super) fn build(op: &Operation, src: &Crs, dst: &Crs) -> Result<Arc<dyn Meth
     };
     let zeros = op.params.iter().all(|(_, v)| *v == ParamValue::Number(0.0));
     let relabel = zeros && src.zip(dst).is_some_and(|(s, d)| same_place(s, d));
+    let only_at = match op.method {
+        1065 | 1066 => Some(required(op, TRANSFORMATION_REFERENCE_EPOCH)? / YEAR),
+        _ => None,
+    };
     Ok(Arc::new(HelmertOperation {
         helmert,
         rates,
@@ -368,6 +392,7 @@ pub(super) fn build(op: &Operation, src: &Crs, dst: &Crs) -> Result<Arc<dyn Meth
         src,
         dst,
         relabel,
+        only_at,
     }))
 }
 
@@ -408,6 +433,11 @@ impl HelmertOperation {
         inverse: bool,
         keep_height: bool,
     ) -> Result<[f64; 3], CoordinateError> {
+        if let Some(at) = self.only_at
+            && (epoch - at).abs() > SAME_EPOCH_YEARS
+        {
+            return Err(CoordinateError::EpochOutOfRange);
+        }
         match &self.rates {
             // PROJ rebuilds its parameters only when the epoch differs
             // from the one they are at: the same numbers either way.

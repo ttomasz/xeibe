@@ -100,6 +100,19 @@ pub(crate) fn is_exportable(c: &Candidate) -> bool {
     })
 }
 
+/// [`is_exportable`], or runnable when forced ([`crate::operation::only_forced`]).
+pub(crate) fn is_forcible(c: &Candidate) -> bool {
+    c.leaves().iter().all(|s| match s.kind {
+        SingleKind::Registry { code, .. } => {
+            let op = &registry().ops[&code];
+            op.table == crate::registry::Table::Conversion
+                || crate::operation::is_exportable(op)
+                || crate::operation::only_forced(op.method)
+        }
+        _ => true,
+    })
+}
+
 /// `FilterResults::filterOut` with ballparks disallowed. `strict` is
 /// PROJ's `forceStrictContainmentTest`.
 pub(crate) fn filter_out(list: &[Candidate], areas: &Areas, strict: bool) -> Vec<Candidate> {

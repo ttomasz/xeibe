@@ -91,8 +91,9 @@ pub enum CoordinateError {
     /// see `Transform::with_epochs` and `Transform::convert_at`.
     #[error("the transformation needs a coordinate epoch")]
     MissingEpoch,
-    /// The coordinate's epoch is outside the time the operation's
-    /// deformation model covers.
-    #[error("the coordinate epoch is outside the deformation model's time extent")]
+    /// The coordinate's epoch is outside the time the operation holds for:
+    /// its deformation model's time extent, or a time-specific
+    /// transformation's one epoch.
+    #[error("the coordinate epoch is outside the time the operation holds for")]
     EpochOutOfRange,
 }

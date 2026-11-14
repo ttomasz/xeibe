@@ -339,8 +339,8 @@ Deviations from PROJ:
 - **An epoch that isn't finite is none.** PROJ's "none" is `HUGE_VAL`
   (`inf`); NaN and `-inf`, which give PROJ a NaN result, are read the same.
 
-Not implemented: the time-specific Helmert methods 1065 and 1066, which
-PROJ can't run either.
+The time-specific Helmert methods 1065 and 1066, which PROJ can't run,
+run only when forced ([Beyond PROJ](#beyond-proj)).
 
 #### Between two epochs: point motion operations
 
@@ -622,8 +622,9 @@ Details that turned out to matter, each found by the differential:
   step at all when nothing geocentric is next to it, which xeibe
   generalises (see the deviations).
 - **What PROJ can run.** Time-specific Helmert methods (1065, 1066) have no
-  PROJ pipeline and never compete; time-dependent ones run at their reference
-  epoch when coordinates have no epoch, as in PROJ.
+  PROJ pipeline and never compete (xeibe runs them only when forced);
+  time-dependent ones run at their reference epoch when coordinates have no
+  epoch, as in PROJ.
 - **PROJ's own operations between a datum ensemble and its members.**
   PROJ's `build_db.py` adds a null operation between the CRS of each datum
   ensemble and the CRS of each of its members ("WGS 84 to WGS 84 (G2296)",
@@ -1326,6 +1327,20 @@ of (`tests/it/epsg_examples.rs`):
   applies everywhere as its fallback for a point no candidate covers
   (−0.054 m; EPSG's formula goes from −0.053 m at 42°N to +0.072 m at
   69°N): 4 pairs listed as deviations.
+- **Time-specific Helmert transformations** (methods 1065 and 1066, 41
+  operations: SIRGAS-CON's weekly solutions, PZ-90 to PZ-90.11, GSK-2011),
+  which PROJ imports but can't run. EPSG's method moves the point to the
+  transformation reference epoch by its own velocities, applies the
+  Helmert there and moves it back; a coordinate here carries no velocity,
+  so the Helmert alone runs, for a coordinate without an epoch (taken to
+  be at the reference epoch) or at that epoch to the thousandth, and one
+  at another epoch fails (`EpochOutOfRange`). **Only when forced**
+  (`Transform::via`): in the choice "WGS 84 to ETRS89 (2)" (1989.0,
+  0.1 m) would beat PROJ's null "ETRS89 to WGS 84 (1)" (1 m) and move
+  every point between ETRS89 and WGS 84 by up to 0.55 m, for coordinates
+  that aren't at 1989.0. EPSG's example (ITRF2008 to PZ-90.11) gives a Z
+  1.2 mm from what its parameters give; PROJ's `helmert` with them agrees
+  with xeibe.
 
 ## Test oracle notes
 

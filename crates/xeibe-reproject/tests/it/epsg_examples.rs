@@ -163,3 +163,47 @@ fn evrf2019_zero_tide_to_mean_tide() {
         assert_near(back.unwrap(), 100.154, 1e-9, "back");
     }
 }
+
+/// Time-specific Coordinate Frame rotation (method 1066, which PROJ imports
+/// but can't run): EPSG's example, ITRF2008 to PZ-90.11 at 2010.0 by the
+/// inverse of "PZ-90.11 to ITRF2008 (1)". Its step 2 is the Helmert alone:
+/// EPSG's X and Y (2845455.9772, 2160954.3078) agree, its Z (5265993.2652)
+/// is 1.2 mm from what its own parameters give; PROJ's `helmert` with them
+/// (`+x=-0.003 +y=-0.001 +rx=0.000019 +ry=-0.000042 +rz=0.000002
+/// +convention=coordinate_frame`, inverse) gives what is checked here.
+#[test]
+fn time_specific_coordinate_frame() {
+    let (itrf2008, pz90) = (crs(5332), crs(7679));
+    let t = Transform::via(&itrf2008, &pz90, 7960, AxisOrder::Authority).unwrap();
+    let input = (2_845_455.975_3, 2_160_954.307_3, 5_265_993.265_6);
+    let want = [
+        2_845_455.977_206_776,
+        2_160_954.307_842_516,
+        5_265_993.266_378_452,
+    ];
+    for got in [
+        t.convert(input.0, input.1, Some(input.2)).unwrap(),
+        t.convert_at(input.0, input.1, Some(input.2), 2010.0)
+            .unwrap(),
+    ] {
+        for (g, w) in [got.0, got.1, got.2.unwrap()].into_iter().zip(want) {
+            assert_near(g, w, 1e-6, "geocentric");
+        }
+    }
+    // At another epoch the point would first have to move by its own
+    // velocity, which a coordinate doesn't carry.
+    assert_eq!(
+        t.convert_at(input.0, input.1, Some(input.2), 2013.9),
+        Err(xeibe_reproject::CoordinateError::EpochOutOfRange)
+    );
+    // Only when forced: in the choice it would beat operations PROJ uses.
+    let wgs84 = Transform::new(&crs(4936), &crs(4978), AxisOrder::Authority).unwrap();
+    assert!(
+        wgs84
+            .operations()
+            .iter()
+            .all(|o| !o.contains("WGS 84 to ETRS89 (2)")),
+        "{:?}",
+        wgs84.operations()
+    );
+}
