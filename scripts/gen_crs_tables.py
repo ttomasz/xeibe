@@ -910,8 +910,10 @@ GRID_METHOD_NAMES = {
 GRID_SKIPPED = {10929}  # SOPAC deformation model for California v1, skipped by build_db.py
 # Beyond PROJ's import: methods `xeibe-reproject` runs from EPSG's formulas
 # (`docs/reprojection.md`, "Beyond PROJ"), exported although PROJ's choice
-# never sees them. EVRF2019 zero-tide to mean-tide heights.
-BEYOND_PROJ_METHODS = {1107}
+# never sees them. EVRF2019 zero-tide to mean-tide heights, and the
+# polynomials (general, reversible, complex, Madrid to ED50), which run only
+# when forced.
+BEYOND_PROJ_METHODS = {1107, 9645, 9648, 9651, 9652, 9653, 9654, 9617}
 OPERATIONS_MAGIC = b"XOP1"
 
 

@@ -20,6 +20,7 @@ pub(crate) mod grid;
 pub(crate) mod helmert;
 mod offsets;
 mod plane;
+mod polynomial;
 mod tin;
 mod velocity;
 mod vertical;
@@ -132,6 +133,7 @@ pub(crate) fn is_implemented(method: u32) -> bool {
         || velocity::METHODS.contains(&method)
         || tin::METHODS.contains(&method)
         || defmodel::METHODS.contains(&method)
+        || polynomial::METHODS.contains(&method)
         || vertical::is_method(method)
 }
 
@@ -147,8 +149,13 @@ pub(crate) fn needs_epoch(method: u32) -> bool {
 /// which PROJ can't run, so its choice never meets them. In the choice,
 /// "WGS 84 to ETRS89 (2)" (1989.0, 0.1 m) would beat the null "ETRS89 to
 /// WGS 84 (1)" (1 m) and move every point by half a metre.
+///
+/// And EPSG's polynomials, which PROJ doesn't import: in the choice they
+/// would displace the operations PROJ takes for the same pairs (TM75 to
+/// ETRS89, RD to ED50 / UTM zone 31N), several of them legacy ones EPSG
+/// itself has replaced.
 pub(crate) fn only_forced(method: u32) -> bool {
-    matches!(method, 1065 | 1066)
+    matches!(method, 1065 | 1066) || polynomial::METHODS.contains(&method)
 }
 
 /// Whether xeibe can run this operation: its method is implemented and, for
@@ -211,6 +218,9 @@ pub(crate) fn build(op: &Operation, src: &Crs, dst: &Crs) -> Result<Arc<dyn Meth
     }
     if defmodel::METHODS.contains(&op.method) {
         return defmodel::build(op, src, dst);
+    }
+    if polynomial::METHODS.contains(&op.method) {
+        return polynomial::build(op, src, dst);
     }
     if vertical::is_method(op.method) {
         return vertical::build(op, src, dst);

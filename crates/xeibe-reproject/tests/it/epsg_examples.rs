@@ -207,3 +207,117 @@ fn time_specific_coordinate_frame() {
         wgs84.operations()
     );
 }
+
+/// An operation between two EPSG CRSs, forced, in their own axis order.
+fn forced(src: u32, dst: u32, op: u32) -> Transform {
+    Transform::via(&crs(src), &crs(dst), op, AxisOrder::Authority).unwrap()
+}
+
+/// Complex polynomial of degree 4: RD to ED50 / UTM zone 31N (1). EPSG's
+/// reverse operation (6303, its own coefficients) and the iterated reverse
+/// agree to half a millimetre.
+#[test]
+fn complex_polynomial_of_degree_4() {
+    let t = forced(28992, 23031, 1044);
+    let (e, n, _) = t.convert(200_000.0, 500_000.0, None).unwrap();
+    assert_near(e, 707_155.557, 5e-4, "easting");
+    assert_near(n, 5_819_663.128, 5e-4, "northing");
+    let (e1, n1, _) = t.inverse().unwrap().convert(e, n, None).unwrap();
+    assert_near(e1, 200_000.0, 1e-6, "easting back");
+    assert_near(n1, 500_000.0, 1e-6, "northing back");
+    let (e2, n2, _) = forced(23031, 28992, 6303).convert(e, n, None).unwrap();
+    assert_near(e2, 200_000.0, 5e-4, "6303 easting");
+    assert_near(n2, 500_000.0, 5e-4, "6303 northing");
+}
+
+/// Complex polynomial of degree 3: BD72 / Belge Lambert 72 to ED50 / UTM
+/// zone 31N (1).
+#[test]
+fn complex_polynomial_of_degree_3() {
+    let (e, n, _) = forced(31300, 23031, 1048)
+        .convert(200_000.0, 100_000.0, None)
+        .unwrap();
+    assert_near(e, 647_737.377, 5e-4, "easting");
+    assert_near(n, 5_564_124.227, 5e-4, "northing");
+}
+
+/// Reversible polynomial of degree 4: ED50 to ED87 (1), forwards, and back
+/// with the coefficients' signs reversed.
+#[test]
+fn reversible_polynomial_of_degree_4() {
+    let t = forced(4230, 4231, 15753);
+    let lat = dms(52.0, 30.0, 30.0);
+    let (lat2, lon2, _) = t.convert(lat, 2.0, None).unwrap();
+    assert_near(lat2 - lat, -3.129_58e-6, 5e-12, "latitude difference");
+    assert_near(lon2 - 2.0, 9.801_26e-6, 5e-12, "longitude difference");
+    // EPSG's reverse gives −3.12957e-06 and +9.80124e-06 degrees back.
+    let (lat3, lon3, _) = t.inverse().unwrap().convert(lat2, lon2, None).unwrap();
+    assert_near(lat3 - lat2, 3.129_57e-6, 5e-12, "latitude back");
+    assert_near(lon3 - lon2, -9.801_24e-6, 5e-12, "longitude back");
+}
+
+/// Reversible polynomial of degree 13: ED50 to WGS 84 (35), TR8350.2's
+/// regression equations, in arc-seconds. EPSG: "May be approximated to
+/// better than 0.5m by transformation code 1998"; over its area (the German
+/// North Sea) they agree to 0.6 m.
+#[test]
+fn reversible_polynomial_of_degree_13() {
+    let (mre, helmert) = (forced(4230, 4326, 1052), forced(4230, 4326, 1998));
+    for lat in [53.7, 54.3, 55.0, 55.8] {
+        for lon in [3.5, 5.0, 6.5, 8.7] {
+            let (a, b, _) = mre.convert(lat, lon, None).unwrap();
+            let (c, d, _) = helmert.convert(lat, lon, None).unwrap();
+            let metres =
+                ((a - c) * 111_200.0).hypot((b - d) * 111_200.0 * f64::cos(lat.to_radians()));
+            assert!(metres < 0.6, "{lat} {lon}: {metres} m");
+        }
+    }
+}
+
+/// Madrid to ED50 polynomial: the north zone, Madrid 1870 (Madrid) to ED50
+/// (2); longitudes from the Madrid meridian in, from Greenwich out.
+#[test]
+fn madrid_to_ed50_polynomial() {
+    let (lat, lon) = (42.647_992, 3.659_603);
+    let (lat2, lon2, _) = forced(4903, 4230, 1027).convert(lat, lon, None).unwrap();
+    assert_near((lat2 - lat) * 3600.0, 4.05, 0.005, "dLat seconds");
+    assert_near((lon2 - lon) * 3600.0, -13_270.54, 0.005, "dLon seconds");
+    let (lat3, lon3, _) = forced(4903, 4230, 1027)
+        .inverse()
+        .unwrap()
+        .convert(lat2, lon2, None)
+        .unwrap();
+    assert_near(lat3, lat, 1e-10, "latitude back");
+    assert_near(lon3, lon, 1e-10, "longitude back");
+}
+
+/// General polynomials: EPSG gives no example. TM75 to ETRS89 (1) (degree
+/// 6, 0.4 m) agrees with the 1 m Helmert "TM75 to ETRS89 (2)" to 1.6 m over
+/// Ireland, and Viti Levu Grid to Fiji Map Grid (degree 2, in links to
+/// metres, northing first to easting first) with the route through both
+/// CRSs' transformations to WGS 84 to 4 m. Their reverse is by iteration.
+#[test]
+fn general_polynomials() {
+    let poly = forced(4300, 4258, 1041);
+    let helmert = Transform::new(&crs(4300), &crs(4258), AxisOrder::Authority).unwrap();
+    for (lat, lon) in [(51.6, -10.0), (53.35, -6.26), (55.2, -7.0), (52.5, -8.5)] {
+        let (a, b, _) = poly.convert(lat, lon, None).unwrap();
+        let (c, d, _) = helmert.convert(lat, lon, None).unwrap();
+        let metres = ((a - c) * 111_200.0).hypot((b - d) * 111_200.0 * f64::cos(lat.to_radians()));
+        assert!(metres < 1.6, "TM75 {lat} {lon}: {metres} m");
+        let (lat2, lon2, _) = poly.inverse().unwrap().convert(a, b, None).unwrap();
+        assert_near(lat2, lat, 1e-10, "TM75 latitude back");
+        assert_near(lon2, lon, 1e-10, "TM75 longitude back");
+    }
+    let fiji = forced(3140, 3460, 15950);
+    let route = Transform::new(&crs(3140), &crs(3460), AxisOrder::Authority).unwrap();
+    let (n, e) = (814_029.175, 544_000.0);
+    let (a, b, _) = fiji.convert(n, e, None).unwrap();
+    let (c, d, _) = route.convert(n, e, None).unwrap();
+    assert!((a - c).hypot(b - d) < 4.0, "Fiji: {a} {b} against {c} {d}");
+    let (n2, e2, _) = fiji.inverse().unwrap().convert(a, b, None).unwrap();
+    assert_near(n2, n, 1e-6, "Fiji northing back");
+    assert_near(e2, e, 1e-6, "Fiji easting back");
+    // Never in the choice: PROJ's operations for the pair stay.
+    assert_eq!(helmert.operations()[0], "TM75 to ETRS89 (2)");
+}

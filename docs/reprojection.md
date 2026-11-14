@@ -1310,7 +1310,10 @@ of EPSG has no PROJ mapping at all; where EPSG publishes the method's
 formulas (Guidance Note 7-2, transcribed into the dataset with a worked
 example), xeibe runs it from them, and tests it against EPSG's example or,
 where EPSG gives none, against PROJ's results for what the method is made
-of (`tests/it/epsg_examples.rs`):
+of (`tests/it/epsg_examples.rs`). A method beyond PROJ competes in the
+choice where PROJ has nothing proper for the pair; where it would displace
+an operation PROJ takes, it runs only when forced (`Transform::via`,
+`operation::only_forced`):
 
 - **Projections** (level 1): Lambert Conic Conformal (West Orientated),
   Polar Stereographic (variant C), Lambert Conic Near-Conformal, Tunisia
@@ -1341,6 +1344,30 @@ of (`tests/it/epsg_examples.rs`):
   that aren't at 1989.0. EPSG's example (ITRF2008 to PZ-90.11) gives a Z
   1.2 mm from what its parameters give; PROJ's `helmert` with them agrees
   with xeibe.
+- **Polynomials** (methods 9645, 9648, 9651, 9652, 9653, 9654, 9617; 17
+  live operations: RD and Belge Lambert 72 to ED50 / UTM zone 31N and
+  back, TM75 to ETRS89 and WGS 84, ED50 to ED87 and to WGS 84 (35), Madrid
+  1870 to ED50, Fiji), which PROJ doesn't import. **Only when forced**:
+  TM75 to ETRS89 (1) (0.4 m) would displace PROJ's "TM75 to ETRS89 (2)"
+  (1 m) all over Ireland, and EPSG has replaced several of the others. On
+  the ordinates as each CRS gives them (degrees, metres, links), reduced
+  to the evaluation points and scaled. The general and complex ones go
+  backwards by iteration, as EPSG says to; the reversible ones with their
+  coefficients' signs reversed. EPSG's examples hold for the complex
+  polynomials, ED50 to ED87 and Madrid to ED50 (both ways). Two
+  readings the data alone doesn't settle:
+  - "ED50 to WGS 84 (35)" (degree 13) is NIMA's TR8350.2 regression, whose
+    differences are arc-seconds although EPSG says degrees: as degrees a
+    point would move 2.6°; as arc-seconds it agrees to 0.6 m over its area
+    with "ED50 to WGS 84 (36)", which EPSG says approximates it to 0.5 m.
+  - Fiji's grid lists northing first and its target easting first. Each
+    target ordinate adds the source ordinate of its own direction, the
+    only reading under which EPSG's remark on the coefficients (DLAS's
+    "modified by subtracting (1/ms)") holds; it agrees with the route
+    through both CRSs' transformations to WGS 84 to 4 m.
+
+  EPSG gives no example for the general polynomials: TM75 to ETRS89 (1)
+  agrees with the 1 m Helmert to 1.6 m.
 
 ## Test oracle notes
 
