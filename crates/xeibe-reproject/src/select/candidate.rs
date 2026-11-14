@@ -424,19 +424,23 @@ pub(crate) fn registry_candidate(
                 .and_then(|n| registry().ops[n].src)
                 .map(CrsRef::Epsg);
             // Between vertical CRSs (height to depth, a change of unit): to
-            // the next step's CRS on the same datum, or the operation's
-            // target.
+            // the CRS on the same datum of the next step that has CRSs, or
+            // the operation's target. Another conversion between (EPSG's
+            // "KOC CD height to KOC WD depth (ft) (1)": an offset, height to
+            // depth, then metres to feet) goes on from there, as an
+            // identity: the target's axis does both.
             if crs.kind(cur) == CrsKind::Vertical {
                 let datum = crs.vertical_datum(cur);
-                let target = match op.steps.get(i + 1) {
-                    Some(n) => {
-                        let n = &registry().ops[n];
-                        [n.src, n.dst]
-                            .into_iter()
-                            .flatten()
-                            .map(CrsRef::Epsg)
-                            .find(|&c| crs.vertical_datum(c) == datum)?
-                    }
+                let next = op.steps[i + 1..]
+                    .iter()
+                    .map(|n| &registry().ops[n])
+                    .find(|n| n.src.is_some() || n.dst.is_some());
+                let target = match next {
+                    Some(n) => [n.src, n.dst]
+                        .into_iter()
+                        .flatten()
+                        .map(CrsRef::Epsg)
+                        .find(|&c| crs.vertical_datum(c) == datum)?,
                     None => CrsRef::Epsg(op.dst?),
                 };
                 steps.push(Single {

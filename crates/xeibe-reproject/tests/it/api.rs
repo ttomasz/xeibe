@@ -343,3 +343,25 @@ fn bounds_across_the_antimeridian() {
         ],
     );
 }
+
+#[test]
+fn a_concatenation_through_two_vertical_conversions() {
+    // EPSG's "KOC CD height to KOC WD depth (ft) (1)": a vertical offset of
+    // −4.74 m, then height to depth and metres to feet, two conversions
+    // with no CRSs of their own. PROJ 9.8.1 runs it as `geogoffset
+    // +dh=-4.74`, `axisswap +order=1,2,-3`, `unitconvert +z_in=m +z_out=ft`.
+    let crs = |h: u32, v: u32| {
+        Crs::compound(&Crs::from_epsg(h).unwrap(), &Crs::from_epsg(v).unwrap()).unwrap()
+    };
+    let (cd, wd) = (crs(4246, 5790), crs(4246, 5614));
+    for t in [
+        Transform::via(&cd, &wd, 7987, AxisOrder::EastFirst).unwrap(),
+        Transform::new(&cd, &wd, AxisOrder::EastFirst).unwrap(),
+    ] {
+        assert_eq!(t.operations()[0], "KOC CD height to KOC WD depth (ft) (1)");
+        let depth = t.convert(48.0, 29.0, Some(10.0)).unwrap().2.unwrap();
+        assert!((depth + 17.257_217_847_769_027).abs() < 1e-9, "{depth}");
+        let back = t.inverse().unwrap().convert(48.0, 29.0, Some(10.0));
+        assert!((back.unwrap().2.unwrap() - 1.692).abs() < 1e-9);
+    }
+}

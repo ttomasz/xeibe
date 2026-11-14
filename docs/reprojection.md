@@ -937,7 +937,10 @@ compound CRSs with their grids (geoid models, vertical offsets).
   vertical offsets with and without slope, the vertical TIN between
   projected CRSs, and NRCan's vertical velocity grid. A vertical step reads
   the position from the CRS the horizontal part is in at that point, its
-  interpolation CRS.
+  interpolation CRS. EPSG's conversions without CRSs in a concatenation
+  (height to depth, a change of vertical unit) take their CRSs from the
+  steps around them, two in a row too ("KOC CD height to KOC WD depth (ft)
+  (1)", which matches PROJ's since 2026-11-14).
 - **Selection** with heights is PROJ's (`select/search/vertical.rs`):
   compound to geographic 3D through the vertical transformation's
   interpolation CRS (horizontal there, vertical, horizontal on), between
