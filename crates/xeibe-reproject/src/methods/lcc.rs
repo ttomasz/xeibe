@@ -114,6 +114,13 @@ impl LambertConic {
         )
     }
 
+    /// The same cone with its grid turned by `alpha` (radians) about the
+    /// apex: θ − α for θ, which is the central meridian moved by α / n.
+    pub(crate) fn turned(mut self, alpha: f64) -> Self {
+        self.lon0 += alpha / self.n;
+        self
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         ellipsoid: &Ellipsoid,

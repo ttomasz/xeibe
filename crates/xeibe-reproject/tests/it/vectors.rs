@@ -26,7 +26,6 @@ const IMPLEMENTED: &[&str] = &[
     "Mercator (1SP) (Spherical)",
     "Transverse Mercator (South Orientated)",
     "Transverse Mercator 3D",
-    "Lambert Conic Conformal (2SP Belgium)",
     "Lambert Conic Conformal (2SP Michigan)",
     "Lambert Conic Conformal (1SP variant B)",
     "Hotine Oblique Mercator (variant A)",
@@ -69,6 +68,12 @@ const ANGULAR_TOLERANCE: f64 = 1e-9;
 const PROJ_ROUNDED_ELLIPSOIDS: &[&str] = &["Bessel Namibia (GLM)"];
 const ROUNDED_ELLIPSOID_TOLERANCE: f64 = 2e-9;
 
+/// Methods where xeibe follows EPSG's formulas and PROJ doesn't, checked
+/// against EPSG's worked examples instead (`tests/it/epsg_examples.rs`):
+/// PROJ's `lcc` for Lambert Conic Conformal (2SP Belgium) leaves out the
+/// grid's turn by 29.2985″, 745 m at Belgium.
+const BEYOND_PROJ: &[&str] = &["Lambert Conic Conformal (2SP Belgium)"];
+
 #[derive(Default)]
 struct Stats {
     crss: usize,
@@ -109,6 +114,9 @@ impl Report {
 fn check(vectors: &[Vector]) -> Report {
     let mut report = Report::default();
     for v in vectors {
+        if BEYOND_PROJ.contains(&v.method.as_str()) {
+            continue;
+        }
         let method = if v.kind == "geocentric" {
             "geocentric".to_owned()
         } else {

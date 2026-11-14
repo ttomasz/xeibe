@@ -1320,6 +1320,17 @@ an operation PROJ takes, it runs only when forced (`Transform::via`,
   Mining Grid, Transverse Mercator Zoned Grid System. PROJ has no mapping
   for them, so no EPSG CRS on them is ever in PROJ's choice; with them,
   every live EPSG CRS converts.
+- **Lambert Conic Conformal (2SP Belgium)** (since 2026-11-14), which
+  PROJ maps to its `lcc` without EPSG's turn of the grid by α = 29.2985″
+  about the cone's apex (θ − α): BD72 / Belge Lambert 72 (EPSG:31300)
+  lands 745 m east of EPSG's worked example in PROJ, and on it here. (Its
+  successor, BD72 / Belgian Lambert 72, EPSG:31370, is the same grid
+  defined without the turn, and both agree.) The polynomial from Belge
+  Lambert 72 to ED50 / UTM zone 31N, which works on the grid's ordinates,
+  confirms it: 0.8 m from the route through BD72's and ED50's
+  transformations, against 741 m without the turn. The level 1 vectors
+  leave the method out; PROJ strings still write it as PROJ does, without
+  the turn.
 - **Geographic3D to Depth** (methods 1116 and 1121, level 3's deviations),
   which PROJ imports but can't run.
 - **EVRF2019 zero-tide to mean-tide heights** (method 1107), which PROJ

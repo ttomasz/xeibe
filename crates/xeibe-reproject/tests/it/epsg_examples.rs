@@ -321,3 +321,24 @@ fn general_polynomials() {
     // Never in the choice: PROJ's operations for the pair stay.
     assert_eq!(helmert.operations()[0], "TM75 to ETRS89 (2)");
 }
+
+/// Lambert Conic Conformal (2SP Belgium): BD72 / Belge Lambert 72, with
+/// EPSG's turn of the grid by 29.2985″, which PROJ leaves out (it puts the
+/// point at 252508.51 E, 153048.64 N, 745 m east).
+#[test]
+fn lambert_conic_conformal_2sp_belgium() {
+    projection_example(
+        4313,
+        31300,
+        dms(5.0, 48.0, 26.533),
+        dms(50.0, 40.0, 46.461),
+        251_763.20,
+        153_034.13,
+    );
+    // Belgian Lambert 72, the same grid defined without the turn, agrees.
+    let (e, n, _) = east_first(4313, 31370)
+        .convert(dms(5.0, 48.0, 26.533), dms(50.0, 40.0, 46.461), None)
+        .unwrap();
+    assert_near(e, 251_763.20, 0.01, "31370 easting");
+    assert_near(n, 153_034.13, 0.05, "31370 northing");
+}

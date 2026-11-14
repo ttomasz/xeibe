@@ -1,6 +1,8 @@
 //! Lambert Conic Conformal variants that PROJ computes with `lcc`: 2SP
-//! Belgium (EPSG:9803, PROJ ignores the Belgium-specific correction), 2SP
-//! Michigan (1051) and 1SP variant B (1102). And one PROJ has no mapping
+//! Michigan (1051) and 1SP variant B (1102). 2SP Belgium (EPSG:9803) PROJ
+//! maps to `lcc` too, leaving out EPSG's turn of the grid by α = 29.2985″
+//! (θ − α for θ, EPSG Guidance Note 7-2), which moves BD72 / Belge Lambert
+//! 72 by 745 m; here it is kept. And one PROJ has no mapping
 //! for: West Orientated (9826), the 1SP formulas with W = FE − r sin θ
 //! (EPSG Guidance Note 7-2).
 //!
@@ -13,9 +15,11 @@ use super::lcc::LambertConic;
 use super::{BuildError, Params, param};
 use crate::ellipsoid::Ellipsoid;
 
-/// 2SP Belgium: the regular 2SP formulas.
+/// 2SP Belgium: the regular 2SP formulas with the grid turned by
+/// α = 29.2985″ about the cone's apex.
 pub(crate) fn belgium(params: &Params, ellipsoid: &Ellipsoid) -> Result<LambertConic, BuildError> {
-    LambertConic::two_sp(params, ellipsoid)
+    const ALPHA: f64 = 29.2985 / 3600.0 * std::f64::consts::PI / 180.0;
+    Ok(LambertConic::two_sp(params, ellipsoid)?.turned(ALPHA))
 }
 
 /// 2SP Michigan: 2SP with an ellipsoid scale factor (parameter 1038) as k0.
