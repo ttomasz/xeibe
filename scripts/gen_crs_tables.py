@@ -908,6 +908,10 @@ GRID_METHOD_NAMES = {
     "Vertical change by geoid grid difference (NRCan)",
 }  # fmt: skip
 GRID_SKIPPED = {10929}  # SOPAC deformation model for California v1, skipped by build_db.py
+# Beyond PROJ's import: methods `xeibe-reproject` runs from EPSG's formulas
+# (`docs/reprojection.md`, "Beyond PROJ"), exported although PROJ's choice
+# never sees them. EVRF2019 zero-tide to mean-tide heights.
+BEYOND_PROJ_METHODS = {1107}
 OPERATIONS_MAGIC = b"XOP1"
 
 
@@ -932,6 +936,8 @@ def operation_table(row: sqlite3.Row) -> str | None:
     if method in OTHER_METHODS:
         if method in (1068, 1069) and row["source_crs_code"] is None and row["target_crs_code"] is None:
             return None
+        return "other_transformation"
+    if kind == "transformation" and method in BEYOND_PROJ_METHODS:
         return "other_transformation"
     return None
 

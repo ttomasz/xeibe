@@ -227,6 +227,16 @@ const VERTICAL_PAIR_DEVIATIONS: &[(u32, u32)] = &[
     (9290, 4937),
     (4937, 9290),
     (9290, 4979),
+    // EVRF2019 zero-tide to mean-tide heights by EPSG's formula (method
+    // 1107, which PROJ doesn't import). PROJ goes through two constant
+    // offsets via Antalya heights, valid in Turkey, and outside their area
+    // falls back on them anyway: −0.054 m everywhere, where the tide
+    // correction grows with latitude (up to 0.12 m apart in Norway). From
+    // ODN heights it has nothing at all.
+    (9422, 9423),
+    (9423, 9422),
+    (7405, 9422),
+    (9422, 7405),
 ];
 
 /// With grids: pairs where xeibe's candidates differ from PROJ's on

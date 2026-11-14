@@ -79,6 +79,9 @@ const VERTICAL_OFFSET: u32 = 9616;
 const OFFSET_AND_SLOPE: u32 = 1046;
 const VERTICAL_TIN: u32 = 1137;
 const VERTICAL_VELOCITY: u32 = 1113;
+/// "zero-tide height to mean-tide height (EVRF2019)": EPSG's formula, which
+/// PROJ doesn't import.
+const EVRF2019_TIDE: u32 = 1107;
 
 /// EPSG method codes handled here, besides the geoid grids.
 const OTHER_METHODS: &[u32] = &[
@@ -97,6 +100,7 @@ const OTHER_METHODS: &[u32] = &[
     OFFSET_AND_SLOPE,
     VERTICAL_TIN,
     VERTICAL_VELOCITY,
+    EVRF2019_TIDE,
 ];
 
 pub(super) fn is_method(method: u32) -> bool {
@@ -253,6 +257,9 @@ pub(super) fn build(op: &Operation, src: &Crs, dst: &Crs) -> Result<Arc<dyn Meth
                 dir,
             }))
         }
+        EVRF2019_TIDE => Ok(Arc::new(Evrf2019Tide {
+            dir: same_axes(src, dst)?,
+        })),
         VERTICAL_TIN => {
             vertical_ends()?;
             let name = op
@@ -330,6 +337,34 @@ impl Method for ConstantGeoid {
 
     fn inverse(&self, c: [f64; 3]) -> Result<[f64; 3], CoordinateError> {
         Ok([c[0], c[1], c[2] + self.n])
+    }
+}
+
+/// EVRF2019 zero-tide to mean-tide heights (EPSG method 1107, Guidance
+/// Note 7-2): H(mean-tide) = H + 0.29541 sin²φ + 0.00042 sin⁴φ − 0.0994 −
+/// 0.08593 m, at the point's latitude. The operation names no
+/// interpolation CRS; the latitude is the one the step is given, and the
+/// term changes by 3e-11 m a metre, so which ETRS89 realization it is in
+/// doesn't show.
+#[derive(Debug)]
+struct Evrf2019Tide {
+    dir: f64,
+}
+
+impl Evrf2019Tide {
+    fn correction(lat: f64) -> f64 {
+        let s2 = lat.sin().powi(2);
+        0.29541 * s2 + 0.00042 * s2 * s2 - 0.0994 - 0.08593
+    }
+}
+
+impl Method for Evrf2019Tide {
+    fn forward(&self, c: [f64; 3]) -> Result<[f64; 3], CoordinateError> {
+        Ok(along(c, self.dir, Self::correction(c[1])))
+    }
+
+    fn inverse(&self, c: [f64; 3]) -> Result<[f64; 3], CoordinateError> {
+        Ok(back(c, self.dir, Self::correction(c[1])))
     }
 }
 

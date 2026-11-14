@@ -140,3 +140,26 @@ fn transverse_mercator_zoned_grid_system() {
             .is_err()
     );
 }
+
+/// EVRF2019 zero-tide to mean-tide heights (method 1107, which PROJ doesn't
+/// import): 100.154 m at 50°55′01.5″N 14°29′13.5″E is 100.147 m.
+#[test]
+fn evrf2019_zero_tide_to_mean_tide() {
+    let compound = |v: u32| Crs::compound(&crs(4258), &crs(v)).unwrap();
+    let (zero, mean) = (compound(9389), compound(9390));
+    let (lon, lat) = (dms(14.0, 29.0, 13.5), dms(50.0, 55.0, 1.5));
+    for t in [
+        Transform::via(&zero, &mean, 9710, AxisOrder::EastFirst).unwrap(),
+        Transform::new(&zero, &mean, AxisOrder::EastFirst).unwrap(),
+    ] {
+        assert_eq!(
+            t.operations()[0],
+            "EVRF2019 height to EVRF2019 mean-tide height (1)"
+        );
+        let (_, _, h) = t.convert(lon, lat, Some(100.154)).unwrap();
+        // EPSG rounds to the millimetre; the formula's value.
+        assert_near(h.unwrap(), 100.146_818_784_980_81, 1e-9, "mean-tide height");
+        let (_, _, back) = t.inverse().unwrap().convert(lon, lat, h).unwrap();
+        assert_near(back.unwrap(), 100.154, 1e-9, "back");
+    }
+}

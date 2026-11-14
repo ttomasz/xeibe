@@ -1301,6 +1301,32 @@ without it the operations and pinned pairs whose grids are committed.
    the whole files must not share a process with those on the cropped
    ones: `cargo test -- --ignored`, not `--include-ignored`.
 
+## Beyond PROJ
+
+The selection follows PROJ's import of EPSG (`scripts/gen_crs_tables.py`
+exports what PROJ's `build_db.py` imports), and PROJ is the oracle. Some
+of EPSG has no PROJ mapping at all; where EPSG publishes the method's
+formulas (Guidance Note 7-2, transcribed into the dataset with a worked
+example), xeibe runs it from them, and tests it against EPSG's example or,
+where EPSG gives none, against PROJ's results for what the method is made
+of (`tests/it/epsg_examples.rs`):
+
+- **Projections** (level 1): Lambert Conic Conformal (West Orientated),
+  Polar Stereographic (variant C), Lambert Conic Near-Conformal, Tunisia
+  Mining Grid, Transverse Mercator Zoned Grid System. PROJ has no mapping
+  for them, so no EPSG CRS on them is ever in PROJ's choice; with them,
+  every live EPSG CRS converts.
+- **Geographic3D to Depth** (methods 1116 and 1121, level 3's deviations),
+  which PROJ imports but can't run.
+- **EVRF2019 zero-tide to mean-tide heights** (method 1107), which PROJ
+  doesn't import. `gen_crs_tables.py` exports such methods by a list of
+  their own (`BEYOND_PROJ_METHODS`), so they compete in the choice like
+  EPSG's others. Where PROJ has a route for the same pair, it is two
+  constant offsets via Antalya heights, valid in Turkey, which PROJ
+  applies everywhere as its fallback for a point no candidate covers
+  (−0.054 m; EPSG's formula goes from −0.053 m at 42°N to +0.072 m at
+  69°N): 4 pairs listed as deviations.
+
 ## Test oracle notes
 
 - pyproj's bundled `proj.db` lags EPSG (v12.029 for PROJ 9.8.1); level 2's
