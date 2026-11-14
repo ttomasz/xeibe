@@ -657,10 +657,12 @@ Where it differs from PROJ on purpose:
   the live one comes first.
 - **The CRS's own name** wins over PROJ's UTM shortcut: WGS 84 / TMzn35N
   (EPSG:4037) as WKT1 is 4037, where PROJ builds WGS 84 / UTM zone 35N.
-- A **CRS whose method `Crs` can't build** (26 EPSG CRSs: Lambert Conic
-  Conformal (West Orientated), Polar Stereographic (variant C), Tunisia
-  Mining Grid, Lambert Conic Near-Conformal, the UTM grid systems) can't
-  be identified, because identification compares `Crs` values.
+- A **CRS whose method `Crs` can't build** can't be identified, because
+  identification compares `Crs` values. Since 2026-11-14 every EPSG method
+  builds; the 26 CRSs on Lambert Conic Conformal (West Orientated), Polar
+  Stereographic (variant C), Tunisia Mining Grid, Lambert Conic
+  Near-Conformal and the UTM grid systems, which didn't, are identified
+  from PROJ's WKT without their ids.
 
 Unchanged from PROJ: no **engineering CRS** is identified, not even with
 its `ID`.

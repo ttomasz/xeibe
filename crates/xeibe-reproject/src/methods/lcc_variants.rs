@@ -1,6 +1,8 @@
 //! Lambert Conic Conformal variants that PROJ computes with `lcc`: 2SP
 //! Belgium (EPSG:9803, PROJ ignores the Belgium-specific correction), 2SP
-//! Michigan (1051) and 1SP variant B (1102).
+//! Michigan (1051) and 1SP variant B (1102). And one PROJ has no mapping
+//! for: West Orientated (9826), the 1SP formulas with W = FE − r sin θ
+//! (EPSG Guidance Note 7-2).
 //!
 //! Parameter mapping from PROJ 9.8.1
 //! `src/iso19111/operation/parammappings.cpp` (MIT, see PROJ-NOTICE.md).
@@ -51,5 +53,26 @@ pub(crate) fn one_sp_variant_b(
         params.get(param::SCALE_NATURAL_ORIGIN)?,
         params.get(param::EASTING_FALSE_ORIGIN)?,
         params.get(param::NORTHING_FALSE_ORIGIN)?,
+    )
+}
+
+/// West Orientated: Greenland's and Denmark's older grids, with axes
+/// positive north and west. EPSG's westing is W = FE − r sin θ. The caller
+/// turns a west axis round from the projection's easting, so this is the
+/// 1SP easting r sin θ − FE: 1SP with the false easting negated.
+pub(crate) fn west_orientated(
+    params: &Params,
+    ellipsoid: &Ellipsoid,
+) -> Result<LambertConic, BuildError> {
+    let phi0 = params.get(param::LAT_NATURAL_ORIGIN)?;
+    LambertConic::new(
+        ellipsoid,
+        phi0,
+        phi0,
+        phi0,
+        params.get(param::LON_NATURAL_ORIGIN)?,
+        params.get(param::SCALE_NATURAL_ORIGIN)?,
+        -params.get(param::FALSE_EASTING)?,
+        params.get(param::FALSE_NORTHING)?,
     )
 }

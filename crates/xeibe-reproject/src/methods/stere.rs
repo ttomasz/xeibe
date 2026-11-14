@@ -6,7 +6,9 @@
 //! PROJ-NOTICE.md). PROJ maps variant A to `stere` with `lat_0` = ±90° and a
 //! scale factor, and variant B to `stere` with `lat_ts` and `lat_0` = ±90°
 //! chosen by the sign of the standard parallel. Variant C (EPSG:9830) has no
-//! PROJ mapping and is not supported.
+//! PROJ mapping: it is variant B with its false origin on the standard
+//! parallel rather than at the pole (EPSG Guidance Note 7-2), so here
+//! variant B with the false northing moved by the parallel's radius.
 
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4};
 
@@ -74,6 +76,25 @@ impl Stereographic {
             lat_ts,
             params.get(param::FALSE_EASTING)?,
             params.get(param::FALSE_NORTHING)?,
+        )
+    }
+
+    /// Polar Stereographic (variant C): EPSG's N = NF − ρF + ρ cos(λ − λ0)
+    /// at the south pole (NF + ρF − ρ cos at the north), with ρ variant B's
+    /// and ρF = a mF its value on the standard parallel.
+    pub(crate) fn variant_c(params: &Params, ellipsoid: &Ellipsoid) -> Result<Self, BuildError> {
+        let lat_f = params.get(param::LAT_STD_PARALLEL)?;
+        let (sin, cos) = lat_f.sin_cos();
+        let rho_f = ellipsoid.a * cos / (1.0 - ellipsoid.es * sin * sin).sqrt();
+        let nf = params.get(param::NORTHING_FALSE_ORIGIN)?;
+        Self::setup(
+            ellipsoid,
+            if lat_f >= 0.0 { FRAC_PI_2 } else { -FRAC_PI_2 },
+            params.get(param::LON_OF_ORIGIN)?,
+            1.0,
+            lat_f,
+            params.get(param::EASTING_FALSE_ORIGIN)?,
+            if lat_f >= 0.0 { nf + rho_f } else { nf - rho_f },
         )
     }
 

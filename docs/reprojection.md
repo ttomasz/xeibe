@@ -149,7 +149,9 @@ points), forward and inverse.
 
 Result on 2026-10-17: 38 projection methods are implemented. Every projected
 CRS PROJ can convert from EPSG's definition (6,594, deprecated ones included)
-and all 303 geocentric CRSs match PROJ, forward and inverse. Most methods agree
+and all 303 geocentric CRSs match PROJ, forward and inverse. Since
+2026-11-14, so are the five EPSG methods PROJ can't convert (below), so
+every live EPSG CRS converts. Most methods agree
 to within 0.1 µm. The exceptions are Krovak (1 µm), Transverse Mercator
 (0.14 mm) and TM South Orientated (25 µm), where the worst cases come from the
 Bessel Namibia ellipsoid below. A unit test also checks that
@@ -202,9 +204,24 @@ Methods PROJ can't convert from EPSG's definition have no vectors:
 
 - Bonne (South Orientated) (EPSG:2963, 5017) is implemented and checked
   against PROJ's `bonne` given a PROJ string, in a unit test.
-- Lambert Conic Conformal (West Orientated), Lambert Conic Near-Conformal,
-  Transverse Mercator Zoned Grid System and Tunisia Mining Grid are not
-  implemented.
+- Five methods PROJ has no mapping for are implemented from EPSG Guidance
+  Note 7-2 (2026-11-14) and checked against EPSG's worked examples, or
+  against PROJ's results for what they are made of where EPSG gives none
+  (`tests/it/epsg_examples.rs`):
+  - Lambert Conic Conformal (West Orientated) (15 Greenland CRSs): the 1SP
+    formulas with W = FE − r sin θ; with the false easting 0, PROJ's `lcc`
+    easting negated.
+  - Polar Stereographic (variant C) (Terre Adélie, 2 CRSs): variant B with
+    its false origin on the standard parallel.
+  - Lambert Conic Near-Conformal (Deir ez Zor / Levant Zone): the
+    meridional arc cut to its cubic term; the reverse solves EPSG's two
+    equations by iteration rather than with its 3 mm shortcut.
+  - Tunisia Mining Grid: linear in grads from Paris, a kilometre of
+    northing worth 0.010015 grad north of the false origin and 0.01002
+    south.
+  - Transverse Mercator Zoned Grid System (WGS 84 / UTM grid system, north
+    and south): each point in the zone its longitude falls in, the zone
+    number times a million leading the easting; each zone is its UTM CRS.
 
 Since 2026-10-31 the projections only PROJ defines (Robinson, Mollweide,
 Geostationary Satellite, …) and the four EPSG methods no EPSG CRS uses

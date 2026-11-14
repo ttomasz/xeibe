@@ -42,6 +42,7 @@ mod krovak;
 mod labrd;
 mod laea;
 mod lcc;
+mod lcc_near;
 mod lcc_variants;
 
 pub(crate) use lcc::two_sp_as_one_sp;
@@ -71,6 +72,7 @@ mod sterea;
 mod tmerc;
 mod tmerc_variants;
 mod tpeqd;
+mod tunisia;
 mod world;
 
 /// Whether a method or parameter code is EPSG's, not this crate's for one
@@ -288,6 +290,8 @@ pub(crate) mod param {
     /// C1 to C10 are 1026 to 1035.
     pub const KROVAK_C1: u32 = 1026;
     pub const PROJECTION_PLANE_ORIGIN_HEIGHT: u32 = 1039;
+    pub const INITIAL_LONGITUDE: u32 = 8830;
+    pub const ZONE_WIDTH: u32 = 8831;
     pub const LAT_FALSE_ORIGIN: u32 = 8821;
     pub const LON_FALSE_ORIGIN: u32 = 8822;
     pub const LAT_1ST_PARALLEL: u32 = 8823;
@@ -335,6 +339,11 @@ pub(crate) fn build(
         9801 => Arc::new(lcc::LambertConic::one_sp(params, ellipsoid)?),
         9802 => Arc::new(lcc::LambertConic::two_sp(params, ellipsoid)?),
         9808 => Arc::new(tmerc_variants::south_orientated(params, ellipsoid)?),
+        9824 => Arc::new(tmerc_variants::ZonedGrid::new(params, ellipsoid)?),
+        9826 => Arc::new(lcc_variants::west_orientated(params, ellipsoid)?),
+        9817 => Arc::new(lcc_near::NearConformal::new(params, ellipsoid)?),
+        9830 => Arc::new(stere::Stereographic::variant_c(params, ellipsoid)?),
+        9816 => Arc::new(tunisia::TunisiaMiningGrid::new(params)?),
         1111 => Arc::new(tmerc_variants::three_d(params, ellipsoid)?),
         9803 => Arc::new(lcc_variants::belgium(params, ellipsoid)?),
         1051 => Arc::new(lcc_variants::michigan(params, ellipsoid)?),

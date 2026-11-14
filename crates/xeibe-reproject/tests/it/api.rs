@@ -124,8 +124,14 @@ fn unknown_codes_are_an_error() {
 
 #[test]
 fn unsupported_crs_types_are_an_error() {
-    // EPSG:22300 is on the Tunisia Mining Grid, a method not implemented.
-    let err = Crs::from_epsg(22300).unwrap_err();
+    // Every EPSG projection method converts; a method no one defines doesn't.
+    let err = Crs::from_wkt(
+        r#"PROJCRS["x",BASEGEOGCRS["WGS 84",DATUM["World Geodetic System 1984",
+        ELLIPSOID["WGS 84",6378137,298.257223563]]],CONVERSION["x",
+        METHOD["Imaginary Projection"]],CS[Cartesian,2],AXIS["(E)",east,
+        LENGTHUNIT["metre",1]],AXIS["(N)",north,LENGTHUNIT["metre",1]]]"#,
+    )
+    .unwrap_err();
     assert!(matches!(err, Error::Unsupported { .. }), "{err}");
 }
 
