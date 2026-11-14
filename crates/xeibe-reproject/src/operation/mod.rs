@@ -144,18 +144,19 @@ pub(crate) fn needs_epoch(method: u32) -> bool {
     defmodel::METHODS.contains(&method) || method == velocity::TRANSLATION_BY_VELOCITY
 }
 
-/// Methods run only when an operation is forced (`Transform::via`), never in
-/// the choice: the time-specific Helmerts, which hold at one epoch only and
-/// which PROJ can't run, so its choice never meets them. In the choice,
-/// "WGS 84 to ETRS89 (2)" (1989.0, 0.1 m) would beat the null "ETRS89 to
-/// WGS 84 (1)" (1 m) and move every point by half a metre.
+/// Operations run only when forced (`Transform::via`), never in the choice:
+/// the time-specific Helmerts, which hold at one epoch only and which PROJ
+/// can't run, so its choice never meets them. In the choice, "WGS 84 to
+/// ETRS89 (2)" (1989.0, 0.1 m) would beat the null "ETRS89 to WGS 84 (1)"
+/// (1 m) and move every point by half a metre.
 ///
-/// And EPSG's polynomials, which PROJ doesn't import: in the choice they
-/// would displace the operations PROJ takes for the same pairs (TM75 to
-/// ETRS89, RD to ED50 / UTM zone 31N), several of them legacy ones EPSG
-/// itself has replaced.
-pub(crate) fn only_forced(method: u32) -> bool {
-    matches!(method, 1065 | 1066) || polynomial::METHODS.contains(&method)
+/// And EPSG's polynomials, which PROJ doesn't import, but for those that do
+/// better than what PROJ chooses ([`polynomial::COMPETING`]): the others
+/// are legacy ones EPSG has replaced (NAM's RD to ED50 / UTM, ED50 to WGS
+/// 84 (35)), or ones whose reverse EPSG's data doesn't reproduce.
+pub(crate) fn only_forced(op: &Operation) -> bool {
+    matches!(op.method, 1065 | 1066)
+        || (polynomial::METHODS.contains(&op.method) && !polynomial::COMPETING.contains(&op.code))
 }
 
 /// Whether xeibe can run this operation: its method is implemented and, for
@@ -175,7 +176,7 @@ pub(crate) fn is_exportable(op: &Operation) -> bool {
     if vertical::is_method(op.method) {
         return vertical::is_exportable(op);
     }
-    is_implemented(op.method) && !only_forced(op.method)
+    is_implemented(op.method) && !only_forced(op)
 }
 
 /// A geoid model read from a grid (`vgridshift` backwards in PROJ).

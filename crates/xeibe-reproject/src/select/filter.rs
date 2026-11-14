@@ -107,7 +107,7 @@ pub(crate) fn is_forcible(c: &Candidate) -> bool {
             let op = &registry().ops[&code];
             op.table == crate::registry::Table::Conversion
                 || crate::operation::is_exportable(op)
-                || crate::operation::only_forced(op.method)
+                || crate::operation::only_forced(op)
         }
         _ => true,
     })

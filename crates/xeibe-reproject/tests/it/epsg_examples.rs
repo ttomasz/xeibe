@@ -299,7 +299,7 @@ fn madrid_to_ed50_polynomial() {
 #[test]
 fn general_polynomials() {
     let poly = forced(4300, 4258, 1041);
-    let helmert = Transform::new(&crs(4300), &crs(4258), AxisOrder::Authority).unwrap();
+    let helmert = forced(4300, 4258, 1953);
     for (lat, lon) in [(51.6, -10.0), (53.35, -6.26), (55.2, -7.0), (52.5, -8.5)] {
         let (a, b, _) = poly.convert(lat, lon, None).unwrap();
         let (c, d, _) = helmert.convert(lat, lon, None).unwrap();
@@ -310,16 +310,20 @@ fn general_polynomials() {
         assert_near(lon2, lon, 1e-10, "TM75 longitude back");
     }
     let fiji = forced(3140, 3460, 15950);
-    let route = Transform::new(&crs(3140), &crs(3460), AxisOrder::Authority).unwrap();
+    // Viti Levu 1912 to WGS 84 (2), then the inverse of Fiji 1986 to WGS 84
+    // (1): PROJ's route.
     let (n, e) = (814_029.175, 544_000.0);
     let (a, b, _) = fiji.convert(n, e, None).unwrap();
-    let (c, d, _) = route.convert(n, e, None).unwrap();
+    let (lat, lon, _) = forced(3140, 4326, 6895).convert(n, e, None).unwrap();
+    let (c, d, _) = forced(4326, 3460, 15876).convert(lat, lon, None).unwrap();
     assert!((a - c).hypot(b - d) < 4.0, "Fiji: {a} {b} against {c} {d}");
     let (n2, e2, _) = fiji.inverse().unwrap().convert(a, b, None).unwrap();
     assert_near(n2, n, 1e-6, "Fiji northing back");
     assert_near(e2, e, 1e-6, "Fiji easting back");
-    // Never in the choice: PROJ's operations for the pair stay.
-    assert_eq!(helmert.operations()[0], "TM75 to ETRS89 (2)");
+    // In the choice: OSi's and OSNI's 0.4 m polynomial over the 1 m
+    // Helmert PROJ takes (`operation::polynomial::COMPETING`).
+    let chosen = Transform::new(&crs(4300), &crs(4258), AxisOrder::Authority).unwrap();
+    assert_eq!(chosen.operations()[0], "TM75 to ETRS89 (1)");
 }
 
 /// Lambert Conic Conformal (2SP Belgium): BD72 / Belge Lambert 72, with

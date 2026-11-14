@@ -260,6 +260,24 @@ const GRID_PAIR_DEVIATIONS: &[(u32, u32)] = &[
     (4267, 7789),
 ];
 
+/// Pairs where an operation PROJ doesn't import competes in the choice
+/// (`docs/reprojection.md`, "Beyond PROJ"): the polynomials TM75 to ETRS89
+/// (1) and to WGS 84 (1) (0.4 m, OSi's and OSNI's, against PROJ's 1 m
+/// Helmert; 0.5 m apart), ED50 to ED87 (1) (both 1 m), and Madrid 1870 to
+/// ED50 (2) and (3), without which Madrid 1870 has no transformation.
+const BEYOND_PROJ_PAIRS: &[(u32, u32)] = &[
+    (4300, 4258),
+    (4258, 4300),
+    (4300, 4326),
+    (4326, 4300),
+    (4230, 4231),
+    (4231, 4230),
+    (4903, 4258),
+    (4258, 4903),
+    (4903, 4326),
+    (4326, 4903),
+];
+
 /// Projection methods PROJ has no mapping for, which xeibe runs from EPSG's
 /// formulas (`docs/reprojection.md`, "Beyond PROJ"): PROJ transforms no
 /// pair with a CRS on one of them.
@@ -565,6 +583,7 @@ fn check_selection(records: &[Value], world: World) -> (SelectionStats, Vec<Stri
                 && (GRID_PAIR_DEVIATIONS.contains(&(src, dst))
                     || VERTICAL_PAIR_DEVIATIONS.contains(&(src, dst))))
                 || [src, dst].into_iter().any(projection_beyond_proj)
+                || BEYOND_PROJ_PAIRS.contains(&(src, dst))
             {
                 s.listed_pairs_proj_none += 1;
             } else {
@@ -616,9 +635,10 @@ fn check_selection(records: &[Value], world: World) -> (SelectionStats, Vec<Stri
                 s.tie_break_deviations += 1;
                 continue;
             } else if ours != theirs
-                && matches!(world, World::Grids(_))
-                && (GRID_PAIR_DEVIATIONS.contains(&(src, dst))
-                    || VERTICAL_PAIR_DEVIATIONS.contains(&(src, dst)))
+                && ((matches!(world, World::Grids(_))
+                    && (GRID_PAIR_DEVIATIONS.contains(&(src, dst))
+                        || VERTICAL_PAIR_DEVIATIONS.contains(&(src, dst))))
+                    || BEYOND_PROJ_PAIRS.contains(&(src, dst)))
             {
                 s.pair_deviations += 1;
                 continue;

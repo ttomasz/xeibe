@@ -1358,9 +1358,21 @@ an operation PROJ takes, it runs only when forced (`Transform::via`,
 - **Polynomials** (methods 9645, 9648, 9651, 9652, 9653, 9654, 9617; 17
   live operations: RD and Belge Lambert 72 to ED50 / UTM zone 31N and
   back, TM75 to ETRS89 and WGS 84, ED50 to ED87 and to WGS 84 (35), Madrid
-  1870 to ED50, Fiji), which PROJ doesn't import. **Only when forced**:
-  TM75 to ETRS89 (1) (0.4 m) would displace PROJ's "TM75 to ETRS89 (2)"
-  (1 m) all over Ireland, and EPSG has replaced several of the others. On
+  1870 to ED50, Fiji), which PROJ doesn't import. **In the choice where
+  they do better than what PROJ takes, or are alone**
+  (`polynomial::COMPETING`, since 2026-11-14): TM75 to ETRS89 (1) and to
+  WGS 84 (1), "Recommended by OSi and OSNI for all horizontal CTs"
+  (0.4 m), over PROJ's 1 m Helmert, 0.5 m apart (PROJ would take the NTv2
+  grid that emulates the polynomial, which isn't on its CDN); Fiji's,
+  DLAS's own (1 m) over a route through a 5 m Helmert; Madrid 1870 to ED50
+  (2) and (3), without which Madrid 1870 has no transformation; ED50 to
+  ED87 (1), as accurate as the Helmert. **The others only when forced**:
+  NAM's RD to ED50 / UTM and TM 5 NE polynomials, replaced in 2006 by
+  EPSG's own account; ED50 to WGS 84 (35) and Madrid to ED50 (1), which
+  EPSG supersedes; Belge Lambert 72 to ED50 / UTM zone 31N and back, whose
+  reverse ("ED50 / UTM zone 31N to BD72 / Lambert 72 (1)", 6305) doesn't
+  bring the forward's points back from EPSG's numbers (its target
+  evaluation point isn't a Lambert 72 coordinate). On
   the ordinates as each CRS gives them (degrees, metres, links), reduced
   to the evaluation points and scaled. The general and complex ones go
   backwards by iteration, as EPSG says to; the reversible ones with their

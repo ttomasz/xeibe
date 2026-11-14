@@ -1,9 +1,9 @@
 //! EPSG's polynomial transformations (EPSG Guidance Note 7-2), which PROJ
 //! doesn't import: the general polynomials of degree 2 and 6 (9645, 9648),
 //! the reversible ones of degree 4 and 13 (9651, 9654), the complex ones of
-//! degree 3 and 4 (9652, 9653) and Madrid to ED50 (9617). They run only
-//! when forced (`operation::only_forced`): in the choice they would
-//! displace the operations PROJ takes for the same pairs.
+//! degree 3 and 4 (9652, 9653) and Madrid to ED50 (9617). Those in
+//! [`COMPETING`] are in the choice; the others run only when forced
+//! (`operation::only_forced`).
 //!
 //! A polynomial works on the ordinates as the CRS gives them, in its axis
 //! order and unit (degrees, metres, links), reduced to an evaluation point
@@ -43,6 +43,26 @@ use super::{Method, MethodError};
 use crate::crs::{Axes, Crs};
 use crate::error::CoordinateError;
 use crate::registry::Operation;
+
+/// The polynomials in the choice, each better than what PROJ chooses for
+/// the pair, or alone:
+///
+/// * TM75 to ETRS89 (1) and to WGS 84 (1): "Recommended by OSi and OSNI for
+///   all horizontal CTs" (0.4 m); PROJ takes "TM75 to ETRS89 (2)" (1 m),
+///   since the NTv2 grid that emulates the polynomial (3) isn't on its CDN;
+/// * Viti Levu and Vanua Levu to the Fiji Map Grid (1): DLAS's, 1 m, where
+///   PROJ goes through "Viti Levu 1912 to WGS 84 (2)" (5 m);
+/// * Madrid 1870 (Madrid) to ED50 (2) and (3): the only live operations for
+///   Madrid 1870, which PROJ can't transform at all;
+/// * ED50 to ED87 (1), as accurate as the Helmert (2), the two being EPSG's
+///   only operations between the datums.
+///
+/// Not the others: NAM's RD to ED50 / UTM and TM 5 NE polynomials, which
+/// EPSG says NAM replaced in 2006 (and whose first variants it keeps for
+/// legacy data), ED50 to WGS 84 (35) and Madrid to ED50 (1), which EPSG
+/// supersedes, and BD72 / Belge Lambert 72 to ED50 / UTM zone 31N and back,
+/// whose reverse (6305) doesn't reproduce the forward from EPSG's data.
+pub(crate) const COMPETING: &[u32] = &[1041, 1042, 15950, 15951, 1027, 1028, 15753];
 
 /// EPSG method codes handled here.
 pub(super) const METHODS: &[u32] = &[
