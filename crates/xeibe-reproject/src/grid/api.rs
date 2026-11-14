@@ -3,8 +3,10 @@
 use std::f64::consts::{FRAC_PI_2, PI};
 use std::path::Path;
 
+use std::sync::Arc;
+
 use super::GridRequest;
-use super::store::Region;
+use super::store::{GridFile, Region};
 use crate::error::Error;
 use crate::transform::{Transform, to_geographic, to_internal};
 
@@ -19,9 +21,18 @@ const EDGE_POINTS: usize = 21;
 impl Transform {
     /// PROJ-data's names of the grid files this transform may read, e.g.
     /// `fr_ign_ntf_r93.tif`; empty when no candidate uses a grid.
+    ///
+    /// A deformation model (`nz_linz_nzgd2000-20180701.json`) names the
+    /// grid files of its components: they are listed, after the model,
+    /// once the model itself is loaded.
     pub fn grids(&self) -> Vec<&str> {
         self.candidates()
-            .map(|c| c.grid_files().iter().map(|f| f.name.as_str()).collect())
+            .map(|c| {
+                with_children(c.grid_files())
+                    .into_iter()
+                    .map(|f| f.name.as_str())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -33,7 +44,8 @@ impl Transform {
     /// the box count.
     ///
     /// Loading takes rounds: a file's directories come first, then the
-    /// blocks of the grid covering the area. Fetch every request, hand each
+    /// blocks of the grid covering the area (and a deformation model comes
+    /// before the grid files it names). Fetch every request, hand each
     /// to [`Transform::add_grid_data`], and ask again until the list is
     /// empty ([`Transform::load_grids`] does this loop). Grid files are
     /// shared by every transform in the process, so each is loaded once.
@@ -60,7 +72,7 @@ impl Transform {
             _ => c.grid_files().to_vec(),
         };
         let mut out = Vec::new();
-        for file in &files {
+        for file in with_children(&files) {
             for (offset, length) in file.requests(region) {
                 out.push(GridRequest {
                     file: file.name.clone(),
@@ -75,10 +87,11 @@ impl Transform {
     /// Hand over bytes of grid `file` read from `offset` (a whole
     /// [`GridRequest`], or any part of the file).
     pub fn add_grid_data(&self, file: &str, offset: u64, data: Vec<u8>) -> Result<(), Error> {
-        let Some(f) = self
-            .candidates()
-            .and_then(|c| c.grid_files().iter().find(|f| f.name == file))
-        else {
+        let Some(f) = self.candidates().and_then(|c| {
+            with_children(c.grid_files())
+                .into_iter()
+                .find(|f| f.name == file)
+        }) else {
             return Err(Error::Grid {
                 file: file.to_string(),
                 message: "not a grid this transform uses".into(),
@@ -225,6 +238,20 @@ impl Transform {
             north: (north + MARGIN).min(FRAC_PI_2),
         })
     }
+}
+
+/// The files and, after each, the files it names (a loaded deformation
+/// model's component grids), each once.
+fn with_children(files: &[Arc<GridFile>]) -> Vec<&Arc<GridFile>> {
+    let mut out: Vec<&Arc<GridFile>> = Vec::new();
+    for file in files {
+        for f in std::iter::once(file).chain(file.children()) {
+            if !out.iter().any(|seen| Arc::ptr_eq(seen, f)) {
+                out.push(f);
+            }
+        }
+    }
+    out
 }
 
 fn normalize(lon: f64) -> f64 {

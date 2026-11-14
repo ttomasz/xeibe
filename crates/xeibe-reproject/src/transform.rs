@@ -11,7 +11,7 @@ use crate::operation::Method;
 use crate::select::crs::CrsRef;
 use crate::select::explain::{Explanation, Recorder};
 use crate::select::trace::{Event, Trace, Tracer};
-use crate::select::{Candidates, OperationInfo, Selection};
+use crate::select::{Candidates, Motion, OperationInfo, Selection};
 
 /// The order coordinates are given and returned in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -37,6 +37,9 @@ pub struct Transform {
     selection: Selection,
     epochs: Epochs,
     plan: Plan,
+    /// The plan before a point motion operation was added to it for two
+    /// different epochs; `None` when `plan` has none.
+    unmoved: Option<Plan>,
 }
 
 /// The coordinate epochs declared for a transform's CRSs
@@ -48,10 +51,20 @@ struct Epochs {
 }
 
 impl Epochs {
-    /// The epoch every coordinate is converted at. With one of the two
-    /// PROJ takes it for both, and two are the same one here.
+    /// The epoch every coordinate starts at. With one of the two PROJ
+    /// takes it for both; with two that differ, a point motion operation
+    /// moves the coordinates from the source's to the target's on the way.
     fn fixed(self) -> Option<f64> {
         self.source.or(self.target)
+    }
+
+    /// The two epochs, when they differ: the coordinates are to be moved
+    /// in time.
+    fn change(self) -> Option<(f64, f64)> {
+        match (self.source, self.target) {
+            (Some(from), Some(to)) if from != to => Some((from, to)),
+            _ => None,
+        }
     }
 
     fn swapped(self) -> Epochs {
@@ -318,6 +331,7 @@ impl Transform {
             selection,
             epochs: Epochs::default(),
             plan,
+            unmoved: None,
         })
     }
 
@@ -392,6 +406,7 @@ impl Transform {
             selection,
             epochs: Epochs::default(),
             plan,
+            unmoved: None,
         })
     }
 
@@ -424,6 +439,7 @@ impl Transform {
                 operation,
                 Arc::new(Candidates::with_operation(src, dst, sc, dc, operation)?),
             ),
+            unmoved: None,
         })
     }
 
@@ -579,17 +595,27 @@ impl Transform {
                     last: b.last.clone(),
                     names,
                 })),
+                unmoved: None,
             }));
         }
-        let only = self.candidates()?.only(index, &self.src, &self.dst)?;
-        Some(only.map(|c| Transform {
-            src: self.src.clone(),
-            dst: self.dst.clone(),
-            order: self.order,
-            grids: self.grids.clone(),
-            selection: self.selection.clone(),
-            epochs: self.epochs,
-            plan: Plan::Only(Arc::new(c)),
+        // The operation itself; the change of epoch is added to it again.
+        let candidates = match self.unmoved.as_ref().unwrap_or(&self.plan) {
+            Plan::Operations(c) | Plan::Via(_, c) | Plan::Only(c) => c,
+            Plan::Conversion | Plan::Bound(_) => return None,
+        };
+        let only = candidates.only(index, &self.src, &self.dst)?;
+        Some(only.and_then(|c| {
+            Transform {
+                src: self.src.clone(),
+                dst: self.dst.clone(),
+                order: self.order,
+                grids: self.grids.clone(),
+                selection: self.selection.clone(),
+                epochs: Epochs::default(),
+                plan: Plan::Only(Arc::new(c)),
+                unmoved: None,
+            }
+            .at_epochs(self.epochs)
         }))
     }
 
@@ -617,37 +643,39 @@ impl Transform {
     /// The epochs of [`Transform::with_epochs`] go with their CRSs: the
     /// source's becomes the target's.
     pub fn inverse(&self) -> Result<Transform, Error> {
-        let epochs = self.epochs.swapped();
-        match self.plan {
-            Plan::Conversion => Ok(Transform {
+        let inverse = match self.unmoved.as_ref().unwrap_or(&self.plan) {
+            Plan::Conversion => Transform {
                 src: self.dst.clone(),
                 dst: self.src.clone(),
                 order: self.order,
                 grids: self.grids.clone(),
                 selection: self.selection.clone(),
-                epochs,
+                epochs: Epochs::default(),
                 plan: Plan::Conversion,
-            }),
+                unmoved: None,
+            },
             Plan::Operations(_) | Plan::Bound(_) => Transform::with_selection(
                 &self.dst,
                 &self.src,
                 self.order,
                 self.grids.clone(),
                 self.selection.clone(),
-            )
-            .map(|t| Transform { epochs, ..t }),
-            Plan::Via(code, _) => Transform::via(&self.dst, &self.src, code, self.order)
-                .map(|t| Transform { epochs, ..t }),
-            Plan::Only(ref c) => Ok(Transform {
+            )?,
+            Plan::Via(code, _) => Transform::via(&self.dst, &self.src, *code, self.order)?,
+            Plan::Only(c) => Transform {
                 src: self.dst.clone(),
                 dst: self.src.clone(),
                 order: self.order,
                 grids: self.grids.clone(),
                 selection: self.selection.clone(),
-                epochs,
+                epochs: Epochs::default(),
                 plan: Plan::Only(Arc::new(c.inverse_of_first(&self.dst, &self.src)?)),
-            }),
-        }
+                unmoved: None,
+            },
+        };
+        // A change of epoch goes the other way too: its point motion
+        // operation with the epochs exchanged.
+        inverse.at_epochs(self.epochs.swapped())
     }
 
     /// The transform with coordinate epochs for its CRSs, as decimal years
@@ -658,13 +686,14 @@ impl Transform {
     /// converted at that epoch: a time-dependent operation (see
     /// [`OperationInfo::time_dependent`]) applies its rates from its
     /// reference epoch to it, where a transform without epochs stays at
-    /// the reference epoch. Nothing else changes: which operations there
-    /// are and which one a coordinate takes don't depend on the epoch.
+    /// the reference epoch. Which operations there are and which one a
+    /// coordinate takes don't depend on the epoch.
     ///
     /// As in PROJ:
     ///
     /// * only a CRS whose coordinates change with time takes an epoch
-    ///   ([`Crs::is_dynamic`]); for a static one it is an error;
+    ///   ([`Crs::is_dynamic`]), or one EPSG has a point motion operation
+    ///   for (NAD83(CSRS)); for any other it is an error;
     /// * with one epoch, both CRSs are at it: ITRF2014 at 2030 to GDA2020
     ///   and GDA2020 to ITRF2014 at 2030 both run at 2030;
     /// * the transform's epoch replaces a coordinate's own
@@ -672,10 +701,16 @@ impl Transform {
     ///   tells.
     ///
     /// Two different epochs ask for the coordinates to be moved in time,
-    /// which takes a point motion operation (a velocity grid or a
-    /// deformation model). Those aren't supported, so it is an error
-    /// rather than PROJ's result without them, which leaves the
-    /// coordinates at the source's epoch.
+    /// as the ground moved between the two: that takes a point motion
+    /// operation, a velocity grid for one of the two CRSs. EPSG has them
+    /// for few CRSs (the realizations of NAD83(CSRS), ETRF2014 in the
+    /// Nordic and Baltic countries), and they read a grid
+    /// ([`Transform::grid_requests`]). The source CRS's is used if it has
+    /// one: the coordinates are moved to the target's epoch first, and the
+    /// operations to the target CRS run at that epoch. Else the target
+    /// CRS's: the operations run at the source's epoch, and the coordinates
+    /// are moved last. Without one for either CRS it is an error, where
+    /// PROJ leaves the coordinates at the source's epoch.
     ///
     /// ```
     /// use xeibe_reproject::{AxisOrder, Transform};
@@ -703,7 +738,14 @@ impl Transform {
                     "the coordinate epoch {epoch} is not a decimal year"
                 )));
             }
-            if !crs.is_dynamic() {
+            // One xeibe can't run counts too: the error is then about it.
+            let moves = || {
+                epsg_datum(crs).is_some_and(|datum| {
+                    crate::operation::point_motion_for(datum).is_some()
+                        || crate::operation::unsupported_point_motion_for(datum).is_some()
+                })
+            };
+            if !crs.is_dynamic() && !moves() {
                 return Err(fail(
                     "a coordinate epoch should not be given for a static CRS".into(),
                 ));
@@ -714,21 +756,80 @@ impl Transform {
             source: checked(&self.src, source)?,
             target: checked(&self.dst, target)?,
         };
-        if let (Some(from), Some(to)) = (epochs.source, epochs.target)
-            && from != to
-        {
-            return Err(Error::Epoch {
-                crs: self.src.label(),
-                message: format!(
-                    "moving coordinates from epoch {from} to {to} (in {}) takes a point \
-                     motion operation, which is not supported",
-                    self.dst.label()
-                ),
-            });
+        // From the plan without a change of epoch, if it has one now.
+        Transform {
+            epochs: Epochs::default(),
+            plan: self.unmoved.clone().unwrap_or_else(|| self.plan.clone()),
+            unmoved: None,
+            ..self.clone()
         }
+        .at_epochs(epochs)
+    }
+
+    /// The transform, set up without epochs, at `epochs` (checked). Two
+    /// that differ add a point motion operation to the plan.
+    fn at_epochs(self, epochs: Epochs) -> Result<Transform, Error> {
+        let Some((from, to)) = epochs.change() else {
+            return Ok(Transform { epochs, ..self });
+        };
+        let fail = |message: String| Error::Epoch {
+            crs: self.src.label(),
+            message,
+        };
+        let moving = format!(
+            "moving coordinates from epoch {from} to {to} (in {})",
+            self.dst.label()
+        );
+        let Some(motion) = Motion::between(epsg_datum(&self.src), epsg_datum(&self.dst), from, to)
+        else {
+            let unsupported = [epsg_datum(&self.src), epsg_datum(&self.dst)]
+                .into_iter()
+                .flatten()
+                .find_map(crate::operation::unsupported_point_motion_for);
+            return Err(fail(match unsupported {
+                Some(op) => format!(
+                    "{moving} takes {} (EPSG:{}), whose method xeibe does not implement",
+                    op.name, op.code
+                ),
+                None => format!(
+                    "{moving} takes a point motion operation, and there is none for either CRS"
+                ),
+            }));
+        };
+        let op = &crate::registry::registry().ops[&motion.operation];
+        if let Some(grid) = op
+            .grid_names()
+            .into_iter()
+            .find(|name| !self.grids.has(name, &op.name))
+        {
+            return Err(fail(format!(
+                "{moving} takes {} (EPSG:{}), whose grid {grid} is not available",
+                op.name, op.code
+            )));
+        }
+        // A CRS the selection has no code for stands at the operation's.
+        let frame = CrsRef::Epsg(op.src.unwrap_or(0));
+        let sc = crs_ref(&self.src).unwrap_or(frame);
+        let dc = crs_ref(&self.dst).unwrap_or(frame);
+        let moved = |c: &Candidates| c.moved(&self.src, &self.dst, sc, dc, &motion).map(Arc::new);
+        let plan = match &self.plan {
+            Plan::Conversion => Plan::Operations(Arc::new(Candidates::motion_only(
+                &self.src, &self.dst, sc, dc, &motion,
+            )?)),
+            Plan::Operations(c) => Plan::Operations(moved(c)?),
+            Plan::Via(code, c) => Plan::Via(*code, moved(c)?),
+            Plan::Only(c) => Plan::Only(moved(c)?),
+            Plan::Bound(_) => {
+                return Err(fail(format!(
+                    "{moving} from or to a bound CRS is not supported"
+                )));
+            }
+        };
         Ok(Transform {
             epochs,
-            ..self.clone()
+            unmoved: Some(self.plan.clone()),
+            plan,
+            ..self
         })
     }
 
@@ -742,9 +843,9 @@ impl Transform {
         self.epochs.target
     }
 
-    /// The epoch every coordinate is converted at, when the transform has
-    /// one: the source's or the target's, which are one
-    /// ([`Transform::with_epochs`]).
+    /// The epoch every coordinate starts at, when the transform has one:
+    /// the source's, else the target's ([`Transform::with_epochs`]). With
+    /// two that differ the coordinates end at the target's.
     pub fn epoch(&self) -> Option<f64> {
         self.epochs.fixed()
     }
@@ -967,6 +1068,11 @@ pub(crate) fn coordinate_error(index: usize, x: f64, y: f64, reason: CoordinateE
     }
 }
 
+/// The EPSG code of a CRS's geodetic datum.
+fn epsg_datum(crs: &Crs) -> Option<u32> {
+    crs.datum()?.key.strip_prefix("EPSG:")?.parse().ok()
+}
+
 /// The CRS as the selection knows it: its EPSG code, or a compound CRS's
 /// two codes. A CRS without one (WKT without ids) has the code of the EPSG
 /// CRS it is equivalent to ([`Crs::identify`]).
@@ -1079,6 +1185,7 @@ fn nad27_to_nad83(src: &Crs, dst: &Crs) -> Result<Option<Plan>, Error> {
         selection: Selection::default(),
         epochs: Epochs::default(),
         plan: Plan::Conversion,
+        unmoved: None,
     };
     let (first, last) = if forward {
         (Some(leg), None)

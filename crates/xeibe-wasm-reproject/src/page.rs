@@ -1151,6 +1151,7 @@ fn operation_info_json(info: &OperationInfo, failed: &BTreeMap<String, String>) 
         "area_name": info.area_name,
         "grids": info.grids.iter().map(|g| json!({ "file": g, "failed": failed.get(g) })).collect::<Vec<_>>(),
         "time_dependent": info.time_dependent,
+        "needs_epoch": info.needs_epoch,
         "scope": info.scope,
         "remarks": info.code.and_then(|(code, _)| xeibe_crs::operation_remarks(code)),
         "null": is_null(info),

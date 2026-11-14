@@ -15,7 +15,7 @@ use crate::crs::{Crs, Kind};
 use crate::error::{CoordinateError, Error};
 use crate::grid::Grids;
 use crate::grid::store::GridFile;
-use crate::operation::{self, Method};
+use crate::operation::{self, Method, PointMotion};
 use crate::registry::{PROJ_CODES, registry};
 use crate::transform::{from_geographic, to_geographic};
 
@@ -51,6 +51,217 @@ enum Exec {
         inverse: bool,
         height: Height,
     },
+    /// Move the coordinates in time within `crs`, from one coordinate epoch
+    /// to another, by registry point motion operation `code`. The
+    /// operations after it run at the epoch it moved to.
+    Move {
+        code: u32,
+        motion: Arc<PointMotion>,
+        crs: Box<Crs>,
+        from: f64,
+        to: f64,
+    },
+}
+
+impl Exec {
+    /// The grid files the step reads.
+    fn grid_files(&self) -> Vec<Arc<GridFile>> {
+        match self {
+            Exec::Apply { method, .. } => method.grid_files(),
+            Exec::Move { motion, .. } => motion.grid_files(),
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// A change of coordinate epoch a transform asks for
+/// (`Transform::with_epochs` with two different epochs), and the point
+/// motion operation that makes it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Motion {
+    /// The registry's point motion operation.
+    pub(crate) operation: u32,
+    /// It is the source CRS's datum's: the coordinates are moved first, and
+    /// the operations to the target run at the target's epoch. Else it is
+    /// the target's, and they are moved last. PROJ looks in this order
+    /// (`createOperationsWithDatumPivot`).
+    pub(crate) at_source: bool,
+    /// Decimal years.
+    pub(crate) from: f64,
+    pub(crate) to: f64,
+}
+
+impl Motion {
+    /// The point motion operation for a change of epoch between two CRSs:
+    /// the source's datum's, else the target's (EPSG datum codes).
+    pub(crate) fn between(
+        src_datum: Option<u32>,
+        dst_datum: Option<u32>,
+        from: f64,
+        to: f64,
+    ) -> Option<Motion> {
+        let of = |datum: Option<u32>| datum.and_then(operation::point_motion_for);
+        let (op, at_source) = match (of(src_datum), of(dst_datum)) {
+            (Some(op), _) => (op, true),
+            (None, Some(op)) => (op, false),
+            (None, None) => return None,
+        };
+        Some(Motion {
+            operation: op.code,
+            at_source,
+            from,
+            to,
+        })
+    }
+
+    /// The operation as a step, named as PROJ's `cloneWithEpochs` names it.
+    fn single(&self) -> candidate::Single {
+        let mut step = candidate::registry_single(self.operation, false);
+        step.name = format!(
+            "{} from epoch {} to epoch {}",
+            step.name, self.from, self.to
+        );
+        step
+    }
+
+    /// The steps between `crs` and the CRS the operation is defined on, on
+    /// one datum, as far as PROJ names them: a projection, a change between
+    /// geodetic CRSs. What they leave out `run` converts anyway.
+    fn bridge(crs: CrsRef, to: CrsRef, back: bool, cache: &mut CrsCache) -> Vec<candidate::Single> {
+        let mut steps = Vec::new();
+        let mut cur = crs;
+        if cache.kind(cur) == crs::CrsKind::Projected
+            && let CrsRef::Epsg(code) = cur
+            && let Some(p) = candidate::projection(cache, code, true)
+        {
+            cur = p.dst;
+            steps.push(p);
+        }
+        if cur != to
+            && let Some(s) = candidate::same_datum(cache, cur, to)
+        {
+            steps.push(s);
+        }
+        if back {
+            steps = steps.iter().rev().map(|s| s.inverse(cache)).collect();
+        }
+        steps
+    }
+
+    /// A step between CRSs on one datum, which a change of epoch can go
+    /// before or after alike.
+    fn converts(step: &candidate::Single) -> bool {
+        matches!(
+            step.kind,
+            candidate::SingleKind::SameDatum | candidate::SingleKind::Projection { .. }
+        )
+    }
+
+    /// Where `c`'s first step between datums is: after the conversions
+    /// from the source CRS (PROJ's `opFirst`).
+    fn first_transformation(c: &Candidate) -> usize {
+        c.steps
+            .iter()
+            .position(|s| !Motion::converts(s))
+            .unwrap_or(0)
+    }
+
+    /// One past `c`'s last step between datums: before the conversions to
+    /// the target CRS (PROJ's `opThird`).
+    fn last_transformation(c: &Candidate) -> usize {
+        c.steps
+            .iter()
+            .rposition(|s| !Motion::converts(s))
+            .map_or(c.steps.len(), |i| i + 1)
+    }
+
+    /// `c`, an operation from `src` to `dst` (`None` between CRSs on one
+    /// datum), with the coordinates moved in time before or after it.
+    fn wrap(
+        &self,
+        c: Option<&Candidate>,
+        src: CrsRef,
+        dst: CrsRef,
+        cache: &mut CrsCache,
+    ) -> Option<Candidate> {
+        let step = self.single();
+        let frame = step.src;
+        let single = |s: candidate::Single| Candidate::single(s);
+        let around = |anchor: CrsRef, cache: &mut CrsCache| {
+            let mut parts: Vec<Candidate> = Motion::bridge(anchor, frame, false, cache)
+                .into_iter()
+                .map(single)
+                .collect();
+            parts.push(single(step.clone()));
+            parts
+        };
+        let parts = match c {
+            // On one datum: to the operation's CRS, through it, on to the
+            // target.
+            None => {
+                let mut parts = around(src, cache);
+                parts.extend(
+                    Motion::bridge(dst, frame, true, cache)
+                        .into_iter()
+                        .map(single),
+                );
+                parts
+            }
+            // Before the operations, or after them.
+            Some(c) if self.at_source && Motion::first_transformation(c) == 0 => {
+                let mut parts = around(src, cache);
+                parts.extend(
+                    Motion::bridge(src, frame, true, cache)
+                        .into_iter()
+                        .map(single),
+                );
+                parts.push(c.clone());
+                parts
+            }
+            Some(c) if !self.at_source && Motion::last_transformation(c) == c.steps.len() => {
+                let mut parts = vec![c.clone()];
+                parts.extend(around(dst, cache));
+                parts.extend(
+                    Motion::bridge(dst, frame, true, cache)
+                        .into_iter()
+                        .map(single),
+                );
+                parts
+            }
+            // Between the conversions at that end and the transformation,
+            // in the CRS the transformation works on, as PROJ does
+            // (`createOperationsWithDatumPivot`): from ITRF2014 (geog2D)
+            // the Helmert's geocentric result is moved, not the target's
+            // geographic 2D one.
+            Some(c) => {
+                let at = if self.at_source {
+                    Motion::first_transformation(c)
+                } else {
+                    Motion::last_transformation(c)
+                };
+                let anchor = if self.at_source {
+                    c.steps[at].src
+                } else {
+                    c.steps[at - 1].dst
+                };
+                let mut parts: Vec<Candidate> = c.steps[..at].iter().cloned().map(single).collect();
+                parts.extend(around(anchor, cache));
+                parts.extend(
+                    Motion::bridge(anchor, frame, true, cache)
+                        .into_iter()
+                        .map(single),
+                );
+                parts.extend(c.steps[at..].iter().cloned().map(single));
+                parts
+            }
+        };
+        let mut out = candidate::concatenate(parts, false, cache)?;
+        out.src = src;
+        out.dst = dst;
+        // The result depends on the two epochs.
+        out.requires_time = true;
+        Some(out)
+    }
 }
 
 /// What a step does to the height.
@@ -108,9 +319,16 @@ pub struct OperationInfo {
     /// PROJ-data's names of the grid files it reads.
     pub grids: Vec<String>,
     /// A step is time-dependent: its result depends on the coordinates'
-    /// epoch (`Transform::with_epochs`, `Transform::convert_at`), and
-    /// without one it runs at its reference epoch.
+    /// epoch (`Transform::with_epochs`, `Transform::convert_at`), or on
+    /// the transform's two epochs (a change of coordinate epoch). Without
+    /// an epoch a time-dependent Helmert runs at its reference epoch; see
+    /// `needs_epoch`.
     pub time_dependent: bool,
+    /// A step works only on a coordinate with an epoch: a deformation
+    /// model (New Zealand's), which says where a point was at a given
+    /// time. A coordinate without one fails
+    /// (`CoordinateError::MissingEpoch`), as in PROJ.
+    pub needs_epoch: bool,
     /// EPSG's scope of the operation, when it is one EPSG operation (see
     /// `code`). Its remarks: `xeibe_crs::operation_remarks`.
     pub scope: Option<String>,
@@ -222,13 +440,17 @@ impl OperationInfo {
         }
         let mut codes = Vec::new();
         transformations(&c.steps, &mut codes);
+        let needs_epoch = codes.iter().any(|(code, _)| {
+            registry()
+                .ops
+                .get(code)
+                .is_some_and(|op| operation::needs_epoch(op.method))
+        });
         let mut grids: Vec<String> = Vec::new();
         for step in steps {
-            if let Exec::Apply { method, .. } = step {
-                for f in method.grid_files() {
-                    if !grids.contains(&f.name) {
-                        grids.push(f.name.clone());
-                    }
+            for f in step.grid_files() {
+                if !grids.contains(&f.name) {
+                    grids.push(f.name.clone());
                 }
             }
         }
@@ -243,7 +465,8 @@ impl OperationInfo {
                 .map(|e| [e.west, e.south, e.east, e.north]),
             area_name: c.extent.as_ref().and_then(|e| e.name.map(str::to_owned)),
             grids,
-            time_dependent: c.requires_time,
+            time_dependent: c.requires_time || needs_epoch,
+            needs_epoch,
             scope: c
                 .registry
                 .and_then(|(code, _)| registry().ops.get(&code))
@@ -359,6 +582,18 @@ impl Candidates {
         selection: &Selection,
     ) -> Result<Candidates, Error> {
         let (sorted, _) = search::create_operations(src_ref, dst_ref, grids.clone(), selection);
+        let sorted = sorted.into_iter().filter(filter::is_exportable).collect();
+        Candidates::prepare(sorted, src, dst, None)
+    }
+
+    /// `sorted`, best first, made ready to run: each one's area converted
+    /// into the source CRS. Those that can't be set up are left out.
+    fn prepare(
+        sorted: Vec<Candidate>,
+        src: &Crs,
+        dst: &Crs,
+        motion: Option<&Motion>,
+    ) -> Result<Candidates, Error> {
         let mut builder = CrsBuilder::default();
         let src_geographic = matches!(src.kind, Kind::Geographic { .. });
         let src_geocentric = matches!(src.kind, Kind::Geocentric { .. });
@@ -366,10 +601,7 @@ impl Candidates {
         let mut operations = 0;
         let mut first: Option<(Arc<Candidate>, Vec<Exec>, Arc<OperationInfo>)> = None;
         for c in sorted {
-            if !filter::is_exportable(&c) {
-                continue;
-            }
-            let Ok(steps) = executable(&c, src, dst, &mut builder) else {
+            let Ok(steps) = executable(&c, src, dst, &mut builder, motion) else {
                 continue;
             };
             let index = operations;
@@ -538,12 +770,70 @@ impl Candidates {
                 what: "its method".into(),
             });
         }
-        Candidates::one(c, src, dst)
+        Candidates::one(c, src, dst, None)
+    }
+
+    /// These candidates with the coordinates moved from one coordinate
+    /// epoch to another by a point motion operation (`motion`), before the
+    /// operations or after them. The choice among them stays as it is: by
+    /// their own areas and accuracies.
+    pub(crate) fn moved(
+        &self,
+        src: &Crs,
+        dst: &Crs,
+        src_ref: CrsRef,
+        dst_ref: CrsRef,
+        motion: &Motion,
+    ) -> Result<Candidates, Error> {
+        let mut cache = CrsCache::default();
+        let mut wrapped = Vec::new();
+        let mut last = None;
+        for p in &self.list {
+            if last == Some(p.index) {
+                continue;
+            }
+            last = Some(p.index);
+            let c = motion
+                .wrap(Some(&p.candidate), src_ref, dst_ref, &mut cache)
+                .ok_or_else(|| Error::NoTransformation {
+                    src: src.label(),
+                    dst: dst.label(),
+                })?;
+            wrapped.push(c);
+        }
+        match wrapped.as_slice() {
+            // One operation for every coordinate stays that.
+            [c] if self.list[0].everywhere => Candidates::one(c.clone(), src, dst, Some(motion)),
+            _ => Candidates::prepare(wrapped, src, dst, Some(motion)),
+        }
+    }
+
+    /// Between CRSs on one datum: the point motion operation alone, for
+    /// every coordinate.
+    pub(crate) fn motion_only(
+        src: &Crs,
+        dst: &Crs,
+        src_ref: CrsRef,
+        dst_ref: CrsRef,
+        motion: &Motion,
+    ) -> Result<Candidates, Error> {
+        let c = motion
+            .wrap(None, src_ref, dst_ref, &mut CrsCache::default())
+            .ok_or_else(|| Error::NoTransformation {
+                src: src.label(),
+                dst: dst.label(),
+            })?;
+        Candidates::one(c, src, dst, Some(motion))
     }
 
     /// One candidate, run for every coordinate whatever its area.
-    fn one(c: Candidate, src: &Crs, dst: &Crs) -> Result<Candidates, Error> {
-        let steps = executable(&c, src, dst, &mut CrsBuilder::default())?;
+    fn one(
+        c: Candidate,
+        src: &Crs,
+        dst: &Crs,
+        motion: Option<&Motion>,
+    ) -> Result<Candidates, Error> {
+        let steps = executable(&c, src, dst, &mut CrsBuilder::default(), motion)?;
         let info = Arc::new(OperationInfo::of(&c, &steps));
         let list = vec![Prepared::everywhere(Arc::new(c), steps, info)];
         Ok(Candidates {
@@ -564,14 +854,14 @@ impl Candidates {
         dst: &Crs,
     ) -> Option<Result<Candidates, Error>> {
         let p = self.list.iter().find(|p| p.index == index)?;
-        Some(Candidates::one((*p.candidate).clone(), src, dst))
+        Some(Candidates::one((*p.candidate).clone(), src, dst, None))
     }
 
     /// The first candidate the other way, for every coordinate: the
     /// inverse of [`Candidates::only`]. `src` and `dst` are the inverse's.
     pub(crate) fn inverse_of_first(&self, src: &Crs, dst: &Crs) -> Result<Candidates, Error> {
         let inverse = self.list[0].candidate.inverse(&mut CrsCache::default());
-        Candidates::one(inverse, src, dst)
+        Candidates::one(inverse, src, dst, None)
     }
 
     /// Names of the candidates, best first.
@@ -968,11 +1258,9 @@ fn grid_files<'a>(list: impl IntoIterator<Item = &'a Prepared>) -> Vec<Arc<GridF
     let mut out: Vec<Arc<GridFile>> = Vec::new();
     for p in list {
         for step in &p.steps {
-            if let Exec::Apply { method, .. } = step {
-                for f in method.grid_files() {
-                    if !out.iter().any(|g| Arc::ptr_eq(g, &f)) {
-                        out.push(f);
-                    }
+            for f in step.grid_files() {
+                if !out.iter().any(|g| Arc::ptr_eq(g, &f)) {
+                    out.push(f);
                 }
             }
         }
@@ -1096,12 +1384,14 @@ fn same_math(a: &crate::registry::Operation, b: &crate::registry::Operation) -> 
     a.method == b.method && file(a).is_some() && file(a) == file(b)
 }
 
-/// The runnable steps of a candidate from `src` to `dst`.
+/// The runnable steps of a candidate from `src` to `dst`. `motion` gives
+/// the epochs of the point motion operation among them, if there is one.
 fn executable(
     c: &Candidate,
     src: &Crs,
     dst: &Crs,
     builder: &mut CrsBuilder,
+    motion: Option<&Motion>,
 ) -> Result<Vec<Exec>, Error> {
     let mut steps = Vec::new();
     let mut flat = Vec::new();
@@ -1122,6 +1412,25 @@ fn executable(
             SingleKind::Registry { code, inverse } => {
                 let op = &registry().ops[code];
                 let from = builder.get(CrsRef::Epsg(op.src.unwrap_or(0)))?;
+                if operation::is_point_motion(op) {
+                    let unsupported = |what: String| Error::Unsupported {
+                        crs: format!("EPSG operation {code}"),
+                        what,
+                    };
+                    let epochs = motion
+                        .filter(|m| m.operation == *code)
+                        .ok_or_else(|| unsupported("a point motion without epochs".into()))?;
+                    let point_motion =
+                        PointMotion::new(op, &from).map_err(|e| unsupported(format!("{e:?}")))?;
+                    steps.push(Exec::Move {
+                        code: *code,
+                        motion: Arc::new(point_motion),
+                        crs: Box::new(from),
+                        from: epochs.from,
+                        to: epochs.to,
+                    });
+                    continue;
+                }
                 let to = builder.get(CrsRef::Epsg(op.dst.unwrap_or(0)))?;
                 if op.table == crate::registry::Table::Conversion {
                     // A conversion step inside a concatenated operation.
@@ -1188,7 +1497,7 @@ fn drop_identities(steps: &mut Vec<Exec>, src: &Crs) {
             Exec::Apply {
                 method, from, to, ..
             } => !(on_geographic && method.is_identity() && geographic(from) && geographic(to)),
-            Exec::SaveHorizontal | Exec::RestoreHorizontal => true,
+            Exec::Move { .. } | Exec::SaveHorizontal | Exec::RestoreHorizontal => true,
         };
         match step {
             Exec::Convert(to) if !is_vertical(to) => on_geographic = geographic(to),
@@ -1200,6 +1509,7 @@ fn drop_identities(steps: &mut Vec<Exec>, src: &Crs) {
                     on_geographic = geographic(output);
                 }
             }
+            Exec::Move { crs, .. } => on_geographic = geographic(crs),
             Exec::SaveHorizontal => saved.push(on_geographic),
             Exec::RestoreHorizontal => {
                 if let Some(g) = saved.pop() {
@@ -1237,7 +1547,7 @@ fn next_keeps_height(steps: &[Exec], i: usize, ellipsoidal: bool) -> bool {
                 height,
                 ..
             } => return height.keeps(if *inverse { to } else { from }, ellipsoidal),
-            Exec::SaveHorizontal | Exec::RestoreHorizontal => return false,
+            Exec::Move { .. } | Exec::SaveHorizontal | Exec::RestoreHorizontal => return false,
         }
     }
     false
@@ -1252,7 +1562,8 @@ fn is_vertical(crs: &Crs) -> bool {
 
 /// Run a candidate's steps. `epoch` is the coordinate's, a decimal year
 /// (PROJ's `t`): a time-dependent operation applies its rates up to it, and
-/// stays at its reference epoch without one.
+/// stays at its reference epoch without one. A point motion step changes
+/// it for the steps after (PROJ's `set +v_4`).
 fn run<R: Recorder>(
     steps: &[Exec],
     src: &Crs,
@@ -1275,6 +1586,7 @@ fn run<R: Recorder>(
     }
     let mut cur = src;
     let mut c = internal;
+    let mut epoch = epoch;
     // The height `push +v_3` saved, while a run of geog2D-domain operations
     // is under way.
     let mut saved: Option<f64> = None;
@@ -1312,6 +1624,34 @@ fn run<R: Recorder>(
                     if R::TRACE {
                         rec.step(Event::Convert, cur, c, Some(ellipsoidal));
                     }
+                }
+            }
+            Exec::Move {
+                code,
+                motion,
+                crs,
+                from,
+                to,
+            } => {
+                c = convert(cur, crs, c)?;
+                if R::TRACE {
+                    rec.step(Event::Convert, crs, c, Some(ellipsoidal));
+                }
+                // Whatever the height is, it rises and falls with the
+                // ground (see `docs/reprojection.md`, coordinate epochs).
+                c = motion.moved(c, to - from)?;
+                if !c.iter().all(|v| v.is_finite()) {
+                    return Err(CoordinateError::OutsideDomain);
+                }
+                cur = crs;
+                epoch = Some(*to);
+                if R::TRACE {
+                    let event = Event::Apply {
+                        code: *code,
+                        inverse: false,
+                        keeps_height: false,
+                    };
+                    rec.step(event, cur, c, Some(ellipsoidal));
                 }
             }
             Exec::Apply {

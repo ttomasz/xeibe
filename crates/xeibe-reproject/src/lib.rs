@@ -31,8 +31,12 @@
 //! Time-dependent transformations run at the epoch of the coordinates,
 //! given for the whole transform ([`Transform::with_epochs`]) or with each
 //! coordinate ([`Transform::convert_at`]), and at their reference epoch
-//! without one, as in PROJ. Operations that move coordinates to another
-//! epoch (point motion, deformation models) are not supported.
+//! without one, as in PROJ. Two different epochs move the coordinates in
+//! time, with EPSG's point motion operations where PROJ-data has their
+//! velocity grid (NAD83(CSRS)v6 and v7, ETRF2014 in the Nordic and Baltic
+//! countries). New Zealand's deformation model (ITRF96 to NZGD2000) is
+//! supported too; it needs the epoch of each coordinate
+//! ([`CoordinateError::MissingEpoch`] without one).
 //!
 //! ```
 //! use xeibe_reproject::{AxisOrder, Transform};

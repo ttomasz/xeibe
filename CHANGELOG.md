@@ -61,9 +61,25 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
   epoch they run at their reference epoch, as before. As in PROJ, only a
   dynamic CRS takes an epoch (`Crs::is_dynamic`), and the transform's
   epoch replaces a coordinate's own (`Transform::overrides_epoch` tells).
-  Two different epochs are refused (`Error::Epoch`): moving coordinates in
-  time needs point motion operations, which aren't supported. Conversions
-  are no slower for it.
+  Conversions are no slower for it.
+- `xeibe-reproject`: two different epochs on a transform
+  (`with_epochs(Some(2010.0), Some(2002.0))`, PROJ's `EPSG:8254@2010` to
+  `EPSG:8254@2002`) move the coordinates in time with EPSG's point motion
+  operations, by velocity grid: within and between the realizations
+  NAD83(CSRS)v6 and v7, and ETRF2014 in the Nordic and Baltic countries
+  (NKG_RF17vel), also with a transformation before or after. The grid
+  loads like any other. PROJ's routes, names and results; unlike PROJ,
+  also between CRSs that one EPSG operation joins and from projected
+  CRSs. Where EPSG has no point motion operation for either CRS, or none
+  xeibe can run (Canada's v8 grid, Indonesia, New Caledonia), two
+  different epochs are an error (`Error::Epoch`).
+- `xeibe-reproject`: New Zealand's deformation model (`ITRF96 to NZGD2000
+  (1)` to `(7)`, EPSG method 1079), a port of PROJ's `defmodel`. It needs
+  the epoch of each coordinate: without one the coordinate fails with the
+  new `CoordinateError::MissingEpoch`, as in PROJ, and outside the model's
+  time with `CoordinateError::EpochOutOfRange`. `OperationInfo::needs_epoch`
+  tells in advance. The model's master file names its grids, so they are
+  asked for (`Transform::grid_requests`) once it is loaded.
 
 ## 0.2.0
 

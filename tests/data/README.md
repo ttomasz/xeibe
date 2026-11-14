@@ -35,6 +35,13 @@ Small samples committed to the repository.
   `selection-options.jsonl` the same with an area of interest or an
   accuracy (`--options`), and `epochs.jsonl` PROJ's time-dependent
   transformations of coordinates with an epoch each (`--epochs`).
+  `reprojection/grids/cropped/` holds grids too large to commit whole, cut
+  down by GDAL to a window each and kept under PROJ-data's names (Canada's
+  and the Nordic velocity grids; New Zealand's deformation model with the
+  grids that reach its window; NRCan, NKG and LINZ, see the grids'
+  `README.md`), and `epochs-grids.jsonl` PROJ's results on them: the
+  deformation model, and transformations between two coordinate epochs
+  (`--epochs --grids tests/data/reprojection/grids/cropped`).
 - `crs-wkt/wkt.jsonl`, `crs-wkt/identify.jsonl` – PROJ's WKT for a subset of
   EPSG CRSs in four versions, with PROJ's reading of each back, and PROJ's
   identification of each string with and without its ids (see

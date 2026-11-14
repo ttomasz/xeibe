@@ -1,0 +1,751 @@
+{
+ "file_type": "deformation_model_master_file",
+ "format_version": "1.0",
+ "name": "NZGD2000 deformation model",
+ "version": "20180701",
+ "publication_date": "2018-07-01T00:00:00Z",
+ "license": "Creative Commons Attribution 4.0 International",
+ "description": "New Zealand Deformation Model.\nDefines the secular model (National Deformation Model)\nand patches for significant deformation events since 2000.\n\nReduced for xeibe's tests by scripts/gen_grid_fixtures.py: valid only within [172.98, -42.66, 173.04, -42.61], with the grids cut down to it and without the 12 components that don't reach it.\n",
+ "authority": {
+  "name": "Land Information New Zealand",
+  "url": "http://www.linz.govt.nz",
+  "address": "Level 7, Radio New Zealand House\r\n155 The Terrace\r\nPO Box 5501\r\nWellington 6145",
+  "email": "customersupport@linz.govt.nz"
+ },
+ "links": [
+  {
+   "href": "https://www.linz.govt.nz/nzgd2000",
+   "rel": "about",
+   "type": "text/html",
+   "title": "About the NZGD2000 deformation model"
+  },
+  {
+   "href": "https://www.geodesy.linz.govt.nz/download/nzgd2000_deformation_model",
+   "rel": "source",
+   "type": "application/zip",
+   "title": "Authoritative source of the NZGD2000 deformation model"
+  },
+  {
+   "href": "https://creativecommons.org/licenses/by/4.0/",
+   "rel": "license",
+   "type": "text/html",
+   "title": "Creative Commons Attribution 4.0 International license"
+  },
+  {
+   "href": "https://www.geodesy.linz.govt.nz/download/nzgd2000/metadata/nzgd2000_deformation_20180701_metadata.xml",
+   "rel": "metadata",
+   "type": "application/xml",
+   "title": " ISO 19115 XML encoded metadata regarding the deformation model"
+  }
+ ],
+ "source_crs": "EPSG:4959",
+ "target_crs": "EPSG:7907",
+ "definition_crs": "EPSG:4959",
+ "reference_epoch": "2001-01-01T00:00:00Z",
+ "uncertainty_reference_epoch": "2018-12-01T00:00:00Z",
+ "horizontal_offset_unit": "metre",
+ "vertical_offset_unit": "metre",
+ "horizontal_uncertainty_type": "circular 95% confidence limit",
+ "horizontal_uncertainty_unit": "metre",
+ "vertical_uncertainty_type": "95% confidence limit",
+ "vertical_uncertainty_unit": "metre",
+ "horizontal_offset_method": "addition",
+ "extent": {
+  "type": "bbox",
+  "parameters": {
+   "bbox": [
+    172.98,
+    -42.66,
+    173.04,
+    -42.61
+   ]
+  }
+ },
+ "time_extent": {
+  "first": "1900-01-01T00:00:00Z",
+  "last": "2050-01-01T00:00:00Z"
+ },
+ "components": [
+  {
+   "description": "Secular deformation model derived from NUVEL-1A rotation rates\nSecular deformation model derived from GNS model 2011 V4",
+   "displacement_type": "horizontal",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      158.0,
+      -58.0,
+      194.0,
+      -25.0
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-ndm-grid02.tif",
+    "md5_checksum": "31686a7713aafddad38d4ccc2452dd40"
+   },
+   "time_function": {
+    "type": "velocity",
+    "parameters": {
+     "reference_epoch": "2000-01-01T00:00:00Z"
+    }
+   }
+  },
+  {
+   "description": "Macquarie Plate earthquake",
+   "displacement_type": "3d",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      158.8,
+      -53.0,
+      179.5,
+      -40.125
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-mq20041223-grid015.tif",
+    "md5_checksum": "aebd212b011db08ea17500507957d0fd"
+   },
+   "time_function": {
+    "type": "reverse_step",
+    "parameters": {
+     "step_epoch": "2004-12-23T00:00:00Z"
+    }
+   }
+  },
+  {
+   "description": "Dusky Sound (Fiordland) earthquake",
+   "displacement_type": "3d",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      164.65,
+      -51.375,
+      179.5,
+      -39.625
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-ds20090715-grid013.tif",
+    "md5_checksum": "3f44874d0f5a52a9b8491a66e102dba4"
+   },
+   "time_function": {
+    "type": "piecewise",
+    "parameters": {
+     "before_first": "constant",
+     "after_last": "zero",
+     "model": [
+      {
+       "epoch": "2009-07-15T00:00:00Z",
+       "scale_factor": -1.34
+      },
+      {
+       "epoch": "2009-07-15T00:00:00Z",
+       "scale_factor": -0.29
+      },
+      {
+       "epoch": "2011-09-01T00:00:00Z",
+       "scale_factor": 0.0
+      }
+     ]
+    }
+   }
+  },
+  {
+   "description": "Darfield earthquake",
+   "displacement_type": "3d",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      168.1,
+      -46.75,
+      176.2,
+      -40.375
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-c120100904-grid01.tif",
+    "md5_checksum": "9b3c3df0a4020fa43a3e96da4493a7ac"
+   },
+   "time_function": {
+    "type": "reverse_step",
+    "parameters": {
+     "step_epoch": "2010-09-04T00:00:00Z"
+    }
+   }
+  },
+  {
+   "description": "Christchurch February earthquake",
+   "displacement_type": "3d",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      170.8,
+      -44.5,
+      173.8,
+      -42.375
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-c220110222-grid01.tif",
+    "md5_checksum": "71942871deb76545c0feb119402ae494"
+   },
+   "time_function": {
+    "type": "reverse_step",
+    "parameters": {
+     "step_epoch": "2011-02-22T00:00:00Z"
+    }
+   }
+  },
+  {
+   "description": "Christchurch June earthquake",
+   "displacement_type": "3d",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      171.4,
+      -44.375,
+      173.65,
+      -42.625
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-c320110613-grid01.tif",
+    "md5_checksum": "1a568f4c0c67b5b2ff1e617dbf8880d7"
+   },
+   "time_function": {
+    "type": "reverse_step",
+    "parameters": {
+     "step_epoch": "2011-06-13T00:00:00Z"
+    }
+   }
+  },
+  {
+   "description": "Mw 6.6 Cook Strait earthquake",
+   "displacement_type": "3d",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      171.55,
+      -43.375,
+      176.5,
+      -39.5
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-cs20130721-grid02.tif",
+    "md5_checksum": "718048d3752f23a6bd6479e9fbbdcf66"
+   },
+   "time_function": {
+    "type": "reverse_step",
+    "parameters": {
+     "step_epoch": "2013-07-21T00:00:00Z"
+    }
+   }
+  },
+  {
+   "description": "Mw 6.6 Lake Grassmere earthquake",
+   "displacement_type": "3d",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      170.95,
+      -44.0,
+      176.65,
+      -39.25
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-lg20130816-grid02.tif",
+    "md5_checksum": "f90f7b207f586c130322c01525b10621"
+   },
+   "time_function": {
+    "type": "reverse_step",
+    "parameters": {
+     "step_epoch": "2013-08-16T00:00:00Z"
+    }
+   }
+  },
+  {
+   "description": "Event: Kaikoura earthquake,  14 November 2016\n Source model: Geodetic source model, based on GPS, InSAR, and LiDAR data; elastic half-space assumption; \n Version: Model 002, 23 June 2017\n",
+   "displacement_type": "horizontal",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      165.85,
+      -47.625,
+      179.05,
+      -34.0
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-ka20161114-grid01.tif",
+    "md5_checksum": "668764e746f92bb69230af8e871a1319"
+   },
+   "time_function": {
+    "type": "step",
+    "parameters": {
+     "step_epoch": "2016-11-14T00:00:00Z"
+    }
+   }
+  },
+  {
+   "description": "Event: Kaikoura earthquake,  14 November 2016\n Source model: Geodetic source model, based on GPS, InSAR, and LiDAR data; elastic half-space assumption; \n Version: Model 002, 23 June 2017\n",
+   "displacement_type": "horizontal",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      172.525,
+      -42.90625,
+      174.925,
+      -41.28125
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-ka20161114-grid02.tif",
+    "md5_checksum": "fbe8f4ef26925799808e57b58ce448f4"
+   },
+   "time_function": {
+    "type": "reverse_step",
+    "parameters": {
+     "step_epoch": "2016-11-14T00:00:00Z"
+    }
+   }
+  },
+  {
+   "description": "Event: Kaikoura earthquake,  14 November 2016\n Source model: Geodetic source model, based on GPS, InSAR, and LiDAR data; elastic half-space assumption; \n Version: Model 002, 23 June 2017\n",
+   "displacement_type": "vertical",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      166.3,
+      -47.625,
+      179.05,
+      -34.25
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-ka20161114-grid03.tif",
+    "md5_checksum": "30f03f0de1c37c56fbec49b68e54c270"
+   },
+   "time_function": {
+    "type": "reverse_step",
+    "parameters": {
+     "step_epoch": "2016-11-14T00:00:00Z"
+    }
+   }
+  },
+  {
+   "description": "Event: Kaikoura earthquake postearthquake month 0-1,  14 November 2016\n Source model: Geodetic source model, based on GPS, InSAR, and LiDAR data; elastic half-space assumption; \n Version: Model 002, 23 June 2017\n",
+   "displacement_type": "horizontal",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      169.6,
+      -43.75,
+      176.35,
+      -39.0
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-ka20161114-grid04.tif",
+    "md5_checksum": "610336dc86d04773429fd7e8cc8c7883"
+   },
+   "time_function": {
+    "type": "piecewise",
+    "parameters": {
+     "before_first": "zero",
+     "after_last": "constant",
+     "model": [
+      {
+       "epoch": "2016-11-14T00:00:00Z",
+       "scale_factor": 0.0
+      },
+      {
+       "epoch": "2016-12-14T00:00:00Z",
+       "scale_factor": 1.0
+      }
+     ]
+    }
+   }
+  },
+  {
+   "description": "Event: Kaikoura earthquake postearthquake month 0-1,  14 November 2016\n Source model: Geodetic source model, based on GPS, InSAR, and LiDAR data; elastic half-space assumption; \n Version: Model 002, 23 June 2017\n",
+   "displacement_type": "horizontal",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      172.45,
+      -43.0,
+      174.925,
+      -41.28125
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-ka20161114-grid05.tif",
+    "md5_checksum": "ed99890ac40ce7df05cd6e390f85f15b"
+   },
+   "time_function": {
+    "type": "piecewise",
+    "parameters": {
+     "before_first": "constant",
+     "after_last": "zero",
+     "model": [
+      {
+       "epoch": "2016-11-14T00:00:00Z",
+       "scale_factor": -1.0
+      },
+      {
+       "epoch": "2016-12-14T00:00:00Z",
+       "scale_factor": 0.0
+      }
+     ]
+    }
+   }
+  },
+  {
+   "description": "Event: Kaikoura earthquake postearthquake month 0-1,  14 November 2016\n Source model: Geodetic source model, based on GPS, InSAR, and LiDAR data; elastic half-space assumption; \n Version: Model 002, 23 June 2017\n",
+   "displacement_type": "vertical",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      171.85,
+      -43.75,
+      176.05,
+      -40.5
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-ka20161114-grid06.tif",
+    "md5_checksum": "44ae86f2a435a070d7b08846fc28c323"
+   },
+   "time_function": {
+    "type": "piecewise",
+    "parameters": {
+     "before_first": "constant",
+     "after_last": "zero",
+     "model": [
+      {
+       "epoch": "2016-11-14T00:00:00Z",
+       "scale_factor": -1.0
+      },
+      {
+       "epoch": "2016-12-14T00:00:00Z",
+       "scale_factor": 0.0
+      }
+     ]
+    }
+   }
+  },
+  {
+   "description": "Event: Kaikoura earthquake,  14 November 2016\nRefinement for horizontal difference between observations and model",
+   "displacement_type": "horizontal",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      171.1,
+      -43.5,
+      177.4,
+      -38.625
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-ka20161114-grid10.tif",
+    "md5_checksum": "d4039acee2ace150d57668f6f30b0253"
+   },
+   "time_function": {
+    "type": "step",
+    "parameters": {
+     "step_epoch": "2016-11-14T00:00:00Z"
+    }
+   }
+  },
+  {
+   "description": "Kaikoura earthquake second refinement grid - horizontal",
+   "displacement_type": "horizontal",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      171.5,
+      -43.425,
+      175.76,
+      -40.56
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-ka20161114-grid11.tif",
+    "md5_checksum": "24844ff24a7694976955260a1ee1e737"
+   },
+   "time_function": {
+    "type": "reverse_step",
+    "parameters": {
+     "step_epoch": "2016-11-14T00:00:00Z"
+    }
+   }
+  },
+  {
+   "description": "Kaikoura earthquake second refinement grid -vertical",
+   "displacement_type": "vertical",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      171.9,
+      -43.365,
+      176.2,
+      -40.395
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-ka20161114-grid12.tif",
+    "md5_checksum": "b9ccb8c7acf839212a76d26b184ff10e"
+   },
+   "time_function": {
+    "type": "reverse_step",
+    "parameters": {
+     "step_epoch": "2016-11-14T00:00:00Z"
+    }
+   }
+  },
+  {
+   "description": "Event: Kaikoura earthquake months1-3 post-earthquake,  14 November 2016\n Source model: Geodetic source model, based on GPS, InSAR, and LiDAR data; elastic half-space assumption; \n Version: Model 002, 23 June 2017\n",
+   "displacement_type": "horizontal",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      169.6,
+      -43.75,
+      176.35,
+      -38.875
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-ka20161114-grid07.tif",
+    "md5_checksum": "0b02e7d0ae722bf86098f0f4794782a1"
+   },
+   "time_function": {
+    "type": "piecewise",
+    "parameters": {
+     "before_first": "zero",
+     "after_last": "constant",
+     "model": [
+      {
+       "epoch": "2016-12-14T00:00:00Z",
+       "scale_factor": 0.0
+      },
+      {
+       "epoch": "2017-02-14T00:00:00Z",
+       "scale_factor": 1.0
+      }
+     ]
+    }
+   }
+  },
+  {
+   "description": "Event: Kaikoura earthquake months1-3 post-earthquake,  14 November 2016\n Source model: Geodetic source model, based on GPS, InSAR, and LiDAR data; elastic half-space assumption; \n Version: Model 002, 23 June 2017\n",
+   "displacement_type": "horizontal",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      172.45,
+      -43.0,
+      174.925,
+      -41.28125
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-ka20161114-grid08.tif",
+    "md5_checksum": "e74b3b78759a65613081a9cf330a1720"
+   },
+   "time_function": {
+    "type": "piecewise",
+    "parameters": {
+     "before_first": "constant",
+     "after_last": "zero",
+     "model": [
+      {
+       "epoch": "2016-12-14T00:00:00Z",
+       "scale_factor": -1.0
+      },
+      {
+       "epoch": "2017-02-14T00:00:00Z",
+       "scale_factor": 0.0
+      }
+     ]
+    }
+   }
+  },
+  {
+   "description": "Event: Kaikoura earthquake months1-3 post-earthquake,  14 November 2016\n Source model: Geodetic source model, based on GPS, InSAR, and LiDAR data; elastic half-space assumption; \n Version: Model 002, 23 June 2017\n",
+   "displacement_type": "vertical",
+   "uncertainty_type": "none",
+   "horizontal_uncertainty": 0.01,
+   "vertical_uncertainty": 0.01,
+   "extent": {
+    "type": "bbox",
+    "parameters": {
+     "bbox": [
+      171.4,
+      -43.625,
+      175.9,
+      -40.25
+     ]
+    }
+   },
+   "spatial_model": {
+    "type": "GeoTIFF",
+    "interpolation_method": "bilinear",
+    "filename": "nz_linz_nzgd2000-ka20161114-grid09.tif",
+    "md5_checksum": "9ea306079248a54e8e22cac2931086aa"
+   },
+   "time_function": {
+    "type": "piecewise",
+    "parameters": {
+     "before_first": "constant",
+     "after_last": "zero",
+     "model": [
+      {
+       "epoch": "2016-12-14T00:00:00Z",
+       "scale_factor": -1.0
+      },
+      {
+       "epoch": "2017-02-14T00:00:00Z",
+       "scale_factor": 0.0
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

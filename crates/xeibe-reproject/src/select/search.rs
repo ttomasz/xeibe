@@ -580,13 +580,9 @@ impl Search {
                 return false;
             }
         }
-        if sn.starts_with("NAD83(CSRS)")
+        !(sn.starts_with("NAD83(CSRS)")
             && tn.starts_with("NAD83(CSRS)")
-            && (xn == "NAD83" || xn == "WGS 84")
-        {
-            return false;
-        }
-        true
+            && (xn == "NAD83" || xn == "WGS 84"))
     }
 
     /// `createFromCRSCodesWithIntermediates` with no user-given intermediate.

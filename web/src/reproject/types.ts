@@ -122,6 +122,8 @@ export interface Operation {
   area_name: string | null;
   grids: { file: string; failed: string | null }[];
   time_dependent: boolean;
+  /** It works only on coordinates with an epoch (a deformation model). */
+  needs_epoch: boolean;
   scope: string | null;
   remarks: string | null;
   /** It shifts nothing: its parameters are zero. */

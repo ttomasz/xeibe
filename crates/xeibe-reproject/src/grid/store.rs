@@ -13,6 +13,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
+use super::defmodel::Model;
 use super::set::ExtentAndRes;
 use super::tiff::{self, Image, Ranges, TiffError};
 use super::tin::Tin;
@@ -27,8 +28,18 @@ pub(crate) struct GridFile {
     pub(crate) name: String,
     loaded: Mutex<Ranges>,
     images: OnceLock<Result<Vec<Image>, String>>,
-    /// A triangulation (`.json`), read whole.
-    tin: OnceLock<Result<Tin, String>>,
+    /// A `.json` file, read whole.
+    json: OnceLock<Result<Json, String>>,
+}
+
+/// What a `.json` file holds.
+#[derive(Debug)]
+enum Json {
+    /// A triangulation.
+    Tin(Tin),
+    /// A deformation model's master file, which names the grid files of
+    /// its components.
+    Model(Model),
 }
 
 /// Why a grid can't be used.
@@ -65,7 +76,7 @@ pub(crate) fn file(name: &str) -> Arc<GridFile> {
                 name: name.to_string(),
                 loaded: Mutex::default(),
                 images: OnceLock::new(),
-                tin: OnceLock::new(),
+                json: OnceLock::new(),
             })
         })
         .clone()
@@ -80,16 +91,36 @@ pub fn clear_grids() {
 }
 
 impl GridFile {
-    fn is_tin(&self) -> bool {
+    fn is_json(&self) -> bool {
         self.name.ends_with(".json")
     }
 
     /// The triangulation, once the file is loaded.
     pub(crate) fn tin(&self) -> Result<&Tin, GridState> {
-        match self.tin.get() {
-            Some(Ok(t)) => Ok(t),
+        match self.json.get() {
+            Some(Ok(Json::Tin(t))) => Ok(t),
+            Some(Ok(Json::Model(_))) => Err(GridState::Invalid("not a triangulation".into())),
             Some(Err(e)) => Err(GridState::Invalid(e.clone())),
             None => Err(GridState::NotLoaded),
+        }
+    }
+
+    /// The deformation model, once its master file is loaded.
+    pub(crate) fn model(&self) -> Result<&Model, GridState> {
+        match self.json.get() {
+            Some(Ok(Json::Model(m))) => Ok(m),
+            Some(Ok(Json::Tin(_))) => Err(GridState::Invalid("not a deformation model".into())),
+            Some(Err(e)) => Err(GridState::Invalid(e.clone())),
+            None => Err(GridState::NotLoaded),
+        }
+    }
+
+    /// The files this one names and reads its values from: the component
+    /// grids of a deformation model, known once its master file is loaded.
+    pub(crate) fn children(&self) -> &[Arc<GridFile>] {
+        match self.json.get() {
+            Some(Ok(Json::Model(m))) => m.files(),
+            _ => &[],
         }
     }
 
@@ -105,12 +136,18 @@ impl GridFile {
     /// Add bytes read from `offset`; parse the directories, and decode the
     /// blocks whose bytes are now complete.
     pub(crate) fn insert(&self, offset: u64, data: Vec<u8>) -> Result<(), String> {
-        if self.is_tin() {
+        if self.is_json() {
             // Requested whole: parse what came.
             if offset != 0 {
-                return Err("a triangulation is read whole, from its start".into());
+                return Err("a JSON file is read whole, from its start".into());
             }
-            let parsed = self.tin.get_or_init(|| Tin::parse(&data));
+            let parsed = self.json.get_or_init(|| {
+                if Model::is_master_file(&data) {
+                    Model::parse(&data).map(Json::Model)
+                } else {
+                    Tin::parse(&data).map(Json::Tin)
+                }
+            });
             return parsed.as_ref().map(|_| ()).map_err(Clone::clone);
         }
         let mut loaded = self.loaded.lock().unwrap_or_else(|e| e.into_inner());
@@ -148,8 +185,8 @@ impl GridFile {
     /// anywhere, for `None`): offset and length (`None`: to the end of the
     /// file), merged where adjacent.
     pub(crate) fn requests(&self, region: Option<Region>) -> Vec<(u64, Option<u64>)> {
-        if self.is_tin() {
-            return match self.tin.get() {
+        if self.is_json() {
+            return match self.json.get() {
                 None => vec![(0, None)],
                 Some(_) => Vec::new(),
             };

@@ -249,8 +249,9 @@ chooses the transformation per coordinate as PROJ does, among EPSG's operations;
   (`Selection`; [pyproj-phase2.md](pyproj-phase2.md#selection-area_of_interest-accuracy-only_best)).
   Their vectors are `selection-options.jsonl` (`--options`).
 - Not in level 2: grid-based operations and vertical and compound CRSs (both
-  level 3), and operations that move coordinates to another epoch (point
-  motion).
+  level 3). Operations that move coordinates to another epoch (point
+  motion) and deformation models read grids too: see
+  [Coordinate epochs](#coordinate-epochs).
 - The operation a coordinate took is not written into output metadata; a
   read's report lists the candidates per srsName.
 
@@ -277,8 +278,9 @@ The epoch comes in two ways, which are PROJ's:
   `convert_xyt` and `convert_xyzt`. This is PROJ's fourth value, `t`, and
   pyproj's `tt`, which `xeibe-proj` passes on.
 
-Without either, a time-dependent operation runs at its reference epoch, the
-rates unused, as it did before and as PROJ does.
+Without either, a time-dependent Helmert runs at its reference epoch, the
+rates unused, as it did before and as PROJ does. A deformation model has no
+such epoch and fails ([below](#deformation-models)).
 
 ```mermaid
 flowchart TD
@@ -303,29 +305,168 @@ PROJ's rules, kept:
   GDA2020 to ITRF2014 at 2030 both run at 2030. `Transform::inverse` moves
   each epoch with its CRS.
 - **Only a dynamic CRS takes an epoch** (`Crs::is_dynamic`: its datum has a
-  frame reference epoch, or it is WGS 84, the ensemble or the datum). For
-  a static CRS, `with_epochs` is an error, as PROJ's "Coordinate epoch
-  should not be provided for a static CRS".
+  frame reference epoch, or it is WGS 84, the ensemble or the datum), or a
+  static one that EPSG has a point motion operation for (the realizations
+  of NAD83(CSRS)). For any other static CRS, `with_epochs` is an error, as
+  PROJ's "Coordinate epoch should not be provided for a static CRS".
 - **The epoch has no say in the selection.** Which operations there are and
-  which one a coordinate takes are the same with and without it.
+  which one a coordinate takes are the same with and without it, but for a
+  coordinate a deformation model can't place: without an epoch, or at one
+  outside the model's time.
 - An epoch within a millionth of a year of a thousandth is that thousandth
   (`getRoundedEpochInDecimalYear`).
 
 Deviations from PROJ:
 
-- **Two different epochs are an error.** They ask for the coordinates to be
-  moved in time, which takes a point motion operation. PROJ has those for
-  one case, EPSG's velocity grid within NAD83(CSRS)v7 (and accepts an
-  epoch for that static CRS because of it); otherwise it converts at the
-  source's epoch and leaves the coordinates there, whatever the target
-  says. xeibe has no point motion operations, and refuses rather than give
-  coordinates at another epoch than the one asked for.
 - **An epoch that isn't finite is none.** PROJ's "none" is `HUGE_VAL`
   (`inf`); NaN and `-inf`, which give PROJ a NaN result, are read the same.
 
-Not implemented: point motion operations and deformation models (below,
-level 3), and the time-specific Helmert methods 1065 and 1066, which PROJ
-can't run either.
+Not implemented: the time-specific Helmert methods 1065 and 1066, which
+PROJ can't run either.
+
+#### Between two epochs: point motion operations
+
+**Implemented** (2026-11-14). Two different epochs
+(`with_epochs(Some(2010.0), Some(2002.0))`, PROJ's `EPSG:8254@2010` to
+`EPSG:8254@2002`) ask for more than a conversion at an epoch: the
+coordinates are to be moved in time, as the ground moved between the two.
+That takes a **point motion operation**: an operation from a CRS to itself
+that reads the velocity of each point from a grid and applies it over the
+time between the epochs. A time-dependent Helmert can't do it: it changes
+the frame at one epoch.
+
+EPSG has six live ones. The three whose grid PROJ-data has are run, as PROJ
+runs them (`+proj=deformation +dt=…` on geocentric coordinates, between
+`+proj=set +v_4=` steps for the two epochs):
+
+| EPSG | Operation | Method | CRS | Grid |
+|---|---|---|---|---|
+| 9483 | Canada velocity grid v7 | 1141, NTv2_Vel | NAD83(CSRS)v7 | `ca_nrc_NAD83v70VG.tif` |
+| 8676 | Canada velocity grid v6 | 1141 | NAD83(CSRS)v6 | `ca_nrc_NAD83v6VG.tif` |
+| 10808 | NKG_RF17vel | 1139, Gravsoft | ETRF2014 | `eur_nkg_nkgrf17vel.tif` |
+| 10707 | Canada velocity grid v8 | 1141 | NAD83(CSRS)v8 | not in PROJ-data |
+| 9375 | Indonesian Deformation Model 2020 | 1086, geocentric velocities | SRGI2013 | not in PROJ-data |
+| 10323 | New Caledonia velocity model 2015 | 1120, geocentric velocities | RGNC15 | not in PROJ-data |
+
+Which one, and where in the route, are PROJ's rules
+(`createOperationsWithDatumPivot`, `createOperationsGeodToGeod`):
+
+```mermaid
+flowchart TD
+    A{EPSG has a point motion<br/>operation for the source<br/>CRS's datum?} -- yes --> S[Move first, in the source's datum,<br/>to the target's epoch.<br/>Then the operations to the target,<br/>at the target's epoch]
+    A -- no --> B{For the target<br/>CRS's datum?}
+    B -- yes --> T[The operations to the target first,<br/>at the source's epoch.<br/>Then move, in the target's datum,<br/>to the target's epoch]
+    B -- no --> E[Error]
+```
+
+- The motion runs in the geographic 3D CRS of its operation, with the
+  conversions PROJ names around it: from a geocentric CRS and back, from a
+  geographic 2D CRS and back (at height 0), a projection undone first.
+  With a transformation in the route it sits next to it, in the CRS the
+  transformation works on: from ITRF2014 (geog2D) to NAD83(CSRS)v7
+  (geog2D), the Helmert's geocentric result is converted to geographic 3D,
+  moved, and converted back, and only then to geographic 2D.
+- It is named as PROJ names it, `Canada velocity grid v7 from epoch 2010
+  to epoch 2002`, and `operation_info` gives its code, grid and accuracy
+  with the rest of the route's, `time_dependent` set.
+- The candidates and the per-point choice are those of the transform
+  without epochs, each with the motion added: the route's area of use is
+  then also within the velocity grid's.
+- `Transform::inverse` exchanges the epochs and makes the motion the other
+  way; `with_operation_index` keeps it.
+- The grid is loaded like any other (`grid_requests`, level 3). With
+  `Grids::None`, or for an operation whose grid PROJ-data doesn't have,
+  `with_epochs` is an error that names the operation and the grid.
+
+Deviations from PROJ:
+
+- **Without a point motion operation for either CRS, two epochs are an
+  error** (`Error::Epoch`). PROJ converts at the source's epoch and leaves
+  the coordinates there, whatever the target's says. For Indonesia's and
+  New Caledonia's CRSs the error names EPSG's operation, which xeibe can't
+  run (below).
+- **The motion is made wherever a CRS has one.** PROJ adds it only where
+  it looks for the CRSs of each datum to join: between two CRSs that one
+  registered operation joins directly (ITRF2014 to NAD83(CSRS)v7, both
+  geocentric: `EPSG:7789@2010` to `EPSG:8253@2002`) it runs the Helmert at
+  2010 and stops. xeibe makes the same route as between the geographic
+  CRSs, which PROJ does make.
+- **Projected CRSs work.** PROJ 9.8.1 crashes on a projected CRS with two
+  epochs (and on a few other pairs, EPSG:8254@2010 to EPSG:4955@1997 among
+  them); here the projection is undone first.
+- **A Bound CRS with two epochs is an error**, not attempted.
+
+Not implemented, and why:
+
+- **Canada velocity grid v8** (EPSG:10707). Its method is the one above;
+  only the grid is missing. NRCan publishes `NAD83v80VG.gvb` behind its
+  sign-in, PROJ-data hasn't converted it, and PROJ fails with "File not
+  found". It will work once PROJ-data has it and
+  `scripts/gen_grid_catalog.py` is rerun.
+- **Indonesia** (EPSG:9375, method 1086) and **New Caledonia**
+  (EPSG:10323, method 1120): grids of geocentric X, Y, Z velocities, in
+  formats of their own (`v3_dm_grd01_xyz.dat`, `grmmncl08.tac`). EPSG gives
+  the formula (add `velocity × years` to the geocentric coordinates), but
+  the files aren't published anywhere found (2026-11-14: not in PROJ-data,
+  no download on BIG's or DITTT's sites), their formats aren't documented
+  in EPSG, and PROJ has no method for them, so there would be neither data
+  nor an oracle to test a reader against.
+
+#### Deformation models
+
+**Implemented** (2026-11-14): EPSG's *New Zealand Deformation Model*
+(method 1079), `ITRF96 to NZGD2000 (1)` to `(7)`, the seven published
+versions of Land Information New Zealand's model
+(`nz_linz_nzgd2000-20180701.json` the latest). NZGD2000 is ITRF96 at
+2000.0 with the motion of the plates and the displacement of every large
+earthquake since taken out, so the operation needs to know **when** a
+coordinate in ITRF96 was measured: it is the one kind of operation that
+can't run without an epoch.
+
+A model is a JSON master file that lists components. Each has a grid of
+displacements (a GeoTIFF of its own, with nested grids down to 200 m near
+the faults), and a function of time that scales it: a velocity, a step at
+an earthquake, a ramp for the slow slip after one. A point's displacement
+is the sum over the components.
+
+```mermaid
+flowchart LR
+    P[Point, epoch] --> M{Inside the model's<br/>area and time?}
+    M -- no --> X[Error]
+    M -- yes --> C[Each component:<br/>bilinear displacement at the point<br/>× its time function at the epoch]
+    C --> S[Sum: east, north, up in metres]
+    S --> A[Added to longitude,<br/>latitude, height]
+```
+
+- `src/grid/defmodel.rs` is a port of PROJ's `defmodel` (the forward and
+  its iterated reverse); `src/operation/defmodel.rs` runs it as PROJ
+  writes EPSG's operation, `+inv +proj=defmodel`: PROJ-data's model goes
+  from NZGD2000 to ITRF96.
+- **The grids load in two steps.** The transform knows the master file;
+  the grids it names are known once that is loaded. `grid_requests` asks
+  for the master file first, then for the grids' headers, then for their
+  blocks, and `load_grids` and `load_grids_from_dir` loop until nothing is
+  asked for, as for any grid. `Transform::grids` lists the component grids
+  once the master file is in (32 for the latest model, 4.3 MB in all).
+- **Without an epoch it fails**: `CoordinateError::MissingEpoch`, on the
+  coordinate, as PROJ returns no result ("missing time"). The epoch comes
+  with each coordinate or with the transform, on ITRF96 (NZGD2000 is
+  static). `OperationInfo::needs_epoch` tells before any coordinate is
+  converted; the reproject page, which takes no epoch, says so on the
+  operation's card.
+- **Outside the model**: `CoordinateError::OutsideGrid` beyond its area
+  (around New Zealand, 158°E to 166°W and 58°S to 25°S), `EpochOutOfRange`
+  beyond its time (1900 to 2050).
+- `operation_for`, `operation_index_for` and `explain_point` answer for a
+  coordinate at the transform's epoch, and so have no operation for one
+  through a deformation model on a transform without an epoch.
+- Of the format, what New Zealand's files use is read. A model with
+  offsets in degrees, geocentric addition or geocentric bilinear
+  interpolation, or defined in a projected CRS, is refused as an invalid
+  grid file: PROJ-data has none to check a reader against.
+- To a CRS without heights (NZTM), `convert` hands back the height given,
+  as everywhere; PROJ's pipeline lets the model's vertical shift through
+  into the third value.
 
 ### Why selection is the hard part
 
@@ -693,7 +834,8 @@ compound CRSs with their grids (geoid models, vertical offsets).
   predictor, contiguous or separate samples, either byte order, `Int16` to
   `Float64` with GDAL's offset and scale, subgrids in further images, rows
   from the north or the south, pixel-is-point or pixel-is-area. PROJ's
-  triangulations (`.json`) are read too. Nothing else is: PROJ-data and the
+  triangulations and deformation model master files (`.json`) are read
+  too. Nothing else is: PROJ-data and the
   CDN have only these, so NTv2 or GTX files in their original formats are not
   supported.
 - **Grid names** map from EPSG's file names to PROJ-data's through PROJ's
@@ -764,11 +906,15 @@ compound CRSs with their grids (geoid models, vertical offsets).
   one origin and one datum), and EPSG's four operations to projected CRSs
   (similarity transformations and grid offsets) reach them. Nothing else
   does, in PROJ either: an engineering datum has no tie to the Earth.
-- Not implemented: operations that move coordinates to another epoch (point
-  motion, deformation models such as New Zealand's; see
-  [Coordinate epochs](#coordinate-epochs)), the few grid methods PROJ-data
-  has no grid for, and *Geographic3D to Depth* (methods 1116 and 1121),
-  which PROJ doesn't export either.
+- **Operations in time**: point motion operations by velocity grid
+  (Canada, the Nordic countries) for a transform between two coordinate
+  epochs, and New Zealand's deformation model, which needs each
+  coordinate's epoch. See [Coordinate epochs](#coordinate-epochs).
+- Not implemented: the point motion operations PROJ-data has no grid for
+  (Canada's v8 grid, Indonesia, New Caledonia; see
+  [there](#between-two-epochs-point-motion-operations)), the few other grid
+  methods PROJ-data has no grid for, and *Geographic3D to Depth* (methods
+  1116 and 1121), which PROJ doesn't export either.
 
 ### Implementation
 
@@ -780,6 +926,9 @@ compound CRSs with their grids (geoid models, vertical offsets).
 | `tinshift_impl.hpp` (with a bucket grid in place of the quadtree) | `grid/tin.rs` |
 | `hgridshift.cpp`, `xyzgridshift.cpp`, `gridshift.cpp`, `SingleOperation::exportToPROJString` for these methods | `operation/grid.rs` |
 | `deformation.cpp` and its export | `operation/velocity.rs` |
+| `PointMotionOperation::_exportToPROJString`, `getPointMotionOperationsFor`, `cloneWithEpochs` | `operation/velocity.rs` (`PointMotion`) |
+| The epoch changes of `createOperationsWithDatumPivot` and `createOperationsGeodToGeod` | `select/mod.rs` (`Motion`), `transform.rs` (`at_epochs`) |
+| `defmodel_impl.hpp`, `defmodel.cpp` and the export of method 1079 | `grid/defmodel.rs`, `operation/defmodel.rs` |
 | `tinshift.cpp` and its export | `operation/tin.rs` |
 | `grid_alternatives`, `lookForGridInfo`, `gridsNeeded` | `grid/catalog*.rs`, `select/candidate.rs` |
 | `vgridshift.cpp`, `read_vgrid_value`, `GTiffVGridShiftSet::open`; `vertoffset.cpp`; the exports of the vertical methods | `grid/set.rs`, `grid/shift.rs`, `operation/vertical.rs` |
@@ -1010,6 +1159,37 @@ without it the operations and pinned pairs whose grids are committed.
    geographic CRS of its operation's other end, and the CRSs sharing an
    engineering datum (36 pairs): the same operations and coordinates as
    PROJ, and no transformation where PROJ has none.
+8. **Epochs with grids** (`--epochs --grids DIR`, `epochs-grids.jsonl`,
+   `tests/it/epochs.rs`). New Zealand's model: each operation forced,
+   forwards and back, and the automatic choice between ITRF96 and NZGD2000
+   as geographic 3D, 2D and geocentric CRSs and to NZTM, each point at one
+   of seven epochs (before the first earthquake, between patches, after
+   the last) or at none. Changes of epoch: 19 CRS pairs at two pairs of
+   epochs each, within one CRS (geographic 3D, 2D, geocentric), across the
+   CRSs of a datum, and with a Helmert before or after the motion, for
+   Canada's two grids and the Nordic one. On 2026-11-14, on the whole
+   grids: the seven versions of the model (294 points with an epoch, both
+   ways), 81 points of 8 routes and 456 points of 38 changes of epoch all
+   take PROJ's operation, under PROJ's name, and match to within 2e-8 m
+   and 2e-13°; a point without an epoch has no result on either side. The
+   tests allow a micrometre.
+
+   The committed vectors run on **cropped grids**
+   (`tests/data/reprojection/grids/cropped/`, 118 KiB): the three velocity
+   grids and the latest model's 20 component grids that reach a window
+   north of Kaikoura, cut down by GDAL to the nodes around their windows
+   and kept under PROJ-data's names, with a master file reduced to match.
+   `scripts/gen_grid_fixtures.py` checks that PROJ gives on them what it
+   gives on the whole files (to 1e-12 m, 400 points per set). It guards
+   against one thing worth knowing: PROJ makes a grid the child of the one
+   its metadata names only if that one's extent contains it, so a nested
+   grid cut at the same node as its parent, the two edges one bit apart,
+   is silently never read, in PROJ and in xeibe's port alike. Parents are
+   cut one node wider.
+
+   The grid store is the process's and goes by file name, so the tests on
+   the whole files must not share a process with those on the cropped
+   ones: `cargo test -- --ignored`, not `--include-ignored`.
 
 ## Test oracle notes
 
@@ -1021,6 +1201,10 @@ without it the operations and pinned pairs whose grids are committed.
   level 3's oracle uses a copy in `target/proj-grids/` with pyproj, whose
   own PROJ matches the rebuilt `proj.db`. The vectors record the grids PROJ
   read for each point.
+- pyproj's `CRS` drops the epoch of `EPSG:8254@2010`, so the generator
+  hands such strings to PROJ itself (pyproj's `TransformerFromCRS`). PROJ
+  9.8.1 crashes on some pairs of CRSs with epochs, so each pair runs in a
+  process of its own, over a fixed list of pairs that PROJ gets through.
 - Test vectors go in `tests/data`, generated by a script, like the other
   samples.
 - Numbers in JSON are parsed exactly, as PROJ's `strtod` parses them:

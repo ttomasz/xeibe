@@ -151,13 +151,18 @@ sources, but their contents haven't been checked against the local copies:
   `scripts/gen_transformation_vectors.py` writes level-2 vectors with that (and
   level-3 vectors with `--grids DIR`, between CRSs with heights with
   `--vertical`, with pyproj's `area_of_interest` and `accuracy` with
-  `--options`, and of coordinates with an epoch each with `--epochs`). Both write committed subsets to
+  `--options`, and of coordinates with an epoch each with `--epochs`, which
+  with `--grids` covers New Zealand's deformation model and
+  transformations between two coordinate epochs). Both write committed subsets to
   `tests/data/reprojection/`; `--all` writes everything to
   `target/reprojection/` for the `--ignored` tests. Level 3 (grids):
   `scripts/fetch_proj_grids.py` copies PROJ-data's grids out of the GDAL image
   into `target/proj-grids/` (~800 MB, the oracle's and the `--ignored` tests'
   grids); `scripts/gen_grid_fixtures.py` writes the small committed grids and
-  PROJ's results on them; `scripts/gen_grid_catalog.py` regenerates the
+  PROJ's results on them, and `grids/cropped/`: larger grids (velocity
+  grids, New Zealand's deformation model) cut down by GDAL to a window,
+  which it checks against the whole files with PROJ (it takes those from
+  `target/proj-grids/`, else from the CDN); `scripts/gen_grid_catalog.py` regenerates the
   EPSG-to-PROJ-data grid name table from PROJ's `grid_alternatives`. See
   `docs/reprojection.md`.
 - `scripts/gen_wkt_vectors.py` writes WKT test vectors with PROJ on the full

@@ -36,3 +36,34 @@ Denmark, CC BY 4.0, <https://creativecommons.org/licenses/by/4.0/>.
 Attribution for `nz_linz_wellht1953-nzvd2016.tif`: derived from work by Land Information
 New Zealand, converted to GeoTIFF by the PROJ project; CC BY 4.0,
 <https://creativecommons.org/licenses/by/4.0/>.
+
+## `cropped/`
+
+PROJ-data grids too large to commit whole, cut down by GDAL to the nodes around a
+window (west, south, east, north) and kept under their own names: a directory to
+give PROJ and xeibe in place of the full files, valid only within the windows
+(`windows.json`). Every grid in a file (its nested grids) is cut down, with its
+metadata, and a grid with children keeps one node more each way, so that PROJ still
+nests them. The values are the whole file's: the script checks that PROJ gives the
+same results on both, everywhere in the windows.
+
+| File | Window | Producer | Licence | Size | For |
+|---|---|---|---|---|---|
+| `ca_nrc_NAD83v70VG.tif` | -100.6, 49.6, -99.4, 50.4 | Natural Resources Canada | Open Government Licence - Canada | 4 KiB | Point motion by velocity grid: NAD83(CSRS)v7 velocity grid, EPSG:9483 |
+| `ca_nrc_NAD83v6VG.tif` | -100.6, 49.6, -99.4, 50.4 | Natural Resources Canada | Open Government Licence - Canada | 3 KiB | Point motion by velocity grid: NAD83(CSRS)v6 velocity grid, EPSG:8676 |
+| `eur_nkg_nkgrf17vel.tif` | 14.6, 59.8, 15.4, 60.2 | Nordic Geodetic Commission | CC BY 4.0 | 3 KiB | Point motion by velocity grid (NKG): NKG_RF17vel, EPSG:10808 |
+| `nz_linz_nzgd2000-20180701.json` and 20 `nz_linz_nzgd2000-*.tif` | 172.98, -42.66, 173.04, -42.61 | Land Information New Zealand | CC BY 4.0 | 107 KiB | New Zealand Deformation Model: ITRF96 to NZGD2000 (7), EPSG:9090, and the grids it names |
+
+Attribution for `ca_nrc_NAD83v70VG.tif` and `ca_nrc_NAD83v6VG.tif`: derived from work by
+Natural Resources Canada (`NAD83v70VG.gvb`, `NAD83v6VG.gvb`), converted to GeoTIFF by the
+PROJ project and cut down here; Open Government Licence - Canada,
+<https://open.canada.ca/en/open-government-licence-canada>.
+
+Attribution for `eur_nkg_nkgrf17vel.tif`: the Nordic Geodetic Commission's NKG_RF17vel
+model, cut down here; CC BY 4.0, <https://creativecommons.org/licenses/by/4.0/>.
+
+Attribution for `nz_linz_nzgd2000-*`: Land Information New Zealand's NZGD2000 deformation
+model (version 20180701), converted by the PROJ project; the grids are cut down here and
+the master file lists only the components that reach the window, with the window as its
+extent and the cut grids' checksums. CC BY 4.0,
+<https://creativecommons.org/licenses/by/4.0/>.

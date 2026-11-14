@@ -86,4 +86,13 @@ pub enum CoordinateError {
     /// The grid file couldn't be read.
     #[error("the transformation's grid file is invalid")]
     InvalidGrid,
+    /// The operation needs the coordinate's epoch and there is none (a
+    /// deformation model, which says where a point was at a given time):
+    /// see `Transform::with_epochs` and `Transform::convert_at`.
+    #[error("the transformation needs a coordinate epoch")]
+    MissingEpoch,
+    /// The coordinate's epoch is outside the time the operation's
+    /// deformation model covers.
+    #[error("the coordinate epoch is outside the deformation model's time extent")]
+    EpochOutOfRange,
 }

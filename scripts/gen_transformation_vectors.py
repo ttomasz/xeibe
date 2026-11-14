@@ -35,7 +35,13 @@ Two kinds of vectors:
 With `--epochs`, coordinates with an epoch each, PROJ's fourth value
 (`epochs.jsonl`): every time-dependent Helmert transformation forced,
 forwards and back, and the automatic choice between CRSs they join, each
-point at one of a few epochs or at none.
+point at one of a few epochs or at none. With `--epochs --grids DIR`, what
+needs an epoch and a grid (`epochs-grids.jsonl`): New Zealand's deformation
+model, forced and chosen, and transformations between two coordinate
+epochs (`EPSG:8254@2010` to `EPSG:8254@2002`), which PROJ runs through a
+point motion operation's velocity grid. The committed ones are for
+`tests/data/reprojection/grids/cropped`, grids cut down to a window
+(`scripts/gen_grid_fixtures.py`): their points lie in the windows.
 
     scripts/build_proj_oracle.py                    # once per EPSG release
     scripts/gen_transformation_vectors.py           # committed subsets -> tests/data/reprojection/
@@ -43,7 +49,9 @@ point at one of a few epochs or at none.
     scripts/gen_transformation_vectors.py --vertical [--grids tests/data/reprojection/grids]
     scripts/gen_transformation_vectors.py --options
     scripts/gen_transformation_vectors.py --epochs
+    scripts/gen_transformation_vectors.py --epochs --grids tests/data/reprojection/grids/cropped
     scripts/gen_transformation_vectors.py --all     # everything -> target/reprojection/
+    scripts/gen_transformation_vectors.py --all --epochs --grids target/proj-grids
     scripts/gen_transformation_vectors.py --all --grids target/proj-grids [--vertical]
 """
 
@@ -52,6 +60,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import multiprocessing
 import random
 import re
 import struct
@@ -61,6 +70,8 @@ from pathlib import Path
 
 import pyproj
 import lz4.block
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from pyproj.transformer import TransformerGroup
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -105,6 +116,31 @@ EPOCH_PINNED_PAIRS = [
     (7912, 4937), (4937, 7912), (7789, 4936), (7911, 6319), (6319, 7911), (7912, 4979),
     (9989, 4937), (4937, 9989), (7912, 7911), (9989, 7912),
 ]  # fmt: skip
+
+# With --epochs --grids: the deformation model method (New Zealand's), the
+# epochs its coordinates come with (before the model's first earthquake,
+# between its patches, after the last) and pairs beyond the operations' two
+# ends.
+DEFORMATION_MODEL_METHODS = {1079}
+MODEL_EPOCHS = [None, 1998.5, 2005.3, 2011.3, 2014.0, 2016.95, 2020.0, 2030.25]
+MODEL_PINNED_PAIRS = [(4917, 4958), (4958, 4917), (8995, 4167), (4167, 8995), (7907, 2193), (2193, 7907)]
+# With --epochs --grids: CRS pairs with a coordinate epoch each, which PROJ
+# joins through a point motion operation (EPSG's code, with its velocity
+# grid in `MOTION_GRIDS`: the committed points lie in the grid's window,
+# the others in the operation's area of use). Within one CRS (geographic
+# 3D, 2D, geocentric), across the CRSs of one datum, and with a
+# transformation before or after the motion. PROJ 9.8.1 crashes on some
+# other pairs (a projected CRS, EPSG:8254@2010 to EPSG:4955@1997), so each
+# runs in a process of its own; and it leaves the motion out where one
+# registered operation joins the two CRSs, which isn't recorded.
+MOTION_GRIDS = {9483: "ca_nrc_NAD83v70VG.tif", 8676: "ca_nrc_NAD83v6VG.tif", 10808: "eur_nkg_nkgrf17vel.tif"}
+MOTION_PAIRS = [
+    (8254, 8254, 9483), (8255, 8255, 9483), (8253, 8253, 9483), (8255, 8254, 9483), (8254, 8253, 9483),
+    (7912, 8254, 9483), (8254, 7912, 9483), (9000, 8255, 9483), (8255, 9000, 9483), (8254, 8251, 9483),
+    (8251, 8254, 8676), (8251, 8251, 8676), (8252, 8252, 8676), (8250, 8250, 8676),
+    (8403, 8403, 10808), (8401, 8401, 10808), (9069, 9069, 10808), (7931, 8403, 10808), (8403, 7931, 10808),
+]  # fmt: skip
+MOTION_EPOCHS = [(2010.0, 2002.0), (1997.0, 2020.5)]
 
 # Pairs always in the committed selection vectors: what xeibe's data meets.
 PINNED_PAIRS = [
@@ -628,6 +664,180 @@ def vertical_pairs(registry: dict, everything: bool) -> list[tuple[int, int]]:
     return [p for p in pairs if p[0] != p[1] and not (p in seen or seen.add(p))]
 
 
+def window_points(seed: int, window, count: int) -> list[tuple[float, float]]:
+    """Random (lon, lat) degrees in a window, clear of its edges."""
+    w, s, e, n = window
+    dx, dy = (e - w) * 0.03, (n - s) * 0.03
+    rng = random.Random(seed)
+    return [(rng.uniform(w + dx, e - dx), rng.uniform(s + dy, n - dy)) for _ in range(count)]
+
+
+def model_records(registry: dict, everything: bool, grids: Path, windows: dict | None) -> list[dict]:
+    """Deformation models: each operation forced (`"kind": "operation"`,
+    as `epoch_records`'), then the automatic choice between the CRSs it
+    joins and a few others (`"kind": "pair"`). With `windows` (a cropped
+    set of grids), the points lie in the model's window."""
+    records = []
+    pairs = []
+    for op in registry["operations"]:
+        if op["deprecated"] or op["method"] not in DEFORMATION_MODEL_METHODS:
+            continue
+        code = op["code"]
+        try:
+            co = pyproj.crs.CoordinateOperation.from_epsg(code)
+            proj_string = co.to_proj4()
+            if proj_string is None:
+                continue
+            files = re.findall(r"\+model=(\S+)", proj_string)
+            if not files or not all((grids / f).exists() for f in files):
+                print(f"operation {code}: skipped (model missing)", file=sys.stderr)
+                continue
+            pipeline = pyproj.Transformer.from_pipeline(proj_string)
+            src = pyproj.CRS.from_epsg(op["src"])
+            area = co.area_of_use
+            if windows is not None:
+                lonlat = window_points(code, windows[files[0]], 24)
+            else:
+                lonlat = sample_area(code, area.west, area.south, area.east, area.north)
+                lonlat += window_points(code, (area.west, area.south, area.east % 360.0, area.north), 36)
+            pin = points_in(src, lonlat, code)
+        except (pyproj.exceptions.CRSError, pyproj.exceptions.ProjError) as e:
+            print(f"operation {code}: skipped ({e})", file=sys.stderr)
+            continue
+        points = []
+        for i, p in enumerate(pin):
+            epoch = MODEL_EPOCHS[i % len(MODEL_EPOCHS)]
+            out = with_epoch(pipeline, p, epoch)
+            back = None if out is None else with_epoch(pipeline, out, epoch, direction="INVERSE")
+            points.append({"in": p, "t": epoch, "out": out, "back": back})
+        records.append(
+            {"kind": "operation", "op": code, "method": op["method"], "src": op["src"], "dst": op["dst"], "points": points}
+        )
+        window = windows[files[0]] if windows is not None else None
+        for pair in [(op["src"], op["dst"]), (op["dst"], op["src"]), *MODEL_PINNED_PAIRS]:
+            if pair not in [p[:2] for p in pairs]:
+                pairs.append((*pair, window))
+    for src_code, dst_code, window in pairs:
+        src, dst = pyproj.CRS.from_epsg(src_code), pyproj.CRS.from_epsg(dst_code)
+        seed = src_code * 100003 + dst_code
+        try:
+            transformer = pyproj.Transformer.from_crs(src, dst, allow_ballpark=False, only_best=False)
+            if window is not None:
+                lonlat = window_points(seed, window, 16)
+            else:
+                lonlat = sample_area(seed, *min(filter(None, map(crs_area, (src, dst))), key=pseudo_area))
+            inputs = points_in(src, lonlat, seed)
+        except (pyproj.exceptions.ProjError, pyproj.exceptions.CRSError) as e:
+            print(f"{src_code} to {dst_code}: skipped ({e})", file=sys.stderr)
+            continue
+        points = []
+        for i, p in enumerate(inputs):
+            epoch = MODEL_EPOCHS[(i + seed) % len(MODEL_EPOCHS)]
+            out = with_epoch(transformer, p, epoch)
+            name = None
+            if out is not None:
+                try:
+                    name = transformer.get_last_used_operation().description
+                except pyproj.exceptions.ProjError:
+                    name = transformer.description
+            points.append({"in": p, "t": epoch, "out": out, "op": name})
+        records.append({"kind": "pair", "src": src_code, "dst": dst_code, "points": points})
+    return records
+
+
+def motion_points(grids: str, src: int, dst: int, source_epoch: float, target_epoch: float, inputs: list) -> list[dict]:
+    """PROJ between `EPSG:src@source_epoch` and `EPSG:dst@target_epoch`.
+    Runs in a process of its own (`isolated`)."""
+    from pyproj.transformer import Transformer, TransformerFromCRS
+
+    configure(Path(grids))
+    # pyproj's CRS class drops the epoch of "EPSG:code@epoch": hand PROJ the strings.
+    transformer = Transformer(
+        TransformerFromCRS(
+            f"EPSG:{src}@{source_epoch}".encode(),
+            f"EPSG:{dst}@{target_epoch}".encode(),
+            always_xy=False,
+            area_of_interest=None,
+            authority=None,
+            accuracy=None,
+            allow_ballpark=False,
+            force_over=False,
+            only_best=False,
+        )
+    )
+    points = []
+    for p in inputs:
+        out = clean(transformer.transform(*p, errcheck=False))
+        name = None
+        if out is not None:
+            try:
+                name = transformer.get_last_used_operation().description
+            except pyproj.exceptions.ProjError:
+                name = transformer.description
+        points.append({"in": p, "out": out, "op": name})
+    return points
+
+
+def isolated(function, *args):
+    """`function(*args)` in a process of its own, None if it crashes."""
+    with ProcessPoolExecutor(1, mp_context=multiprocessing.get_context("spawn")) as pool:
+        try:
+            return pool.submit(function, *args).result()
+        except BrokenProcessPool:
+            return None
+
+
+def motion_records(registry: dict, everything: bool, grids: Path, windows: dict | None) -> list[dict]:
+    """Between two coordinate epochs (`"kind": "motion"`, with the CRSs'
+    epochs in `from` and `to`), where PROJ puts a point motion operation in
+    the route."""
+    records = []
+    operations = {op["code"]: op for op in registry["operations"]}
+    extents = {e[0]: e for e in registry["extents"]}
+    for src_code, dst_code, motion in MOTION_PAIRS:
+        grid = MOTION_GRIDS[motion]
+        if not (grids / grid).exists():
+            print(f"{src_code} to {dst_code}: skipped ({grid} missing)", file=sys.stderr)
+            continue
+        src = pyproj.CRS.from_epsg(src_code)
+        seed = src_code * 100003 + dst_code
+        if windows is not None:
+            lonlat = window_points(seed, windows[grid], 6)
+        else:
+            # The operation's area of use: south, west, north, east.
+            _, _, south, west, north, east = extents[operations[motion]["extents"][0]]
+            lonlat = sample_area(seed, west, south, east, north)
+        inputs = points_in(src, lonlat, seed)
+        for source_epoch, target_epoch in MOTION_EPOCHS:
+            context = f"EPSG:{src_code}@{source_epoch} to EPSG:{dst_code}@{target_epoch}"
+            try:
+                points = isolated(motion_points, str(grids), src_code, dst_code, source_epoch, target_epoch, inputs)
+            except (pyproj.exceptions.ProjError, pyproj.exceptions.CRSError) as e:
+                print(f"{context}: skipped ({e})", file=sys.stderr)
+                continue
+            if points is None:
+                print(f"{context}: skipped (PROJ crashed)", file=sys.stderr)
+                continue
+            names = {p["op"] for p in points if p["op"]}
+            if not names or not all(" from epoch " in name for name in names):
+                print(f"{context}: skipped (PROJ leaves the motion out: {sorted(names)})", file=sys.stderr)
+                continue
+            if not everything:
+                points = [p for p in points if p["out"] is not None]
+            records.append(
+                {"kind": "motion", "src": src_code, "dst": dst_code, "from": source_epoch, "to": target_epoch, "points": points}
+            )
+    return records
+
+
+def configure(grids: Path | None) -> None:
+    """PROJ on the oracle database, with the grids of `grids` only."""
+    pyproj.datadir.set_data_dir(str(ORACLE))
+    if grids:
+        pyproj.datadir.append_data_dir(str(grids.resolve()))
+    pyproj.network.set_network_enabled(False)
+
+
 def write(path: Path, records: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w") as f:
@@ -654,10 +864,7 @@ def main() -> int:
     args = parser.parse_args()
     if not (ORACLE / "proj.db").exists():
         sys.exit("target/proj-oracle-epsg/proj.db is missing; run scripts/build_proj_oracle.py")
-    pyproj.datadir.set_data_dir(str(ORACLE))
-    if args.grids:
-        pyproj.datadir.append_data_dir(str(args.grids.resolve()))
-    pyproj.network.set_network_enabled(False)
+    configure(args.grids)
     registry = load_registry()
     want = registry["epsg_version"]
     have = pyproj.database.get_database_metadata("EPSG.VERSION")
@@ -666,6 +873,14 @@ def main() -> int:
     out = ALL if args.all else COMMITTED
     if args.options:
         write(out / "selection-options.jsonl", option_records(registry, args.all))
+        return 0
+    if args.epochs and args.grids:
+        # A cropped set of grids says where its grids are valid.
+        windows = args.grids / "windows.json"
+        windows = json.loads(windows.read_text()) if windows.exists() else None
+        records = model_records(registry, args.all, args.grids, windows)
+        records += motion_records(registry, args.all, args.grids, windows)
+        write(out / "epochs-grids.jsonl", records)
         return 0
     if args.epochs:
         write(out / "epochs.jsonl", epoch_records(registry, args.all))

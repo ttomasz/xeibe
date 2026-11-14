@@ -15,6 +15,7 @@
 mod api;
 mod catalog;
 pub(crate) mod catalog_types;
+pub(crate) mod defmodel;
 mod lzw;
 pub(crate) mod set;
 pub(crate) mod shift;

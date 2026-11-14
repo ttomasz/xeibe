@@ -346,7 +346,8 @@ function operationHtml(op: Operation, index: number, info: Info, count: number):
     : '';
   const flags: string[] = [];
   if (op.accuracy === null) flags.push('<span class="warn">accuracy unknown</span>');
-  if (op.time_dependent) flags.push('<span class="warn">time-dependent: run at its reference epoch, as this page takes no epoch for the coordinates</span>');
+  if (op.needs_epoch) flags.push('<span class="warn">a deformation model: it needs the epoch of each coordinate, which this page doesn\'t take, so its coordinates fail</span>');
+  else if (op.time_dependent) flags.push('<span class="warn">time-dependent: run at its reference epoch, as this page takes no epoch for the coordinates</span>');
   if (op.chain.some((s) => s.kind === 'ballpark_vertical')) flags.push('<span class="warn">heights passed unchanged</span>');
   if (op.chain.some((s) => s.kind === 'ensemble_identity' || s.kind === 'ensemble_member'))
     flags.push('<span class="muted">datum ensemble to a member: no shift</span>');

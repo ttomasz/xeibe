@@ -11,8 +11,13 @@
 //! anchor epochs or the operation's own epochs, as PROJ 9.8.1 writes them
 //! (`+proj=deformation +dt=…`; `SingleOperation::exportToPROJString` and
 //! `src/transformations/deformation.cpp`, MIT, see PROJ-NOTICE.md).
-//! Operations that need an epoch of the coordinates (point motion) are not
-//! handled.
+//!
+//! Point motion operations ([`PointMotion`]) are the same grids applied
+//! within one CRS over the span between two coordinate epochs: EPSG's
+//! "Point motion (geog3D domain) using NEU velocity grid (NTv2_Vel)"
+//! (NAD83(CSRS)) and "Point motion (geocen domain) using NEU velocity grid
+//! (Gravsoft)" (NKG_RF17vel in ETRF2014), as PROJ's
+//! `PointMotionOperation::_exportToPROJString` writes them.
 
 use std::sync::{Arc, OnceLock};
 
@@ -42,6 +47,67 @@ pub(crate) const GRID_AND_VELOCITY: u32 = 1142;
 const TRANSLATION_FILE: u32 = 8727;
 /// "Point motion velocity grid file".
 const VELOCITY_FILE: u32 = 1050;
+/// "Point motion velocity north grid file": of the Gravsoft method's three
+/// files, the one PROJ's catalog maps to the single GeoTIFF.
+pub(super) const VELOCITY_NORTH_FILE: u32 = 1072;
+
+/// EPSG's point motion methods run here: the geog3D-domain NTv2_Vel grid
+/// and the geocentric-domain Gravsoft grids. PROJ runs both (and the
+/// deprecated 1070, whose one operation is deprecated too) as
+/// `deformation` on geocentric coordinates.
+const POINT_MOTION_NTV2_VEL: u32 = 1141;
+pub(super) const POINT_MOTION_GRAVSOFT: u32 = 1139;
+
+/// The parameter naming a point motion operation's velocity grid, for the
+/// methods handled.
+fn point_motion_file(method: u32) -> Option<u32> {
+    match method {
+        POINT_MOTION_NTV2_VEL => Some(VELOCITY_FILE),
+        POINT_MOTION_GRAVSOFT => Some(VELOCITY_NORTH_FILE),
+        _ => None,
+    }
+}
+
+/// Whether the operation is a point motion operation xeibe can run (its
+/// grid's availability aside): from a CRS to itself, by a handled method.
+pub(crate) fn is_point_motion(op: &Operation) -> bool {
+    op.src.is_some() && op.src == op.dst && point_motion_file(op.method).is_some()
+}
+
+/// EPSG's live point motion operations for the CRSs on a datum, as PROJ's
+/// `getPointMotionOperationsFor` finds them: from one of the datum's CRSs
+/// to itself.
+fn point_motions(datum: u32) -> impl Iterator<Item = &'static Operation> {
+    let r = registry();
+    r.crs_by_datum
+        .get(&datum)
+        .into_iter()
+        .flatten()
+        .filter_map(|crs| r.by_crs.get(crs))
+        .flatten()
+        .filter_map(|code| r.ops.get(code))
+        .filter(|op| !op.deprecated && op.src.is_some() && op.src == op.dst)
+}
+
+/// The point motion operation for the CRSs on a datum, among those xeibe
+/// can run. EPSG has at most one per datum; the lowest code if it ever has
+/// more.
+pub(crate) fn point_motion_for(datum: u32) -> Option<&'static Operation> {
+    point_motions(datum)
+        .filter(|op| is_point_motion(op))
+        .min_by_key(|op| op.code)
+}
+
+/// A point motion operation EPSG has for the datum's CRSs that xeibe can't
+/// run: Indonesia's and New Caledonia's, by grids of geocentric velocities
+/// (methods 1086 and 1120) that PROJ-data doesn't have and PROJ doesn't
+/// read. For the error that names it.
+pub(crate) fn unsupported_point_motion_for(datum: u32) -> Option<&'static Operation> {
+    point_motions(datum)
+        .filter(|op| !is_point_motion(op))
+        .min_by_key(|op| op.code)
+}
+
 /// The operation's source and target epochs (stored in seconds).
 const SOURCE_EPOCH: u32 = 1068;
 const TARGET_EPOCH: u32 = 1069;
@@ -76,6 +142,53 @@ pub(crate) fn anchor_epoch(crs: u32) -> Option<f64> {
 
 fn velocity_file(op: &Operation) -> Result<Arc<GridFile>, MethodError> {
     grid_file(op, VELOCITY_FILE)
+}
+
+/// A point motion operation: the velocities of a grid over a time span,
+/// applied to coordinates of one CRS (PROJ's `deformation +dt`, between
+/// `cart` steps for a geographic CRS).
+#[derive(Debug)]
+pub(crate) struct PointMotion {
+    deformation: Deformation,
+    /// The prime meridian of a geographic CRS; `None` for a geocentric one,
+    /// whose coordinates the velocities apply to as they are.
+    geographic: Option<f64>,
+}
+
+impl PointMotion {
+    /// The operation on coordinates of `crs`, the CRS it is defined on.
+    pub(crate) fn new(op: &Operation, crs: &Crs) -> Result<PointMotion, MethodError> {
+        let file = point_motion_file(op.method).ok_or(MethodError::NotImplemented)?;
+        let (datum, geographic) = match &crs.kind {
+            Kind::Geographic { datum } => (datum, Some(datum.prime_meridian)),
+            Kind::Geocentric { datum } => (datum, None),
+            _ => return Err(MethodError::WrongCrs("a geographic or geocentric CRS")),
+        };
+        Ok(PointMotion {
+            deformation: Deformation::new(grid_file(op, file)?, 0.0, datum.ellipsoid),
+            geographic,
+        })
+    }
+
+    /// The coordinates `years` later (earlier, if negative), in the CRS's
+    /// internal form. Always the velocity at the point given: going back
+    /// in time is the operation with its epochs exchanged, as in PROJ, not
+    /// the inverse of going forward.
+    pub(crate) fn moved(&self, c: [f64; 3], years: f64) -> Result<[f64; 3], CoordinateError> {
+        let ellipsoid = &self.deformation.ellipsoid;
+        match self.geographic {
+            Some(pm) => {
+                let xyz = cartesian([c[0] + pm, c[1], c[2]], ellipsoid);
+                let [lon, lat, h] = geodetic(self.deformation.moved(xyz, years)?, ellipsoid);
+                Ok([lon - pm, lat, h])
+            }
+            None => self.deformation.moved(c, years),
+        }
+    }
+
+    pub(crate) fn grid_files(&self) -> Vec<Arc<GridFile>> {
+        vec![self.deformation.file()]
+    }
 }
 
 fn grid_file(op: &Operation, parameter: u32) -> Result<Arc<GridFile>, MethodError> {
@@ -253,11 +366,16 @@ impl Deformation {
     }
 
     fn forward(&self, p: [f64; 3]) -> Result<[f64; 3], CoordinateError> {
+        self.moved(p, self.dt)
+    }
+
+    /// The point `years` on, by the velocity where it is now.
+    fn moved(&self, p: [f64; 3], years: f64) -> Result<[f64; 3], CoordinateError> {
         let v = self.velocity(p)?;
         Ok([
-            p[0] + self.dt * v[0],
-            p[1] + self.dt * v[1],
-            p[2] + self.dt * v[2],
+            p[0] + years * v[0],
+            p[1] + years * v[1],
+            p[2] + years * v[2],
         ])
     }
 

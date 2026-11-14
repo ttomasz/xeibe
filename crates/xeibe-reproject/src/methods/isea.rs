@@ -254,8 +254,7 @@ impl Isea {
     /// its x and y on the face (`isea_snyder_forward`).
     fn snyder_forward(&self, lat: f64, lon: f64) -> Result<(usize, f64, f64), CoordinateError> {
         let (sin_lat, cos_lat) = lat.sin_cos();
-        for i in 0..FACES {
-            let (sin_c, cos_c) = self.centre_sin_cos[i];
+        for (i, &(sin_c, cos_c)) in self.centre_sin_cos.iter().enumerate() {
             let d_lon = lon - centre_lon(i);
             let cos_lat_cos_lon = cos_lat * d_lon.cos();
             let z = safe_acos(sin_c * sin_lat + cos_c * cos_lat_cos_lon);

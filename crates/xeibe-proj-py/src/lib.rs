@@ -487,6 +487,8 @@ struct OperationInfo {
     /// PROJ-data's names of its grid files.
     grids: Vec<String>,
     time_dependent: bool,
+    /// It works only on coordinates with an epoch (a deformation model).
+    needs_epoch: bool,
     /// EPSG's scope, when it is one EPSG operation.
     scope: Option<String>,
     /// Every step, as (name, kind, code, inverse, source, target,
@@ -551,6 +553,7 @@ impl From<xeibe_reproject::OperationInfo> for OperationInfo {
             area_name: o.area_name,
             grids: o.grids,
             time_dependent: o.time_dependent,
+            needs_epoch: o.needs_epoch,
             scope: o.scope,
             chain: o.chain.into_iter().map(step).collect(),
         }

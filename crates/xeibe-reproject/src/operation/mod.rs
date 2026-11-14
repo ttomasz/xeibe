@@ -15,6 +15,7 @@ use crate::error::CoordinateError;
 use crate::grid::store::GridFile;
 use crate::registry::Operation;
 
+mod defmodel;
 pub(crate) mod grid;
 pub(crate) mod helmert;
 mod offsets;
@@ -130,12 +131,24 @@ pub(crate) fn is_implemented(method: u32) -> bool {
         || grid::METHODS.contains(&method)
         || velocity::METHODS.contains(&method)
         || tin::METHODS.contains(&method)
+        || defmodel::METHODS.contains(&method)
         || vertical::is_method(method)
+}
+
+/// Whether the method works only on a coordinate with an epoch (a
+/// deformation model): without one it fails, where a time-dependent
+/// Helmert runs at its reference epoch.
+pub(crate) fn needs_epoch(method: u32) -> bool {
+    defmodel::METHODS.contains(&method)
 }
 
 /// Whether xeibe can run this operation: its method is implemented and, for
 /// the few methods with conditions on the operation, PROJ could write it as
 /// a pipeline. Whether its grid is available is a separate question.
+///
+/// Point motion operations aren't among them: they join no two CRSs, so
+/// the search never meets one. `select` adds one to the candidates of a
+/// transform between two coordinate epochs ([`point_motion_for`]).
 pub(crate) fn is_exportable(op: &Operation) -> bool {
     if grid::METHODS.contains(&op.method) {
         return grid::is_exportable(op);
@@ -187,11 +200,18 @@ pub(crate) fn build(op: &Operation, src: &Crs, dst: &Crs) -> Result<Arc<dyn Meth
     if tin::METHODS.contains(&op.method) {
         return tin::build(op, src, dst);
     }
+    if defmodel::METHODS.contains(&op.method) {
+        return defmodel::build(op, src, dst);
+    }
     if vertical::is_method(op.method) {
         return vertical::build(op, src, dst);
     }
     Err(MethodError::NotImplemented)
 }
+
+pub(crate) use velocity::{
+    PointMotion, is_point_motion, point_motion_for, unsupported_point_motion_for,
+};
 
 /// EPSG's year (unit 1029) in seconds: rates and epochs are stored in SI
 /// units, per second and in seconds.

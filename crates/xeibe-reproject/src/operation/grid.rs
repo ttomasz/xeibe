@@ -55,6 +55,9 @@ pub(crate) fn file_parameter(method: u32) -> Option<u32> {
         9614 | 9615 => Some(LAT_LON_FILE),
         9613 | 1074 | 1075 => Some(LAT_FILE),
         GEOCENTRIC_BY_GRID => Some(GEOCENTRIC_FILE),
+        // The Gravsoft point motion method's north, east and up files are
+        // one GeoTIFF in PROJ-data, under the north file's name.
+        super::velocity::POINT_MOTION_GRAVSOFT => Some(super::velocity::VELOCITY_NORTH_FILE),
         _ => None,
     }
 }
