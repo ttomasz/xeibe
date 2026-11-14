@@ -886,7 +886,9 @@ compound CRSs with their grids (geoid models, vertical offsets).
 - **Vertical methods** (`src/operation/vertical.rs`): the geoid models
   (PROJ's list of *Geographic3D to GravityRelatedHeight* methods, the
   *Geog3D to Geog2D+GravityRelatedHeight* ones that end in a compound CRS,
-  and the constant geoid heights), vertical offset grids (VERTCON, the
+  and the constant geoid heights), *Geographic3D to Depth* (methods 1116
+  and 1121, hydroid models to chart datums, which PROJ can't run; see the
+  deviations), vertical offset grids (VERTCON, the
   `gtx`/`gtg`/`txt` and NZLVD ones, NRCan's with their opposite sign),
   vertical offsets with and without slope, the vertical TIN between
   projected CRSs, and NRCan's vertical velocity grid. A vertical step reads
@@ -912,9 +914,8 @@ compound CRSs with their grids (geoid models, vertical offsets).
   coordinate's epoch. See [Coordinate epochs](#coordinate-epochs).
 - Not implemented: the point motion operations PROJ-data has no grid for
   (Canada's v8 grid, Indonesia, New Caledonia; see
-  [there](#between-two-epochs-point-motion-operations)), the few other grid
-  methods PROJ-data has no grid for, and *Geographic3D to Depth* (methods
-  1116 and 1121), which PROJ doesn't export either.
+  [there](#between-two-epochs-point-motion-operations)) and the few other
+  grid methods PROJ-data has no grid for.
 
 ### Implementation
 
@@ -1101,6 +1102,41 @@ The level 2 deviations hold. Grids add:
   which puts a depth on the wrong side of the datum (Hong Kong Principal
   Datum height 10 m becomes a Chart Datum depth of +9.854 m, not −10.146 m).
   xeibe refuses them; only `Transform::via` could reach them.
+- **Geographic3D to Depth runs.** EPSG's methods 1116 (txt) and 1121
+  (gtx) take a geographic 3D position to a depth below a tidal surface
+  through a hydroid model. PROJ lists neither among the methods it runs
+  from a grid (`isGeographic3DToGravityRelatedHeight`), so it has no
+  pipeline for them; xeibe runs them as their twins, *Geog3D to
+  Geog2D+Depth* (1115, 1122), which EPSG publishes beside each as the
+  "reversible alternative" to the compound CRS: the same grid, the same
+  arithmetic, the depth axis turning the height round. Where both reach a
+  pair, xeibe takes the operation to the depth CRS (level 2's third
+  tie-break) and PROJ the twin: the same depths (40 points in 4 pairs).
+  It matters since EPSG 13.106 deprecated the Dutch twins from ETRS89 for
+  ones from ETRS89-NLD [AGRS2010]: from ETRS89 + LAT-NLD or MSL-NLD depth
+  to ETRS89 or WGS 84, and from any other horizontal CRS with those depths
+  (UTM 31N, RD), PROJ has no transformation; xeibe goes through 1121 and
+  the step between ETRS89 and its member (8 pairs). Of EPSG's 1116 and
+  1121 operations only the Dutch four have grids on PROJ's CDN (VORF08 and
+  BSCD2000 aren't); PROJ's results for the twins are their oracle
+  (`gen_transformation_vectors.py`, `"oracle"`), which they match exactly.
+- **Heights on a national realization reach the ensemble.** EPSG gives
+  some geoid models only as the operation from a realization's geographic
+  3D CRS to its own compound CRS ("ETRS89-SVK [SKTRF09] to ETRS89-SVK
+  [SKTRF09] + EVRF2007 height (1)"), having deprecated the ones from the
+  ensemble's ("Correction to use explicit national realization of
+  ETRS89"). PROJ looks for vertical transformations from the compound
+  CRS's vertical CRS, and none starts there: SKTRF09 + EVRF2007 height to
+  ETRS89 has no transformation, and SKTRF09 + Baltic 1957 height to ETRS89
+  takes the Czech geoid model, which misses Slovakia. From a compound CRS
+  whose horizontal datum is a member of the target's ensemble, xeibe also
+  tries EPSG's operations between the compound CRS and the member's
+  geographic 3D CRS, then the step from member to ensemble, as level 2
+  does for geodetic CRSs. Only to the ensemble: on to another datum
+  (WGS 84) the same route would compete with the routes PROJ builds, and
+  across the vertical vectors it changed choices PROJ's way of reaching the
+  same heights (and lost a point in Australia to the attempt limit). The
+  vertical vectors are unchanged by it.
 - **A concatenation keeps its own area and accuracy.** EPSG's "NAD27 to
   ITRF2014 (2)" (9104) chains five NADCON5 grids, NAD83(2011) to ITRF2008
   and ITRF2008 to ITRF2014, and EPSG gives it the Gulf of Mexico offshore
@@ -1159,11 +1195,12 @@ without it the operations and pinned pairs whose grids are committed.
 6. **Selection with heights** (`--vertical`): 1,621 pairs, every EPSG
    compound CRS to the geographic 3D CRS on its datum and back, to WGS 84
    3D, every fifth to its geographic 2D CRS, and compound CRSs across each
-   EPSG vertical operation. Of 13,524 points on 2026-10-22, 13,217 take
-   PROJ's operation with PROJ's coordinates (heights to 1 mm); the rest are
-   PROJ's datum aliases (56 points, the same coordinates), the variant ties
-   (201) and the listed pairs (50 points, and the 4 pairs PROJ can't
-   build); 490 pairs have no transformation on either side. The committed
+   EPSG vertical operation. Of 13,524 points on 2026-11-14 (EPSG 13.106),
+   13,176 take PROJ's operation with PROJ's coordinates (heights to 1 mm);
+   the rest are PROJ's datum aliases (56 points, the same coordinates), the
+   variant ties (201) and the listed pairs (91 points, and the 12 pairs
+   PROJ can't transform, 8 of them Dutch depths); 482 pairs have no
+   transformation on either side. The committed
    vectors run without grids, and with the fixtures' geoid model and offset
    grids. Where PROJ has no transformation, the test also checks that xeibe
    has none, but for the listed pairs.
@@ -1188,10 +1225,15 @@ without it the operations and pinned pairs whose grids are committed.
    tests allow a micrometre.
 
    The committed vectors run on **cropped grids**
-   (`tests/data/reprojection/grids/cropped/`, 118 KiB): the three velocity
+   (`tests/data/reprojection/grids/cropped/`, 126 KiB): the three velocity
    grids and the latest model's 20 component grids that reach a window
    north of Kaikoura, cut down by GDAL to the nodes around their windows
-   and kept under PROJ-data's names, with a master file reduced to match.
+   and kept under PROJ-data's names, with a master file reduced to match,
+   and since 2026-11-14 the Dutch hydroid model off IJmuiden and the
+   Slovak geoid model to EVRF2007. Every operation on those grids is also
+   forced at points in its window (`--grids` on the cropped set alone,
+   `operations-cropped.jsonl`), the Dutch Geographic3D to Depth against
+   PROJ's run of its twin.
    `scripts/gen_grid_fixtures.py` checks that PROJ gives on them what it
    gives on the whole files (to 1e-12 m, 400 points per set). It guards
    against one thing worth knowing: PROJ makes a grid the child of the one

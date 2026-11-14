@@ -52,6 +52,8 @@ same results on both, everywhere in the windows.
 | `ca_nrc_NAD83v70VG.tif` | -100.6, 49.6, -99.4, 50.4 | Natural Resources Canada | Open Government Licence - Canada | 4 KiB | Point motion by velocity grid: NAD83(CSRS)v7 velocity grid, EPSG:9483 |
 | `ca_nrc_NAD83v6VG.tif` | -100.6, 49.6, -99.4, 50.4 | Natural Resources Canada | Open Government Licence - Canada | 3 KiB | Point motion by velocity grid: NAD83(CSRS)v6 velocity grid, EPSG:8676 |
 | `eur_nkg_nkgrf17vel.tif` | 14.6, 59.8, 15.4, 60.2 | Nordic Geodetic Commission | CC BY 4.0 | 3 KiB | Point motion by velocity grid (NKG): NKG_RF17vel, EPSG:10808 |
+| `nl_nsgi_nllat2018.tif` | 3.9, 52.25, 4.3, 52.5 | NSGI (Netherlands) | CC BY 4.0 | 3 KiB | Hydroid model to depths: ETRS89-NLD [AGRS2010] to LAT-NLD depth (1) and its twin to the compound CRS, EPSG:12217 and 12218 |
+| `sk_gku_Slovakia_ETRS89h_to_EVRF2007.tif` | 19, 48.6, 19.4, 48.85 | GKU (Slovakia) | CC BY 4.0 | 6 KiB | Geoid model given only to the compound CRS of a realization: ETRS89-SVK [SKTRF09] to ETRS89-SVK [SKTRF09] + EVRF2007 height (1), EPSG:11525 |
 | `nz_linz_nzgd2000-20180701.json` and 20 `nz_linz_nzgd2000-*.tif` | 172.98, -42.66, 173.04, -42.61 | Land Information New Zealand | CC BY 4.0 | 107 KiB | New Zealand Deformation Model: ITRF96 to NZGD2000 (7), EPSG:9090, and the grids it names |
 
 Attribution for `ca_nrc_NAD83v70VG.tif` and `ca_nrc_NAD83v6VG.tif`: derived from work by
@@ -61,6 +63,16 @@ PROJ project and cut down here; Open Government Licence - Canada,
 
 Attribution for `eur_nkg_nkgrf17vel.tif`: the Nordic Geodetic Commission's NKG_RF17vel
 model, cut down here; CC BY 4.0, <https://creativecommons.org/licenses/by/4.0/>.
+
+Attribution for `nl_nsgi_nllat2018.tif`: derived from work by NSGI (Netherlands
+Partnership of Kadaster, Rijkswaterstaat and the Hydrographic Service), `nllat2018.gtx`,
+converted to GeoTIFF by the PROJ project and cut down here; CC BY 4.0,
+<https://creativecommons.org/licenses/by/4.0/>.
+
+Attribution for `sk_gku_Slovakia_ETRS89h_to_EVRF2007.tif`: derived from work by GKU
+(Geodetic and Cartographic Institute Bratislava), `Slovakia_ETRS89h_to_EVRF2007.gtx`,
+converted to GeoTIFF by the PROJ project and cut down here; CC BY 4.0,
+<https://creativecommons.org/licenses/by/4.0/>.
 
 Attribution for `nz_linz_nzgd2000-*`: Land Information New Zealand's NZGD2000 deformation
 model (version 20180701), converted by the PROJ project; the grids are cut down here and

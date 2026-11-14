@@ -5,7 +5,8 @@
 //! grids loaded from a local copy of PROJ-data.
 //!
 //! * `operations.jsonl`: one EPSG transformation forced with
-//!   [`Transform::via`], to test each method's math.
+//!   [`Transform::via`], to test each method's math. `operations-cropped.jsonl`:
+//!   the same on the cropped grids, at points in their windows.
 //! * `selection.jsonl`: the automatic choice between two CRSs, per point:
 //!   the same operation as PROJ (by name), and the same coordinates. PROJ
 //!   runs on EPSG's operations plus its own null operations between a datum
@@ -206,6 +207,26 @@ const VERTICAL_PAIR_DEVIATIONS: &[(u32, u32)] = &[
     (10638, 10644),
     (10742, 10738),
     (10738, 10742),
+    // Dutch depths. PROJ can't run "Geographic3D to Depth" (method 1121),
+    // so between ETRS89-NLD [AGRS2010] and its compounds with LAT-NLD and
+    // MSL-NLD depth it takes the twin to the compound CRS; xeibe takes the
+    // operation to the depth CRS, as it does with every such pair (level
+    // 2's third tie-break): the same depths. From ETRS89 and to WGS 84,
+    // whose twins EPSG deprecated in 13.106 (replaced by the AGRS2010
+    // ones), PROJ has no transformation; xeibe goes through 1121 and the
+    // step between ETRS89 and its member.
+    (11036, 12215),
+    (12215, 11036),
+    (11036, 12216),
+    (12216, 11036),
+    (12215, 4979),
+    (12216, 4979),
+    (9289, 4937),
+    (4937, 9289),
+    (9289, 4979),
+    (9290, 4937),
+    (4937, 9290),
+    (9290, 4979),
 ];
 
 /// With grids: pairs where xeibe's candidates differ from PROJ's on
@@ -768,6 +789,75 @@ fn grid_selection_matches_proj() {
         check_selection(&load(&data("selection-grids.jsonl")), World::Grids(&dir));
     report_selection(&stats);
     fail_on(&failures);
+}
+
+/// The operations on the cropped grids (`grids/cropped`, valid only in
+/// their windows), forced at points there: velocity grids, and the Dutch
+/// hydroid model. PROJ can't run "Geographic3D to Depth" (method 1121), so
+/// its depths there are PROJ's for the twin to the compound CRS that EPSG
+/// publishes beside it (the record's `"oracle"`).
+#[test]
+fn cropped_grid_operations_match_proj() {
+    let dir = data("grids/cropped");
+    let records = load(&data("operations-cropped.jsonl"));
+    let (stats, failures) = check_operations(&records, World::Grids(&dir));
+    report_operations(&stats);
+    fail_on(&failures);
+    let depth = &stats[&1121];
+    assert!(
+        depth.ops > 0 && depth.unsupported == 0 && depth.points > 0,
+        "Geographic3D to Depth (gtx): {} operations, {} unsupported",
+        depth.ops,
+        depth.unsupported
+    );
+}
+
+/// Heights EPSG ties to a national realization of ETRS89 only, to ETRS89
+/// itself, where PROJ (on EPSG 13.106) has no transformation: the model
+/// forced from the realization (whose numbers are PROJ's, in
+/// `operations-cropped.jsonl`), then the step from the member to the
+/// ensemble, which keeps the coordinates (`docs/reprojection.md`, level 3's
+/// deviations).
+#[test]
+fn heights_on_a_realization_reach_the_ensemble() {
+    let dir = data("grids/cropped");
+    let crs = |c: u32| Crs::from_epsg(c).unwrap();
+    let ordered = AxisOrder::Authority;
+    let loaded = |t: Transform| {
+        t.load_grids_from_dir(&dir, None).unwrap();
+        t
+    };
+    // Slovakia: "ETRS89-SVK [SKTRF09] to ETRS89-SVK [SKTRF09] + EVRF2007
+    // height (1)" is EPSG's only geoid model to EVRF2007 there; the one
+    // from ETRS89 is deprecated. SKTRF09 + EVRF2007 height to ETRS89 3D.
+    let model = loaded(Transform::via(&crs(11075), &crs(11314), 11525, ordered).unwrap());
+    let t = loaded(Transform::new(&crs(11314), &crs(4937), ordered).unwrap());
+    assert!(
+        t.operations()[0].contains("SKTRF09] + EVRF2007 height (1)"),
+        "{:?}",
+        t.operations()
+    );
+    // The Dutch chart datum: ETRS89 + LAT-NLD depth (EPSG deprecated its
+    // twin from ETRS89 in 13.106) through "ETRS89-NLD [AGRS2010] to LAT-NLD
+    // depth (1)", Geographic3D to Depth, which PROJ can't run.
+    let lat_nld = Crs::compound(&crs(11037), &crs(9287)).unwrap();
+    let depth = loaded(Transform::via(&crs(11036), &lat_nld, 12217, ordered).unwrap());
+    let to_etrs89 = loaded(Transform::new(&crs(9289), &crs(4937), ordered).unwrap());
+    for (model, t, (lat, lon)) in [
+        (&model, &t, (48.7, 19.2)),
+        (&model, &t, (48.81, 19.37)),
+        (&depth, &to_etrs89, (52.3, 4.0)),
+        (&depth, &to_etrs89, (52.45, 4.25)),
+    ] {
+        let h = 123.456;
+        let (_, _, z) = model.convert(lat, lon, Some(h)).unwrap();
+        let (lat2, lon2, h2) = t.convert(lat, lon, z).unwrap();
+        assert!(
+            (lat2 - lat).abs() < 1e-12 && (lon2 - lon).abs() < 1e-12,
+            "{lat2} {lon2}"
+        );
+        assert!((h2.unwrap() - h).abs() < 1e-9, "{h2:?}, want {h}");
+    }
 }
 
 /// The same with pyproj's `area_of_interest` and `accuracy`

@@ -43,16 +43,24 @@ use crate::registry::Operation;
 
 /// "Geographic3D to GravityRelatedHeight" methods PROJ runs from a grid:
 /// those named so, and the ones it lists by code
-/// (`Transformation::isGeographic3DToGravityRelatedHeight`). "Geographic3D
-/// to Depth" (gtx) and (txt), 1121 and 1116, are in neither.
+/// (`Transformation::isGeographic3DToGravityRelatedHeight`), plus
+/// "Geographic3D to Depth" (gtx) and (txt), which PROJ has in neither list
+/// and so can't run.
 pub(crate) const GEOID_GRID_METHODS: &[u32] = &[
     // By name.
     1025, 1030, 1045, 1047, 1048, 1050, 1059, 1060, 1072, 1073, 1081, 1082, 1099, 1106, 1117, 1123,
     1134, 9661, 9662, 9663, 9664, 9665, //
     // By code.
     1083, 1088, 1089, 1090, 1091, 1092, 1093, 1094, 1095, 1096, 1097, 1098, 1100, 1103, 1105, 1109,
-    1110, 1115, 1118, 1122, 1124, 1127, 1128, 1135, 9635,
+    1110, 1115, 1118, 1122, 1124, 1127, 1128, 1135, 9635, //
+    // Not in PROJ: a hydroid model (the tidal surface's ellipsoidal height)
+    // to a depth, the same arithmetic as their twins 1115 and 1122 to
+    // Geog2D+Depth, with the depth axis turning the height round.
+    DEPTH_TXT, DEPTH_GTX,
 ];
+/// "Geographic3D to Depth (txt)" and "(gtx)".
+pub(crate) const DEPTH_TXT: u32 = 1116;
+pub(crate) const DEPTH_GTX: u32 = 1121;
 /// "Geographic3D to GravityRelatedHeight" and "Geog3D to
 /// Geog2D+GravityRelatedHeight" with a constant geoid height.
 const CONSTANT_GEOID_METHODS: &[u32] = &[1136, 1131];

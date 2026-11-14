@@ -41,7 +41,14 @@ model, forced and chosen, and transformations between two coordinate
 epochs (`EPSG:8254@2010` to `EPSG:8254@2002`), which PROJ runs through a
 point motion operation's velocity grid. The committed ones are for
 `tests/data/reprojection/grids/cropped`, grids cut down to a window
-(`scripts/gen_grid_fixtures.py`): their points lie in the windows.
+(`scripts/gen_grid_fixtures.py`): their points lie in the windows. With
+`--grids` on such a cropped set alone, the operations on its grids, forced,
+with points in the windows (`operations-cropped.jsonl`).
+
+PROJ can't run "Geographic3D to Depth" (methods 1116 and 1121); xeibe can.
+For each, PROJ runs instead the "reversible alternative" EPSG publishes beside
+it, the same hydroid model to a compound CRS of the same depth CRS (methods
+1115 and 1122), and the record names that operation (`"oracle"`).
 
     scripts/build_proj_oracle.py                    # once per EPSG release
     scripts/gen_transformation_vectors.py           # committed subsets -> tests/data/reprojection/
@@ -50,6 +57,7 @@ point motion operation's velocity grid. The committed ones are for
     scripts/gen_transformation_vectors.py --options
     scripts/gen_transformation_vectors.py --epochs
     scripts/gen_transformation_vectors.py --epochs --grids tests/data/reprojection/grids/cropped
+    scripts/gen_transformation_vectors.py --grids tests/data/reprojection/grids/cropped
     scripts/gen_transformation_vectors.py --all     # everything -> target/reprojection/
     scripts/gen_transformation_vectors.py --all --epochs --grids target/proj-grids
     scripts/gen_transformation_vectors.py --all --grids target/proj-grids [--vertical]
@@ -92,14 +100,20 @@ GRID_FREE_METHODS = {
 # velocities), TIN interpolation (Cartesian, Geographic2D).
 GRID_METHODS = {9613, 9614, 9615, 1074, 1075, 1087, 1114, 1142, 1143, 1138, 1145}
 # Vertical methods: geoid models (PROJ's `isGeographic3DToGravityRelatedHeight`
-# list, run from a grid), vertical offset grids, VERTCON, the vertical TIN and
-# velocity grid; without grids, constant offsets and geoid heights.
+# list, run from a grid, and Geographic3D to Depth), vertical offset grids,
+# VERTCON, the vertical TIN and velocity grid; without grids, constant offsets
+# and geoid heights.
 GEOID_GRID_METHODS = {
     1025, 1030, 1045, 1047, 1048, 1050, 1059, 1060, 1072, 1073, 1081, 1082, 1099, 1106, 1117,
     1123, 1134, 9661, 9662, 9663, 9664, 9665, 1083, 1088, 1089, 1090, 1091, 1092, 1093, 1094,
     1095, 1096, 1097, 1098, 1100, 1103, 1105, 1109, 1110, 1115, 1118, 1122, 1124, 1127, 1128,
-    1135, 9635,
+    1135, 9635, 1116, 1121,
 }  # fmt: skip
+# Geographic3D to Depth (txt, gtx), which PROJ can't run, and the method of
+# the "reversible alternative" EPSG publishes beside each: the same hydroid
+# model to the compound CRS (Geog3D to Geog2D+Depth). PROJ's pipeline for
+# that twin is the oracle for the depth.
+DEPTH_TWIN_METHODS = {1116: 1115, 1121: 1122}
 VERTICAL_GRID_METHODS = GEOID_GRID_METHODS | {1112, 1126, 1071, 1080, 1084, 1085, 1129, 1101, 9658, 1137, 1113}
 VERTICAL_FREE_METHODS = {9616, 1046, 1136, 1131}
 PER_METHOD = 4
@@ -239,7 +253,28 @@ def engineering_points(code: int, crs: pyproj.CRS, seed: int) -> list[list[float
     return pts + [[round(rng.uniform(0.0, 9000.0), 3), round(rng.uniform(0.0, 9000.0), 3)] for _ in range(3)]
 
 
-def operation_vectors(registry: dict, everything: bool, grids: Path | None) -> list[dict]:
+def depth_twin(op: dict, registry: dict) -> int | None:
+    """The operation EPSG publishes as the reversible alternative of a
+    Geographic3D to Depth one: from the same CRS, by the twin method, with
+    the same hydroid model, to a compound CRS of the same depth CRS."""
+    model = dict(map(tuple, op.get("params", []))).get(8666)
+    for other in registry["operations"]:
+        if (
+            other["deprecated"]
+            or other["method"] != DEPTH_TWIN_METHODS[op["method"]]
+            or other["src"] != op["src"]
+            or dict(map(tuple, other.get("params", []))).get(8666) != model
+        ):
+            continue
+        parts = pyproj.CRS.from_epsg(other["dst"]).sub_crs_list
+        if len(parts) == 2 and parts[1].to_epsg() == op["dst"]:
+            return other["code"]
+    return None
+
+
+def operation_vectors(registry: dict, everything: bool, grids: Path | None, windows: dict | None = None) -> list[dict]:
+    """Forced operations. With `windows` (a cropped set of grids), only the
+    operations whose grids it has, with points in their windows."""
     by_method: dict[int, list[dict]] = {}
     first = "grid_transformation" if grids else "helmert_transformation"
     tables = (first, "other_transformation")
@@ -264,9 +299,14 @@ def operation_vectors(registry: dict, everything: bool, grids: Path | None) -> l
             print(f"operation {code}: skipped (no horizontal CRS for its heights)", file=sys.stderr)
             continue
         src_x, dst_x, swap = ends
+        oracle = None
         try:
             co = pyproj.crs.CoordinateOperation.from_epsg(code)
             proj_string = co.to_proj4()
+            if proj_string is None and op["method"] in DEPTH_TWIN_METHODS:
+                oracle = depth_twin(op, registry)
+                if oracle is not None:
+                    proj_string = pyproj.crs.CoordinateOperation.from_epsg(oracle).to_proj4()
             if proj_string is None:
                 print(f"operation {code}: PROJ has no pipeline for it", file=sys.stderr)
                 continue
@@ -275,15 +315,20 @@ def operation_vectors(registry: dict, everything: bool, grids: Path | None) -> l
             area = co.area_of_use
             if area is None:
                 continue
-            pin = points_in(src, sample_area(code, area.west, area.south, area.east, area.north), code)
+            files = re.findall(r"\+(?:grids|file)=(\S+)", proj_string)
+            if windows is not None:
+                if not files or not all(f in windows for f in files):
+                    continue
+                lonlat = window_points(code, windows[files[0]], 12)
+            else:
+                lonlat = sample_area(code, area.west, area.south, area.east, area.north)
+            pin = points_in(src, lonlat, code)
         except (pyproj.exceptions.CRSError, pyproj.exceptions.ProjError) as e:
             print(f"operation {code}: skipped ({e})", file=sys.stderr)
             continue
         # pyproj reports some grids by EPSG's name as unavailable although
         # the pipeline reads PROJ-data's file: look for the pipeline's files.
-        if grids and not all(
-            (grids / g).exists() for g in re.findall(r"\+(?:grids|file)=(\S+)", proj_string)
-        ):
+        if grids and not all((grids / g).exists() for g in files):
             print(f"operation {code}: skipped (grid missing)", file=sys.stderr)
             continue
         out = [run_pipeline(pipeline, p, swap) for p in pin]
@@ -292,7 +337,11 @@ def operation_vectors(registry: dict, everything: bool, grids: Path | None) -> l
             # its CRS-to-CRS pipelines then convert to the target's unit.
             factor = crs_of(dst_x).axis_info[-1].unit_conversion_factor
             out = [None if o is None else [*o[:2], o[2] / factor] for o in out]
-        records.append({"op": code, "method": op["method"], "src": src_x, "dst": dst_x, "in": pin, "out": out})
+        record = {"op": code, "method": op["method"], "src": src_x, "dst": dst_x, "in": pin, "out": out}
+        if oracle is not None:
+            # PROJ ran this operation's twin.
+            record["oracle"] = oracle
+        records.append(record)
     return records
 
 
@@ -886,6 +935,12 @@ def main() -> int:
         write(out / "epochs.jsonl", epoch_records(registry, args.all))
         return 0
     suffix = "-grids" if args.grids else ""
+    windows = args.grids / "windows.json" if args.grids else None
+    if windows is not None and windows.exists():
+        # A cropped set of grids: the operations on them, in their windows.
+        records = operation_vectors(registry, args.all, args.grids, json.loads(windows.read_text()))
+        write(out / "operations-cropped.jsonl", records)
+        return 0
     if args.vertical:
         pairs = VERTICAL_GRID_PINNED_PAIRS if args.grids and not args.all else vertical_pairs(registry, args.all)
         records = [r for pair in pairs if (r := selection_record(*pair))]

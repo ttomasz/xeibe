@@ -409,6 +409,7 @@ impl Search {
             return;
         }
         let src_geog = self.crs.geographic(h);
+        let via_realization = self.compound_via_realization(s, t);
         let horizontal = match src_geog {
             Some(_) => self.create_operations(h, t),
             None => Vec::new(),
@@ -473,8 +474,10 @@ impl Search {
         // drops it), so an empty list goes on to the interpolation CRS.
         if (horizontal.is_empty() && src_geog.is_none()) || vertical.is_empty() {
             *res = horizontal;
+            res.extend(via_realization);
             return;
         }
+        res.extend(via_realization);
         let mut cache: HashMap<CrsRef, (Vec<Candidate>, Vec<Candidate>)> = HashMap::new();
         let mut with_interpolation = false;
         for vt in &vertical {
@@ -533,6 +536,45 @@ impl Search {
                 }
             }
         }
+    }
+
+    /// Routes through a national realization, with heights (level 3's
+    /// deviations): from a compound CRS whose horizontal datum is a member
+    /// of the target's datum ensemble, an EPSG operation between the
+    /// compound CRS and the geographic 3D CRS on that member, then the step
+    /// from the member to the ensemble. EPSG gives some geoid models only
+    /// as the operation from a realization's geographic 3D CRS to its
+    /// compound CRS ("ETRS89-SVK [SKTRF09] to ETRS89-SVK [SKTRF09] + Baltic
+    /// 1957 height (1)"), and deprecated those from the ensemble's ("ETRS89
+    /// to ETRS89 + Baltic 1957 height (2)"); PROJ looks for operations from
+    /// the compound CRS's vertical CRS only, and goes elsewhere or nowhere.
+    fn compound_via_realization(&mut self, s: CrsRef, t: CrsRef) -> Vec<Candidate> {
+        let mut out = Vec::new();
+        let Some(g) = self.crs.geographic(s) else {
+            return out;
+        };
+        let g2 = self.crs.demote_to_2d(g);
+        let g3 = self.crs.promote_to_3d(g2);
+        let (Some(member), Some(ensemble)) = (self.crs.datum(g3), self.crs.datum(t)) else {
+            return out;
+        };
+        let is_member = registry()
+            .datums
+            .get(&ensemble)
+            .and_then(|d| d.members.as_ref())
+            .is_some_and(|m| m.contains(&member));
+        if g3 == t || !is_member {
+            return out;
+        }
+        let mut non_empty = false;
+        for first in self.find_ops_direct(s, g3, &mut non_empty) {
+            if let Some(step) = self.ensemble_step(g3, t)
+                && let Some(c) = concatenate(vec![first, step], true, &mut self.crs)
+            {
+                out.push(c);
+            }
+        }
+        out
     }
 
     /// `getInterpolationGeogCRS`: the interpolation CRS of the vertical

@@ -21,11 +21,15 @@
 * `cropped/`: grids too large to commit whole, cut down by GDAL to a window
   of a few nodes and kept under PROJ-data's names, so that PROJ and xeibe
   read them in place of the full files: Canada's and the Nordic velocity
-  grids (point motion operations) and New Zealand's deformation model, its
-  master file reduced to the components that reach the window. Their
-  vectors: `scripts/gen_transformation_vectors.py --epochs --grids
-  tests/data/reprojection/grids/cropped`. The full files come from
-  `target/proj-grids/` (`scripts/fetch_proj_grids.py`) or the CDN.
+  grids (point motion operations), New Zealand's deformation model, its
+  master file reduced to the components that reach the window, the
+  Netherlands' hydroid model to chart datum depths and Slovakia's geoid
+  model to EVRF2007 heights. Their vectors:
+  `scripts/gen_transformation_vectors.py --epochs --grids
+  tests/data/reprojection/grids/cropped` and, for the operations on them,
+  `--grids tests/data/reprojection/grids/cropped` (`operations-cropped.jsonl`).
+  The full files come from `target/proj-grids/` (`scripts/fetch_proj_grids.py`)
+  or the CDN.
 
     scripts/gen_grid_fixtures.py
 """
@@ -158,7 +162,28 @@ CROPPED = [
         "CC BY 4.0",
         "Point motion by velocity grid (NKG): NKG_RF17vel, EPSG:10808",
     ),
+    (
+        "nl_nsgi_nllat2018.tif",
+        "c6d69cd5b13e7c8d6e2c2f5cff1dee92a603481d1d25c5532bf2a0b618535c09",
+        (3.9, 52.25, 4.3, 52.5),
+        "NSGI (Netherlands)",
+        "CC BY 4.0",
+        "Hydroid model to depths: ETRS89-NLD [AGRS2010] to LAT-NLD depth (1) and its twin to the compound CRS, "
+        "EPSG:12217 and 12218",
+    ),
+    (
+        "sk_gku_Slovakia_ETRS89h_to_EVRF2007.tif",
+        "5aaa74996dbf0aab2d2eed82679541e735817f7cb5163500b4e350bde7ecc3e5",
+        (19.0, 48.6, 19.4, 48.85),
+        "GKU (Slovakia)",
+        "CC BY 4.0",
+        "Geoid model given only to the compound CRS of a realization: ETRS89-SVK [SKTRF09] to "
+        "ETRS89-SVK [SKTRF09] + EVRF2007 height (1), EPSG:11525",
+    ),
 ]
+# Cropped grids that are vertical: PROJ checks them with `vgridshift`, the
+# others with `deformation`.
+VERTICAL_CROPPED = {"nl_nsgi_nllat2018.tif", "sk_gku_Slovakia_ETRS89h_to_EVRF2007.tif"}
 # New Zealand's deformation model: the master file, and the window its
 # component grids are cut down to. North of Kaikoura: it crosses the edge of
 # one patch and lies in the finest of the 2016 earthquake's nested grids.
@@ -351,8 +376,9 @@ def full_file(name: str, digest: str, algorithm: str = "sha256") -> Path:
 
 
 def crop() -> list[dict]:
-    """`cropped/`: the velocity grids and New Zealand's deformation model,
-    cut down to their windows. Returns the README's rows."""
+    """`cropped/`: the velocity grids, New Zealand's deformation model, the
+    Dutch hydroid model and the Slovak geoid model, cut down to their
+    windows. Returns the README's rows."""
     out = OUT / "cropped"
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True)
@@ -428,6 +454,8 @@ def check_cropped(out: Path, model_name: str, time_extent: dict) -> None:
     for name, window in [(n, w) for n, _, w, *_ in CROPPED] + [(model_name, MODEL[2])]:
         if name == model_name:
             step = f"+step +proj=defmodel +model={name}"
+        elif name in VERTICAL_CROPPED:
+            step = f"+step +inv +proj=vgridshift +grids={name} +multiplier=1"
         else:
             step = (
                 f"+step +proj=cart +ellps=GRS80 +step +proj=deformation +dt=10 +grids={name} +ellps=GRS80 "
@@ -596,6 +624,16 @@ def main() -> int:
         "",
         "Attribution for `eur_nkg_nkgrf17vel.tif`: the Nordic Geodetic Commission's NKG_RF17vel",
         "model, cut down here; CC BY 4.0, <https://creativecommons.org/licenses/by/4.0/>.",
+        "",
+        "Attribution for `nl_nsgi_nllat2018.tif`: derived from work by NSGI (Netherlands",
+        "Partnership of Kadaster, Rijkswaterstaat and the Hydrographic Service), `nllat2018.gtx`,",
+        "converted to GeoTIFF by the PROJ project and cut down here; CC BY 4.0,",
+        "<https://creativecommons.org/licenses/by/4.0/>.",
+        "",
+        "Attribution for `sk_gku_Slovakia_ETRS89h_to_EVRF2007.tif`: derived from work by GKU",
+        "(Geodetic and Cartographic Institute Bratislava), `Slovakia_ETRS89h_to_EVRF2007.gtx`,",
+        "converted to GeoTIFF by the PROJ project and cut down here; CC BY 4.0,",
+        "<https://creativecommons.org/licenses/by/4.0/>.",
         "",
         "Attribution for `nz_linz_nzgd2000-*`: Land Information New Zealand's NZGD2000 deformation",
         "model (version 20180701), converted by the PROJ project; the grids are cut down here and",
