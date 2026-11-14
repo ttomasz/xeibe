@@ -134,6 +134,8 @@ pub(crate) struct VerticalDatum {
     /// `EPSG:5181`, or the name when there is no id.
     pub(crate) key: String,
     pub(crate) name: String,
+    /// A dynamic vertical reference frame (it has a frame reference epoch).
+    pub(crate) dynamic: bool,
 }
 
 /// The datum a CRS is on. Two CRSs can be converted between without a datum
@@ -151,6 +153,17 @@ pub(crate) struct Datum {
     pub(crate) ellipsoid_code: Option<u32>,
     /// Prime meridian, radians east of Greenwich.
     pub(crate) prime_meridian: f64,
+    /// A dynamic reference frame (it has a frame reference epoch).
+    pub(crate) dynamic: bool,
+}
+
+/// A datum PROJJSON gives a frame reference epoch: a dynamic reference
+/// frame, whose coordinates change with time.
+fn is_dynamic_frame(datum: &Value) -> bool {
+    !datum["frame_reference_epoch"].is_null()
+        || datum["type"]
+            .as_str()
+            .is_some_and(|t| t.starts_with("Dynamic"))
 }
 
 /// How the CRS's axes relate to the internal order, and their units.
@@ -824,6 +837,21 @@ impl Crs {
         self.axes.dimension()
     }
 
+    /// Whether coordinates in the CRS change with time, so that they are
+    /// only complete with their epoch: its geodetic or vertical datum is a
+    /// dynamic reference frame, or WGS 84 (the ensemble or the datum), as
+    /// PROJ's `isDynamic` has it for a coordinate epoch. Only such a CRS
+    /// takes an epoch in [`Transform::with_epochs`](crate::Transform::with_epochs).
+    pub fn is_dynamic(&self) -> bool {
+        self.datum().is_some_and(|d| {
+            d.dynamic
+                || matches!(
+                    d.name.as_str(),
+                    "World Geodetic System 1984" | "World Geodetic System 1984 ensemble"
+                )
+        }) || self.vertical_datum().is_some_and(|d| d.dynamic)
+    }
+
     /// Whether [`AxisOrder::EastFirst`](crate::AxisOrder::EastFirst) swaps
     /// the CRS's first two values: PROJ's
     /// `mustAxisOrderBeSwitchedForVisualization`.
@@ -1186,7 +1214,11 @@ impl Ctx<'_> {
             Some(code) => format!("EPSG:{code}"),
             None => name.clone(),
         };
-        Ok(VerticalDatum { key, name })
+        Ok(VerticalDatum {
+            key,
+            name,
+            dynamic: is_dynamic_frame(datum),
+        })
     }
 
     fn datum(&self, crs: &Value) -> Result<Datum, Error> {
@@ -1221,6 +1253,7 @@ impl Ctx<'_> {
             inverse_flattening,
             ellipsoid_code,
             prime_meridian,
+            dynamic: is_dynamic_frame(datum),
         })
     }
 

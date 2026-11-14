@@ -232,6 +232,72 @@ def test_itransform_matches_pyproj() -> None:
         list(Transformer.from_crs(4326, 3857).itransform([]))
 
 
+# Pairs joined by a time-dependent Helmert that didn't change between
+# pyproj's EPSG and ours: "ITRF2014 to GDA2020 (1)" (rates only, from 2020)
+# and "ITRF2008 to NAD83(2011) (1)".
+EPOCH_PAIRS = [
+    (7912, 7843, (-25.0, 135.0, 10.0)),
+    (7843, 7912, (-25.0, 135.0, 10.0)),
+    (9000, 7844, (-25.0, 135.0)),
+    (9000, 7853, (-25.0, 135.0)),
+    (7911, 6319, (40.0, -100.0, 300.0)),
+]
+EPOCHS = [1997.0, 2020.0, 2024.5, 2030.25, math.inf]
+
+
+def _close(ours: tuple[float, ...], theirs: tuple[float, ...], projected: bool) -> None:
+    assert len(ours) == len(theirs)
+    horizontal = 1e-6 if projected else 1e-9
+    for i, (a, b) in enumerate(zip(ours, theirs)):
+        assert a == pytest.approx(b, abs=horizontal if i < 2 else 1e-6), (ours, theirs)
+
+
+@pytest.mark.parametrize(("src", "dst", "point"), EPOCH_PAIRS)
+def test_tt_is_the_epoch_of_each_coordinate(src: int, dst: int, point: tuple[float, ...]) -> None:
+    ours = Transformer.from_crs(src, dst)
+    theirs = pyproj.Transformer.from_crs(src, dst)
+    projected = pyproj.CRS(dst).is_projected
+    zz = point[2] if len(point) == 3 else None
+    for tt in EPOCHS:
+        got = ours.transform(point[0], point[1], zz, tt)
+        _close(got, theirs.transform(point[0], point[1], zz, tt), projected)
+        # The epoch comes back as it went in.
+        assert got[-1] == tt
+    # A time-dependent transformation: another epoch, another place.
+    early, late = (ours.transform(point[0], point[1], zz, tt) for tt in (1997.0, 2030.25))
+    assert abs(early[0] - late[0]) > (1e-3 if projected else 1e-8)
+    # Without an epoch, or with PROJ's "none" (inf): the reference epoch.
+    plain = ours.transform(point[0], point[1], zz)
+    assert ours.transform(point[0], point[1], zz, math.inf)[: len(plain)] == plain
+    _close(plain, theirs.transform(point[0], point[1], zz), projected)
+
+
+def test_tt_in_containers_and_itransform() -> None:
+    ours = Transformer.from_crs(7912, 7843)
+    theirs = pyproj.Transformer.from_crs(7912, 7843)
+    n = len(EPOCHS)
+    columns = ([-25.0] * n, [135.0] * n, [10.0] * n, list(EPOCHS))
+    want = theirs.transform(*columns)
+    for make in (list, tuple, lambda c: array("d", c), np.array):
+        got = ours.transform(*(make(c) for c in columns))
+        for g, w in zip(got[:3], want[:3]):
+            assert list(g) == pytest.approx(list(w), abs=1e-9)
+        assert list(got[3]) == EPOCHS
+    points = list(zip(*columns))
+    assert [v for p in ours.itransform(points) for v in p[:3]] == pytest.approx(
+        [v for p in theirs.itransform(points) for v in p[:3]], abs=1e-9
+    )
+    # The third value as the epoch, between the geographic 2D CRSs.
+    flat = [(lat, lon, t) for lat, lon, _, t in points]
+    ours_2d = list(Transformer.from_crs(9000, 7844).itransform(flat, time_3rd=True))
+    theirs_2d = list(pyproj.Transformer.from_crs(9000, 7844).itransform(flat, time_3rd=True))
+    assert [v for p in ours_2d for v in p[:2]] == pytest.approx([v for p in theirs_2d for v in p[:2]], abs=1e-9)
+    assert [p[2] for p in ours_2d] == EPOCHS
+    # As many epochs as coordinates.
+    with pytest.raises(ValueError):
+        ours.transform([-25.0, -26.0], [135.0, 136.0], [0.0, 0.0], [2020.0])
+
+
 def test_transform_bounds_matches_pyproj() -> None:
     for src, dst, box, always_xy in [
         (4326, 3857, (40, -120, 64, -80), False),

@@ -35,7 +35,42 @@ pub struct Transform {
     order: AxisOrder,
     grids: Grids,
     selection: Selection,
+    epochs: Epochs,
     plan: Plan,
+}
+
+/// The coordinate epochs declared for a transform's CRSs
+/// ([`Transform::with_epochs`]), as decimal years.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct Epochs {
+    source: Option<f64>,
+    target: Option<f64>,
+}
+
+impl Epochs {
+    /// The epoch every coordinate is converted at. With one of the two
+    /// PROJ takes it for both, and two are the same one here.
+    fn fixed(self) -> Option<f64> {
+        self.source.or(self.target)
+    }
+
+    fn swapped(self) -> Epochs {
+        Epochs {
+            source: self.target,
+            target: self.source,
+        }
+    }
+}
+
+/// PROJ's `getRoundedEpochInDecimalYear`: an epoch within a millionth of a
+/// year of a thousandth is that thousandth.
+fn rounded_epoch(year: f64) -> f64 {
+    let thousandths = 1000.0 * year;
+    if (thousandths - thousandths.round()).abs() <= 1e-3 {
+        thousandths.round() / 1000.0
+    } else {
+        year
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -183,9 +218,13 @@ impl BoundPlan {
     /// then drops the `pop`/`push` of the height between them, and the
     /// height the first produces flows into the second (as between EPSG's
     /// operations in the selection).
+    ///
+    /// `epoch` is for the operations after the hub; the bound
+    /// transformations have no rates.
     fn run<R: Recorder>(
         &self,
         internal: [f64; 3],
+        epoch: Option<f64>,
         rec: &mut R,
     ) -> Result<[f64; 3], CoordinateError> {
         let flow = matches!(self.middle.plan, Plan::Conversion)
@@ -198,7 +237,7 @@ impl BoundPlan {
             Some(leg) => leg.to_hub(internal, flow, rec)?,
             None => internal,
         };
-        let other = self.middle.run_recorded(hub, rec)?;
+        let other = self.middle.run_recorded(hub, epoch, rec)?;
         match &self.last {
             Some(leg) => leg.back_from_hub(other, flow, rec),
             None => Ok(other),
@@ -277,6 +316,7 @@ impl Transform {
             order,
             grids,
             selection,
+            epochs: Epochs::default(),
             plan,
         })
     }
@@ -350,6 +390,7 @@ impl Transform {
             order,
             grids,
             selection,
+            epochs: Epochs::default(),
             plan,
         })
     }
@@ -378,6 +419,7 @@ impl Transform {
             order,
             grids: Grids::ProjData,
             selection: Selection::default(),
+            epochs: Epochs::default(),
             plan: Plan::Via(
                 operation,
                 Arc::new(Candidates::with_operation(src, dst, sc, dc, operation)?),
@@ -412,11 +454,11 @@ impl Transform {
         match &self.plan {
             Plan::Conversion => None,
             Plan::Operations(c) | Plan::Via(_, c) | Plan::Only(c) => {
-                c.used(&self.src, &self.dst, internal)
+                c.used(&self.src, &self.dst, internal, self.epochs.fixed())
             }
             Plan::Bound(b) => {
                 let index = if b.middle.candidates().is_some() {
-                    self.index_for(internal)?
+                    self.index_for(internal, self.epochs.fixed())?
                 } else {
                     0
                 };
@@ -439,7 +481,7 @@ impl Transform {
     /// a coordinate that can't be converted.
     pub fn operation_index_for(&self, x: f64, y: f64, z: Option<f64>) -> Option<usize> {
         let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)]).ok()?;
-        self.index_for(internal)
+        self.index_for(internal, self.epochs.fixed())
     }
 
     /// How the operation for one coordinate is chosen: for every
@@ -453,7 +495,7 @@ impl Transform {
     /// [`Transform::operation_index_for`] does.
     pub fn explain_point(&self, x: f64, y: f64, z: Option<f64>) -> Option<Explanation> {
         let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)]).ok()?;
-        self.explain_internal(internal)
+        self.explain_internal(internal, self.epochs.fixed())
     }
 
     /// Each step one coordinate goes through, with the CRS and the
@@ -472,42 +514,43 @@ impl Transform {
         let given = [x, y, z.unwrap_or(0.0)];
         let internal = to_internal(&self.src.axes, self.order, given).ok()?;
         let mut tracer = Tracer::new(&self.src, self.order, given, internal);
-        let result = self.run_recorded(internal, &mut tracer);
+        let epoch = self.epochs.fixed();
+        let result = self.run_recorded(internal, epoch, &mut tracer);
         let used = match self.plan {
             Plan::Conversion => None,
-            _ => self.index_for(internal),
+            _ => self.index_for(internal, epoch),
         };
         Some(tracer.finish(result, used))
     }
 
-    fn explain_internal(&self, internal: [f64; 3]) -> Option<Explanation> {
+    fn explain_internal(&self, internal: [f64; 3], epoch: Option<f64>) -> Option<Explanation> {
         match &self.plan {
             Plan::Conversion => None,
             Plan::Operations(c) | Plan::Via(_, c) | Plan::Only(c) => {
-                Some(c.explain(&self.src, &self.dst, internal))
+                Some(c.explain(&self.src, &self.dst, internal, epoch))
             }
             Plan::Bound(b) => {
                 let hub = match &b.first {
                     Some(leg) => leg.to_hub(internal, false, &mut ()).ok()?,
                     None => internal,
                 };
-                b.middle.explain_internal(hub)
+                b.middle.explain_internal(hub, epoch)
             }
         }
     }
 
-    fn index_for(&self, internal: [f64; 3]) -> Option<usize> {
+    fn index_for(&self, internal: [f64; 3], epoch: Option<f64>) -> Option<usize> {
         match &self.plan {
             Plan::Bound(b) => {
                 let hub = match &b.first {
                     Some(leg) => leg.to_hub(internal, false, &mut ()).ok()?,
                     None => internal,
                 };
-                b.middle.index_for(hub)
+                b.middle.index_for(hub, epoch)
             }
             _ => self
                 .candidates()?
-                .used_index(&self.src, &self.dst, internal),
+                .used_index(&self.src, &self.dst, internal, epoch),
         }
     }
 
@@ -529,6 +572,7 @@ impl Transform {
                 order: self.order,
                 grids: self.grids.clone(),
                 selection: self.selection.clone(),
+                epochs: self.epochs,
                 plan: Plan::Bound(Arc::new(BoundPlan {
                     first: b.first.clone(),
                     middle,
@@ -544,6 +588,7 @@ impl Transform {
             order: self.order,
             grids: self.grids.clone(),
             selection: self.selection.clone(),
+            epochs: self.epochs,
             plan: Plan::Only(Arc::new(c)),
         }))
     }
@@ -568,7 +613,11 @@ impl Transform {
 
     /// The conversion the other way. Between datums the operations are
     /// chosen again for that direction, so this can fail like [`Transform::new`].
+    ///
+    /// The epochs of [`Transform::with_epochs`] go with their CRSs: the
+    /// source's becomes the target's.
     pub fn inverse(&self) -> Result<Transform, Error> {
+        let epochs = self.epochs.swapped();
         match self.plan {
             Plan::Conversion => Ok(Transform {
                 src: self.dst.clone(),
@@ -576,6 +625,7 @@ impl Transform {
                 order: self.order,
                 grids: self.grids.clone(),
                 selection: self.selection.clone(),
+                epochs,
                 plan: Plan::Conversion,
             }),
             Plan::Operations(_) | Plan::Bound(_) => Transform::with_selection(
@@ -584,17 +634,127 @@ impl Transform {
                 self.order,
                 self.grids.clone(),
                 self.selection.clone(),
-            ),
-            Plan::Via(code, _) => Transform::via(&self.dst, &self.src, code, self.order),
+            )
+            .map(|t| Transform { epochs, ..t }),
+            Plan::Via(code, _) => Transform::via(&self.dst, &self.src, code, self.order)
+                .map(|t| Transform { epochs, ..t }),
             Plan::Only(ref c) => Ok(Transform {
                 src: self.dst.clone(),
                 dst: self.src.clone(),
                 order: self.order,
                 grids: self.grids.clone(),
                 selection: self.selection.clone(),
+                epochs,
                 plan: Plan::Only(Arc::new(c.inverse_of_first(&self.dst, &self.src)?)),
             }),
         }
+    }
+
+    /// The transform with coordinate epochs for its CRSs, as decimal years
+    /// (2024.5): what PROJ takes as a CRS with an epoch
+    /// (`ITRF2014@2024.5`, a WKT `COORDINATEMETADATA`). `source` says
+    /// when the coordinates given are valid, `target` when those wanted
+    /// are; `None` for a CRS without one. Every coordinate is then
+    /// converted at that epoch: a time-dependent operation (see
+    /// [`OperationInfo::time_dependent`]) applies its rates from its
+    /// reference epoch to it, where a transform without epochs stays at
+    /// the reference epoch. Nothing else changes: which operations there
+    /// are and which one a coordinate takes don't depend on the epoch.
+    ///
+    /// As in PROJ:
+    ///
+    /// * only a CRS whose coordinates change with time takes an epoch
+    ///   ([`Crs::is_dynamic`]); for a static one it is an error;
+    /// * with one epoch, both CRSs are at it: ITRF2014 at 2030 to GDA2020
+    ///   and GDA2020 to ITRF2014 at 2030 both run at 2030;
+    /// * the transform's epoch replaces a coordinate's own
+    ///   ([`Transform::convert_at`]), which [`Transform::overrides_epoch`]
+    ///   tells.
+    ///
+    /// Two different epochs ask for the coordinates to be moved in time,
+    /// which takes a point motion operation (a velocity grid or a
+    /// deformation model). Those aren't supported, so it is an error
+    /// rather than PROJ's result without them, which leaves the
+    /// coordinates at the source's epoch.
+    ///
+    /// ```
+    /// use xeibe_reproject::{AxisOrder, Transform};
+    ///
+    /// // ITRF2014 at 2030.0 to GDA2020 (a plate-fixed, static CRS).
+    /// let t = Transform::from_epsg(7912, 7843, AxisOrder::EastFirst)
+    ///     .unwrap()
+    ///     .with_epochs(Some(2030.0), None)
+    ///     .unwrap();
+    /// let (lon, lat, _) = t.convert(135.0, -25.0, Some(0.0)).unwrap();
+    /// // PROJ 9.8.1 gives 134.999996938, -25.000005301.
+    /// assert!((lon - 134.999_996_938).abs() < 1e-9 && (lat + 25.000_005_301).abs() < 1e-9);
+    /// ```
+    pub fn with_epochs(&self, source: Option<f64>, target: Option<f64>) -> Result<Self, Error> {
+        let checked = |crs: &Crs, epoch: Option<f64>| -> Result<Option<f64>, Error> {
+            let Some(epoch) = epoch else {
+                return Ok(None);
+            };
+            let fail = |message: String| Error::Epoch {
+                crs: crs.label(),
+                message,
+            };
+            if !epoch.is_finite() || epoch <= 0.0 {
+                return Err(fail(format!(
+                    "the coordinate epoch {epoch} is not a decimal year"
+                )));
+            }
+            if !crs.is_dynamic() {
+                return Err(fail(
+                    "a coordinate epoch should not be given for a static CRS".into(),
+                ));
+            }
+            Ok(Some(rounded_epoch(epoch)))
+        };
+        let epochs = Epochs {
+            source: checked(&self.src, source)?,
+            target: checked(&self.dst, target)?,
+        };
+        if let (Some(from), Some(to)) = (epochs.source, epochs.target)
+            && from != to
+        {
+            return Err(Error::Epoch {
+                crs: self.src.label(),
+                message: format!(
+                    "moving coordinates from epoch {from} to {to} (in {}) takes a point \
+                     motion operation, which is not supported",
+                    self.dst.label()
+                ),
+            });
+        }
+        Ok(Transform {
+            epochs,
+            ..self.clone()
+        })
+    }
+
+    /// The source CRS's coordinate epoch ([`Transform::with_epochs`]).
+    pub fn source_epoch(&self) -> Option<f64> {
+        self.epochs.source
+    }
+
+    /// The target CRS's coordinate epoch ([`Transform::with_epochs`]).
+    pub fn target_epoch(&self) -> Option<f64> {
+        self.epochs.target
+    }
+
+    /// The epoch every coordinate is converted at, when the transform has
+    /// one: the source's or the target's, which are one
+    /// ([`Transform::with_epochs`]).
+    pub fn epoch(&self) -> Option<f64> {
+        self.epochs.fixed()
+    }
+
+    /// Whether the transform's own epoch replaces this one of a
+    /// coordinate in [`Transform::convert_at`]: it has one, and `epoch` is
+    /// another. PROJ's rule, which it applies silently; a caller that takes
+    /// both kinds of epoch can warn with this.
+    pub fn overrides_epoch(&self, epoch: f64) -> bool {
+        epoch.is_finite() && self.epochs.fixed().is_some_and(|own| own != epoch)
     }
 
     /// Convert one coordinate. `z` is the third value when the data has one:
@@ -602,17 +762,56 @@ impl Transform {
     ///
     /// A coordinate with a NaN in x or y (GeoArrow's empty point) comes back
     /// unchanged.
+    ///
+    /// A time-dependent operation runs at the transform's epoch
+    /// ([`Transform::with_epochs`]), else at its reference epoch.
     pub fn convert(
         &self,
         x: f64,
         y: f64,
         z: Option<f64>,
     ) -> Result<(f64, f64, Option<f64>), CoordinateError> {
+        self.convert_with(x, y, z, self.epochs.fixed())
+    }
+
+    /// [`Transform::convert`] for a coordinate with an epoch of its own, a
+    /// decimal year (2024.5): PROJ's fourth value, `t`, and pyproj's `tt`.
+    /// A time-dependent operation applies its rates from its reference
+    /// epoch to that one. An epoch that isn't finite is none (PROJ's
+    /// `HUGE_VAL`): the coordinate is converted as [`Transform::convert`]
+    /// converts it.
+    ///
+    /// The transform's own epoch, when it has one, is used instead, as in
+    /// PROJ: see [`Transform::overrides_epoch`].
+    pub fn convert_at(
+        &self,
+        x: f64,
+        y: f64,
+        z: Option<f64>,
+        epoch: f64,
+    ) -> Result<(f64, f64, Option<f64>), CoordinateError> {
+        self.convert_with(x, y, z, self.epoch_of(epoch))
+    }
+
+    /// The epoch a coordinate with `epoch` of its own is converted at.
+    fn epoch_of(&self, epoch: f64) -> Option<f64> {
+        self.epochs
+            .fixed()
+            .or_else(|| epoch.is_finite().then_some(epoch))
+    }
+
+    fn convert_with(
+        &self,
+        x: f64,
+        y: f64,
+        z: Option<f64>,
+        epoch: Option<f64>,
+    ) -> Result<(f64, f64, Option<f64>), CoordinateError> {
         if x.is_nan() || y.is_nan() {
             return Ok((x, y, z));
         }
         let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)])?;
-        let out = self.run(internal)?;
+        let out = self.run(internal, epoch)?;
         let [x, y, h] = from_internal(&self.dst.axes, self.order, out);
         // A 2D target has no height of its own: hand back what came in.
         let z = z.map(|z| if self.dst.axes.dimension() == 3 { h } else { z });
@@ -626,13 +825,13 @@ impl Transform {
     /// conversion on one datum measured 2 to 4% slower (2026-11-08,
     /// `cargo bench -- convert_xy`, interleaved with the code before).
     #[inline(never)]
-    fn run(&self, internal: [f64; 3]) -> Result<[f64; 3], CoordinateError> {
+    fn run(&self, internal: [f64; 3], epoch: Option<f64>) -> Result<[f64; 3], CoordinateError> {
         match &self.plan {
             Plan::Conversion => on_one_datum(&self.src, &self.dst, internal),
             Plan::Operations(candidates) | Plan::Via(_, candidates) | Plan::Only(candidates) => {
-                candidates.run(&self.src, &self.dst, internal)
+                candidates.run(&self.src, &self.dst, internal, epoch)
             }
-            Plan::Bound(b) => b.run(internal, &mut ()),
+            Plan::Bound(b) => b.run(internal, epoch, &mut ()),
         }
     }
 
@@ -640,6 +839,7 @@ impl Transform {
     fn run_recorded<R: Recorder>(
         &self,
         internal: [f64; 3],
+        epoch: Option<f64>,
         rec: &mut R,
     ) -> Result<[f64; 3], CoordinateError> {
         match &self.plan {
@@ -653,12 +853,12 @@ impl Transform {
             Plan::Operations(candidates) | Plan::Via(_, candidates) | Plan::Only(candidates) => {
                 if R::TRACE {
                     return candidates
-                        .choose(&self.src, &self.dst, internal, rec)
+                        .choose(&self.src, &self.dst, internal, epoch, rec)
                         .map(|(out, _)| out);
                 }
-                candidates.run(&self.src, &self.dst, internal)
+                candidates.run(&self.src, &self.dst, internal, epoch)
             }
-            Plan::Bound(b) => b.run(internal, rec),
+            Plan::Bound(b) => b.run(internal, epoch, rec),
         }
     }
 
@@ -684,6 +884,50 @@ impl Transform {
         for (index, ((x, y), z)) in x.iter_mut().zip(y.iter_mut()).zip(z.iter_mut()).enumerate() {
             let (cx, cy, cz) = self
                 .convert(*x, *y, Some(*z))
+                .map_err(|reason| coordinate_error(index, *x, *y, reason))?;
+            (*x, *y, *z) = (cx, cy, cz.unwrap_or(*z));
+        }
+        Ok(())
+    }
+
+    /// [`Transform::convert_xy`] for coordinates with epochs of their own,
+    /// decimal years in `t`: each as [`Transform::convert_at`] converts it.
+    pub fn convert_xyt(&self, x: &mut [f64], y: &mut [f64], t: &[f64]) -> Result<(), Error> {
+        assert!(
+            x.len() == y.len() && y.len() == t.len(),
+            "x, y and t buffers differ in length"
+        );
+        for (index, ((x, y), t)) in x.iter_mut().zip(y.iter_mut()).zip(t).enumerate() {
+            let (cx, cy, _) = self
+                .convert_at(*x, *y, None, *t)
+                .map_err(|reason| coordinate_error(index, *x, *y, reason))?;
+            (*x, *y) = (cx, cy);
+        }
+        Ok(())
+    }
+
+    /// [`Transform::convert_xyz`] for coordinates with epochs of their own,
+    /// decimal years in `t`: each as [`Transform::convert_at`] converts it.
+    pub fn convert_xyzt(
+        &self,
+        x: &mut [f64],
+        y: &mut [f64],
+        z: &mut [f64],
+        t: &[f64],
+    ) -> Result<(), Error> {
+        assert!(
+            x.len() == y.len() && y.len() == z.len() && z.len() == t.len(),
+            "x, y, z and t buffers differ in length"
+        );
+        for (index, (((x, y), z), t)) in x
+            .iter_mut()
+            .zip(y.iter_mut())
+            .zip(z.iter_mut())
+            .zip(t)
+            .enumerate()
+        {
+            let (cx, cy, cz) = self
+                .convert_at(*x, *y, Some(*z), *t)
                 .map_err(|reason| coordinate_error(index, *x, *y, reason))?;
             (*x, *y, *z) = (cx, cy, cz.unwrap_or(*z));
         }
@@ -833,6 +1077,7 @@ fn nad27_to_nad83(src: &Crs, dst: &Crs) -> Result<Option<Plan>, Error> {
         order: AxisOrder::EastFirst,
         grids: Grids::None,
         selection: Selection::default(),
+        epochs: Epochs::default(),
         plan: Plan::Conversion,
     };
     let (first, last) = if forward {

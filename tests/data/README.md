@@ -33,7 +33,8 @@ Small samples committed to the repository.
   `selection-vertical.jsonl` and `selection-vertical-grids.jsonl` the same
   with heights, without grids and with these (`--vertical`), and
   `selection-options.jsonl` the same with an area of interest or an
-  accuracy (`--options`).
+  accuracy (`--options`), and `epochs.jsonl` PROJ's time-dependent
+  transformations of coordinates with an epoch each (`--epochs`).
 - `crs-wkt/wkt.jsonl`, `crs-wkt/identify.jsonl` – PROJ's WKT for a subset of
   EPSG CRSs in four versions, with PROJ's reading of each back, and PROJ's
   identification of each string with and without its ids (see

@@ -49,6 +49,10 @@ pub enum Error {
         y: f64,
         reason: CoordinateError,
     },
+    /// A coordinate epoch a transform can't take: for a static CRS, not a
+    /// year, or two epochs that differ (`Transform::with_epochs`).
+    #[error("{crs}: {message}")]
+    Epoch { crs: String, message: String },
     /// Grid data handed to a transform couldn't be used.
     #[error("grid {file}: {message}")]
     Grid { file: String, message: String },

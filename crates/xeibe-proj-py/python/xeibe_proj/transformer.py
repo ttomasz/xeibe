@@ -483,13 +483,16 @@ class Transformer:
         # a coordinate whose best operation needs another (PROJ's ONLY_BEST).
         _grids.load(native, needed.args[0], missing_ok=self._options[2] and not self._network)
 
-    def _convert(self, native: _native.Transform | _native.Projection, x: Any, y: Any, z: Any, radians: bool) -> None:
-        """Convert buffers in place, loading the grid data they need."""
+    def _convert(
+        self, native: _native.Transform | _native.Projection, x: Any, y: Any, z: Any, radians: bool, t: Any = None
+    ) -> None:
+        """Convert buffers in place, loading the grid data they need. ``t``
+        holds the coordinates' epochs, which are only read."""
         try:
-            native.convert(x, y, z, radians)
+            native.convert(x, y, z, radians, True, t)
         except _native.GridsNeeded as needed:
             self._fetch_grids(native, needed)
-            native.convert(x, y, z, radians, False)
+            native.convert(x, y, z, radians, False, t)
 
     @overload
     def transform(
@@ -560,8 +563,11 @@ class Transformer:
     ) -> tuple[Any, ...]:
         """Convert coordinates: scalars, lists, tuples, ``array.array``,
         numpy arrays, or anything with ``__array__`` (which gives numpy
-        arrays back). ``zz`` is the height or third axis; ``tt`` passes
-        through unchanged. ``radians=True`` takes and returns geographic
+        arrays back). ``zz`` is the height or third axis. ``tt`` is the
+        epoch of each coordinate as a decimal year (2024.5): a
+        time-dependent transformation converts the coordinate at it, and at
+        its reference epoch without one (or with ``inf``); it comes back
+        unchanged. ``radians=True`` takes and returns geographic
         coordinates in radians. Raises ``ProjError`` at the first coordinate
         that can't be converted."""
         if args or errcheck is not _UNSET or inplace is not _UNSET:
@@ -585,13 +591,15 @@ class Transformer:
         bz = kz = None
         if zz is not None:
             bz, kz = _containers.to_buffer(zz)
+        bt = kt = None
+        if tt is not None:
+            bt, kt = _containers.to_buffer(tt)
         if native is not None:
-            self._convert(native, bx, by, bz, radians)
+            self._convert(native, bx, by, bz, radians, bt)
         result: tuple[Any, ...] = (_containers.from_buffer(kx, bx), _containers.from_buffer(ky, by))
         if bz is not None and kz is not None:
             result += (_containers.from_buffer(kz, bz),)
-        if tt is not None:
-            bt, kt = _containers.to_buffer(tt)
+        if bt is not None and kt is not None:
             result += (_containers.from_buffer(kt, bt),)
         return result
 
@@ -606,8 +614,9 @@ class Transformer:
         **kwargs: Any,
     ) -> Iterator[tuple[float, ...]]:
         """Convert points given as tuples of 2 to 4 values, 64 at a time.
-        ``switch`` swaps the first two values in and out; ``time_3rd`` reads
-        a third value as a time, which passes through."""
+        ``switch`` swaps the first two values in and out. The fourth value,
+        or the third with ``time_3rd``, is the coordinate's epoch, as
+        ``tt`` in ``transform``."""
         if args or kwargs:
             _reject("itransform", args, kwargs)
         it = iter(points)
@@ -621,6 +630,7 @@ class Transformer:
         if time_3rd and stride != 3:
             raise ValueError("'time_3rd' is only valid for 3 coordinates.")
         has_z = stride >= 3 and not time_3rd
+        time = 2 if time_3rd else 3 if stride == 4 else None
         native = self._native_for(direction)
         values = chain(first, (p[i] for p in it for i in range(stride)))
         while True:
@@ -630,8 +640,9 @@ class Transformer:
             a, b = (1, 0) if switch else (0, 1)
             x, y = chunk[a::stride], chunk[b::stride]
             z = chunk[2::stride] if has_z else None
+            t = None if time is None else chunk[time::stride]
             if native is not None:
-                self._convert(native, x, y, z, radians)
+                self._convert(native, x, y, z, radians, t)
             chunk[a::stride], chunk[b::stride] = x, y
             if z is not None:
                 chunk[2::stride] = z

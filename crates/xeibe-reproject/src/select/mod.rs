@@ -107,7 +107,9 @@ pub struct OperationInfo {
     pub area_name: Option<String>,
     /// PROJ-data's names of the grid files it reads.
     pub grids: Vec<String>,
-    /// A step is time-dependent: it needs the coordinates' epoch.
+    /// A step is time-dependent: its result depends on the coordinates'
+    /// epoch (`Transform::with_epochs`, `Transform::convert_at`), and
+    /// without one it runs at its reference epoch.
     pub time_dependent: bool,
     /// EPSG's scope of the operation, when it is one EPSG operation (see
     /// `code`). Its remarks: `xeibe_crs::operation_remarks`.
@@ -666,14 +668,16 @@ impl Candidates {
 
     /// Run the best candidate for this coordinate (PROJ's `proj_trans` with
     /// alternatives), returning the target's internal coordinates and the
-    /// candidate used.
+    /// candidate used. `epoch` is the coordinate's, a decimal year, for
+    /// the time-dependent operations; the choice doesn't look at it.
     pub(crate) fn run_with(
         &self,
         src: &Crs,
         dst: &Crs,
         internal: [f64; 3],
+        epoch: Option<f64>,
     ) -> Result<([f64; 3], usize), CoordinateError> {
-        self.choose(src, dst, internal, &mut ())
+        self.choose(src, dst, internal, epoch, &mut ())
     }
 
     /// [`Candidates::run_with`], telling `rec` how the choice is made and,
@@ -683,6 +687,7 @@ impl Candidates {
         src: &Crs,
         dst: &Crs,
         internal: [f64; 3],
+        epoch: Option<f64>,
         rec: &mut R,
     ) -> Result<([f64; 3], usize), CoordinateError> {
         if self.single {
@@ -691,7 +696,7 @@ impl Candidates {
             {
                 rec.inside(0, self.contains(&self.list[0], point));
             }
-            let result = run(&self.list[0].steps, src, dst, internal, rec);
+            let result = run(&self.list[0].steps, src, dst, internal, epoch, rec);
             rec.tried(0, result.err());
             return result.map(|out| (out, 0));
         }
@@ -708,7 +713,7 @@ impl Candidates {
             let Some(best) = self.suggest(point, &excluded, rec) else {
                 break;
             };
-            let result = run(&self.list[best].steps, src, dst, internal, rec);
+            let result = run(&self.list[best].steps, src, dst, internal, epoch, rec);
             rec.tried(best, result.err());
             match result {
                 Ok(out) => return Ok((out, best)),
@@ -726,7 +731,7 @@ impl Candidates {
         // that uses no grid, whatever its area.
         if let Some(i) = self.list.iter().position(|p| !p.has_grids) {
             rec.fallback(i);
-            let result = run(&self.list[i].steps, src, dst, internal, rec);
+            let result = run(&self.list[i].steps, src, dst, internal, epoch, rec);
             rec.tried(i, result.err());
             return result.map(|out| (out, i));
         }
@@ -735,9 +740,15 @@ impl Candidates {
 
     /// How the operation for one coordinate is chosen, by operation of
     /// [`Candidates::info`].
-    pub(crate) fn explain(&self, src: &Crs, dst: &Crs, internal: [f64; 3]) -> Explanation {
+    pub(crate) fn explain(
+        &self,
+        src: &Crs,
+        dst: &Crs,
+        internal: [f64; 3],
+        epoch: Option<f64>,
+    ) -> Explanation {
         let mut rec = Explain::new(self.list.len());
-        let result = self.choose(src, dst, internal, &mut rec);
+        let result = self.choose(src, dst, internal, epoch, &mut rec);
         let used = result.as_ref().ok().map(|&(_, i)| i);
         let operations = self.list.last().map_or(0, |p| p.index + 1);
         let mut candidates: Vec<Option<Explained>> = vec![None; operations];
@@ -812,21 +823,34 @@ impl Candidates {
         src: &Crs,
         dst: &Crs,
         internal: [f64; 3],
+        epoch: Option<f64>,
     ) -> Result<[f64; 3], CoordinateError> {
-        self.run_with(src, dst, internal).map(|(out, _)| out)
+        self.run_with(src, dst, internal, epoch).map(|(out, _)| out)
     }
 
     /// Name of the candidate a coordinate goes through.
-    pub(crate) fn used(&self, src: &Crs, dst: &Crs, internal: [f64; 3]) -> Option<&str> {
-        self.run_with(src, dst, internal)
+    pub(crate) fn used(
+        &self,
+        src: &Crs,
+        dst: &Crs,
+        internal: [f64; 3],
+        epoch: Option<f64>,
+    ) -> Option<&str> {
+        self.run_with(src, dst, internal, epoch)
             .ok()
             .map(|(_, i)| self.list[i].name.as_str())
     }
 
     /// Index (see [`Candidates::info`]) of the candidate a coordinate goes
     /// through.
-    pub(crate) fn used_index(&self, src: &Crs, dst: &Crs, internal: [f64; 3]) -> Option<usize> {
-        self.run_with(src, dst, internal)
+    pub(crate) fn used_index(
+        &self,
+        src: &Crs,
+        dst: &Crs,
+        internal: [f64; 3],
+        epoch: Option<f64>,
+    ) -> Option<usize> {
+        self.run_with(src, dst, internal, epoch)
             .ok()
             .map(|(_, i)| self.list[i].index)
     }
@@ -1226,11 +1250,15 @@ fn is_vertical(crs: &Crs) -> bool {
     matches!(crs.kind, Kind::Vertical { .. })
 }
 
+/// Run a candidate's steps. `epoch` is the coordinate's, a decimal year
+/// (PROJ's `t`): a time-dependent operation applies its rates up to it, and
+/// stays at its reference epoch without one.
 fn run<R: Recorder>(
     steps: &[Exec],
     src: &Crs,
     dst: &Crs,
     internal: [f64; 3],
+    epoch: Option<f64>,
     rec: &mut R,
 ) -> Result<[f64; 3], CoordinateError> {
     if R::TRACE {
@@ -1304,24 +1332,21 @@ fn run<R: Recorder>(
                 }
                 if keeps_height {
                     saved.get_or_insert(c[2]);
-                    c = if *inverse {
-                        method.inverse_3d(c)?
-                    } else {
-                        method.forward_3d(c)?
-                    };
-                    if !next_keeps_height(steps, i, ellipsoidal)
-                        && let Some(h) = saved.take()
-                    {
-                        c[2] = h;
-                    }
-                } else {
-                    // Its height goes through (`forward_3d`: a geog2D-domain
-                    // Helmert between 3D CRSs carries it).
-                    c = if *inverse {
-                        method.inverse_3d(c)?
-                    } else {
-                        method.forward_3d(c)?
-                    };
+                }
+                // The height goes through (`forward_3d`: a geog2D-domain
+                // Helmert between 3D CRSs carries it); the one saved is
+                // put back below.
+                c = match (epoch, *inverse) {
+                    (None, false) => method.forward_3d(c)?,
+                    (None, true) => method.inverse_3d(c)?,
+                    (Some(t), false) => method.forward_3d_at(c, t)?,
+                    (Some(t), true) => method.inverse_3d_at(c, t)?,
+                };
+                if keeps_height
+                    && !next_keeps_height(steps, i, ellipsoidal)
+                    && let Some(h) = saved.take()
+                {
+                    c[2] = h;
                 }
                 if !c.iter().all(|v| v.is_finite()) {
                     return Err(CoordinateError::OutsideDomain);

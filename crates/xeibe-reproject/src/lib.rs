@@ -26,7 +26,12 @@
 //!   and EPSG's operations on from there, as PROJ routes them.
 //!
 //! When no EPSG transformation applies, setting up the transform fails; a
-//! ballpark approximation is never used. Operations that need a coordinate
+//! ballpark approximation is never used.
+//!
+//! Time-dependent transformations run at the epoch of the coordinates,
+//! given for the whole transform ([`Transform::with_epochs`]) or with each
+//! coordinate ([`Transform::convert_at`]), and at their reference epoch
+//! without one, as in PROJ. Operations that move coordinates to another
 //! epoch (point motion, deformation models) are not supported.
 //!
 //! ```

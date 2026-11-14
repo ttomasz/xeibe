@@ -4,6 +4,14 @@
 xeibe repository). Each entry names the EPSG Dataset version it embeds
 (docs/pyproj-compat.md, Versioning).
 
+## Unreleased
+
+- `Transformer.transform` and `itransform` use `tt` as each coordinate's
+  epoch (a decimal year), as pyproj does: a time-dependent transformation
+  converts the coordinate at it. Before, `tt` passed through unused and
+  every coordinate was converted at the transformation's reference epoch.
+  `tt` must now have as many values as the other arrays.
+
 ## 0.2.0
 
 - EPSG Dataset 13.106, as in 0.1.0.

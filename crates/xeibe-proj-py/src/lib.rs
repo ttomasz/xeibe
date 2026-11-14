@@ -583,6 +583,20 @@ impl convert::Convert for xeibe_reproject::Transform {
         xeibe_reproject::Transform::convert_xyz(self, x, y, z)
     }
 
+    fn convert_xyt(&self, x: &mut [f64], y: &mut [f64], t: &[f64]) -> Result<(), Error> {
+        xeibe_reproject::Transform::convert_xyt(self, x, y, t)
+    }
+
+    fn convert_xyzt(
+        &self,
+        x: &mut [f64],
+        y: &mut [f64],
+        z: &mut [f64],
+        t: &[f64],
+    ) -> Result<(), Error> {
+        xeibe_reproject::Transform::convert_xyzt(self, x, y, z, t)
+    }
+
     fn convert_bounds(&self, bounds: [f64; 4], densify: usize) -> Result<[f64; 4], Error> {
         xeibe_reproject::Transform::convert_bounds(self, bounds, densify)
     }
@@ -736,7 +750,10 @@ impl Transform {
 
     /// `Transformer.transform` for plain numbers (`float` or `int`): the
     /// converted `(x, y)`, with `z` and `t` when given; `None` for anything
-    /// else. `GridsNeeded` when grid data is missing (with `check_grids`).
+    /// else. `tt` is the coordinate's epoch, a decimal year, for the
+    /// time-dependent transformations (`Transform::convert_at`), and comes
+    /// back as given. `GridsNeeded` when grid data is missing (with
+    /// `check_grids`).
     #[allow(clippy::too_many_arguments)]
     #[pyo3(signature = (xx, yy, zz = None, tt = None, radians = false, check_grids = true))]
     fn transform<'py>(
@@ -767,7 +784,11 @@ impl Transform {
     /// the sides in degrees in radians. Stops at the first coordinate that
     /// fails, with a `ProjError` naming it; `GridsNeeded` when grid data is
     /// missing (with `check_grids`).
-    #[pyo3(signature = (x, y, z = None, radians = false, check_grids = true))]
+    ///
+    /// `t`, a float64 buffer of that length, gives each coordinate its
+    /// epoch as a decimal year (`Transform::convert_xyzt`); it is only read.
+    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (x, y, z = None, radians = false, check_grids = true, t = None))]
     fn convert(
         &self,
         py: Python<'_>,
@@ -776,8 +797,19 @@ impl Transform {
         z: Option<&Bound<'_, PyAny>>,
         radians: bool,
         check_grids: bool,
+        t: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<()> {
-        convert::convert(&self.inner, &self.calls, py, x, y, z, radians, check_grids)
+        convert::convert(
+            &self.inner,
+            &self.calls,
+            py,
+            x,
+            y,
+            z,
+            t,
+            radians,
+            check_grids,
+        )
     }
 
     /// Convert a box (`Transform::convert_bounds`): `(min_x, min_y, max_x,

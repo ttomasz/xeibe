@@ -54,6 +54,16 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
   height. A point that fails keeps the steps up to the failure. Conversions
   are no slower for it. The reproject page shows the steps in each point's
   details.
+- `xeibe-reproject`: time-dependent transformations (ITRF2014 to GDA2020,
+  say) now run at the epoch of the coordinates. Give it for the whole
+  transform with `Transform::with_epochs`, or per coordinate with
+  `Transform::convert_at`, `convert_xyt` and `convert_xyzt`. Without an
+  epoch they run at their reference epoch, as before. As in PROJ, only a
+  dynamic CRS takes an epoch (`Crs::is_dynamic`), and the transform's
+  epoch replaces a coordinate's own (`Transform::overrides_epoch` tells).
+  Two different epochs are refused (`Error::Epoch`): moving coordinates in
+  time needs point motion operations, which aren't supported. Conversions
+  are no slower for it.
 
 ## 0.2.0
 

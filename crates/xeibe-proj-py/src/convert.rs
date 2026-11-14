@@ -30,6 +30,21 @@ pyo3::create_exception!(
 pub(crate) trait Convert: Sync {
     fn convert_xy(&self, x: &mut [f64], y: &mut [f64]) -> Result<(), Error>;
     fn convert_xyz(&self, x: &mut [f64], y: &mut [f64], z: &mut [f64]) -> Result<(), Error>;
+    /// `convert_xy` for coordinates with an epoch each, a decimal year
+    /// (pyproj's `tt`). Only a transformation between datums looks at it.
+    fn convert_xyt(&self, x: &mut [f64], y: &mut [f64], _t: &[f64]) -> Result<(), Error> {
+        self.convert_xy(x, y)
+    }
+    /// `convert_xyz` for coordinates with an epoch each.
+    fn convert_xyzt(
+        &self,
+        x: &mut [f64],
+        y: &mut [f64],
+        z: &mut [f64],
+        _t: &[f64],
+    ) -> Result<(), Error> {
+        self.convert_xyz(x, y, z)
+    }
     fn convert_bounds(&self, bounds: [f64; 4], densify: usize) -> Result<[f64; 4], Error>;
     /// Whether grid data is still missing for coordinates within `bounds`.
     fn grids_missing(&self, bounds: Option<[f64; 4]>) -> bool;
@@ -130,7 +145,8 @@ pub(crate) fn plain_number(value: &Bound<'_, PyAny>) -> bool {
 
 /// `Transformer.transform` for plain numbers: `(x, y)`, with `z` and `t`
 /// when given, as floats. `None` for anything else, which the Python side
-/// converts in buffers.
+/// converts in buffers. `t` is the coordinate's epoch, which a
+/// time-dependent transformation converts it at; it comes back as given.
 /// `GridsNeeded` (with `check_grids`) when the point needs grid data that
 /// isn't loaded.
 #[allow(clippy::too_many_arguments)]
@@ -161,12 +177,18 @@ pub(crate) fn transform<'py, C: Convert>(
         scale(&mut y, f);
     }
     let went_in = (x[0], y[0], z);
-    let converted = match z {
-        Some(z) => {
+    let converted = match (z, t) {
+        (Some(z), Some(t)) => {
+            let mut zs = [z];
+            c.convert_xyzt(&mut x, &mut y, &mut zs, &[t])
+                .map(|()| Some(zs[0]))
+        }
+        (Some(z), None) => {
             let mut zs = [z];
             c.convert_xyz(&mut x, &mut y, &mut zs).map(|()| Some(zs[0]))
         }
-        None => c.convert_xy(&mut x, &mut y).map(|()| None),
+        (None, Some(t)) => c.convert_xyt(&mut x, &mut y, &[t]).map(|()| None),
+        (None, None) => c.convert_xy(&mut x, &mut y).map(|()| None),
     };
     // Converted first and checked only when that fails: asking for the
     // grid requests of the point every time took most of a call once the
@@ -198,8 +220,10 @@ enum Stop {
 }
 
 /// Convert buffers in place: `x`, `y` and optionally `z` are writable
-/// float64 buffers of one length, in the order the conversion takes. Stops
-/// at the first coordinate that fails, with a `ProjError` naming it.
+/// float64 buffers of one length, in the order the conversion takes. `t`,
+/// when given, is a buffer of that length with each coordinate's epoch (a
+/// decimal year), which is only read. Stops at the first coordinate that
+/// fails, with a `ProjError` naming it.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn convert<C: Convert>(
     c: &C,
@@ -208,6 +232,7 @@ pub(crate) fn convert<C: Convert>(
     x: &Bound<'_, PyAny>,
     y: &Bound<'_, PyAny>,
     z: Option<&Bound<'_, PyAny>>,
+    t: Option<&Bound<'_, PyAny>>,
     radians: bool,
     check_grids: bool,
 ) -> PyResult<()> {
@@ -215,12 +240,20 @@ pub(crate) fn convert<C: Convert>(
     let (_by, ry) = writable(y, "y")?;
     let bz = z.map(|z| writable(z, "z")).transpose()?;
     let rz = bz.as_ref().map(|b| b.1);
-    if rx.1 != ry.1 || rz.is_some_and(|rz| rz.1 != rx.1) {
+    let bt = t.map(|t| writable(t, "t")).transpose()?;
+    let rt = bt.as_ref().map(|b| b.1);
+    if rx.1 != ry.1 || [rz, rt].iter().flatten().any(|r| r.1 != rx.1) {
         return Err(PyValueError::new_err(
             "the coordinate arrays differ in length",
         ));
     }
-    if rx.1 > 0 && (rx.0 == ry.0 || rz.is_some_and(|rz| rz.0 == rx.0 || rz.0 == ry.0)) {
+    let starts: Vec<usize> = [Some(rx), Some(ry), rz, rt]
+        .iter()
+        .flatten()
+        .map(|r| r.0)
+        .collect();
+    let shared = (0..starts.len()).any(|i| starts[i + 1..].contains(&starts[i]));
+    if rx.1 > 0 && shared {
         return Err(PyValueError::new_err("the coordinate arrays share memory"));
     }
     let (into, out) = calls.factors(radians);
@@ -229,6 +262,7 @@ pub(crate) fn convert<C: Convert>(
         // overlap (checked above for the starts; each is its own copy).
         let (xs, ys) = unsafe { (slice(rx), slice(ry)) };
         let zs = rz.map(|rz| unsafe { slice(rz) });
+        let ts: Option<&[f64]> = rt.map(|rt| &*unsafe { slice(rt) });
         if check_grids {
             // The box in degrees, before the buffers change.
             let bounds = extent(xs, ys).map(|b| b.map(|v| v * into.unwrap_or(1.0)));
@@ -243,9 +277,11 @@ pub(crate) fn convert<C: Convert>(
             scale(xs, f);
             scale(ys, f);
         }
-        match zs {
-            Some(zs) => c.convert_xyz(xs, ys, zs),
-            None => c.convert_xy(xs, ys),
+        match (zs, ts) {
+            (Some(zs), Some(ts)) => c.convert_xyzt(xs, ys, zs, ts),
+            (Some(zs), None) => c.convert_xyz(xs, ys, zs),
+            (None, Some(ts)) => c.convert_xyt(xs, ys, ts),
+            (None, None) => c.convert_xy(xs, ys),
         }
         .map_err(Stop::Failed)?;
         if let Some(f) = out {

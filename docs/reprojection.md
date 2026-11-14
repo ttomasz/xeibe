@@ -236,8 +236,10 @@ chooses the transformation per coordinate as PROJ does, among EPSG's operations;
   PROJ's domain order.
 - Methods (`src/operation/`): the Helmert family in its geocentric, geog2D and
   geog3D domains (geocentric translations, Position Vector, Coordinate Frame,
-  Molodensky-Badekas, full-matrix Coordinate Frame, time-dependent ones at their
-  reference epoch), longitude rotation, geographic offsets, and the plane
+  Molodensky-Badekas, full-matrix Coordinate Frame, time-dependent ones at the
+  coordinates' epoch or, without one, their reference epoch: see
+  [Coordinate epochs](#coordinate-epochs)), longitude rotation, geographic
+  offsets, and the plane
   similarity, affine and grid-offset transformations between projected CRSs.
 - Selection (`src/select/`): a port of PROJ's search, filter, sort and per-point
   choice; see [Implementation](#implementation). `Transform::with_selection`
@@ -247,10 +249,83 @@ chooses the transformation per coordinate as PROJ does, among EPSG's operations;
   (`Selection`; [pyproj-phase2.md](pyproj-phase2.md#selection-area_of_interest-accuracy-only_best)).
   Their vectors are `selection-options.jsonl` (`--options`).
 - Not in level 2: grid-based operations and vertical and compound CRSs (both
-  level 3), and operations needing a coordinate epoch beyond their reference
-  one.
+  level 3), and operations that move coordinates to another epoch (point
+  motion).
 - The operation a coordinate took is not written into output metadata; a
   read's report lists the candidates per srsName.
+
+### Coordinate epochs
+
+**Implemented** (2026-11-14). In a dynamic CRS (ITRF2014, a WGS 84
+realization) the ground moves a few centimetres a year, so coordinates are
+only complete with their epoch: the date they are valid for, as a decimal
+year (2024.5). EPSG's time-dependent Helmert transformations (methods 1053
+and 1056 in the data, 200 operations; 1054, 1055, 1057 and 1058 are their
+geographic-domain forms) give a rate for each of the seven parameters and a
+reference epoch, and their parameters for a coordinate are
+`P + rate × (epoch − reference epoch)`.
+
+The epoch comes in two ways, which are PROJ's:
+
+- **With the transform**, for all its coordinates:
+  `Transform::with_epochs(source, target)`. PROJ takes it as a CRS with an
+  epoch (`ITRF2014@2024.5`, WKT's `COORDINATEMETADATA`, `cs2cs --s_epoch`).
+  This is the form for xeibe's own data: a GML file or a GeoArrow array has
+  at most one epoch, and no slot for one per vertex. `convert`, the buffer
+  and Arrow conversions, `trace_point` and `explain_point` all run at it.
+- **With each coordinate**: `Transform::convert_at(x, y, z, epoch)`,
+  `convert_xyt` and `convert_xyzt`. This is PROJ's fourth value, `t`, and
+  pyproj's `tt`, which `xeibe-proj` passes on.
+
+Without either, a time-dependent operation runs at its reference epoch, the
+rates unused, as it did before and as PROJ does.
+
+```mermaid
+flowchart TD
+    A{The transform has<br/>an epoch?} -- yes --> T[Converted at the<br/>transform's epoch]
+    A -- no --> B{The coordinate has<br/>a finite epoch?}
+    B -- yes --> C[Converted at the<br/>coordinate's epoch]
+    B -- no --> R[Converted at the operation's<br/>reference epoch]
+```
+
+PROJ's rules, kept:
+
+- **The transform's epoch replaces a coordinate's own.** PROJ writes the
+  CRS's epoch into the pipeline as `+proj=set +v_4=2030` before the
+  Helmert, which overwrites `t`. A point at 2025 through a transform at
+  2030 is converted at 2030 (0.29 m away, ITRF2014 to GDA2020), without a
+  word from PROJ. xeibe gives the same result;
+  `Transform::overrides_epoch(epoch)` tells a caller that takes both kinds
+  of epoch that it would happen, so that it can warn. Nothing in the
+  workspace takes both yet: the CLI, the `xeibe` Python module and the web
+  pages take no epoch, and pyproj's API has none for a CRS.
+- **One epoch counts for both CRSs.** ITRF2014 at 2030 to GDA2020 and
+  GDA2020 to ITRF2014 at 2030 both run at 2030. `Transform::inverse` moves
+  each epoch with its CRS.
+- **Only a dynamic CRS takes an epoch** (`Crs::is_dynamic`: its datum has a
+  frame reference epoch, or it is WGS 84, the ensemble or the datum). For
+  a static CRS, `with_epochs` is an error, as PROJ's "Coordinate epoch
+  should not be provided for a static CRS".
+- **The epoch has no say in the selection.** Which operations there are and
+  which one a coordinate takes are the same with and without it.
+- An epoch within a millionth of a year of a thousandth is that thousandth
+  (`getRoundedEpochInDecimalYear`).
+
+Deviations from PROJ:
+
+- **Two different epochs are an error.** They ask for the coordinates to be
+  moved in time, which takes a point motion operation. PROJ has those for
+  one case, EPSG's velocity grid within NAD83(CSRS)v7 (and accepts an
+  epoch for that static CRS because of it); otherwise it converts at the
+  source's epoch and leaves the coordinates there, whatever the target
+  says. xeibe has no point motion operations, and refuses rather than give
+  coordinates at another epoch than the one asked for.
+- **An epoch that isn't finite is none.** PROJ's "none" is `HUGE_VAL`
+  (`inf`); NaN and `-inf`, which give PROJ a NaN result, are read the same.
+
+Not implemented: point motion operations and deformation models (below,
+level 3), and the time-specific Helmert methods 1065 and 1066, which PROJ
+can't run either.
 
 ### Why selection is the hard part
 
@@ -275,7 +350,7 @@ longer than three hops. The difficulty is choosing among valid candidates.
   - "WGS 84" and "ETRS89" are datum ensembles, so a transformation to "WGS 84"
     is good to about 2 m.
   - Time-dependent operations need a coordinate epoch, which GML data almost
-    never has.
+    never has ([Coordinate epochs](#coordinate-epochs)).
 
 ### PROJ's selection rules
 
@@ -564,6 +639,19 @@ subset in `tests/data/reprojection/`, everything with `--all` into `target/`):
    operations: no coordinate failures, and no pair that only one side
    transforms.
 
+3. **Epochs** (`--epochs`, `epochs.jsonl`, `tests/it/epochs.rs`), every
+   point at one of five epochs or at none. Each time-dependent Helmert
+   transformation forced, forwards and back on PROJ's own result, and the
+   automatic choice between the CRSs they join and a few routes with
+   other steps (a projection, a geographic 2D CRS, a pivot through an
+   ensemble). On 2026-11-14, on the full set: all 200 operations (2,400
+   points) match PROJ to within 1e-6 m both ways, and all 4,728 points
+   over 394 pairs take PROJ's operation and match to within a millimetre,
+   with the epoch on the coordinate and with the same epoch on the
+   transform. pyproj has no CRS with an epoch, so PROJ's results with one
+   (`cs2cs --s_epoch`, `--t_epoch`, and a point at another epoch) are
+   written out in the test.
+
 "Good precision" means choosing the operation with the best accuracy EPSG states.
 That is the best signal available, PROJ included, but it remains a proxy.
 
@@ -676,8 +764,9 @@ compound CRSs with their grids (geoid models, vertical offsets).
   one origin and one datum), and EPSG's four operations to projected CRSs
   (similarity transformations and grid offsets) reach them. Nothing else
   does, in PROJ either: an engineering datum has no tie to the Earth.
-- Not implemented: operations that need a coordinate epoch (point motion,
-  deformation models such as New Zealand's), the few grid methods PROJ-data
+- Not implemented: operations that move coordinates to another epoch (point
+  motion, deformation models such as New Zealand's; see
+  [Coordinate epochs](#coordinate-epochs)), the few grid methods PROJ-data
   has no grid for, and *Geographic3D to Depth* (methods 1116 and 1121),
   which PROJ doesn't export either.
 

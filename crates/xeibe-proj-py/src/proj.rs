@@ -140,8 +140,10 @@ impl Projection {
         )
     }
 
-    /// Convert in place, as `Transform.convert`.
-    #[pyo3(signature = (x, y, z = None, radians = false, check_grids = true))]
+    /// Convert in place, as `Transform.convert`. A projection has nothing
+    /// that depends on the epochs in `t`.
+    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (x, y, z = None, radians = false, check_grids = true, t = None))]
     fn convert(
         &self,
         py: Python<'_>,
@@ -150,8 +152,19 @@ impl Projection {
         z: Option<&Bound<'_, PyAny>>,
         radians: bool,
         check_grids: bool,
+        t: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<()> {
-        convert::convert(&self.inner, &self.calls, py, x, y, z, radians, check_grids)
+        convert::convert(
+            &self.inner,
+            &self.calls,
+            py,
+            x,
+            y,
+            z,
+            t,
+            radians,
+            check_grids,
+        )
     }
 
     /// A box, as `Transform.convert_bounds`.

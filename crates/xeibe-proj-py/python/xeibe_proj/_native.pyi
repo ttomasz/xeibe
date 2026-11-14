@@ -141,6 +141,7 @@ class Transform:
         z: Any | None = None,
         radians: bool = False,
         check_grids: bool = True,
+        t: Any | None = None,
     ) -> None: ...
     def convert_bounds(
         self,
@@ -235,6 +236,7 @@ class Projection:
         z: Any | None = None,
         radians: bool = False,
         check_grids: bool = True,
+        t: Any | None = None,
     ) -> None: ...
     def convert_bounds(
         self,

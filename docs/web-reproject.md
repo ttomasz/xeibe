@@ -221,7 +221,7 @@ the area of use, deprecated and its replacements, EPSG's remarks
 | Area of use: name and box | `area_name`, `area` |
 | Scope and remarks | `scope`, `xeibe_crs::operation_remarks` |
 | Grids, each fetched / failed and its size | `grids` |
-| Time-dependent (not supported: said so) | `time_dependent` |
+| Time-dependent (the page takes no epoch, so it runs at its reference epoch: said so) | `time_dependent` |
 | Every step: projection, datum shift, ensemble null operation, ballpark vertical…, with its CRSs | `chain` |
 | How many of the points went through it | `operation_index_for` per point |
 

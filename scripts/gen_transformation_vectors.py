@@ -32,11 +32,17 @@ Two kinds of vectors:
   `area_of_interest` and `accuracy`); the points lie in the area of
   interest.
 
+With `--epochs`, coordinates with an epoch each, PROJ's fourth value
+(`epochs.jsonl`): every time-dependent Helmert transformation forced,
+forwards and back, and the automatic choice between CRSs they join, each
+point at one of a few epochs or at none.
+
     scripts/build_proj_oracle.py                    # once per EPSG release
     scripts/gen_transformation_vectors.py           # committed subsets -> tests/data/reprojection/
     scripts/gen_transformation_vectors.py --grids tests/data/reprojection/grids
     scripts/gen_transformation_vectors.py --vertical [--grids tests/data/reprojection/grids]
     scripts/gen_transformation_vectors.py --options
+    scripts/gen_transformation_vectors.py --epochs
     scripts/gen_transformation_vectors.py --all     # everything -> target/reprojection/
     scripts/gen_transformation_vectors.py --all --grids target/proj-grids [--vertical]
 """
@@ -86,6 +92,19 @@ GEOID_GRID_METHODS = {
 VERTICAL_GRID_METHODS = GEOID_GRID_METHODS | {1112, 1126, 1071, 1080, 1084, 1085, 1129, 1101, 9658, 1137, 1113}
 VERTICAL_FREE_METHODS = {9616, 1046, 1136, 1131}
 PER_METHOD = 4
+# Time-dependent Helmert methods: Position Vector and Coordinate Frame, in
+# their geocentric, geog2D and geog3D domains.
+TIME_DEPENDENT_METHODS = {1053, 1054, 1055, 1056, 1057, 1058}
+# With --epochs: the epochs coordinates come with, in turn. None is a
+# coordinate without one, which PROJ converts at the reference epoch.
+EPOCHS = [None, 1997.0, 2010.0, 2020.0, 2024.5, 2030.25]
+# With --epochs: pairs beyond the two ends of each operation, whose routes
+# have other steps too: a projection, a geographic 2D CRS, a pivot.
+EPOCH_PINNED_PAIRS = [
+    (7912, 7843), (7843, 7912), (9000, 7844), (7844, 9000), (9000, 7853), (7853, 9000),
+    (7912, 4937), (4937, 7912), (7789, 4936), (7911, 6319), (6319, 7911), (7912, 4979),
+    (9989, 4937), (4937, 9989), (7912, 7911), (9989, 7912),
+]  # fmt: skip
 
 # Pairs always in the committed selection vectors: what xeibe's data meets.
 PINNED_PAIRS = [
@@ -376,6 +395,80 @@ def selection_record(src_code, dst_code, aoi=None, accuracy=None) -> dict | None
     return record
 
 
+def with_epoch(transformer, p: list[float], epoch: float | None, **kwargs) -> list[float] | None:
+    """`transform` of a point at `epoch`: PROJ's result without the epoch,
+    which no step changes."""
+    if epoch is None:
+        return clean(transformer.transform(*p, errcheck=False, **kwargs))
+    out = clean(transformer.transform(*p, tt=epoch, errcheck=False, **kwargs))
+    return None if out is None else out[: len(p)]
+
+
+def epoch_records(registry: dict, everything: bool) -> list[dict]:
+    """Coordinates with epochs: each time-dependent Helmert transformation
+    forced (`"kind": "operation"`: `out` is PROJ's pipeline forwards, `back`
+    the pipeline backwards on `out`), then the automatic choice between
+    CRSs (`"kind": "pair"`)."""
+    by_method: dict[int, list[dict]] = {}
+    for op in registry["operations"]:
+        if op["deprecated"] or op["method"] not in TIME_DEPENDENT_METHODS or not op["src"] or not op["dst"]:
+            continue
+        by_method.setdefault(op["method"], []).append(op)
+    chosen = [op for ops in by_method.values() for op in (ops if everything else ops[:PER_METHOD])]
+    records = []
+    pairs = list(EPOCH_PINNED_PAIRS)
+    for op in chosen:
+        code = op["code"]
+        try:
+            co = pyproj.crs.CoordinateOperation.from_epsg(code)
+            pipeline = pyproj.Transformer.from_pipeline(co.to_proj4())
+            src = pyproj.CRS.from_epsg(op["src"])
+            area = co.area_of_use
+            if area is None:
+                continue
+            pin = points_in(src, sample_area(code, area.west, area.south, area.east, area.north), code)
+        except (pyproj.exceptions.CRSError, pyproj.exceptions.ProjError) as e:
+            print(f"operation {code}: skipped ({e})", file=sys.stderr)
+            continue
+        points = []
+        for i, p in enumerate(pin):
+            epoch = EPOCHS[(i + code) % len(EPOCHS)]
+            out = with_epoch(pipeline, p, epoch)
+            back = None if out is None else with_epoch(pipeline, out, epoch, direction="INVERSE")
+            points.append({"in": p, "t": epoch, "out": out, "back": back})
+        records.append(
+            {"kind": "operation", "op": code, "method": op["method"], "src": op["src"], "dst": op["dst"], "points": points}
+        )
+        for pair in ((op["src"], op["dst"]), (op["dst"], op["src"])):
+            if pair not in pairs:
+                pairs.append(pair)
+    for src_code, dst_code in pairs:
+        src, dst = pyproj.CRS.from_epsg(src_code), pyproj.CRS.from_epsg(dst_code)
+        areas = [a for a in map(crs_area, (src, dst)) if a]
+        if not areas:
+            continue
+        seed = src_code * 100003 + dst_code
+        try:
+            transformer = pyproj.Transformer.from_crs(src, dst, allow_ballpark=False, only_best=False)
+            inputs = points_in(src, sample_area(seed, *min(areas, key=pseudo_area)), seed)
+        except (pyproj.exceptions.ProjError, pyproj.exceptions.CRSError) as e:
+            print(f"{src_code} to {dst_code}: skipped ({e})", file=sys.stderr)
+            continue
+        points = []
+        for i, p in enumerate(inputs):
+            epoch = EPOCHS[(i + seed) % len(EPOCHS)]
+            out = with_epoch(transformer, p, epoch)
+            name = None
+            if out is not None:
+                try:
+                    name = transformer.get_last_used_operation().description
+                except pyproj.exceptions.ProjError:
+                    name = transformer.description
+            points.append({"in": p, "t": epoch, "out": out, "op": name})
+        records.append({"kind": "pair", "src": src_code, "dst": dst_code, "points": points})
+    return records
+
+
 def engineering_pairs(registry: dict) -> list[tuple[int, int]]:
     """Pairs with engineering CRSs: across each EPSG operation, both ways;
     each to the geographic CRS of the operation's other end and to WGS 84;
@@ -557,6 +650,7 @@ def main() -> int:
     parser.add_argument("--grids", type=Path, help="directory of PROJ-data grids: level 3 vectors")
     parser.add_argument("--vertical", action="store_true", help="selection between CRSs with heights")
     parser.add_argument("--options", action="store_true", help="selection with area_of_interest and accuracy")
+    parser.add_argument("--epochs", action="store_true", help="coordinates with epochs, through time-dependent operations")
     args = parser.parse_args()
     if not (ORACLE / "proj.db").exists():
         sys.exit("target/proj-oracle-epsg/proj.db is missing; run scripts/build_proj_oracle.py")
@@ -572,6 +666,9 @@ def main() -> int:
     out = ALL if args.all else COMMITTED
     if args.options:
         write(out / "selection-options.jsonl", option_records(registry, args.all))
+        return 0
+    if args.epochs:
+        write(out / "epochs.jsonl", epoch_records(registry, args.all))
         return 0
     suffix = "-grids" if args.grids else ""
     if args.vertical:

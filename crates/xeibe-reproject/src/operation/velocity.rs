@@ -18,7 +18,7 @@ use std::sync::{Arc, OnceLock};
 
 use super::grid::{XyzShift, interpolation_end, loaded, not_loaded};
 use super::helmert::Helmert;
-use super::{Method, MethodError, param, required};
+use super::{Method, MethodError, YEAR, param, required};
 use crate::crs::{Crs, Kind};
 use crate::ellipsoid::Ellipsoid;
 use crate::error::CoordinateError;
@@ -45,8 +45,6 @@ const VELOCITY_FILE: u32 = 1050;
 /// The operation's source and target epochs (stored in seconds).
 const SOURCE_EPOCH: u32 = 1068;
 const TARGET_EPOCH: u32 = 1069;
-/// EPSG's year (unit 1029), in seconds.
-const YEAR: f64 = 31_556_925.445;
 
 /// Whether PROJ can write the operation as a pipeline (its grid's
 /// availability aside).

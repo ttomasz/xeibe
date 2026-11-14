@@ -3,6 +3,7 @@
 mod api;
 #[cfg(feature = "arrow")]
 mod arrow;
+mod epochs;
 mod equivalent;
 mod explain;
 mod geodesic;

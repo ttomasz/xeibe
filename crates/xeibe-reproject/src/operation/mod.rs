@@ -46,6 +46,19 @@ pub(crate) trait Method: Send + Sync + std::fmt::Debug {
         self.inverse(c)
     }
 
+    /// [`Method::forward_3d`] for a coordinate at `epoch`, a decimal year
+    /// (PROJ's fourth value, `t`). Only a time-dependent method differs: it
+    /// applies its rates from its reference epoch to that one, where
+    /// `forward_3d` stays at the reference epoch.
+    fn forward_3d_at(&self, c: [f64; 3], _epoch: f64) -> Result<[f64; 3], CoordinateError> {
+        self.forward_3d(c)
+    }
+
+    /// [`Method::inverse_3d`] for a coordinate at `epoch`.
+    fn inverse_3d_at(&self, c: [f64; 3], _epoch: f64) -> Result<[f64; 3], CoordinateError> {
+        self.inverse_3d(c)
+    }
+
     /// The grid files the method reads.
     fn grid_files(&self) -> Vec<Arc<GridFile>> {
         Vec::new()
@@ -98,6 +111,14 @@ pub(crate) mod param {
     pub const ORDINATE_1_EVALUATION_POINT: u32 = 8617;
     pub const ORDINATE_2_EVALUATION_POINT: u32 = 8618;
     pub const ORDINATE_3_EVALUATION_POINT: u32 = 8667;
+    pub const X_TRANSLATION_RATE: u32 = 1040;
+    pub const Y_TRANSLATION_RATE: u32 = 1041;
+    pub const Z_TRANSLATION_RATE: u32 = 1042;
+    pub const X_ROTATION_RATE: u32 = 1043;
+    pub const Y_ROTATION_RATE: u32 = 1044;
+    pub const Z_ROTATION_RATE: u32 = 1045;
+    pub const SCALE_DIFFERENCE_RATE: u32 = 1046;
+    pub const REFERENCE_EPOCH: u32 = 1047;
 }
 
 /// Whether xeibe implements the method with this EPSG code. Selection uses
@@ -171,6 +192,10 @@ pub(crate) fn build(op: &Operation, src: &Crs, dst: &Crs) -> Result<Arc<dyn Meth
     }
     Err(MethodError::NotImplemented)
 }
+
+/// EPSG's year (unit 1029) in seconds: rates and epochs are stored in SI
+/// units, per second and in seconds.
+pub(crate) const YEAR: f64 = 31_556_925.445;
 
 /// A parameter the method can't do without.
 pub(crate) fn required(op: &Operation, code: u32) -> Result<f64, MethodError> {

@@ -10,6 +10,13 @@
 //! geog2D domain the height is carried through unchanged (PROJ's
 //! `push`/`pop +v_3`).
 //!
+//! The time-dependent methods (1053 to 1058) carry a rate for each of the
+//! seven parameters and a reference epoch. For a coordinate with an epoch
+//! (a decimal year; PROJ's fourth value, `t`) the parameters are those at
+//! that epoch, `P + rate × (epoch − reference epoch)`, as PROJ's
+//! `update_parameters` computes them; without one they are those at the
+//! reference epoch, the rates unused, which is what PROJ does too.
+//!
 //! A geographic-domain Helmert of zeros between ellipsoids within
 //! [`SAME_ELLIPSOID_M`] of each other, on one prime meridian, changes the CRS
 //! only: "ETRS89 to WGS 84 (1)", "NAD83 to WGS 84 (1)" and a zero `TOWGS84`
@@ -19,7 +26,7 @@
 
 use std::sync::Arc;
 
-use super::{Method, MethodError, param, required};
+use super::{Method, MethodError, YEAR, param, required};
 use crate::crs::{Crs, Kind};
 use crate::ellipsoid::Ellipsoid;
 use crate::error::CoordinateError;
@@ -44,8 +51,9 @@ pub(super) const METHODS: &[u32] = &[
     1034, 9636, 1039, //
     // Molodensky-Badekas, Position Vector convention.
     1061, 1063, 1062, //
-    // Time-dependent Position Vector and Coordinate Frame, applied at their
-    // reference epoch: without a coordinate epoch PROJ does the same.
+    // Time-dependent Position Vector and Coordinate Frame, applied at the
+    // coordinate's epoch, or without one at their reference epoch, as in
+    // PROJ.
     1053, 1054, 1055, 1056, 1057, 1058, //
     // Not the time-specific variants (1065, 1066): PROJ can't run them
     // either, so they never compete in its choice.
@@ -212,9 +220,87 @@ fn geographic(crs: &Crs) -> Result<(Ellipsoid, f64), MethodError> {
     }
 }
 
+/// A time-dependent Helmert's parameters at its reference epoch and their
+/// rates per year, from which [`Rates::at`] makes the step for an epoch.
+#[derive(Debug, Clone)]
+struct Rates {
+    /// Translation, rotation (radians) and scale (a fraction) at the
+    /// reference epoch.
+    t: [f64; 3],
+    rot: [f64; 3],
+    s: f64,
+    /// Their rates, per year.
+    dt: [f64; 3],
+    drot: [f64; 3],
+    ds: f64,
+    /// The reference epoch, a decimal year.
+    epoch: f64,
+    position_vector: bool,
+}
+
+impl Rates {
+    /// The rates of a time-dependent method's operation; `None` for the
+    /// other methods.
+    fn read(
+        op: &Operation,
+        t: [f64; 3],
+        rot: [f64; 3],
+        s: f64,
+        position_vector: bool,
+    ) -> Result<Option<Rates>, MethodError> {
+        if !matches!(op.method, 1053..=1058) {
+            return Ok(None);
+        }
+        // Stored in SI units: per second, and the epoch in seconds.
+        let per_year = |code| required(op, code).map(|v| v * YEAR);
+        Ok(Some(Rates {
+            t,
+            rot,
+            s,
+            dt: [
+                per_year(param::X_TRANSLATION_RATE)?,
+                per_year(param::Y_TRANSLATION_RATE)?,
+                per_year(param::Z_TRANSLATION_RATE)?,
+            ],
+            drot: [
+                per_year(param::X_ROTATION_RATE)?,
+                per_year(param::Y_ROTATION_RATE)?,
+                per_year(param::Z_ROTATION_RATE)?,
+            ],
+            ds: per_year(param::SCALE_DIFFERENCE_RATE)?,
+            epoch: required(op, param::REFERENCE_EPOCH)? / YEAR,
+            position_vector,
+        }))
+    }
+
+    /// The Helmert step for coordinates at `epoch`.
+    fn at(&self, epoch: f64) -> Helmert {
+        let years = epoch - self.epoch;
+        let moved = |p: [f64; 3], rate: [f64; 3]| {
+            [
+                p[0] + rate[0] * years,
+                p[1] + rate[1] * years,
+                p[2] + rate[2] * years,
+            ]
+        };
+        Helmert::new(
+            moved(self.t, self.dt),
+            moved(self.rot, self.drot),
+            self.s + self.ds * years,
+            self.position_vector,
+            [0.0; 3],
+            false,
+        )
+    }
+}
+
 #[derive(Debug)]
 struct HelmertOperation {
+    /// The step with the operation's parameters as given: for a
+    /// time-dependent method, those at its reference epoch.
     helmert: Helmert,
+    /// A time-dependent method's rates.
+    rates: Option<Rates>,
     domain: Domain,
     /// Source and target ellipsoid and prime meridian, for the geographic
     /// domains.
@@ -261,6 +347,7 @@ pub(super) fn build(op: &Operation, src: &Crs, dst: &Crs) -> Result<Arc<dyn Meth
     let position_vector = matches!(kind, Kind7::PositionVector | Kind7::BadekasPositionVector);
     let exact = matches!(op.method, 1132 | 1133 | 1140);
     let helmert = Helmert::new(t, rot, s, position_vector, refp, exact);
+    let rates = Rates::read(op, t, rot, s, position_vector)?;
     let (src, dst) = match domain {
         Domain::Geocentric => {
             for crs in [src, dst] {
@@ -276,6 +363,7 @@ pub(super) fn build(op: &Operation, src: &Crs, dst: &Crs) -> Result<Arc<dyn Meth
     let relabel = zeros && src.zip(dst).is_some_and(|(s, d)| same_place(s, d));
     Ok(Arc::new(HelmertOperation {
         helmert,
+        rates,
         domain,
         src,
         dst,
@@ -308,18 +396,47 @@ impl HelmertOperation {
         inverse: bool,
         keep_height: bool,
     ) -> Result<[f64; 3], CoordinateError> {
+        self.apply_with(&self.helmert, c, inverse, keep_height)
+    }
+
+    /// [`HelmertOperation::apply`] for a coordinate at `epoch`: a
+    /// time-dependent method's parameters are those at that epoch.
+    fn apply_at(
+        &self,
+        c: [f64; 3],
+        epoch: f64,
+        inverse: bool,
+        keep_height: bool,
+    ) -> Result<[f64; 3], CoordinateError> {
+        match &self.rates {
+            // PROJ rebuilds its parameters only when the epoch differs
+            // from the one they are at: the same numbers either way.
+            Some(rates) if epoch != rates.epoch => {
+                self.apply_with(&rates.at(epoch), c, inverse, keep_height)
+            }
+            _ => self.apply(c, inverse, keep_height),
+        }
+    }
+
+    fn apply_with(
+        &self,
+        helmert: &Helmert,
+        c: [f64; 3],
+        inverse: bool,
+        keep_height: bool,
+    ) -> Result<[f64; 3], CoordinateError> {
         if self.relabel {
             return Ok(c);
         }
         match (self.src, self.dst, inverse) {
             (Some(from), Some(to), false) => {
-                self.through_geocentric(c, from, to, |x| self.helmert.forward(x), keep_height)
+                self.through_geocentric(c, from, to, |x| helmert.forward(x), keep_height)
             }
             (Some(from), Some(to), true) => {
-                self.through_geocentric(c, to, from, |x| self.helmert.inverse(x), keep_height)
+                self.through_geocentric(c, to, from, |x| helmert.inverse(x), keep_height)
             }
-            (_, _, false) => Ok(self.helmert.forward(c)),
-            (_, _, true) => Ok(self.helmert.inverse(c)),
+            (_, _, false) => Ok(helmert.forward(c)),
+            (_, _, true) => Ok(helmert.inverse(c)),
         }
     }
 }
@@ -343,6 +460,14 @@ impl Method for HelmertOperation {
 
     fn inverse_3d(&self, c: [f64; 3]) -> Result<[f64; 3], CoordinateError> {
         self.apply(c, true, false)
+    }
+
+    fn forward_3d_at(&self, c: [f64; 3], epoch: f64) -> Result<[f64; 3], CoordinateError> {
+        self.apply_at(c, epoch, false, false)
+    }
+
+    fn inverse_3d_at(&self, c: [f64; 3], epoch: f64) -> Result<[f64; 3], CoordinateError> {
+        self.apply_at(c, epoch, true, false)
     }
 
     fn is_identity(&self) -> bool {

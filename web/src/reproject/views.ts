@@ -346,7 +346,7 @@ function operationHtml(op: Operation, index: number, info: Info, count: number):
     : '';
   const flags: string[] = [];
   if (op.accuracy === null) flags.push('<span class="warn">accuracy unknown</span>');
-  if (op.time_dependent) flags.push('<span class="warn">time-dependent: needs the coordinates\' epoch, which isn\'t supported</span>');
+  if (op.time_dependent) flags.push('<span class="warn">time-dependent: run at its reference epoch, as this page takes no epoch for the coordinates</span>');
   if (op.chain.some((s) => s.kind === 'ballpark_vertical')) flags.push('<span class="warn">heights passed unchanged</span>');
   if (op.chain.some((s) => s.kind === 'ensemble_identity' || s.kind === 'ensemble_member'))
     flags.push('<span class="muted">datum ensemble to a member: no shift</span>');
