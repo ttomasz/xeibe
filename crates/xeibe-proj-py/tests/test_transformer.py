@@ -280,13 +280,16 @@ def test_tt_in_containers_and_itransform() -> None:
     want = theirs.transform(*columns)
     for make in (list, tuple, lambda c: array("d", c), np.array):
         got = ours.transform(*(make(c) for c in columns))
-        for g, w in zip(got[:3], want[:3]):
-            assert list(g) == pytest.approx(list(w), abs=1e-9)
+        # Degrees to 1e-9, heights to 1e-8 m: aarch64 fuses multiplications
+        # and additions that x86_64 rounds apart (2e-9 m in the heights).
+        for g, w, tol in zip(got[:3], want[:3], (1e-9, 1e-9, 1e-8)):
+            assert list(g) == pytest.approx(list(w), abs=tol)
         assert list(got[3]) == EPOCHS
     points = list(zip(*columns))
-    assert [v for p in ours.itransform(points) for v in p[:3]] == pytest.approx(
-        [v for p in theirs.itransform(points) for v in p[:3]], abs=1e-9
-    )
+    for k, tol in enumerate((1e-9, 1e-9, 1e-8)):
+        assert [p[k] for p in ours.itransform(points)] == pytest.approx(
+            [p[k] for p in theirs.itransform(points)], abs=tol
+        )
     # The third value as the epoch, between the geographic 2D CRSs.
     flat = [(lat, lon, t) for lat, lon, _, t in points]
     ours_2d = list(Transformer.from_crs(9000, 7844).itransform(flat, time_3rd=True))

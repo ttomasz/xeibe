@@ -566,6 +566,13 @@ fn off((l1, p1): (f64, f64), (l2, p2): (f64, f64)) -> f64 {
     (p1 - p2).abs().max(dl.abs() * p2.to_radians().cos())
 }
 
+/// A projected coordinate as PROJ's: to 2 µm, or to a few ulps of a large
+/// one (the gnomonic's reach 1e9 m near the horizon, where one libm's sin
+/// and cos round differently from another's).
+fn near(ours: f64, proj: f64) -> bool {
+    (ours - proj).abs() < 2e-6_f64.max(4e-14 * proj.abs())
+}
+
 /// The projections EPSG has no CRS for and those only PROJ defines
 /// (`methods.jsonl`): points over the whole globe converted from each
 /// string's geodetic CRS and back, against PROJ's (forwards to 2 µm, PROJ's
@@ -632,7 +639,7 @@ fn method_conversions(path: &Path) -> (usize, Vec<String>) {
                 continue;
             };
             match ours {
-                Ok((x, y, _)) if (x - wx).abs() < 2e-6 && (y - wy).abs() < 2e-6 => {}
+                Ok((x, y, _)) if near(x, wx) && near(y, wy) => {}
                 Ok(_) if better => continue,
                 Err(_) if diverges && proj_off > 1.0 => continue,
                 other => {

@@ -1086,15 +1086,12 @@ fn compare_with_pyproj(path: &std::path::Path, tolerance: u64) -> (usize, Vec<St
     (compared, off)
 }
 
-/// pyproj's vectors come from glibc's libm, so elsewhere sin, cos and
-/// atan2 may round differently.
-const LIBM_ULPS: u64 = if cfg!(all(target_os = "linux", target_env = "gnu")) {
-    0
-} else {
-    4
-};
+/// pyproj's vectors come from one libm (glibc 2.39's), and sin, cos and
+/// atan2 round differently in others, newer glibc releases among them
+/// (Ubuntu 26.04's differs by up to 3 ulps).
+const LIBM_ULPS: u64 = 4;
 
-/// Bit for bit on Linux, where the committed vectors were made.
+/// To a few ulps of pyproj, whose vectors are committed.
 #[test]
 fn geodesics_match_pyproj() {
     let (n, off) = compare_with_pyproj(
