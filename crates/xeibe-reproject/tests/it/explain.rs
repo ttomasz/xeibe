@@ -144,8 +144,111 @@ fn the_only_operation_is_used_whatever_its_area() {
     check(&t, &e, p).unwrap();
     assert_eq!(e.candidates[0].outcome, Outcome::Only);
     assert_eq!(e.candidates[0].inside, Some(false));
+    assert_eq!(e.candidates[1].outcome, Outcome::NotAtEpoch);
     let warsaw = t.explain_point(52.23, 21.01, None).unwrap();
     assert_eq!(warsaw.candidates[0].inside, Some(true));
+    assert_eq!(warsaw.candidates[1].outcome, Outcome::NotAtEpoch);
+    assert_eq!(warsaw.candidates[1].inside, Some(false));
+}
+
+/// "WGS 84 to ETRS89 (2)" holds at 2014.81, in the German and Dutch North
+/// Sea, to 0.1 m; the null "ETRS89 to WGS 84 (1)" (1 m) is for every other
+/// coordinate.
+#[test]
+fn a_time_specific_route_is_for_a_coordinate_at_its_epoch() {
+    let (a, b) = (Crs::from_epsg(4937).unwrap(), Crs::from_epsg(4979).unwrap());
+    let t = Transform::new(&a, &b, AxisOrder::EastFirst).unwrap();
+    let info = t.operation_info();
+    let route = info
+        .iter()
+        .position(|o| o.only_at_epoch == Some(2014.81))
+        .unwrap();
+    let null = index_of(&t, "ETRS89 to WGS 84 (1)");
+    let sea = (6.5, 54.5, Some(30.0));
+    let warsaw = (21.01, 52.23, Some(100.0));
+
+    // Without an epoch, and at another one: not looked at, though its
+    // area contains the point.
+    for t in [t.clone(), t.with_epochs(None, Some(2020.0)).unwrap()] {
+        let e = t.explain_point(sea.0, sea.1, sea.2).unwrap();
+        check(&t, &e, sea).unwrap();
+        assert_eq!(e.used, Some(null));
+        assert_eq!(e.candidates[route].outcome, Outcome::NotAtEpoch);
+        assert_eq!(e.candidates[route].inside, Some(true));
+        assert!(
+            e.candidates
+                .iter()
+                .all(|c| c.outcome != Outcome::NotReached),
+            "{e:?}"
+        );
+    }
+
+    let at = t.with_epochs(None, Some(2014.81)).unwrap();
+    // At its epoch, in its area: chosen, and the others say why not they.
+    let e = at.explain_point(sea.0, sea.1, sea.2).unwrap();
+    check(&at, &e, sea).unwrap();
+    assert_eq!(e.used, Some(route));
+    assert_eq!(e.candidates[route].outcome, Outcome::Chosen);
+    assert_eq!(
+        e.candidates[null].outcome,
+        Outcome::Passed {
+            by: route,
+            reason: PassReason::LessAccurate
+        }
+    );
+    assert!(
+        e.candidates
+            .iter()
+            .all(|c| c.outcome != Outcome::NotReached),
+        "{e:?}"
+    );
+    // At its epoch, outside its area.
+    let e = at.explain_point(warsaw.0, warsaw.1, warsaw.2).unwrap();
+    check(&at, &e, warsaw).unwrap();
+    assert_eq!(e.used, Some(null));
+    assert_eq!(e.candidates[route].outcome, Outcome::Outside);
+}
+
+/// Beside the only other operation, a time-specific route that is chosen
+/// isn't "the only one"; and where there are only such routes, each says
+/// why a coordinate can't be converted.
+#[test]
+fn a_time_specific_route_beside_one_operation_or_none() {
+    let t = transform(4326, 2180, Grids::None)
+        .with_epochs(Some(2014.81), None)
+        .unwrap();
+    let sea = (54.5, 6.5, None);
+    let e = t.explain_point(sea.0, sea.1, sea.2).unwrap();
+    check(&t, &e, sea).unwrap();
+    assert_eq!(e.used, Some(1));
+    assert_eq!(e.candidates[1].outcome, Outcome::Chosen);
+    assert_eq!(
+        e.candidates[0].outcome,
+        Outcome::Passed {
+            by: 1,
+            reason: PassReason::LessAccurate
+        }
+    );
+    let warsaw = (52.23, 21.01, None);
+    let e = t.explain_point(warsaw.0, warsaw.1, warsaw.2).unwrap();
+    check(&t, &e, warsaw).unwrap();
+    assert_eq!(e.candidates[0].outcome, Outcome::Only);
+    assert_eq!(e.candidates[1].outcome, Outcome::Outside);
+
+    // ITRF2008 to PZ-90.11: EPSG has the one transformation, at 2010.0.
+    let (a, b) = (Crs::from_epsg(5332).unwrap(), Crs::from_epsg(7679).unwrap());
+    let pz = Transform::new(&a, &b, AxisOrder::Authority).unwrap();
+    assert_eq!(pz.operation_info()[0].only_at_epoch, Some(2010.0));
+    let p = (2_845_455.975_3, 2_160_954.307_3, Some(5_265_993.265_6));
+    let e = pz.explain_point(p.0, p.1, p.2).unwrap();
+    assert_eq!(e.used, None);
+    assert_eq!(e.error, Some(CoordinateError::MissingEpoch));
+    assert!(
+        e.candidates
+            .iter()
+            .all(|c| c.outcome == Outcome::NotAtEpoch),
+        "{e:?}"
+    );
 }
 
 #[test]

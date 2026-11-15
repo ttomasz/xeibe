@@ -32,6 +32,9 @@ pub(crate) trait Recorder {
     fn fallback(&mut self, _candidate: usize) {}
     /// The choice starts looking again, without the candidates tried.
     fn round(&mut self) {}
+    /// The candidate goes through a time-specific Helmert, and the
+    /// coordinate isn't at its epoch (or has none): it isn't looked at.
+    fn not_at_epoch(&mut self, _candidate: usize) {}
     /// Whether the recorder follows the steps ([`Recorder::step`]): the
     /// calls are skipped otherwise, with what they would be given.
     const TRACE: bool = false;
@@ -73,6 +76,10 @@ pub enum PassReason {
     /// The other ranks earlier, and the rule doesn't displace it: an
     /// earlier operation of unknown accuracy, for one.
     Earlier,
+    /// As accurate, and the other goes through a time-specific Helmert
+    /// that holds at the coordinate's epoch
+    /// ([`crate::OperationInfo::only_at_epoch`]).
+    AtEpoch,
 }
 
 /// What became of one candidate operation for one coordinate.
@@ -97,6 +104,11 @@ pub enum Outcome {
     /// Its area contains the point, but the choice stopped before it: it
     /// tries three operations at most, then falls back.
     NotReached,
+    /// It goes through a time-specific Helmert
+    /// ([`crate::OperationInfo::only_at_epoch`]), and the coordinate isn't
+    /// at its epoch, or has none: the choice doesn't look at it, whether
+    /// its area contains the point (`inside`) or not.
+    NotAtEpoch,
 }
 
 /// One candidate operation, for one coordinate.
@@ -133,6 +145,7 @@ pub(crate) struct Explain {
     pub(crate) tried: Vec<Option<Option<CoordinateError>>>,
     pub(crate) fallback: Option<usize>,
     pub(crate) rounds: usize,
+    pub(crate) not_at_epoch: Vec<bool>,
 }
 
 impl Explain {
@@ -141,6 +154,7 @@ impl Explain {
             inside: vec![None; candidates],
             passed: vec![None; candidates],
             tried: vec![None; candidates],
+            not_at_epoch: vec![false; candidates],
             ..Explain::default()
         }
     }
@@ -168,6 +182,10 @@ impl Recorder for Explain {
     fn round(&mut self) {
         self.rounds += 1;
     }
+
+    fn not_at_epoch(&mut self, candidate: usize) {
+        self.not_at_epoch[candidate] = true;
+    }
 }
 
 impl Outcome {
@@ -180,6 +198,7 @@ impl Outcome {
             Outcome::Passed { .. } => 3,
             Outcome::NotReached => 2,
             Outcome::Outside => 1,
+            Outcome::NotAtEpoch => 0,
         }
     }
 }

@@ -184,12 +184,13 @@ pub(crate) fn is_exportable(op: &Operation) -> bool {
 }
 
 /// A time-specific Helmert's epoch, a decimal year, the one epoch it holds
-/// at.
+/// at. EPSG's data has it in seconds: rounded as a coordinate's epoch is,
+/// 2010.0 comes back as that and not as 2009.9999999999998.
 pub(crate) fn time_specific_epoch(op: &Operation) -> Option<f64> {
     matches!(op.method, 1065 | 1066)
         .then(|| op.param(helmert::TRANSFORMATION_REFERENCE_EPOCH))
         .flatten()
-        .map(|t| t / YEAR)
+        .map(|t| crate::transform::rounded_epoch(t / YEAR))
 }
 
 /// The datums EPSG's live time-specific Helmerts join: only a transform

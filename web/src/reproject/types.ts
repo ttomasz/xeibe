@@ -124,6 +124,9 @@ export interface Operation {
   time_dependent: boolean;
   /** It works only on coordinates with an epoch (a deformation model). */
   needs_epoch: boolean;
+  /** Through a time-specific Helmert: only for a coordinate at this epoch
+   * (a decimal year). Such routes come after the others. */
+  only_at_epoch: number | null;
   scope: string | null;
   remarks: string | null;
   /** It shifts nothing: its parameters are zero. */
@@ -156,7 +159,7 @@ export type Warning =
 /** What the engine's choice made of a candidate, for one point
  * (`Transform::explain_point`). */
 export interface Outcome {
-  kind: 'chosen' | 'fallback' | 'only' | 'passed' | 'outside' | 'failed' | 'not_reached';
+  kind: 'chosen' | 'fallback' | 'only' | 'passed' | 'outside' | 'failed' | 'not_reached' | 'not_at_epoch';
   /** passed: the operation preferred, and why. */
   by?: number;
   reason?:
@@ -166,7 +169,8 @@ export interface Outcome {
     | 'unknown_area_name'
     | 'offshore'
     | 'priority'
-    | 'earlier';
+    | 'earlier'
+    | 'at_epoch';
   /** failed: why. */
   error?: string;
 }

@@ -136,13 +136,19 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
   last, with `OperationInfo::only_at_epoch`. A pair with only such routes
   now sets up, and its coordinates fail without an epoch
   (`CoordinateError::MissingEpoch`) or at another one (`EpochOutOfRange`).
+  `Transform::explain_point` says of such a route that the coordinate isn't
+  at its epoch (`Outcome::NotAtEpoch`), and of an operation it displaces
+  why (`PassReason::AtEpoch` when the two are as accurate). The reproject
+  page marks these routes, and doesn't count them among the candidates: it
+  takes no epoch, so a point goes through one only when it is forced.
 - `xeibe-crs` 0.4.3: the operations table gains the transformations of the
   methods above that PROJ doesn't import (EVRF2019's and the polynomials).
 - Rust API changes that break callers, besides those above:
   `MemberRule::element` gave way to `MemberRule::matches`;
   `xeibe_geom::arcs::arc_by_bulge_midpoint` takes a `BulgeNormal`;
-  `xeibe_wfs::paging::NextPage`, `CoordinateError` and the `Error` enums of
-  `xeibe-reproject` and `xeibe-wfs` have new variants; `OperationInfo`,
+  `xeibe_wfs::paging::NextPage`, `CoordinateError`, `Outcome`, `PassReason`
+  and the `Error` enums of `xeibe-reproject` and `xeibe-wfs` have new
+  variants; `OperationInfo`,
   `Capabilities`, `Constraints`, `GeometrySniff`, `GeometryStats`,
   `InferenceOptions`, `GmlOptions` and `WfsOptions` have new fields; and
   `xeibe_io::Error::HttpStatus` names the URL the response came from after

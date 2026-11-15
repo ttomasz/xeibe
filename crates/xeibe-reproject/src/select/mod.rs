@@ -1171,18 +1171,33 @@ impl Candidates {
         epoch: Option<f64>,
         rec: &mut R,
     ) -> Result<Option<([f64; 3], usize)>, CoordinateError> {
-        let Some(epoch) = epoch else {
-            return Ok(None);
-        };
         if self.list.iter().all(|p| p.only_at.is_none()) {
             return Ok(None);
         }
-        let point = self.choice_point(src, internal)?;
-        let at = |p: &Prepared| {
+        let holds = |p: &Prepared| {
             p.only_at
-                .is_some_and(|t| (epoch - t).abs() <= SAME_EPOCH_YEARS)
-                && self.contains(p, point)
+                .zip(epoch)
+                .is_some_and(|(t, epoch)| (epoch - t).abs() <= SAME_EPOCH_YEARS)
         };
+        if R::DETAILED {
+            for (i, p) in self.list.iter().enumerate() {
+                if p.only_at.is_some() && !holds(p) {
+                    rec.not_at_epoch(i);
+                }
+            }
+            // Every candidate's area: the choice may end here, before the
+            // others' are looked at.
+            if let Ok(point) = self.choice_point(src, internal) {
+                for (i, p) in self.list.iter().enumerate() {
+                    rec.inside(i, self.contains(p, point));
+                }
+            }
+        }
+        let Some(epoch) = epoch else {
+            return Ok(None);
+        };
+        let point = self.choice_point(src, internal)?;
+        let at = |p: &Prepared| holds(p) && self.contains(p, point);
         let known = |a: f64| if a >= 0.0 { a } else { f64::MAX };
         let Some(best) = (0..self.list.len())
             .filter(|&i| at(&self.list[i]))
@@ -1190,16 +1205,43 @@ impl Candidates {
         else {
             return Ok(None);
         };
+        // Why `other` wins over `passed`, by accuracy alone.
+        let less_accurate = |passed: &Prepared, other: &Prepared| {
+            if known(passed.accuracy) <= known(other.accuracy) {
+                None
+            } else if passed.accuracy < 0.0 {
+                Some(PassReason::UnknownAccuracy)
+            } else {
+                Some(PassReason::LessAccurate)
+            }
+        };
+        if R::DETAILED {
+            // The other routes that hold at the epoch here.
+            for i in (0..self.list.len()).filter(|&i| i != best && at(&self.list[i])) {
+                let reason = less_accurate(&self.list[i], &self.list[best]);
+                rec.passed(i, best, reason.unwrap_or(PassReason::Earlier));
+            }
+        }
         let others: Vec<usize> = (0..self.list.len())
             .filter(|&i| self.list[i].only_at.is_some())
             .collect();
-        if let Some(o) = self.suggest(point, &others, &mut ())
+        let other = self.suggest(point, &others, rec);
+        if let Some(o) = other
             && known(self.list[o].accuracy) < known(self.list[best].accuracy)
         {
+            if let Some(reason) = less_accurate(&self.list[best], &self.list[o]) {
+                rec.passed(best, o, reason);
+            }
             return Ok(None);
         }
         let result = run(&self.list[best].steps, src, dst, internal, Some(epoch), rec);
         rec.tried(best, result.err());
+        if result.is_ok()
+            && let Some(o) = other
+        {
+            let reason = less_accurate(&self.list[o], &self.list[best]);
+            rec.passed(o, best, reason.unwrap_or(PassReason::AtEpoch));
+        }
         Ok(result.ok().map(|out| (out, best)))
     }
 
@@ -1219,7 +1261,9 @@ impl Candidates {
         let mut candidates: Vec<Option<Explained>> = vec![None; operations];
         for (i, p) in self.list.iter().enumerate() {
             let outcome = if used == Some(i) {
-                if self.single {
+                // A route through a time-specific Helmert is chosen for
+                // the coordinate's epoch, beside the only other operation.
+                if self.single && p.only_at.is_none() {
                     Outcome::Only
                 } else if rec.fallback == Some(i) {
                     Outcome::Fallback
@@ -1228,6 +1272,8 @@ impl Candidates {
                 }
             } else if let Some(Some(error)) = rec.tried[i] {
                 Outcome::Failed(error)
+            } else if rec.not_at_epoch[i] {
+                Outcome::NotAtEpoch
             } else if rec.inside[i] == Some(false) {
                 Outcome::Outside
             } else if let Some((by, reason)) = rec.passed[i] {

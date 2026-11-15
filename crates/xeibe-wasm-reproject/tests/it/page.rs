@@ -182,6 +182,46 @@ fn the_only_operation_outside_its_area_and_null() {
 }
 
 #[test]
+fn a_time_specific_route_is_marked_and_not_looked_at() {
+    // One operation, and after it the route through "WGS 84 to ETRS89
+    // (2)", which holds at 2014.81 only: the page takes no epoch.
+    let s = Session::new("4326", "2180", &Options::default()).unwrap();
+    let info = s.info();
+    let operations = info["operations"].as_array().unwrap();
+    assert_eq!(operations.len(), 2, "{info:#}");
+    assert!(operations[0]["only_at_epoch"].is_null());
+    assert_eq!(operations[1]["only_at_epoch"], 2014.81);
+    // Warsaw, and the German North Sea, inside the route's area.
+    for (point, inside) in [((52.2, 21.0, None), false), ((54.5, 6.5, None), true)] {
+        let details = s.details(point);
+        assert_eq!(details["op"], 0, "{details:#}");
+        let candidates = &details["candidates"];
+        assert_eq!(candidates[0]["outcome"]["kind"], "only");
+        assert_eq!(candidates[1]["outcome"]["kind"], "not_at_epoch");
+        assert_eq!(candidates[1]["inside"], inside);
+    }
+    // No operation covers a point there but the route: that is no
+    // operation that failed.
+    let s = Session::new("4326", "4258", &Options::default()).unwrap();
+    let info = s.info();
+    let route = info["operations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|o| !o["only_at_epoch"].is_null())
+        .unwrap();
+    let details = s.details((54.5, 6.5, None));
+    assert_eq!(
+        details["candidates"][route]["outcome"]["kind"],
+        "not_at_epoch"
+    );
+    assert!(
+        !details["warnings"].to_string().contains("fallback_failed"),
+        "{details:#}"
+    );
+}
+
+#[test]
 fn a_forced_operation_outside_its_area() {
     let options = Options {
         operation: Some(1),

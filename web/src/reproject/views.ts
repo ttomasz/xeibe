@@ -107,6 +107,7 @@ const REASONS: Record<NonNullable<Outcome['reason']>, string> = {
   offshore: 'its area is offshore',
   priority: 'the other is one PROJ prefers among equals',
   earlier: 'the other ranks first',
+  at_epoch: "as accurate, and the other holds at the coordinate's epoch",
 };
 
 /** What the choice made of a candidate, in words. */
@@ -127,6 +128,8 @@ function outcomeText(o: Outcome | null, index: number, forced: number | null): s
       return `<span class="error">failed: ${escape(o.error ?? '')}</span>`;
     case 'not_reached':
       return '<span class="muted">not reached: three were tried</span>';
+    case 'not_at_epoch':
+      return '<span class="muted">not looked at: only for a coordinate at its epoch</span>';
   }
 }
 
@@ -325,13 +328,28 @@ export function operations(info: Info | null, error: string | null, counts: numb
     return `<p>Both CRSs share one datum, so this is a <b>conversion</b>, with no transformation to choose.</p>`;
   }
   const items = info.operations.map((op, i) => operationHtml(op, i, info, counts[i] ?? 0)).join('');
+  // The routes through a time-specific transformation come last, and
+  // aren't among the candidates for a point without an epoch.
+  const atEpoch = info.operations.filter((op) => op.only_at_epoch !== null).length;
+  const ordinary = info.operations.length - atEpoch;
+  const routes = `${atEpoch} route${atEpoch === 1 ? '' : 's'} through a time-specific transformation, which PROJ can't run`;
+  const timeSpecific =
+    atEpoch === 0
+      ? ''
+      : ordinary === 0
+        ? `No operation for a coordinate without an epoch: only ${routes}. Each holds at one epoch, and only a coordinate at it
+           goes that way. This page takes no epoch, so the points fail unless you force one.`
+        : ` After ${ordinary === 1 ? 'it' : 'them'}, ${routes}: only a coordinate at its epoch goes that way. This page takes no epoch,
+           so no point does unless you force it.`;
   const intro =
     info.forced !== null
       ? `<p>${opLabel(info, info.forced)} is forced for every point, whatever its area.</p>`
-      : info.operations.length > 1
-        ? `<p>${info.operations.length} candidate operations, best first, as PROJ ranks them. Each point goes through the first whose area of use contains it
-            (with its grids loaded); a point outside them all goes through the first without grids.</p>`
-        : '<p>One operation: it is used for every point, whatever its area.</p>';
+      : ordinary > 1
+        ? `<p>${ordinary} candidate operations, best first, as PROJ ranks them. Each point goes through the first whose area of use contains it
+            (with its grids loaded); a point outside them all goes through the first without grids.${timeSpecific}</p>`
+        : ordinary === 1
+          ? `<p>One operation: it is used for every point, whatever its area.${timeSpecific}</p>`
+          : `<p>${timeSpecific}</p>`;
   return `${intro}<ol class="operations">${items}</ol>`;
 }
 
@@ -346,7 +364,11 @@ function operationHtml(op: Operation, index: number, info: Info, count: number):
     : '';
   const flags: string[] = [];
   if (op.accuracy === null) flags.push('<span class="warn">accuracy unknown</span>');
-  if (op.needs_epoch) flags.push('<span class="warn">a deformation model: it needs the epoch of each coordinate, which this page doesn\'t take, so its coordinates fail</span>');
+  if (op.only_at_epoch !== null)
+    flags.push(
+      `<span class="warn">time-specific: it holds at epoch ${op.only_at_epoch} only, for coordinates at that epoch. This page takes none, so no point goes through it unless you force it</span>`,
+    );
+  else if (op.needs_epoch) flags.push('<span class="warn">a deformation model: it needs the epoch of each coordinate, which this page doesn\'t take, so its coordinates fail</span>');
   else if (op.time_dependent) flags.push('<span class="warn">time-dependent: run at its reference epoch, as this page takes no epoch for the coordinates</span>');
   if (op.chain.some((s) => s.kind === 'ballpark_vertical')) flags.push('<span class="warn">heights passed unchanged</span>');
   if (op.chain.some((s) => s.kind === 'ensemble_identity' || s.kind === 'ensemble_member'))
@@ -355,7 +377,7 @@ function operationHtml(op: Operation, index: number, info: Info, count: number):
   const where = op.area_name ? escape(op.area_name.length > 70 ? `${op.area_name.slice(0, 68)}…` : op.area_name) : '';
   return `<li class="operation${used ? ' used' : ''}" style="--c:${colour(index)}"><details>
     <summary class="op-head">${opTag(index)} <b>${escape(op.name)}</b>
-      <span class="op-sum">${accuracy(op.accuracy)}${op.grids.length ? ' · grid' : ''}${flags.length ? ' · <span class="warn">⚠</span>' : ''}
+      <span class="op-sum">${accuracy(op.accuracy)}${op.grids.length ? ' · grid' : ''}${op.only_at_epoch !== null ? ` · at epoch ${op.only_at_epoch} only` : ''}${flags.length ? ' · <span class="warn">⚠</span>' : ''}
         · ${count} point${count === 1 ? '' : 's'}</span>
       <span class="op-area muted">${where}</span></summary>
     <table class="facts">

@@ -222,6 +222,7 @@ the area of use, deprecated and its replacements, EPSG's remarks
 | Scope and remarks | `scope`, `xeibe_crs::operation_remarks` |
 | Grids, each fetched / failed and its size | `grids` |
 | Time-dependent (the page takes no epoch, so it runs at its reference epoch: said so; a deformation model needs one, so its coordinates fail: said so) | `time_dependent`, `needs_epoch` |
+| Through a time-specific Helmert (it holds at one epoch, and the page takes none, so no point goes through it unless forced: said so, and such routes aren't counted among the candidates) | `only_at_epoch` |
 | Every step: projection, datum shift, ensemble null operation, ballpark vertical…, with its CRSs | `chain` |
 | How many of the points went through it | `operation_index_for` per point |
 
@@ -249,7 +250,9 @@ chosen, among which (piece 8). These read-only additions to
 built): the `Explanation` gives the operation used and the error, and an
 `Explained` for each operation: `inside` and an `Outcome` (`Chosen`,
 `Fallback`, `Only`, `Passed { by, reason }`, `Outside`, `Failed`,
-`NotReached`), the reasons being PROJ's rule read backwards. The plan
+`NotReached`, and `NotAtEpoch` for a route through a time-specific
+Helmert when the coordinate isn't at its epoch), the reasons being PROJ's
+rule read backwards. The plan
 was:
 the index chosen, whether the fallback was taken (no candidate's area
 contains the point: the first without grids), and for each candidate

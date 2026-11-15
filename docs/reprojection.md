@@ -92,7 +92,8 @@ for each candidate, whether its area contains the point (as the choice
 tests it, in the source CRS) and what became of it: chosen, the fallback
 or the only one (used whatever their area), passed over for another and
 why (less accurate, a larger area, offshore…), outside, failed, not
-reached. It runs the same choice as `convert`, which pays nothing for it
+reached, or not at its epoch (a route through a time-specific Helmert).
+It runs the same choice as `convert`, which pays nothing for it
 (a generic recorder, `select/explain.rs`).
 `trace_point(x, y, z)` gives each step the coordinate went through, with
 the CRS and the coordinates after it: the projections, the operations
@@ -1366,8 +1367,13 @@ forced (`Transform::via`, `operation::only_forced`):
   area, and nothing else there is more accurate. Everything else, and
   every coordinate without an epoch, chooses as PROJ does. A pair with
   only such routes fails without an epoch (`MissingEpoch`) or at another
-  one (`EpochOutOfRange`). `xeibe_proj` leaves them out of its lists,
-  which pyproj's don't have. EPSG's example (ITRF2008 to PZ-90.11) gives a Z
+  one (`EpochOutOfRange`). `Transform::explain_point` tells such a route
+  apart: `Outcome::NotAtEpoch` when the coordinate isn't at its epoch
+  (`inside` still says whether its area contains the point), and where it
+  is, `Chosen`, `Outside` or `Passed` as for any other, with
+  `PassReason::AtEpoch` for the operation it displaces at equal accuracy.
+  `xeibe_proj` leaves these routes out of its lists, which pyproj's don't
+  have. EPSG's example (ITRF2008 to PZ-90.11) gives a Z
   1.2 mm from what its parameters give; PROJ's `helmert` with them agrees
   with xeibe.
 - **Polynomials** (methods 9645, 9648, 9651, 9652, 9653, 9654, 9617; 17

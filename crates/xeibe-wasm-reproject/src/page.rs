@@ -625,7 +625,13 @@ impl Session {
                         warnings.push("only_area");
                     }
                     Some(c) if c.outcome == Outcome::Fallback => {
-                        warnings.push(if e.candidates.iter().any(|c| c.inside == Some(true)) {
+                        // A route through a time-specific Helmert isn't
+                        // looked at, whatever its area.
+                        let covered = e
+                            .candidates
+                            .iter()
+                            .any(|c| c.inside == Some(true) && c.outcome != Outcome::NotAtEpoch);
+                        warnings.push(if covered {
                             "fallback_failed"
                         } else {
                             "fallback_none"
@@ -953,6 +959,7 @@ fn outcome_json(outcome: Outcome) -> Value {
         Outcome::Only => json!({ "kind": "only" }),
         Outcome::Outside => json!({ "kind": "outside" }),
         Outcome::NotReached => json!({ "kind": "not_reached" }),
+        Outcome::NotAtEpoch => json!({ "kind": "not_at_epoch" }),
         Outcome::Failed(error) => json!({ "kind": "failed", "error": error.to_string() }),
         Outcome::Passed { by, reason } => json!({
             "kind": "passed",
@@ -965,6 +972,7 @@ fn outcome_json(outcome: Outcome) -> Value {
                 PassReason::Offshore => "offshore",
                 PassReason::Priority => "priority",
                 PassReason::Earlier => "earlier",
+                PassReason::AtEpoch => "at_epoch",
             },
         }),
     }
@@ -1152,6 +1160,7 @@ fn operation_info_json(info: &OperationInfo, failed: &BTreeMap<String, String>) 
         "grids": info.grids.iter().map(|g| json!({ "file": g, "failed": failed.get(g) })).collect::<Vec<_>>(),
         "time_dependent": info.time_dependent,
         "needs_epoch": info.needs_epoch,
+        "only_at_epoch": info.only_at_epoch,
         "scope": info.scope,
         "remarks": info.code.and_then(|(code, _)| xeibe_crs::operation_remarks(code)),
         "null": is_null(info),

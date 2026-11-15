@@ -77,7 +77,7 @@ impl Epochs {
 
 /// PROJ's `getRoundedEpochInDecimalYear`: an epoch within a millionth of a
 /// year of a thousandth is that thousandth.
-fn rounded_epoch(year: f64) -> f64 {
+pub(crate) fn rounded_epoch(year: f64) -> f64 {
     let thousandths = 1000.0 * year;
     if (thousandths - thousandths.round()).abs() <= 1e-3 {
         thousandths.round() / 1000.0
