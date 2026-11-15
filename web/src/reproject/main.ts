@@ -89,7 +89,7 @@ const EXAMPLES: Example[] = [
     points: '52.2297 21.0122\n51.5074 -0.1278\n40.7128 -74.0060\n-33.8688 151.2093\n',
   },
   {
-    label: 'ED50 → ETRS89: 12 candidates, by area',
+    label: 'ED50 → ETRS89: many candidates, by area',
     src: 'EPSG:4230',
     dst: 'EPSG:4258',
     points: '40.4168\t-3.7038\n48.8566\t2.3522\n52.5200\t13.4050\n59.9139\t10.7522\n41.9028\t12.4964\n',
