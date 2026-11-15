@@ -618,6 +618,13 @@ table.grid th {
   color: var(--muted);
 }
 
+/* A heading with an explanation on hover. */
+table.grid th[title] {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
 table.grid tr.chosen td {
   background: var(--selected);
 }

@@ -197,7 +197,16 @@ For the line clicked:
   converting both to the target's geographic CRS). This tells whether the
   choice matters at all: 2 cm or 2 m.
 - Round trip: the result converted back (`Transform::inverse`), and how
-  far it is from the input.
+  far it is from the input, as a distance.
+- Where the point lies in latitude and longitude on the source's and on
+  the target's datum, unless its coordinates are that already.
+- Every coordinate in the details is in the output's decimals, so a value
+  reads the same in the result, the rows above and the trace. A chosen
+  number of decimals is the output's; a value of the other kind is given
+  to the same size on the ground, five more decimals for degrees beside
+  an output in metres and five fewer the other way (0.00001° is about a
+  metre). The input is shown that way too, not rounded to the output's
+  decimals.
 - Warnings: outside the source's or the target's area of use; and the
   operation used outside its own, from the engine's explanation (9.1),
   in four cases: no operation's area contains the point, so the first

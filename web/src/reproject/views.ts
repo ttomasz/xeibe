@@ -507,13 +507,18 @@ export function details(
   input: number[],
   d: Details,
   info: Info | null,
-  values: { source: (v: number[]) => string; target: (v: number[]) => string },
+  values: {
+    source: (v: number[]) => string;
+    target: (v: number[]) => string;
+    /** One value of an axis of any CRS, in the output's decimals. */
+    axis: (v: number, axis: Axis | undefined) => string;
+  },
   cards: Cards,
   perPoint = false,
 ): string {
   const head = `<h2>Line ${line + 1} <button class="link close" data-action="close" aria-label="Close">×</button></h2>`;
   const lonlat = (ll: [number, number] | null | undefined) =>
-    ll ? `${plain(Number(ll[1].toFixed(10)))}°, ${plain(Number(ll[0].toFixed(10)))}° <span class="muted">(lat, lon)</span>` : '—';
+    ll ? `${values.axis(ll[1], DEGREES)}°, ${values.axis(ll[0], DEGREES)}° <span class="muted">(lat, lon)</span>` : '—';
   const rows: string[] = [];
   rows.push(row('Input', `<code>${values.source(input)}</code>`));
   if (d.epoch !== null && d.epoch !== undefined)
@@ -521,7 +526,17 @@ export function details(
       row('Epoch', `${d.epoch} <span class="muted">(${perPoint ? "the line's fourth value" : 'the coordinate epoch set for every point'})</span>`),
     );
   else if (perPoint) rows.push(row('Epoch', '<span class="muted">none: the line has no fourth value</span>'));
-  rows.push(row('On the source datum', lonlat(d.input_lonlat)));
+  // Where the point lies in latitude and longitude, unless the coordinates
+  // are that already: a geographic CRS in degrees from Greenwich.
+  const isLonlat = (card: Card | null, v: number[] | undefined, ll: [number, number] | null | undefined) =>
+    !!card?.geographic &&
+    !!v &&
+    !!ll &&
+    [
+      [v[0], v[1]],
+      [v[1], v[0]],
+    ].some(([lat, lon]) => Math.abs(lat - ll[1]) < 1e-9 && Math.abs(lon - ll[0]) < 1e-9);
+  if (!isLonlat(cards.src, input, d.input_lonlat)) rows.push(row('On the source datum', lonlat(d.input_lonlat)));
   if (d.error) {
     rows.push(
       row(
@@ -533,7 +548,7 @@ export function details(
     );
   } else {
     rows.push(row('Result', `<code>${values.target(d.out!)}</code>`));
-    rows.push(row('On the target datum', lonlat(d.output_lonlat)));
+    if (!isLonlat(cards.dst, d.out, d.output_lonlat)) rows.push(row('On the target datum', lonlat(d.output_lonlat)));
     if (info && !info.conversion && d.op !== null && d.op !== undefined) {
       const op = info.operations[d.op];
       rows.push(row('Through', `${opTag(d.op)} ${escape(op?.name ?? '')}`));
@@ -553,8 +568,13 @@ export function details(
   if (rt) {
     const text = rt.error
       ? `<span class="error">${escape(rt.error)}</span>`
-      : `<code>${values.source(rt.back!)}</code><br>${rt.distance !== null && rt.distance !== undefined ? `${distance(rt.distance)} from the input` : ''}
-         <span class="muted">(differences ${rt.delta!.filter((v) => v !== null).map((v) => plain(v!)).join(', ')})${rt.operation ? `, back through ${escape(rt.operation)}` : ''}</span>`;
+      : // How far back from the input, as a distance; the differences of
+        // the values only where there is no distance to give.
+        `<code>${values.source(rt.back!)}</code><br>${
+          rt.distance !== null && rt.distance !== undefined
+            ? `${distance(rt.distance)} from the input`
+            : `differences ${rt.delta!.filter((v) => v !== null).map((v) => plain(v!)).join(', ')}`
+        }${rt.operation ? `<span class="muted">, back through ${escape(rt.operation)}</span>` : ''}`;
     rows.push(row('Round trip', text));
   }
   let candidates = '';
@@ -578,21 +598,22 @@ export function details(
       })
       .join('');
     candidates = `<h3>Through every candidate</h3>
-      <p class="muted">What the choice made of each operation for this point, and how far each one's result lands from the chosen one, on the target's ellipsoid:
-        whether the choice matters at all. "In area": the operation's area of use contains the point, tested as the engine tests it
-        (the area converted into the source CRS).</p>
-      <table class="grid"><thead><tr><th>Operation</th><th>In area</th><th>Accuracy</th><th>Choice</th><th>Result</th><th>From the chosen</th></tr></thead>
+      <p class="muted">How far each candidate's result lands from the chosen one's, on the target's ellipsoid.</p>
+      <table class="grid"><thead><tr><th>Operation</th><th title="The operation's area of use contains the point, tested as the engine tests it: the area converted into the source CRS.">In area</th><th>Accuracy</th><th>Choice</th><th>Result</th><th>From the chosen</th></tr></thead>
       <tbody>${items}</tbody></table>`;
   }
-  return `${head}<table class="facts">${rows.join('')}</table>${traceHtml(d.trace)}${candidates}`;
+  return `${head}<table class="facts">${rows.join('')}</table>${traceHtml(d.trace, values.axis)}${candidates}`;
 }
 
-/** A value with its axis's unit. */
-function axisValue(v: number, axis: Axis | undefined): string {
+/** An axis in degrees, for a latitude or a longitude on its own. */
+const DEGREES: Axis = { name: '', abbreviation: '', direction: '', unit: 'degree' };
+
+/** A value with its axis's unit; `text` is the value as it is to read. */
+function axisValue(v: number, axis: Axis | undefined, text = plain(v)): string {
   const unit = axis?.unit ?? '';
-  if (unit === 'degree') return `${plain(v)}°`;
-  if (unit === 'metre') return `${plain(v)} m`;
-  return unit ? `${plain(v)} ${escape(unit)}` : plain(v);
+  if (unit === 'degree') return `${text}°`;
+  if (unit === 'metre') return `${text} m`;
+  return unit ? `${text} ${escape(unit)}` : text;
 }
 
 const ARC_SECONDS_PER_DEGREE = 3600;
@@ -697,7 +718,7 @@ const HEIGHTS: Record<TracedStep['height'], string> = {
 };
 
 /** Each step the point went through, with the coordinates after it. */
-function traceHtml(trace: Trace | null | undefined): string {
+function traceHtml(trace: Trace | null | undefined, value: (v: number, axis: Axis | undefined) => string): string {
   if (!trace || trace.steps.length === 0) return '';
   // From a CRS without heights to another: the third value is carried.
   const flat = trace.steps[0].height === 'none' && trace.steps[trace.steps.length - 1].height === 'none';
@@ -707,7 +728,7 @@ function traceHtml(trace: Trace | null | undefined): string {
       const coords = s.coords
         .map((v, j) => {
           const axis = s.axes[j];
-          return `<div><span class="muted">${escape(axis?.abbreviation ?? '')}</span> ${axisValue(v, axis)}</div>`;
+          return `<div><span class="muted">${escape(axis?.abbreviation ?? '')}</span> ${axisValue(v, axis, value(v, axis))}</div>`;
         })
         .join('');
       const shifts =
@@ -728,9 +749,7 @@ function traceHtml(trace: Trace | null | undefined): string {
     ? `<tr><td></td><td colspan="2"><span class="error">Stopped: ${escape(trace.error)}</span></td></tr>`
     : '';
   return `<h3>Step by step</h3>
-    <p class="muted">The steps this point went through, with the coordinates after each, as the engine ran them: the last row is the result.
-      An operation's change is the difference across it; for a grid, its shift here. Between geocentric CRSs the change of X, Y and Z
-      is also given as it is on the ground. Conversions that change nothing are left out.</p>
+    <p class="muted">The coordinates after each step, as the engine ran them. Conversions that change nothing are left out.</p>
     <div class="scroll"><table class="grid trace"><thead><tr><th>#</th><th>Step</th><th>Coordinates after it</th></tr></thead>
     <tbody>${rows}${error}</tbody></table></div>`;
 }

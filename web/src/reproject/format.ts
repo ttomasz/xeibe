@@ -84,12 +84,15 @@ export function projectionValue(value: number | string, unit: string | null): st
   }
 }
 
+/** Whether an axis is an angle (degrees, grads), not a length. */
+export function angular(axis: Axis | undefined): boolean {
+  return /degree|grad|radian|arc/i.test(axis?.unit ?? 'metre');
+}
+
 /** Default decimals for an axis: 9 for degrees (about 0.1 mm), 4 for
  * metres and feet. */
 export function defaultDecimals(axis: Axis | undefined): number {
-  const unit = axis?.unit ?? 'metre';
-  if (/degree|grad|radian|arc/i.test(unit)) return 9;
-  return 4;
+  return angular(axis) ? 9 : 4;
 }
 
 /** An axis's short label: "Lat (°)", "x (m)". */

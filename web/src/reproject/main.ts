@@ -8,7 +8,7 @@ import './style.css';
 import init, { crsCard, epsgVersion, lonlatBounds, Session } from '../wasm/xeibe_wasm_reproject.js';
 import wasmUrl from '../wasm/xeibe_wasm_reproject_bg.wasm?url';
 import { fetchWasm, loading } from '../common/loading';
-import { accuracy, axisLabel, defaultDecimals, escape } from './format';
+import { accuracy, angular, axisLabel, defaultDecimals, escape } from './format';
 import { loadGrids } from './grids';
 import { parse } from './parse';
 import type { Axis, Card, Details, Info, Point, Result } from './types';
@@ -422,6 +422,28 @@ function formatter(card: Card | null, separator = '\t'): (v: number[]) => string
       .join(separator);
 }
 
+/** One value of any CRS's axis, as the point's details give it: to the
+ * size on the ground the output's decimals have. That is the output's own
+ * number for an axis of the output's kind, five more for degrees beside
+ * an output in metres (0.00001° is about a metre) and five fewer the
+ * other way. Auto is 9 and 4 with the zeros dropped, as in the output. */
+function axisFormatter(): (v: number, axis: Axis | undefined) => string {
+  const auto = ui.precision.value === 'auto';
+  const chosen = Number(ui.precision.value);
+  const output = angular(pageAxes(state.dstCard)[0]);
+  return (v, axis) => {
+    const decimals = auto
+      ? defaultDecimals(axis)
+      : angular(axis) === output
+        ? chosen
+        : angular(axis)
+          ? chosen + 5
+          : Math.max(0, chosen - 5);
+    const text = v.toFixed(decimals);
+    return auto && text.includes('.') ? text.replace(/\.?0+$/, '') : text;
+  };
+}
+
 /** The output's formatter for input line `i`: values separated as the
  * Separator option says, by default as on that line of the input. */
 function outputFormatter(epochs = false): (v: number[], i: number) => string {
@@ -570,12 +592,20 @@ function renderDetails() {
     return;
   }
   const d = JSON.parse(state.session.details(p[0], p[1], p[2], p[3])) as Details;
+  const axis = axisFormatter();
+  const sourceAxes = pageAxes(state.srcCard);
   ui.details.innerHTML = detailsHtml(
     i,
     p.slice(0, 3),
     d,
     state.info,
-    { source: formatter(state.srcCard), target: formatter(state.dstCard) },
+    {
+      // The input in its own CRS's decimals, not the output's: 52.2297°
+      // isn't 52.23° because the output is metres to two decimals.
+      source: (v) => v.map((x, k) => axis(x, sourceAxes[k])).join('\t'),
+      target: formatter(state.dstCard),
+      axis,
+    },
     { src: state.srcCard, dst: state.dstCard },
     epochMode() === 'points',
   );
