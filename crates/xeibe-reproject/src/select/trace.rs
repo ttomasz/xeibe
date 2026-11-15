@@ -5,6 +5,8 @@
 
 use crate::crs::{Crs, Kind};
 use crate::error::CoordinateError;
+use crate::geocentric::geodetic;
+use crate::methods::adjlon;
 use crate::registry::{PROJ_CODES, registry};
 use crate::transform::{AxisOrder, from_internal};
 
@@ -44,6 +46,12 @@ pub struct Traced {
     /// height (or the value given) in metres.
     pub coords: [f64; 3],
     pub height: TracedHeight,
+    /// Across an operation between two geocentric CRSs, what the change
+    /// of X, Y and Z is at the point: metres east, north and up, the
+    /// change of its longitude, latitude and ellipsoidal height from the
+    /// source datum's ellipsoid to the target's, with the lengths on the
+    /// target's. `None` for any other step.
+    pub local_shift: Option<[f64; 3]>,
 }
 
 /// What a traced coordinate's third value is.
@@ -146,11 +154,17 @@ impl Tracer {
         // only renamed them; the last step stays, in the target CRS,
         // unless the step before is in it already.
         let last = self.steps.len().saturating_sub(1);
-        let mut previous: Option<[f64; 3]> = None;
+        let mut previous: Option<(Crs, [f64; 3])> = None;
         let mut steps: Vec<Traced> = Vec::new();
         for (i, (step, crs, c, height)) in self.steps.into_iter().enumerate() {
-            let same = previous == Some(c);
-            previous = Some(c);
+            let same = previous.as_ref().is_some_and(|(_, p)| *p == c);
+            let local_shift = match (&step, &previous) {
+                (TraceStep::Operation { .. } | TraceStep::Bound { .. }, Some((from, p))) => {
+                    local_shift(from, *p, &crs, c)
+                }
+                _ => None,
+            };
+            previous = Some((crs.clone(), c));
             let renamed = i != last
                 || error.is_some()
                 || steps.last().is_some_and(|s| s.crs.equivalent(&crs, false));
@@ -167,6 +181,7 @@ impl Tracer {
                 crs,
                 coords,
                 height,
+                local_shift,
             });
         }
         Trace {
@@ -181,6 +196,32 @@ impl Tracer {
             .last()
             .map_or(TracedHeight::None, |(_, _, _, h)| *h)
     }
+}
+
+/// A step from geocentric `before` in `from` to geocentric `after` in `to`
+/// as metres east, north and up at the point ([`Traced::local_shift`]).
+fn local_shift(from: &Crs, before: [f64; 3], to: &Crs, after: [f64; 3]) -> Option<[f64; 3]> {
+    let (Kind::Geocentric { datum: a }, Kind::Geocentric { datum: b }) = (&from.kind, &to.kind)
+    else {
+        return None;
+    };
+    let [lon0, lat0, h0] = geodetic(before, &a.ellipsoid);
+    let [lon1, lat1, h1] = geodetic(after, &b.ellipsoid);
+    // The radii of curvature halfway, in the meridian and across it: the
+    // arcs between the two positions to well under a millimetre for the
+    // shifts between datums.
+    let lat = 0.5 * (lat0 + lat1);
+    let h = 0.5 * (h0 + h1);
+    let e = &b.ellipsoid;
+    let w2 = 1.0 - e.es * lat.sin() * lat.sin();
+    let across = e.a / w2.sqrt();
+    let meridian = across * (1.0 - e.es) / w2;
+    let shift = [
+        adjlon(lon1 - lon0) * (across + h) * lat.cos(),
+        (lat1 - lat0) * (meridian + h),
+        h1 - h0,
+    ];
+    shift.iter().all(|v| v.is_finite()).then_some(shift)
 }
 
 /// The height in `crs` after a step that doesn't say, following one of

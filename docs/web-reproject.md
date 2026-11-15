@@ -319,12 +319,19 @@ EPSG operation with PROJ's name and whether the height was kept, the
 horizontal position kept or put back, a Bound CRS's leg to its hub), the
 CRS after it, the coordinates in that CRS's units in the transform's axis
 order, and whether the third value is an ellipsoidal or a gravity-related
-height (`TracedHeight`). Conversions that leave the coordinates as they
+height (`TracedHeight`). An operation between two geocentric CRSs also
+says what its change of X, Y and Z is at the point (`local_shift`: metres
+east, north and up, the change of longitude, latitude and ellipsoidal
+height across it, on the ellipsoid): ΔZ is along the Earth's axis, and
+reads as a change of height otherwise. Conversions that leave the coordinates as they
 were (between two geographic CRSs on one datum) are left out; the last
 step is always in the target CRS. On an error, the steps of the last
 operation tried, up to where it failed. The page shows them under
 "Step by step" in the point's details, each operation's change across it
-(arc-seconds and roughly metres for latitude and longitude), with links
+(arc-seconds and roughly metres for latitude and longitude; for
+geocentric coordinates, which it labels as such, ΔX, ΔY, ΔZ and the same
+"on the ground", with a note that the part up is dropped when neither CRS
+has heights), with links
 to epsg.org; the parameters stay in the operations list (piece 8). On
 every point of the committed selection vectors, the grid ones with the
 committed grids loaded, the last step is `convert`'s result. The plan

@@ -236,6 +236,9 @@ export interface TracedStep {
   axes: Axis[];
   coords: number[];
   height: 'none' | 'ellipsoidal' | 'gravity_related';
+  /** An operation between geocentric CRSs: its change at the point, in
+   * metres east, north and up. */
+  local_shift?: [number, number, number] | null;
 }
 
 export interface Trace {

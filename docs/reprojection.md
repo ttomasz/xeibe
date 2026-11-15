@@ -100,7 +100,9 @@ the CRS and the coordinates after it: the projections, the operations
 between datums (EPSG's code, PROJ's name, whether the height was kept),
 the horizontal position kept and put back around an operation on
 heights, a Bound CRS's transformation to its hub, and whether the third
-value is an ellipsoidal or a gravity-related height. The step loop
+value is an ellipsoidal or a gravity-related height. An operation
+between geocentric CRSs comes with its change at the point as metres
+east, north and up. The step loop
 tells the same recorder what it runs (`select/trace.rs`), so the last
 step is `convert`'s result; a grid's shift is the difference across its
 step.

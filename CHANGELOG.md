@@ -53,9 +53,11 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
   point's conversion. Each step is a projection, an operation (named, and
   marked when run inverted) or a leg through a Bound CRS's hub, and comes
   with the CRS the point is in after it, its coordinates and the kind of
-  height. A point that fails keeps the steps up to the failure. Conversions
-  are no slower for it. The reproject page shows the steps in each point's
-  details.
+  height. An operation between geocentric CRSs also gives its change at
+  the point as metres east, north and up, since a change of Z is not a
+  change of height. A point that fails keeps the steps up to the failure.
+  Conversions are no slower for it. The reproject page shows the steps in
+  each point's details.
 - `xeibe-reproject`: time-dependent transformations (ITRF2014 to GDA2020,
   say) now run at the epoch of the coordinates. Give it for the whole
   transform with `Transform::with_epochs`, or per coordinate with

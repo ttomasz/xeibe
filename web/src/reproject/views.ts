@@ -635,6 +635,24 @@ function tracedStepText(s: TracedStep, previous: TracedStep | undefined): string
   }
 }
 
+/** Under geocentric coordinates: Z isn't a height. */
+const GEOCENTRIC = "geocentric: from the Earth's centre, Z towards the North Pole";
+
+/** A change of X, Y and Z as it is at the point: north, east and up.
+ * `flat`: neither CRS has heights, so the result has none of the last. */
+function onTheGround(shift: [number, number, number] | null | undefined, flat: boolean): string {
+  if (!shift) return '';
+  // Under a micrometre is the arithmetic, not the operation.
+  const part = (v: number, plus: string, minus: string) =>
+    Math.abs(v) < 1e-6 ? '' : `${distance(Math.abs(v))} ${v > 0 ? plus : minus}`;
+  const [east, north, up] = shift;
+  const vertical = part(up, 'up', 'down');
+  const parts = [part(north, 'north', 'south'), part(east, 'east', 'west'), vertical].filter(Boolean);
+  if (parts.length === 0) return '';
+  const dropped = flat && vertical ? `. The ${vertical} is dropped: neither CRS has heights` : '';
+  return `<div class="muted change">on the ground: ${parts.join(', ')}${dropped}</div>`;
+}
+
 const HEIGHTS: Record<TracedStep['height'], string> = {
   none: '',
   ellipsoidal: 'ellipsoidal height',
@@ -644,6 +662,8 @@ const HEIGHTS: Record<TracedStep['height'], string> = {
 /** Each step the point went through, with the coordinates after it. */
 function traceHtml(trace: Trace | null | undefined): string {
   if (!trace || trace.steps.length === 0) return '';
+  // From a CRS without heights to another: the third value is carried.
+  const flat = trace.steps[0].height === 'none' && trace.steps[trace.steps.length - 1].height === 'none';
   const rows = trace.steps
     .map((s, i) => {
       const previous = trace.steps[i - 1];
@@ -653,9 +673,12 @@ function traceHtml(trace: Trace | null | undefined): string {
           return `<div><span class="muted">${escape(axis?.abbreviation ?? '')}</span> ${axisValue(v, axis)}</div>`;
         })
         .join('');
-      const shifts = previous && (s.kind === 'operation' || s.kind === 'bound') ? change(previous, s) : '';
-      const height =
-        HEIGHTS[s.height] && s.coords.length > 2 ? `<div class="muted change">${HEIGHTS[s.height]}</div>` : '';
+      const shifts =
+        previous && (s.kind === 'operation' || s.kind === 'bound')
+          ? change(previous, s) + onTheGround(s.local_shift, flat)
+          : '';
+      const kind = s.crs.kind === 'geocentric' ? GEOCENTRIC : s.coords.length > 2 ? HEIGHTS[s.height] : '';
+      const height = kind ? `<div class="muted change">${kind}</div>` : '';
       const crs = s.crs.code
         ? link(crsUrl(s.crs.code, s.crs.name), escape(s.crs.label))
         : escape(s.crs.label);
@@ -669,7 +692,8 @@ function traceHtml(trace: Trace | null | undefined): string {
     : '';
   return `<h3>Step by step</h3>
     <p class="muted">The steps this point went through, with the coordinates after each, as the engine ran them: the last row is the result.
-      An operation's change is the difference across it; for a grid, its shift here. Conversions that change nothing are left out.</p>
+      An operation's change is the difference across it; for a grid, its shift here. Between geocentric CRSs the change of X, Y and Z
+      is also given as it is on the ground. Conversions that change nothing are left out.</p>
     <div class="scroll"><table class="grid trace"><thead><tr><th>#</th><th>Step</th><th>Coordinates after it</th></tr></thead>
     <tbody>${rows}${error}</tbody></table></div>`;
 }

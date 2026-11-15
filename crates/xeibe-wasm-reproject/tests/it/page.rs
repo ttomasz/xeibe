@@ -380,6 +380,38 @@ fn the_details_trace_the_point_step_by_step() {
 }
 
 #[test]
+fn a_geocentric_operation_has_its_shift_at_the_point() {
+    // ITRF2014 to GDA2020 in Sydney at 2050.1: X, Y, Z change by a metre
+    // each way, which is south-west on the ground and hardly up at all.
+    let options = Options {
+        epoch: Some(2050.1),
+        ..Options::default()
+    };
+    let s = Session::new("9000", "7844", &options).unwrap();
+    let details = s.details((-33.8688, 151.2093, None));
+    let steps = details["trace"]["steps"].as_array().unwrap();
+    let with: Vec<_> = steps
+        .iter()
+        .filter(|s| !s["local_shift"].is_null())
+        .collect();
+    assert_eq!(with.len(), 1, "{details:#}");
+    let step = with[0];
+    assert_eq!(step["kind"], "operation");
+    assert_eq!(step["crs"]["kind"], "geocentric");
+    let shift: Vec<f64> = step["local_shift"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap())
+        .collect();
+    assert!((shift[0] + 0.548).abs() < 1e-3, "{shift:?}");
+    assert!((shift[1] + 1.638).abs() < 1e-3, "{shift:?}");
+    assert!((shift[2] - 0.005).abs() < 1e-3, "{shift:?}");
+    // Neither CRS has heights: the trace ends without one.
+    assert_eq!(steps.last().unwrap()["height"], "none");
+}
+
+#[test]
 fn the_trace_is_in_the_pages_axis_order() {
     let options = Options {
         east_first: true,

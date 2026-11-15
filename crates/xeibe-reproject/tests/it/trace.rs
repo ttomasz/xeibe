@@ -125,6 +125,40 @@ fn a_helmert_transformation_is_one_step() {
 }
 
 #[test]
+fn a_geocentric_step_says_where_the_point_went() {
+    // ITRF2014 to GDA2020 in Sydney, thirty years after the reference
+    // epoch: the plate motion, through the geocentric CRSs.
+    let t = transform(9000, 7844, Grids::None);
+    let p = (-33.8688, 151.2093, None);
+    let trace = t.trace_point_at(p.0, p.1, p.2, 2050.1).unwrap();
+    let (cx, cy, _) = t.convert_at(p.0, p.1, p.2, 2050.1).unwrap();
+    let last = trace.steps.last().unwrap();
+    assert_eq!(last.coords[..2], [cx, cy]);
+    let i = trace
+        .steps
+        .iter()
+        .position(|s| matches!(s.step, TraceStep::Operation { .. }))
+        .unwrap();
+    let (before, after) = (&trace.steps[i - 1], &trace.steps[i]);
+    assert_eq!(after.crs.code(), Some(7842), "{trace:#?}");
+    // ΔZ is along the Earth's axis, not a height.
+    assert!((after.coords[2] - before.coords[2] + 1.3627).abs() < 1e-4);
+    let [east, north, up] = after.local_shift.unwrap();
+    // On the ellipsoid: a sphere of the mean radius gives 0.547 and 1.642.
+    assert!((east + 0.5481).abs() < 1e-4, "{east}");
+    assert!((north + 1.6377).abs() < 1e-4, "{north}");
+    assert!((up - 0.00508).abs() < 1e-5, "{up}");
+    // It is the result's change of latitude and longitude, as metres.
+    let m = 111_000.0;
+    assert!(((cx - p.0) * m - north).abs() < 0.01);
+    assert!(((cy - p.1) * m * p.0.to_radians().cos() - east).abs() < 0.01);
+    // No other step has one.
+    for (j, s) in trace.steps.iter().enumerate() {
+        assert_eq!(s.local_shift.is_some(), j == i, "{trace:#?}");
+    }
+}
+
+#[test]
 fn a_projected_source_is_unprojected_first() {
     // PL-1992 to ED50: the inverse projection, then the transformations.
     let t = transform(2180, 4230, Grids::None);

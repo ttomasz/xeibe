@@ -879,7 +879,8 @@ impl Session {
 }
 
 /// One step of a trace: what it did, the CRS after it with its axes in
-/// the page's order, and the coordinates.
+/// the page's order, and the coordinates; `local_shift`: for an operation
+/// between geocentric CRSs, its change in metres east, north and up.
 fn traced_json(s: &Traced, order: AxisOrder) -> Value {
     let (kind, detail) = match &s.step {
         TraceStep::Start => ("start", Value::Null),
@@ -955,6 +956,7 @@ fn traced_json(s: &Traced, order: AxisOrder) -> Value {
         "axes": axes,
         "coords": coords,
         "height": height,
+        "local_shift": s.local_shift,
     })
 }
 
