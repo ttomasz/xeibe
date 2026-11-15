@@ -24,8 +24,9 @@ options.
 - Reprojecting what the page shows. The map converts coordinates for display
   only (see [Map](#map)), and the tabs show the source CRS. Only
   [Export](#export) converts, as `--target-crs` does.
-- Multi-GB inputs. Browser memory limits apply (see [Limits](#limits)). The CLI is
-  the tool for those.
+- Multi-GB inputs. They open, because files are read in slices and never held
+  (see [Inputs](#inputs)), but the page reads on one thread and keeps the rows it
+  shows in memory (see [Limits](#limits)). The CLI is the tool for those.
 - A hosted service. The page is static files; there is no server side.
 
 ## Layout
@@ -476,8 +477,9 @@ above.
    selection both ways; the GitHub Pages workflow.
 2. **Options.** Options tab with the CLI, Python and settings output. Zip
    inputs: done (2026-10-18). Samples ("Try a sample") maybe, not decided.
-3. **Later.** Export to GeoParquet: done (2026-10-21). Streaming reads of large files;
-   grids cached in browser storage; WFS against servers that allow it; a target
+3. **Later.** Export to GeoParquet: done (2026-10-21). Reading files in slices
+   rather than whole: done (2026-10-18, see [Inputs](#inputs)). Grids cached in
+   browser storage; WFS against servers that allow it; a target
    CRS in the Options tab once reads reproject.
 
 ## Open questions
