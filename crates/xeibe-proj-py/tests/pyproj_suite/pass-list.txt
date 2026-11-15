@@ -739,6 +739,12 @@ test.test_transformer::test_transform_direction__string_lowercase[float]
 test.test_transformer::test_transform_empty_array_xy[empty_array0]
 test.test_transformer::test_transform_empty_array_xy[empty_array1]
 test.test_transformer::test_transform_empty_array_xy[empty_array2]
+test.test_transformer::test_transform_honours_input_types[10-y0-z0]
+test.test_transformer::test_transform_honours_input_types[10-y1-z1]
+test.test_transformer::test_transform_honours_input_types[x2-10-z2]
+test.test_transformer::test_transform_honours_input_types[x3-y3-10]
+test.test_transformer::test_transform_honours_input_types[x4-10-z4]
+test.test_transformer::test_transform_honours_input_types[x5-y5-10]
 test.test_transformer::test_transformer__area_of_interest__invalid
 test.test_transformer::test_transformer__get_last_used_operation
 test.test_transformer::test_transformer__operations_missing

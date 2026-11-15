@@ -4,6 +4,8 @@
 xeibe repository). Each entry names the EPSG Dataset version it embeds
 (docs/pyproj-compat.md, Versioning).
 
+## Unreleased
+
 ## 0.3.0
 
 - EPSG Dataset 13.106, as in 0.2.0.
