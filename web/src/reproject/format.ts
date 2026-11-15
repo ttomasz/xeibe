@@ -12,16 +12,23 @@ export function plain(value: number): string {
   return String(Number(value.toPrecision(12)));
 }
 
+/** A number to `digits` significant digits, never in exponent notation:
+ * 760, where `toPrecision(2)` gives "7.6e+2". */
+function significant(value: number, digits: number): string {
+  const text = value.toPrecision(digits);
+  return text.includes('e') ? String(Number(text)) : text;
+}
+
 /** A distance in metres, in the unit that suits it. */
 export function distance(metres: number): string {
   const m = Math.abs(metres);
   if (m === 0) return '0';
-  if (m < 1e-6) return `${(metres * 1e9).toPrecision(2)} nm`;
-  if (m < 1e-3) return `${(metres * 1e6).toPrecision(2)} µm`;
-  if (m < 0.01) return `${(metres * 1e3).toPrecision(2)} mm`;
-  if (m < 1) return `${(metres * 100).toPrecision(3)} cm`;
-  if (m < 1000) return `${metres.toPrecision(4)} m`;
-  return `${(metres / 1000).toPrecision(4)} km`;
+  if (m < 1e-6) return `${significant(metres * 1e9, 2)} nm`;
+  if (m < 1e-3) return `${significant(metres * 1e6, 2)} µm`;
+  if (m < 0.01) return `${significant(metres * 1e3, 2)} mm`;
+  if (m < 1) return `${significant(metres * 100, 3)} cm`;
+  if (m < 1000) return `${significant(metres, 4)} m`;
+  return `${significant(metres / 1000, 4)} km`;
 }
 
 export function accuracy(metres: number | null | undefined): string {
