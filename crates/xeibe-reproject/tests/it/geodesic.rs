@@ -1003,9 +1003,11 @@ fn ulps(x: f64, y: f64) -> u64 {
 const DEG: f64 = 1e-12;
 /// Lengths, in metres.
 const M: f64 = 1e-8;
-/// Areas, in square metres: a polygon's area sums large terms of opposite
-/// signs, so an ulp of a sine moves it by far more than its own ulps.
-const M2: f64 = 1e-3;
+/// Areas, in square metres: a polygon's area sums terms on the order of
+/// the Earth's area (5.1e14 m², whose ulp is 0.06 m²) of opposite signs,
+/// so an ulp of a sine moves it by far more than its own ulps. Ten times
+/// tighter than GeographicLib's own planimeter tests (1 m²).
+const M2: f64 = 0.1;
 
 /// Ours against pyproj's for every record of a `gen_geodesic_vectors.py`
 /// file: the number of values compared, and those more than `tolerance`
