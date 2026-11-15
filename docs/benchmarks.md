@@ -83,7 +83,7 @@ the benchmarks measure a correct read.
 | | `read_points` | 25,000 points with ten extra properties, 19 MB: attribute-heavy | bytes |
 | `xeibe-export` | `parquet` | `ParquetWriter` on 20,000 polygons, native and WKB, with and without the bbox column | bytes in memory |
 | | `ipc` | `IpcWriter` on the same | bytes in memory |
-| `xeibe-reproject` | `convert_xy` | 10,000 points: TM and its inverse, Web Mercator, LAEA, LCC, PL-1992 to UTM 34N across datums | points |
+| `xeibe-reproject` | `convert_xy` | 10,000 points: TM and its inverse, Web Mercator, LAEA, LCC, PL-1992 to UTM 34N across datums, WGS 84 to ETRS89 with the operation chosen for each point | points |
 | | `transform_new` | Choosing the operation for each of those pairs | |
 | | `crs` | `Crs` from an EPSG code, PROJJSON, WKT2, WKT1 and a PROJ string; WKT2 and WKT1 written | |
 | | `geodesic` | Karney's inverse and direct problems on WGS 84 | problems |

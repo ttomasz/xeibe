@@ -546,6 +546,10 @@ pub(crate) struct Candidates {
     /// One candidate only: PROJ then returns the operation itself, which
     /// applies to every coordinate whatever its area.
     single: bool,
+    /// How many of `list` go through a time-specific Helmert
+    /// ([`Prepared::only_at`]): counted once, so that a coordinate's choice
+    /// doesn't look for them where there are none.
+    at_epoch: usize,
     /// The grid files the candidates read, each once.
     grid_files: Vec<Arc<GridFile>>,
 }
@@ -784,6 +788,7 @@ impl Candidates {
         let single = ordinary > 0 && (ordinary_operations == 1 || ordinary == 1);
         Ok(Candidates {
             grid_files: grid_files(&list),
+            at_epoch: list.len() - ordinary,
             list,
             src_geographic,
             src_geocentric,
@@ -956,6 +961,7 @@ impl Candidates {
             src_geographic: matches!(src.kind, Kind::Geographic { .. }),
             src_geocentric: matches!(src.kind, Kind::Geocentric { .. }),
             single: true,
+            at_epoch: 0,
         })
     }
 
@@ -1010,7 +1016,8 @@ impl Candidates {
 
     /// `pj_get_suggested_operation` for a coordinate in the source CRS's
     /// internal form, telling `rec` why each candidate whose area contains
-    /// it isn't the one.
+    /// it isn't the one. The routes through a time-specific Helmert aren't
+    /// among them: [`Candidates::choose_at_epoch`] chooses those.
     fn suggest<R: Recorder>(
         &self,
         point: [f64; 2],
@@ -1020,7 +1027,7 @@ impl Candidates {
         let mut best: Option<usize> = None;
         let mut best_accuracy = f64::MAX;
         for (i, alt) in self.list.iter().enumerate() {
-            if excluded.contains(&i) || !self.contains(alt, point) {
+            if alt.only_at.is_some() || excluded.contains(&i) || !self.contains(alt, point) {
                 continue;
             }
             let replace = match best {
@@ -1096,10 +1103,12 @@ impl Candidates {
         epoch: Option<f64>,
         rec: &mut R,
     ) -> Result<([f64; 3], usize), CoordinateError> {
-        if let Some(found) = self.choose_at_epoch(src, dst, internal, epoch, rec)? {
+        if self.at_epoch > 0
+            && let Some(found) = self.choose_at_epoch(src, dst, internal, epoch, rec)?
+        {
             return Ok(found);
         }
-        if self.list.iter().all(|p| p.only_at.is_some()) {
+        if self.at_epoch == self.list.len() {
             // Only routes through a time-specific Helmert: a coordinate
             // must be at the epoch of one.
             let Some(epoch) = epoch else {
@@ -1140,10 +1149,9 @@ impl Candidates {
                 rec.inside(i, self.contains(alt, point));
             }
         }
-        // The routes through a time-specific Helmert had their turn.
-        let mut excluded: Vec<usize> = (0..self.list.len())
-            .filter(|&i| self.list[i].only_at.is_some())
-            .collect();
+        // The routes through a time-specific Helmert had their turn:
+        // `suggest` leaves them out.
+        let mut excluded = Vec::new();
         let mut last_error = CoordinateError::OutsideDomain;
         for _ in 0..3 {
             rec.round();
@@ -1192,9 +1200,6 @@ impl Candidates {
         epoch: Option<f64>,
         rec: &mut R,
     ) -> Result<Option<([f64; 3], usize)>, CoordinateError> {
-        if self.list.iter().all(|p| p.only_at.is_none()) {
-            return Ok(None);
-        }
         let holds = |p: &Prepared| epoch.is_some_and(|epoch| p.holds_at(epoch));
         if R::DETAILED {
             for (i, p) in self.list.iter().enumerate() {
@@ -1239,10 +1244,7 @@ impl Candidates {
                 rec.passed(i, best, reason.unwrap_or(PassReason::Earlier));
             }
         }
-        let others: Vec<usize> = (0..self.list.len())
-            .filter(|&i| self.list[i].only_at.is_some())
-            .collect();
-        let other = self.suggest(point, &others, rec);
+        let other = self.suggest(point, &[], rec);
         if let Some(o) = other
             && known(self.list[o].accuracy) < known(self.list[best].accuracy)
         {
@@ -1264,7 +1266,7 @@ impl Candidates {
 
     /// One operation, and it goes through a time-specific Helmert.
     fn only_route(&self) -> bool {
-        self.list.iter().all(|p| p.only_at.is_some())
+        self.at_epoch == self.list.len()
             && self.list.first().map(|p| p.index) == self.list.last().map(|p| p.index)
     }
 

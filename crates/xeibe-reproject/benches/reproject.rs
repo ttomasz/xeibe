@@ -70,6 +70,15 @@ const CASES: &[Case] = &[
         dst: 32634,
         area: [18.5, 49.5, 23.5, 54.5],
     },
+    // Several operations to choose from for each point, WGS 84 to ETRS89:
+    // two, and a route through a time-specific Helmert that a point
+    // without an epoch never takes.
+    Case {
+        name: "4326_to_4258",
+        src: 4326,
+        dst: 4258,
+        area: [-9.0, 36.0, 30.0, 70.0],
+    },
 ];
 
 /// `POINTS` positions spread over `area`, east first, from a fixed seed.
