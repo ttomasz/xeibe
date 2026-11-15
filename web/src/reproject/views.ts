@@ -99,6 +99,18 @@ export function flagged(w: Warning, op: Operation | undefined): boolean {
   return true;
 }
 
+/** How near two epochs must be to be one, as the engine has it: the same
+ * thousandth of a year. */
+export function sameEpoch(a: number, b: number): boolean {
+  return Math.abs(a - b) <= 5e-4;
+}
+
+/** A link that sets the coordinate epoch to `value`, or with none opens
+ * the option for one. */
+function epochButton(value: number | null, text: string): string {
+  return `<button class="link" data-epoch="${value ?? ''}">${text}</button>`;
+}
+
 const REASONS: Record<NonNullable<Outcome['reason']>, string> = {
   less_accurate: 'less accurate',
   unknown_accuracy: 'its accuracy is unknown',
@@ -129,7 +141,7 @@ function outcomeText(o: Outcome | null, index: number, forced: number | null): s
     case 'not_reached':
       return '<span class="muted">not reached: three were tried</span>';
     case 'not_at_epoch':
-      return '<span class="muted">not looked at: only for a coordinate at its epoch</span>';
+      return '<span class="muted">not looked at: only for a point at its epoch</span>';
   }
 }
 
@@ -179,8 +191,11 @@ function warningDetail(w: Warning, d: Details, info: Info | null, cards: Cards):
         ? `Outside the area of use of the only operation there is, which was used anyway, as PROJ does. It shifts nothing:
            it takes the two datums to be the same, which EPSG accepts to ${accuracy(used.accuracy)} within that area only;
            outside it, how far apart they are isn't known.`
-        : `Outside the area of use of the only operation there is. It was used anyway, as PROJ does; outside its area its
-           accuracy isn't known.`;
+        : used && used.only_at_epoch !== null
+          ? `Outside the area of use of the only operation there is at this epoch. It was used anyway, as any only operation
+             is; outside its area its accuracy isn't known.`
+          : `Outside the area of use of the only operation there is. It was used anyway, as PROJ does; outside its area its
+             accuracy isn't known.`;
     case 'forced_area':
       return `Outside the area of use of the operation you forced, ${tag}.`;
   }
@@ -321,39 +336,69 @@ function stepHtml(step: Step): string {
 
 /** The candidate operations, best first. `counts`: how many points went
  * through each. */
-export function operations(info: Info | null, error: string | null, counts: number[]): string {
+export function operations(info: Info | null, error: string | null, counts: number[], perPoint = false): string {
   if (error) return `<p class="error">${escape(error)}</p>`;
   if (!info) return '<p class="muted">Type two EPSG codes.</p>';
   if (info.conversion) {
     return `<p>Both CRSs share one datum, so this is a <b>conversion</b>, with no transformation to choose.</p>`;
   }
-  const items = info.operations.map((op, i) => operationHtml(op, i, info, counts[i] ?? 0)).join('');
+  const items = info.operations.map((op, i) => operationHtml(op, i, info, counts[i] ?? 0, perPoint)).join('');
   // The routes through a time-specific transformation come last, and
   // aren't among the candidates for a point without an epoch.
-  const atEpoch = info.operations.filter((op) => op.only_at_epoch !== null).length;
+  const epoch = info.epoch;
+  const routeOps = info.operations.filter((op) => op.only_at_epoch !== null);
+  const atEpoch = routeOps.length;
   const ordinary = info.operations.length - atEpoch;
+  const holding = epoch === null ? 0 : routeOps.filter((op) => sameEpoch(op.only_at_epoch!, epoch)).length;
   const routes = `${atEpoch} route${atEpoch === 1 ? '' : 's'} through a time-specific transformation, which PROJ can't run`;
+  const set = epochButton(null, 'Set an epoch');
+  // What the epoch set, or the lack of one, means for those routes.
+  const atTheEpoch = perPoint
+    ? ordinary === 0
+      ? 'Each point is at the epoch of its fourth value, and one without it fails.'
+      : 'Each point is at the epoch of its fourth value; one without it has none.'
+    : epoch === null
+      ? ordinary === 0
+        ? `No coordinate epoch is set, so the points fail unless you force a route. ${set}.`
+        : `No coordinate epoch is set, so no point does unless you force it. ${set}.`
+      : holding === 0
+        ? `None holds at the epoch set, ${epoch}${ordinary === 0 ? ', so the points fail' : ''}.`
+        : `${holding === atEpoch ? (atEpoch === 1 ? 'It holds' : 'They hold') : `${holding} of them hold${holding === 1 ? 's' : ''}`} at the epoch set, ${epoch}${
+            ordinary > 0
+              ? ': a point in its area goes through it when nothing there is more accurate'
+              : atEpoch === 1
+                ? ': the points go through it, whatever its area, as through any only operation'
+                : ''
+          }.`;
   const timeSpecific =
     atEpoch === 0
       ? ''
       : ordinary === 0
-        ? `No operation for a coordinate without an epoch: only ${routes}. Each holds at one epoch, and only a coordinate at it
-           goes that way. This page takes no epoch, so the points fail unless you force one.`
-        : ` After ${ordinary === 1 ? 'it' : 'them'}, ${routes}: only a coordinate at its epoch goes that way. This page takes no epoch,
-           so no point does unless you force it.`;
+        ? `No operation for a point without an epoch: only ${routes}. Each holds at one epoch, and only a point at it
+           goes that way. ${atTheEpoch}`
+        : ` After ${ordinary === 1 ? 'it' : 'them'}, ${routes}: only a point at its epoch goes that way. ${atTheEpoch}`;
+  // The other operations whose result depends on the epoch.
+  const dependent = info.operations.some((op) => op.only_at_epoch === null && (op.time_dependent || op.needs_epoch));
+  const timeDependent = !dependent
+    ? ''
+    : perPoint
+      ? " Those that depend on time run at each point's epoch, its fourth value."
+      : epoch === null
+        ? ` Some depend on when the points were measured, and no coordinate epoch is set. ${set}.`
+        : ` Those that depend on time run at the epoch set, ${epoch}.`;
   const intro =
     info.forced !== null
       ? `<p>${opLabel(info, info.forced)} is forced for every point, whatever its area.</p>`
       : ordinary > 1
         ? `<p>${ordinary} candidate operations, best first, as PROJ ranks them. Each point goes through the first whose area of use contains it
-            (with its grids loaded); a point outside them all goes through the first without grids.${timeSpecific}</p>`
+            (with its grids loaded); a point outside them all goes through the first without grids.${timeDependent}${timeSpecific}</p>`
         : ordinary === 1
-          ? `<p>One operation: it is used for every point, whatever its area.${timeSpecific}</p>`
+          ? `<p>One operation: it is used for every point, whatever its area.${timeDependent}${timeSpecific}</p>`
           : `<p>${timeSpecific}</p>`;
   return `${intro}<ol class="operations">${items}</ol>`;
 }
 
-function operationHtml(op: Operation, index: number, info: Info, count: number): string {
+function operationHtml(op: Operation, index: number, info: Info, count: number, perPoint: boolean): string {
   const code = op.code
     ? `${link(operationUrl(op.code, op.name), `EPSG:${op.code}`)}${op.inverse ? ' <span class="muted">inverted</span>' : ''}`
     : '<span class="muted">put together from EPSG operations</span>';
@@ -364,12 +409,35 @@ function operationHtml(op: Operation, index: number, info: Info, count: number):
     : '';
   const flags: string[] = [];
   if (op.accuracy === null) flags.push('<span class="warn">accuracy unknown</span>');
-  if (op.only_at_epoch !== null)
-    flags.push(
-      `<span class="warn">time-specific: it holds at epoch ${op.only_at_epoch} only, for coordinates at that epoch. This page takes none, so no point goes through it unless you force it</span>`,
-    );
-  else if (op.needs_epoch) flags.push('<span class="warn">a deformation model: it needs the epoch of each coordinate, which this page doesn\'t take, so its coordinates fail</span>');
-  else if (op.time_dependent) flags.push('<span class="warn">time-dependent: run at its reference epoch, as this page takes no epoch for the coordinates</span>');
+  // What doesn't call for a look: how the epoch set is used.
+  const notes: string[] = [];
+  const epoch = info.epoch;
+  const setEpoch = epochButton(null, 'Set an epoch');
+  const muted = (text: string) => `<span class="muted">${text}</span>`;
+  const warn = (text: string, button: string) => `<span class="warn">${text}</span>. ${button}`;
+  // The only operation there is goes for every point, whatever its area.
+  const whenChosen = info.operations.length === 1 ? '' : ', in its area, when nothing there is more accurate';
+  if (op.only_at_epoch !== null) {
+    const at = op.only_at_epoch;
+    const use = epochButton(at, `Use ${at}`);
+    if (perPoint) notes.push(muted(`time-specific: it holds at epoch ${at} only. A point with that epoch goes through it${whenChosen}`));
+    else if (epoch === null)
+      flags.push(
+        warn(`time-specific: it holds at epoch ${at} only, and no coordinate epoch is set, so no point goes through it unless you force it`, use),
+      );
+    else if (sameEpoch(epoch, at)) notes.push(muted(`time-specific: it holds at epoch ${at}, the one set. A point goes through it${whenChosen}`));
+    else flags.push(warn(`time-specific: it holds at epoch ${at} only, and the one set is ${epoch}, so no point goes through it`, use));
+  } else if (op.needs_epoch) {
+    if (perPoint) notes.push(muted("a deformation model: run at each point's epoch, its fourth value. A point without one fails"));
+    else if (epoch === null)
+      flags.push(warn('a deformation model: it needs the epoch of the points, and none is set, so its points fail', setEpoch));
+    else notes.push(muted(`a deformation model: run at the epoch set, ${epoch}`));
+  } else if (op.time_dependent) {
+    if (perPoint)
+      notes.push(muted("time-dependent: run at each point's epoch, its fourth value, and at its reference epoch for a point without one"));
+    else if (epoch === null) flags.push(warn('time-dependent: run at its reference epoch, as no coordinate epoch is set', setEpoch));
+    else notes.push(muted(`time-dependent: run at the epoch set, ${epoch}`));
+  }
   if (op.chain.some((s) => s.kind === 'ballpark_vertical')) flags.push('<span class="warn">heights passed unchanged</span>');
   if (op.chain.some((s) => s.kind === 'ensemble_identity' || s.kind === 'ensemble_member'))
     flags.push('<span class="muted">datum ensemble to a member: no shift</span>');
@@ -386,7 +454,7 @@ function operationHtml(op: Operation, index: number, info: Info, count: number):
       ${op.area_name || op.area ? row('Area of use', `${escape(op.area_name ?? '')}${op.area ? ` <span class="muted">${box(op.area)}</span>` : ''}`) : ''}
       ${op.scope ? row('Scope', escape(op.scope)) : ''}
       ${grids ? row('Grids', grids) : ''}
-      ${flags.length ? row('Note', flags.join('; ')) : ''}
+      ${flags.length + notes.length ? row('Note', [...flags, ...notes].join('; ')) : ''}
       ${row('Points', `${count} of the points went through it`)}
     </table>
     ${op.remarks ? `<details class="remarks"><summary>EPSG's remarks</summary><p>${escape(op.remarks)}</p></details>` : ''}
@@ -404,15 +472,28 @@ export function details(
   info: Info | null,
   values: { source: (v: number[]) => string; target: (v: number[]) => string },
   cards: Cards,
+  perPoint = false,
 ): string {
   const head = `<h2>Line ${line + 1} <button class="link close" data-action="close" aria-label="Close">×</button></h2>`;
   const lonlat = (ll: [number, number] | null | undefined) =>
     ll ? `${plain(Number(ll[1].toFixed(10)))}°, ${plain(Number(ll[0].toFixed(10)))}° <span class="muted">(lat, lon)</span>` : '—';
   const rows: string[] = [];
   rows.push(row('Input', `<code>${values.source(input)}</code>`));
+  if (d.epoch !== null && d.epoch !== undefined)
+    rows.push(
+      row('Epoch', `${d.epoch} <span class="muted">(${perPoint ? "the line's fourth value" : 'the coordinate epoch set for every point'})</span>`),
+    );
+  else if (perPoint) rows.push(row('Epoch', '<span class="muted">none: the line has no fourth value</span>'));
   rows.push(row('On the source datum', lonlat(d.input_lonlat)));
   if (d.error) {
-    rows.push(row('Result', `<span class="error">${escape(d.error)}</span>`));
+    rows.push(
+      row(
+        'Result',
+        `<span class="error">${escape(d.error)}</span>${
+          !d.missing_epoch ? '' : perPoint ? '. Give the line a fourth value, its epoch' : `. ${epochButton(null, 'Set an epoch')}`
+        }`,
+      ),
+    );
   } else {
     rows.push(row('Result', `<code>${values.target(d.out!)}</code>`));
     rows.push(row('On the target datum', lonlat(d.output_lonlat)));
@@ -598,7 +679,18 @@ export function commands(
   src: number,
   dst: number,
   lines: string[],
-  options: { eastFirst: boolean; aoi: number[] | null; accuracy: number | null; forced: string | null },
+  options: {
+    eastFirst: boolean;
+    aoi: number[] | null;
+    accuracy: number | null;
+    forced: string | null;
+    /** The points' epoch: `lines` then have it as a fourth value. */
+    epoch: number | null;
+    /** Each point has its own, where its line has a fourth value. */
+    perPoint: boolean;
+    /** A route through a time-specific transformation holds at it. */
+    timeSpecific: boolean;
+  },
   srcFirstNorth: boolean,
 ): string {
   const extra = [
@@ -607,12 +699,24 @@ export function commands(
   ]
     .filter(Boolean)
     .join(' ');
-  const sample = lines.length ? lines.slice(0, 20).join('\n') : '52.2 21.0';
+  const sample = lines.length ? lines.slice(0, 20).join('\n') : options.epoch !== null ? `52.2 21.0 0 ${options.epoch}` : '52.2 21.0';
   const cs2cs = `PROJ_NETWORK=ON cs2cs -d 10 ${extra ? `${extra} ` : ''}EPSG:${src} EPSG:${dst} <<'EOF'\n${sample}\nEOF`;
   const projinfo = `PROJ_NETWORK=ON projinfo -s EPSG:${src} -t EPSG:${dst} --spatial-test intersects${extra ? ` ${extra}` : ''} -o PROJ`;
   const notes: string[] = [];
   if (options.eastFirst && srcFirstNorth)
     notes.push("cs2cs takes the CRSs' own axis order: with east first on, swap the first two columns of the input (and of its output).");
+  if (options.epoch !== null || options.perPoint)
+    notes.push(
+      `${
+        options.perPoint
+          ? "cs2cs reads a fourth column as the point's epoch too."
+          : "The coordinate epoch is cs2cs's fourth column, after a height: 0 where the input has none."
+      }${
+        options.timeSpecific
+          ? " PROJ can't run a time-specific transformation, so a point that goes through one here comes out differently there."
+          : ''
+      }`,
+    );
   if (options.forced !== null)
     notes.push(`cs2cs can't force one operation: take the pipeline of ${escape(options.forced)} from projinfo's list and run it with <code>cct</code>.`);
   return `<p class="muted">The same conversion with PROJ, ready to copy. PROJ_NETWORK=ON fetches grids from cdn.proj.org, as this page does.</p>

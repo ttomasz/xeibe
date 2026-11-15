@@ -207,6 +207,42 @@ fn a_time_specific_route_is_for_a_coordinate_at_its_epoch() {
     check(&at, &e, warsaw).unwrap();
     assert_eq!(e.used, Some(null));
     assert_eq!(e.candidates[route].outcome, Outcome::Outside);
+
+    // A coordinate's own epoch does as the transform's, for the
+    // explanation, the operation and the trace as for the conversion.
+    for (p, epoch) in [(sea, 2014.81), (warsaw, 2014.81), (sea, 2020.0)] {
+        let fixed = t.with_epochs(None, Some(epoch)).unwrap();
+        let (x, y, z) = p;
+        assert_eq!(t.convert_at(x, y, z, epoch), fixed.convert(x, y, z));
+        assert_eq!(
+            t.explain_point_at(x, y, z, epoch),
+            fixed.explain_point(x, y, z)
+        );
+        assert_eq!(
+            t.operation_index_for_at(x, y, z, epoch),
+            fixed.operation_index_for(x, y, z)
+        );
+        assert_eq!(
+            t.operation_for_at(x, y, z, epoch),
+            fixed.operation_for(x, y, z)
+        );
+        let (own, of_transform) = (
+            t.trace_point_at(x, y, z, epoch).unwrap(),
+            fixed.trace_point(x, y, z).unwrap(),
+        );
+        assert_eq!(own.used, of_transform.used);
+        assert_eq!(format!("{own:?}"), format!("{of_transform:?}"));
+    }
+    // No epoch (PROJ's HUGE_VAL) is the coordinate as `explain_point`
+    // takes it.
+    assert_eq!(
+        t.explain_point_at(sea.0, sea.1, sea.2, f64::INFINITY),
+        t.explain_point(sea.0, sea.1, sea.2)
+    );
+    assert_eq!(
+        t.trace_point_at(sea.0, sea.1, sea.2, 2014.81).unwrap().used,
+        Some(route)
+    );
 }
 
 /// Beside the only other operation, a time-specific route that is chosen

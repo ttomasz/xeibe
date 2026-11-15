@@ -141,8 +141,22 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
   `Transform::explain_point` says of such a route that the coordinate isn't
   at its epoch (`Outcome::NotAtEpoch`), and of an operation it displaces
   why (`PassReason::AtEpoch` when the two are as accurate). The reproject
-  page marks these routes, and doesn't count them among the candidates: it
-  takes no epoch, so a point goes through one only when it is forced.
+  page marks these routes, and doesn't count them among the candidates.
+- The reproject page takes a coordinate epoch, optionally: none by
+  default, one decimal year for every point, or each point's own as a
+  fourth value on its line (`x y z t`, as `cs2cs` reads it), chosen in the
+  operation options. With it the time-dependent operations run at that
+  epoch, a deformation model's points convert, and a point at a
+  time-specific Helmert's epoch goes through it. Where an operation
+  depends on the epoch and none is set, its card says so and offers to
+  set one (the operation's own, for a time-specific Helmert), and lines
+  of four numbers come with the offer to read the fourth as the epoch.
+  The PROJ commands carry the epoch as the fourth column; the output is
+  the coordinates alone, and swapping source and target puts each
+  point's epoch back.
+  `xeibe-reproject`: `Transform::explain_point_at`,
+  `trace_point_at`, `operation_for_at` and `operation_index_for_at`, for a
+  coordinate with an epoch of its own, as `convert_at` converts it.
 - `xeibe-crs` 0.4.3: the operations table gains the transformations of the
   methods above that PROJ doesn't import (EVRF2019's and the polynomials).
 - Rust API changes that break callers, besides those above:

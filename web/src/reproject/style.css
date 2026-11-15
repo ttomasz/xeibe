@@ -226,6 +226,21 @@ h3 {
   white-space: nowrap;
 }
 
+/* The coordinate epoch, when one is set: shown where the points are. */
+.chip {
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.chip button.link {
+  margin-left: 4px;
+  text-decoration: none;
+}
+
 .small-button {
   margin-left: auto;
   padding: 1px 8px;

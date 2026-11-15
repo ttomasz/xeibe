@@ -63,6 +63,14 @@
             <label>Minimum accuracy <input id="accuracy" type="number" min="0" step="any" placeholder="any" /> m
               <span class="muted">(only operations whose accuracy is known and no worse)</span></label>
             <label>Operation <select id="force"><option value="">automatic, chosen per point</option></select></label>
+            <fieldset>
+              <legend>Coordinate epoch <span class="muted">(when the points were measured, as a decimal year such as 2024.5: the operations that depend on time run at it)</span></legend>
+              <label><input type="radio" name="epochs" value="none" checked /> none</label>
+              <label><input type="radio" name="epochs" value="all" /> one for all points</label>
+              <input id="epoch" type="number" min="1" step="any" placeholder="2024.5" aria-label="The epoch of all points, a decimal year" />
+              <label title="x y z t on a line, as cs2cs reads it: the epoch after a height, 0 if there is none"><input type="radio" name="epochs" value="points" /> each point's own, its fourth value</label>
+              <span id="epochNote" class="muted"></span>
+            </fieldset>
           </div>
         </details>
       </section>
@@ -72,6 +80,7 @@
           <div class="pane-head">
             <b>Input</b>
             <span id="inAxes" class="axes"></span>
+            <span id="epochChip" class="chip" hidden></span>
             <button id="clear" class="button small-button" type="button" title="Clear the input">Clear</button>
           </div>
           <div class="editor">
@@ -80,8 +89,7 @@
           </div>
           <div class="input-foot">
             <div id="invalid" class="invalid" role="status"></div>
-            <p class="hint muted">One point per line: two or three decimal numbers separated by spaces or tabs. Click a line in either
-              pane for its details.</p>
+            <p id="inputHint" class="hint muted"></p>
           </div>
         </div>
         <div class="pane">

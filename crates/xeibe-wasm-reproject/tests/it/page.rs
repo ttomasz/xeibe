@@ -184,7 +184,7 @@ fn the_only_operation_outside_its_area_and_null() {
 #[test]
 fn a_time_specific_route_is_marked_and_not_looked_at() {
     // One operation, and after it the route through "WGS 84 to ETRS89
-    // (2)", which holds at 2014.81 only: the page takes no epoch.
+    // (2)", which holds at 2014.81 only: no epoch is set.
     let s = Session::new("4326", "2180", &Options::default()).unwrap();
     let info = s.info();
     let operations = info["operations"].as_array().unwrap();
@@ -219,6 +219,124 @@ fn a_time_specific_route_is_marked_and_not_looked_at() {
         !details["warnings"].to_string().contains("fallback_failed"),
         "{details:#}"
     );
+}
+
+#[test]
+fn an_epoch_for_the_points_reaches_the_operations_that_need_one() {
+    let at = |epoch: f64| Options {
+        epoch: Some(epoch),
+        ..Options::default()
+    };
+    // "WGS 84 to ETRS89 (2)" at 2014.81, in the German North Sea.
+    let s = Session::new("4326", "2180", &at(2014.81)).unwrap();
+    assert_eq!(s.info()["epoch"], 2014.81);
+    let sea = s.details((54.5, 6.5, None));
+    assert_eq!(sea["op"], 1, "{sea:#}");
+    assert_eq!(sea["candidates"][1]["outcome"]["kind"], "chosen");
+    assert_eq!(sea["candidates"][0]["outcome"]["kind"], "passed");
+    assert_eq!(sea["candidates"][0]["outcome"]["by"], 1);
+    // The trace and the round trip run at the epoch too.
+    let steps = sea["trace"]["steps"].to_string();
+    assert!(steps.contains("WGS 84 to ETRS89 (2)"), "{steps}");
+    assert!(sea["round_trip"]["distance"].as_f64().unwrap() < 1e-6);
+    let warsaw = s.details((52.2, 21.0, None));
+    assert_eq!(warsaw["op"], 0);
+    assert_eq!(warsaw["candidates"][1]["outcome"]["kind"], "outside");
+    // At another epoch the route is as without one.
+    let s = Session::new("4326", "2180", &at(2020.0)).unwrap();
+    let sea = s.details((54.5, 6.5, None));
+    assert_eq!(sea["op"], 0);
+    assert_eq!(sea["candidates"][1]["outcome"]["kind"], "not_at_epoch");
+
+    // Between ITRF2000 and SIRGAS 2000 there is only a route at 2000.4:
+    // without an epoch a point fails, and the page can say what is missing.
+    let s = Session::new("7909", "4989", &Options::default()).unwrap();
+    assert!(s.info()["epoch"].is_null());
+    let points = page::parse_points("[[-33.45, -70.67, 520], [52.23, 21.01, 100]]").unwrap();
+    let out = s.convert(&points);
+    assert_eq!(out[0]["missing_epoch"], true, "{out}");
+    assert_eq!(
+        s.details((-33.45, -70.67, Some(520.0)))["missing_epoch"],
+        true
+    );
+    // With it, both convert: the only operation, used whatever its area.
+    let s = Session::new("7909", "4989", &at(2000.4)).unwrap();
+    let out = s.convert(&points);
+    assert_eq!(out[0]["op"], 0, "{out}");
+    assert_eq!(out[0]["warnings"], serde_json::json!([]));
+    assert!(
+        out[1]["warnings"].to_string().contains("only_area"),
+        "{out}"
+    );
+    // And at another epoch they fail, for another reason.
+    let s = Session::new("7909", "4989", &at(2020.0)).unwrap();
+    let out = s.convert(&points);
+    assert_eq!(out[0]["missing_epoch"], false, "{out}");
+    assert!(out[0]["error"].as_str().unwrap().contains("epoch"));
+}
+
+#[test]
+fn a_point_can_have_an_epoch_of_its_own() {
+    // The fourth value: one point at the route's epoch, one at another,
+    // one without.
+    let points =
+        page::parse_points("[[54.5, 6.5, 0, 2014.81], [54.5, 6.5, 0, 2020], [54.5, 6.5, 0], null]")
+            .unwrap();
+    assert_eq!(points[0], Some(((54.5, 6.5, Some(0.0)), Some(2014.81))));
+    assert_eq!(points[2], Some(((54.5, 6.5, Some(0.0)), None)));
+    let s = Session::new("4326", "2180", &Options::default()).unwrap();
+    let out = s.convert(&points);
+    assert_eq!(out[0]["op"], 1, "{out}");
+    assert_eq!(out[1]["op"], 0);
+    assert_eq!(out[2]["op"], 0);
+    assert_eq!(out[1]["out"], out[2]["out"]);
+    assert_ne!(out[0]["out"], out[1]["out"]);
+    assert!(out[3].is_null());
+    // Its details are at its epoch, and say which.
+    let own = s.details_at((54.5, 6.5, Some(0.0)), Some(2014.81));
+    assert_eq!(own["epoch"], 2014.81);
+    assert_eq!(own["op"], 1);
+    assert_eq!(own["candidates"][1]["outcome"]["kind"], "chosen");
+    assert_eq!(own["out"], out[0]["out"]);
+    let none = s.details((54.5, 6.5, Some(0.0)));
+    assert!(none["epoch"].is_null());
+    assert_eq!(none["candidates"][1]["outcome"]["kind"], "not_at_epoch");
+    // The page's epoch for every point is for those without their own.
+    let all = Options {
+        epoch: Some(2014.81),
+        ..Options::default()
+    };
+    let s = Session::new("4326", "2180", &all).unwrap();
+    let out = s.convert(&points);
+    assert_eq!(out[1]["op"], 0, "{out}");
+    assert_eq!(out[2]["op"], 1);
+    // The bounds and the grids don't mind the fourth value.
+    assert!(page::lonlat_bounds(4326, false, &points).is_some());
+    assert!(s.grid_requests(&points).is_empty());
+    // An epoch is a decimal year.
+    for bad in ["[[54.5, 6.5, 0, -1]]", "[[1, 2, 3, 4, 5]]", "[[1]]"] {
+        assert!(page::parse_points(bad).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn the_epoch_is_a_decimal_year() {
+    assert_eq!(
+        Options::from_json(r#"{"epoch": 2014.81}"#).unwrap().epoch,
+        Some(2014.81)
+    );
+    assert_eq!(
+        Options::from_json(r#"{"epoch": null}"#).unwrap().epoch,
+        None
+    );
+    assert_eq!(Options::from_json("{}").unwrap().epoch, None);
+    for bad in [
+        r#"{"epoch": "2014"}"#,
+        r#"{"epoch": -1}"#,
+        r#"{"epoch": 0}"#,
+    ] {
+        assert!(Options::from_json(bad).is_err(), "{bad}");
+    }
 }
 
 #[test]

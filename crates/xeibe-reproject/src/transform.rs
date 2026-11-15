@@ -466,15 +466,31 @@ impl Transform {
     /// The name of the operation one coordinate goes through, or `None` for
     /// a conversion on one datum or a coordinate that can't be converted.
     pub fn operation_for(&self, x: f64, y: f64, z: Option<f64>) -> Option<&str> {
+        self.operation_for_with(x, y, z, self.epochs.fixed())
+    }
+
+    /// [`Transform::operation_for`] for a coordinate with an epoch of its
+    /// own, as [`Transform::convert_at`] converts it.
+    pub fn operation_for_at(&self, x: f64, y: f64, z: Option<f64>, epoch: f64) -> Option<&str> {
+        self.operation_for_with(x, y, z, self.epoch_of(epoch))
+    }
+
+    fn operation_for_with(
+        &self,
+        x: f64,
+        y: f64,
+        z: Option<f64>,
+        epoch: Option<f64>,
+    ) -> Option<&str> {
         let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)]).ok()?;
         match &self.plan {
             Plan::Conversion => None,
             Plan::Operations(c) | Plan::Via(_, c) | Plan::Only(c) => {
-                c.used(&self.src, &self.dst, internal, self.epochs.fixed())
+                c.used(&self.src, &self.dst, internal, epoch)
             }
             Plan::Bound(b) => {
                 let index = if b.middle.candidates().is_some() {
-                    self.index_for(internal, self.epochs.fixed())?
+                    self.index_for(internal, epoch)?
                 } else {
                     0
                 };
@@ -500,6 +516,19 @@ impl Transform {
         self.index_for(internal, self.epochs.fixed())
     }
 
+    /// [`Transform::operation_index_for`] for a coordinate with an epoch of
+    /// its own, as [`Transform::convert_at`] converts it.
+    pub fn operation_index_for_at(
+        &self,
+        x: f64,
+        y: f64,
+        z: Option<f64>,
+        epoch: f64,
+    ) -> Option<usize> {
+        let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)]).ok()?;
+        self.index_for(internal, self.epoch_of(epoch))
+    }
+
     /// How the operation for one coordinate is chosen: for every
     /// operation of [`Transform::operation_info`], whether its area of use
     /// contains the point, tested as the choice tests it, and what became
@@ -512,6 +541,21 @@ impl Transform {
     pub fn explain_point(&self, x: f64, y: f64, z: Option<f64>) -> Option<Explanation> {
         let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)]).ok()?;
         self.explain_internal(internal, self.epochs.fixed())
+    }
+
+    /// [`Transform::explain_point`] for a coordinate with an epoch of its
+    /// own, a decimal year, as [`Transform::convert_at`] converts it: the
+    /// choice looks at the epoch for the routes through a time-specific
+    /// Helmert ([`OperationInfo::only_at_epoch`]).
+    pub fn explain_point_at(
+        &self,
+        x: f64,
+        y: f64,
+        z: Option<f64>,
+        epoch: f64,
+    ) -> Option<Explanation> {
+        let internal = to_internal(&self.src.axes, self.order, [x, y, z.unwrap_or(0.0)]).ok()?;
+        self.explain_internal(internal, self.epoch_of(epoch))
     }
 
     /// Each step one coordinate goes through, with the CRS and the
@@ -527,10 +571,25 @@ impl Transform {
     /// steps (methods, parameters). `None` for a coordinate that can't be
     /// placed (not finite).
     pub fn trace_point(&self, x: f64, y: f64, z: Option<f64>) -> Option<Trace> {
+        self.trace_point_with(x, y, z, self.epochs.fixed())
+    }
+
+    /// [`Transform::trace_point`] for a coordinate with an epoch of its
+    /// own, a decimal year, as [`Transform::convert_at`] converts it.
+    pub fn trace_point_at(&self, x: f64, y: f64, z: Option<f64>, epoch: f64) -> Option<Trace> {
+        self.trace_point_with(x, y, z, self.epoch_of(epoch))
+    }
+
+    fn trace_point_with(
+        &self,
+        x: f64,
+        y: f64,
+        z: Option<f64>,
+        epoch: Option<f64>,
+    ) -> Option<Trace> {
         let given = [x, y, z.unwrap_or(0.0)];
         let internal = to_internal(&self.src.axes, self.order, given).ok()?;
         let mut tracer = Tracer::new(&self.src, self.order, given, internal);
-        let epoch = self.epochs.fixed();
         let result = self.run_recorded(internal, epoch, &mut tracer);
         let used = match self.plan {
             Plan::Conversion => None,

@@ -43,7 +43,7 @@ pub struct Session(page::Session);
 #[wasm_bindgen]
 impl Session {
     /// `options` is JSON: `{"east_first", "area_of_interest", "accuracy",
-    /// "operation"}`, any of them left out.
+    /// "operation", "epoch"}`, any of them left out.
     #[wasm_bindgen(constructor)]
     pub fn new(src: &str, dst: &str, options: &str) -> Result<Session, JsError> {
         let options = page::Options::from_json(options).map_err(error)?;
@@ -85,14 +85,16 @@ impl Session {
     }
 
     /// JSON: each line's result. `points` is JSON, one entry per line:
-    /// `null`, `[x, y]` or `[x, y, z]`.
+    /// `null`, `[x, y]`, `[x, y, z]` or `[x, y, z, t]`, `t` being the
+    /// point's epoch.
     pub fn convert(&self, points: &str) -> Result<String, JsError> {
         let points = page::parse_points(points).map_err(error)?;
         Ok(self.0.convert(&points).to_string())
     }
 
-    /// JSON: everything about one point.
-    pub fn details(&self, x: f64, y: f64, z: Option<f64>) -> String {
-        self.0.details((x, y, z)).to_string()
+    /// JSON: everything about one point; `epoch` is its own, when its line
+    /// has a fourth value.
+    pub fn details(&self, x: f64, y: f64, z: Option<f64>, epoch: Option<f64>) -> String {
+        self.0.details_at((x, y, z), epoch).to_string()
     }
 }

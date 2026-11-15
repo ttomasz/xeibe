@@ -20,6 +20,7 @@ import {
   opTag,
   opNumber,
   operations,
+  sameEpoch,
   shortName,
   striped,
   flagged,
@@ -43,6 +44,10 @@ const ui = {
   aoiClear: $<HTMLButtonElement>('aoiClear'),
   accuracy: $<HTMLInputElement>('accuracy'),
   force: $<HTMLSelectElement>('force'),
+  epoch: $<HTMLInputElement>('epoch'),
+  epochNote: $('epochNote'),
+  epochChip: $('epochChip'),
+  inputHint: $('inputHint'),
   input: $<HTMLTextAreaElement>('input'),
   clear: $<HTMLButtonElement>('clear'),
   lineNumbers: $('lineNumbers'),
@@ -68,7 +73,13 @@ interface Example {
   src: string;
   dst: string;
   points: string;
+  /** The points' epoch, for the examples that show what one does. */
+  epoch?: number;
 }
+
+/** Where the points' epoch comes from: nowhere, one field for them all,
+ * or each line's fourth value. */
+type EpochMode = 'none' | 'all' | 'points';
 
 const EXAMPLES: Example[] = [
   {
@@ -113,6 +124,13 @@ const EXAMPLES: Example[] = [
     dst: 'EPSG:21781',
     points: '2600000 1200000\n2683000 1248000\n',
   },
+  {
+    label: 'ITRF2014 → GDA2020 at epoch 2024.5: the plate has moved',
+    src: 'EPSG:9000',
+    dst: 'EPSG:7844',
+    points: '-33.8688 151.2093\n-31.9523 115.8613\n-12.4634 130.8456\n',
+    epoch: 2024.5,
+  },
 ];
 
 interface Options {
@@ -120,6 +138,8 @@ interface Options {
   area_of_interest: number[] | null;
   accuracy: number | null;
   operation: number | null;
+  /** The epoch of every point, a decimal year, when one is set for all. */
+  epoch: number | null;
 }
 
 const state = {
@@ -131,6 +151,8 @@ const state = {
   points: [] as (Point | null)[],
   /** The input lines that aren't points. */
   invalid: new Set<number>(),
+  /** Of those, the lines that have a fourth value, which isn't read. */
+  withEpoch: [] as number[],
   /** Per input line: whether its values are separated by tabs. */
   tabbed: [] as boolean[],
   results: [] as (Result | null)[],
@@ -141,14 +163,20 @@ const state = {
   generation: 0,
 };
 
+function epochMode(): EpochMode {
+  return (document.querySelector('input[name=epochs]:checked') as HTMLInputElement).value as EpochMode;
+}
+
 function options(): Options {
   const aoi = ui.aoi.map((i) => i.valueAsNumber);
   const accuracy = ui.accuracy.valueAsNumber;
+  const epoch = ui.epoch.valueAsNumber;
   return {
     east_first: (document.querySelector('input[name=order]:checked') as HTMLInputElement).value === 'east',
     area_of_interest: aoi.every(Number.isFinite) ? aoi : null,
     accuracy: Number.isFinite(accuracy) ? accuracy : null,
     operation: ui.force.value === '' ? null : Number(ui.force.value),
+    epoch: epochMode() === 'all' && Number.isFinite(epoch) && epoch > 0 ? epoch : null,
   };
 }
 
@@ -217,8 +245,14 @@ function renderAxes() {
     else if (axes.length === 3) parts[2] = parts[2].replace('</span>', ' <span class="muted">(optional)</span></span>');
     return parts.join('');
   };
-  ui.inAxes.innerHTML = label(state.srcCard);
+  // A point's own epoch comes after a height. The output doesn't have it.
+  const fourth = epochMode() === 'points' ? '<span class="axis muted">4. epoch (decimal year), optional</span>' : '';
+  ui.inAxes.innerHTML = label(state.srcCard) + fourth;
   ui.outAxes.innerHTML = label(state.dstCard);
+  ui.inputHint.textContent =
+    epochMode() === 'points'
+      ? "One point per line: two to four decimal numbers separated by spaces or tabs, the fourth being the point's epoch. Click a line in either pane for its details."
+      : 'One point per line: two or three decimal numbers separated by spaces or tabs. Click a line in either pane for its details.';
 }
 
 // --- The conversion -----------------------------------------------------
@@ -270,22 +304,73 @@ function renderOptionsSummary() {
   if (o.accuracy !== null) parts.push(`accuracy ≤ ${o.accuracy} m`);
   const forced = o.operation !== null ? state.info?.operations[o.operation] : undefined;
   if (forced) parts.push(`forcing ${opNumber(o.operation!)}`);
+  if (o.epoch !== null) parts.push(`epoch ${o.epoch}`);
+  else if (epochMode() === 'points') parts.push('epochs from the fourth value');
   ui.optionsSummary.textContent = parts.length ? `(${parts.join(', ')})` : '';
+  renderEpoch(o.epoch);
+}
+
+/** The epoch set, where the points are, and in the options what it does
+ * when that is nothing. */
+function renderEpoch(epoch: number | null) {
+  const perPoint = epochMode() === 'points';
+  const clear = '<button class="link" data-epoch-clear title="Convert without epochs" aria-label="Convert without epochs">×</button>';
+  ui.epochChip.hidden = epoch === null && !perPoint;
+  ui.epochChip.innerHTML = perPoint ? `epochs: the fourth value${clear}` : epoch === null ? '' : `epoch ${epoch}${clear}`;
+  const depends = state.info?.operations.some((op) => op.time_dependent || op.needs_epoch || op.only_at_epoch !== null);
+  ui.epochNote.textContent =
+    (epoch !== null || perPoint) && state.info && !depends
+      ? state.info.conversion
+        ? `Both CRSs share one datum: ${perPoint ? 'epochs change' : 'the epoch changes'} nothing.`
+        : `No operation between these CRSs depends on time: ${perPoint ? 'epochs change' : 'the epoch changes'} nothing.`
+      : '';
+}
+
+/** Where the points' epoch comes from, set as if picked in the options.
+ * The field keeps its number, for the next time it is the source. */
+function setEpochMode(mode: EpochMode) {
+  (document.querySelector(`input[name=epochs][value=${mode}]`) as HTMLInputElement).checked = true;
+  renderAxes();
+  void setup();
+}
+
+/** One epoch for all the points, or with `null` none, and convert again. */
+function setEpoch(epoch: number | null) {
+  if (epoch !== null) ui.epoch.value = String(epoch);
+  setEpochMode(epoch === null ? 'none' : 'all');
+}
+
+/** Show the option for an epoch, ready to type one for all the points
+ * (unless each point has its own). */
+function openEpoch() {
+  ui.options.open = true;
+  ui.epoch.scrollIntoView({ block: 'center' });
+  if (epochMode() === 'points') return;
+  if (epochMode() === 'none') setEpochMode('all');
+  ui.epoch.focus();
 }
 
 /** Parse the input, fetch the grids its points need, convert. */
 async function run() {
   const generation = ++state.generation;
-  const parsed = parse(ui.input.value);
+  const parsed = parse(ui.input.value, epochMode() === 'points');
   state.points = parsed.points;
   state.invalid = new Set(parsed.invalid);
+  state.withEpoch = parsed.withEpoch;
   state.tabbed = parsed.tabbed;
   renderNumbers();
+  // Lines of four numbers are points with an epoch, once the page is told
+  // to read it.
+  const fourth = parsed.withEpoch.length
+    ? ` <span class="muted">${
+        parsed.withEpoch.length === parsed.invalid.length ? (parsed.invalid.length > 1 ? 'They have' : 'It has') : 'Some have'
+      } a fourth value.</span> <button class="link" data-epoch-mode="points">Read it as the point's epoch</button>`
+    : '';
   ui.invalid.innerHTML = parsed.invalid.length
     ? `<span class="error">Not a point: line${parsed.invalid.length > 1 ? 's' : ''} ${parsed.invalid
         .slice(0, 30)
         .map((i) => i + 1)
-        .join(', ')}${parsed.invalid.length > 30 ? '…' : ''}</span>`
+        .join(', ')}${parsed.invalid.length > 30 ? '…' : ''}</span>${fourth}`
     : '';
   const session = state.session;
   if (!session) {
@@ -339,11 +424,17 @@ function formatter(card: Card | null, separator = '\t'): (v: number[]) => string
 
 /** The output's formatter for input line `i`: values separated as the
  * Separator option says, by default as on that line of the input. */
-function outputFormatter(): (v: number[], i: number) => string {
+function outputFormatter(epochs = false): (v: number[], i: number) => string {
   const tab = formatter(state.dstCard, '\t');
   const space = formatter(state.dstCard, ' ');
   const choice = ui.separator.value;
-  return (v, i) => ((choice === 'input' ? state.tabbed[i] : choice === 'tab') ? tab(v) : space(v));
+  return (v, i) => {
+    const tabs = choice === 'input' ? state.tabbed[i] : choice === 'tab';
+    // The output is the coordinates alone: a point's own epoch isn't a
+    // result. With `epochs` it follows them, as on the point's input line.
+    const epoch = epochs ? state.points[i]?.[3] : undefined;
+    return (tabs ? tab(v) : space(v)) + (epoch !== undefined && v.length === 3 ? `${tabs ? '\t' : ' '}${epoch}` : '');
+  };
 }
 
 function render(ms: number | null) {
@@ -355,7 +446,7 @@ function render(ms: number | null) {
   let warnings = 0;
   let thirds = false;
   state.results.forEach((r, i) => {
-    if (state.points[i]?.length === 3) thirds = true;
+    if ((state.points[i]?.length ?? 0) >= 3) thirds = true;
     const selected = i === state.selected ? ' selected' : '';
     if (!r) {
       lines.push(`<div class="line" data-line="${i}"> </div>`);
@@ -392,7 +483,7 @@ function render(ms: number | null) {
 
   ui.summary.innerHTML = summary(ms, errors, warnings);
   ui.key.innerHTML = key(counts, thirds);
-  ui.operations.innerHTML = operations(state.info, state.setupError, counts);
+  ui.operations.innerHTML = operations(state.info, state.setupError, counts, epochMode() === 'points');
   renderCommands();
   renderDetails();
 }
@@ -405,6 +496,10 @@ function summary(ms: number | null, errors: number, warnings: number): string {
   if (!state.session || !n) return '';
   const parts = [`${n} point${n > 1 ? 's' : ''}`];
   if (errors) parts.push(`<span class="error">${errors} failed</span>`);
+  // Points that failed for want of an epoch: the way to give one, unless
+  // each has its own, which those lines then lack.
+  if (epochMode() !== 'points' && state.results.some((r) => r?.error !== undefined && r.missing_epoch))
+    parts.push('<button class="link" data-epoch="">Set an epoch</button>');
   if (warnings) parts.push(`<span class="warn">${warnings} with warnings</span>`);
   if (ms !== null) {
     const time = `${ms < 0.1 ? '< 0.1' : ms.toFixed(1)} ms`;
@@ -441,8 +536,12 @@ function renderCommands() {
     ui.commands.innerHTML = '<p class="muted">Type two EPSG codes.</p>';
     return;
   }
-  const lines = state.points.filter((p): p is Point => p !== null).map((p) => p.join(' '));
   const o = options();
+  const points = state.points.filter((p): p is Point => p !== null);
+  // cs2cs takes the epoch as a fourth value, after a height.
+  const lines = points.map((p) => (o.epoch !== null ? [p[0], p[1], p[2] ?? 0, o.epoch] : p).join(' '));
+  // The epochs the points are at: the one set for all, or their own.
+  const epochs = o.epoch !== null ? [o.epoch] : points.flatMap((p) => (p[3] !== undefined ? [p[3]] : []));
   ui.commands.innerHTML = commands(
     src,
     dst,
@@ -455,6 +554,9 @@ function renderCommands() {
         o.operation !== null && state.info?.operations[o.operation]
           ? `${opNumber(o.operation)} (${state.info.operations[o.operation].name})`
           : null,
+      epoch: o.epoch,
+      perPoint: epochMode() === 'points',
+      timeSpecific: !!state.info?.operations.some((op) => op.only_at_epoch !== null && epochs.some((e) => sameEpoch(op.only_at_epoch!, e))),
     },
     !!state.srcCard?.first_axis_north,
   );
@@ -467,14 +569,15 @@ function renderDetails() {
     ui.details.hidden = true;
     return;
   }
-  const d = JSON.parse(state.session.details(p[0], p[1], p[2])) as Details;
+  const d = JSON.parse(state.session.details(p[0], p[1], p[2], p[3])) as Details;
   ui.details.innerHTML = detailsHtml(
     i,
-    p,
+    p.slice(0, 3),
     d,
     state.info,
     { source: formatter(state.srcCard), target: formatter(state.dstCard) },
     { src: state.srcCard, dst: state.dstCard },
+    epochMode() === 'points',
   );
   ui.details.hidden = false;
 }
@@ -526,7 +629,9 @@ for (const field of [ui.src, ui.dst]) {
 }
 
 ui.swap.addEventListener('click', () => {
-  const text = outputText();
+  // The results become the input, each with its point's own epoch again:
+  // they convert back as they came.
+  const text = outputText(0, state.results.length - 1, true);
   [ui.src.value, ui.dst.value] = [ui.dst.value, ui.src.value];
   if (state.results.some((r) => r && r.error === undefined)) ui.input.value = `${text}\n`;
   state.selected = null;
@@ -548,6 +653,8 @@ async function loadExample(index: number) {
   ui.src.value = e.src;
   ui.dst.value = e.dst;
   ui.input.value = e.points;
+  ui.epoch.value = e.epoch === undefined ? '' : String(e.epoch);
+  (document.querySelector(`input[name=epochs][value=${e.epoch === undefined ? 'none' : 'all'}]`) as HTMLInputElement).checked = true;
   // The examples' points are in the CRSs' own axis order.
   (document.querySelector('input[name=order][value=crs]') as HTMLInputElement).checked = true;
   ui.examples.value = String(index);
@@ -569,6 +676,21 @@ for (const radio of document.querySelectorAll('input[name=order]')) {
 
 const optionsChanged = debounce(() => void setup(), 400);
 for (const input of [...ui.aoi, ui.accuracy]) input.addEventListener('input', optionsChanged);
+// Typing an epoch is asking for it.
+ui.epoch.addEventListener('input', () => {
+  markOwn();
+  (document.querySelector('input[name=epochs][value=all]') as HTMLInputElement).checked = true;
+  renderAxes();
+  optionsChanged();
+});
+for (const radio of document.querySelectorAll('input[name=epochs]')) {
+  radio.addEventListener('change', () => {
+    markOwn();
+    renderAxes();
+    if (epochMode() === 'all' && ui.epoch.value === '') ui.epoch.focus();
+    void setup();
+  });
+}
 ui.force.addEventListener('change', () => void setup());
 ui.aoiClear.addEventListener('click', () => {
   for (const input of ui.aoi) input.value = '';
@@ -621,9 +743,10 @@ ui.precision.addEventListener('change', () => render(null));
 ui.separator.addEventListener('change', () => render(null));
 
 /** The output as text, line for line with the input: the values
- * separated as shown, a blank line where there is no result. */
-function outputText(from = 0, to = state.results.length - 1): string {
-  const format = outputFormatter();
+ * separated as shown, a blank line where there is no result. With
+ * `epochs`, each point's own epoch after its values, as an input line. */
+function outputText(from = 0, to = state.results.length - 1, epochs = false): string {
+  const format = outputFormatter(epochs);
   return state.results
     .slice(from, to + 1)
     .map((r, i) => (r && r.error === undefined ? format(r.out, from + i) : ''))
@@ -673,6 +796,17 @@ document.addEventListener('click', async (e) => {
     void updateCrss();
   } else if (target.matches('[data-action=close]')) {
     select(null);
+  } else if (target.matches('[data-epoch-clear]')) {
+    markOwn();
+    setEpoch(null);
+  } else if (target.matches('button[data-epoch]')) {
+    // An operation's own epoch to use, or none yet: the option, to type one.
+    markOwn();
+    if (target.dataset.epoch) setEpoch(Number(target.dataset.epoch));
+    else openEpoch();
+  } else if (target.matches('button[data-epoch-mode]')) {
+    markOwn();
+    setEpochMode(target.dataset.epochMode as EpochMode);
   }
 });
 

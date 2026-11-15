@@ -296,7 +296,10 @@ The epoch comes in two ways, which are PROJ's:
   and Arrow conversions, `trace_point` and `explain_point` all run at it.
 - **With each coordinate**: `Transform::convert_at(x, y, z, epoch)`,
   `convert_xyt` and `convert_xyzt`. This is PROJ's fourth value, `t`, and
-  pyproj's `tt`, which `xeibe-proj` passes on.
+  pyproj's `tt`, which `xeibe-proj` passes on. `explain_point_at`,
+  `trace_point_at`, `operation_for_at` and `operation_index_for_at` answer
+  for such a coordinate; the reproject page's optional epoch, one for
+  every point or each point's own, is given this way.
 
 Without either, a time-dependent Helmert runs at its reference epoch, the
 rates unused, as it did before and as PROJ does. A deformation model has no
@@ -475,14 +478,15 @@ flowchart LR
   coordinate, as PROJ returns no result ("missing time"). The epoch comes
   with each coordinate or with the transform, on ITRF96 (NZGD2000 is
   static). `OperationInfo::needs_epoch` tells before any coordinate is
-  converted; the reproject page, which takes no epoch, says so on the
-  operation's card.
+  converted; the reproject page says so on the operation's card while no
+  coordinate epoch is set, and offers to set one.
 - **Outside the model**: `CoordinateError::OutsideGrid` beyond its area
   (around New Zealand, 158°E to 166°W and 58°S to 25°S), `EpochOutOfRange`
   beyond its time (1900 to 2050).
 - `operation_for`, `operation_index_for` and `explain_point` answer for a
   coordinate at the transform's epoch, and so have no operation for one
-  through a deformation model on a transform without an epoch.
+  through a deformation model on a transform without an epoch; their
+  `_at` forms take the coordinate's own.
 - Of the format, what New Zealand's files use is read. A model with
   offsets in degrees, geocentric addition or geocentric bilinear
   interpolation, or defined in a projected CRS, is refused as an invalid

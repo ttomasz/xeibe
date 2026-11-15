@@ -139,6 +139,8 @@ export interface Info {
   target: number;
   conversion: boolean;
   forced: number | null;
+  /** Every point's epoch, a decimal year, when one is set. */
+  epoch: number | null;
   source_dimension: number;
   target_dimension: number;
   operations: Operation[];
@@ -177,7 +179,7 @@ export interface Outcome {
 
 export type Result =
   | { out: number[]; op: number | null; warnings: Warning[]; error?: undefined }
-  | { error: string; out?: undefined };
+  | { error: string; out?: undefined; /** It failed for want of an epoch. */ missing_epoch?: boolean };
 
 export interface Candidate {
   index: number;
@@ -194,6 +196,11 @@ export interface Candidate {
 export interface Details {
   input_lonlat: [number, number] | null;
   error?: string;
+  /** It failed for want of an epoch. */
+  missing_epoch?: boolean;
+  /** The epoch the point was converted at: its own, or the one set for
+   * every point. */
+  epoch?: number | null;
   out?: number[];
   output_lonlat?: [number, number] | null;
   op?: number | null;
@@ -244,5 +251,6 @@ export interface GridRequest {
   url: string;
 }
 
-/** A line of the input: null when blank or invalid. */
-export type Point = [number, number] | [number, number, number];
+/** A line of the input: null when blank or invalid. A fourth value is the
+ * point's epoch, a decimal year, read when the page is asked to. */
+export type Point = [number, number] | [number, number, number] | [number, number, number, number];

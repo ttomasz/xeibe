@@ -116,7 +116,9 @@ KB of names, searched in wasm or sent to JavaScript once.
 
 A textarea: one point per line, two or three decimal numbers (`dd.dddd`,
 or metres for a projected CRS) separated by spaces or tabs. Tabs are what
-a spreadsheet's cells paste as.
+a spreadsheet's cells paste as. A fourth number is the point's epoch,
+read only when the option for it is on (piece 8); until then such a line
+isn't a point, and the page offers to turn the option on.
 
 Each line is checked by a regular expression:
 
@@ -221,8 +223,8 @@ the area of use, deprecated and its replacements, EPSG's remarks
 | Area of use: name and box | `area_name`, `area` |
 | Scope and remarks | `scope`, `xeibe_crs::operation_remarks` |
 | Grids, each fetched / failed and its size | `grids` |
-| Time-dependent (the page takes no epoch, so it runs at its reference epoch: said so; a deformation model needs one, so its coordinates fail: said so) | `time_dependent`, `needs_epoch` |
-| Through a time-specific Helmert (it holds at one epoch, and the page takes none, so no point goes through it unless forced: said so, and such routes aren't counted among the candidates) | `only_at_epoch` |
+| Time-dependent (without a coordinate epoch it runs at its reference epoch: said so; a deformation model needs one, so its points fail: said so; each with a link to set one. With an epoch: that it runs at it) | `time_dependent`, `needs_epoch` |
+| Through a time-specific Helmert (it holds at one epoch: without that epoch set no point goes through it unless forced: said so, with a button that sets it; such routes aren't counted among the candidates) | `only_at_epoch` |
 | Every step: projection, datum shift, ensemble null operation, ballpark vertical…, with its CRSs | `chain` |
 | How many of the points went through it | `operation_index_for` per point |
 
@@ -237,6 +239,51 @@ shift), unknown accuracy.
 or "the points' bounds"), a minimum accuracy, and forcing one candidate
 for every point (`with_operation_index`).
 
+**A coordinate epoch, optionally.** Most conversions need none, so the
+page has none by default and says nothing of epochs unless an operation
+between the two CRSs depends on one, or the input has a fourth column.
+The option is among the operation options, with three states:
+
+- **none**, the default;
+- **one for all points**: a decimal year in a field. Typing one picks
+  this state, and the field keeps its number when another is picked;
+- **each point's own, its fourth value**: a line is then `x y z t`, as
+  `cs2cs` reads it, the epoch after a height (0 if there is none). A line
+  without a fourth value has no epoch. The axes above the input list it
+  as a fourth. The output is the coordinates alone, as in the other two
+  states: the epoch isn't a result, and a decimal year after them reads
+  as one. The swap of source and target puts each point's epoch back
+  after its result, so the points convert back as they came.
+
+Either way each point is converted as a coordinate with an epoch of its
+own (`Transform::convert_at`, PROJ's fourth value), and explained and
+traced so (`explain_point_at`, `trace_point_at`), whatever the CRSs: the
+page has no rule about which of the two is dynamic to explain. The
+session takes the points as `[x, y, z, t]` and an epoch for those without
+one (`Options::epoch`). What the page does with it:
+
+- Set: a chip by the input's axes ("epoch 2014.81", or that each point
+  has its own, with a button that goes back to none), the options'
+  summary, a row in the point's details, and the epoch as the fourth
+  column of the `cs2cs` command (after a height, 0 where the input has
+  none), with a note that PROJ can't run a time-specific Helmert when a
+  route through one holds at a point's epoch.
+- Not set, and it would matter: the operations' intro and the cards of
+  the operations concerned say what happens without one and link to the
+  field; a time-specific Helmert's card has a button that sets its own
+  epoch for all points, which must match to the thousandth of a year;
+  points that fail for want of one (`missing_epoch` in their result) get
+  the link beside the count of failures and in their details.
+- Lines of four numbers while the fourth isn't read: they aren't points,
+  and the message that says so offers to read the fourth value as the
+  epoch.
+- Set, and nothing depends on it: the option says the epoch changes
+  nothing.
+
+Two epochs, the source's and the target's, are left out: that asks for
+the points to be moved in time, which takes a velocity grid and exists
+for few CRSs (`Transform::with_epochs`).
+
 ## 9. How a point was converted: engine additions
 
 For someone who knows the geodesy and wants to follow the calculation, or
@@ -247,7 +294,7 @@ chosen, among which (piece 8). These read-only additions to
 `xeibe-reproject` answer the rest.
 
 **9.1. The choice for one point** (`Transform::explain_point(x, y, z)`,
-built): the `Explanation` gives the operation used and the error, and an
+and `explain_point_at` for a coordinate with an epoch, built): the `Explanation` gives the operation used and the error, and an
 `Explained` for each operation: `inside` and an `Outcome` (`Chosen`,
 `Fallback`, `Only`, `Passed { by, reason }`, `Outside`, `Failed`,
 `NotReached`, and `NotAtEpoch` for a route through a time-specific

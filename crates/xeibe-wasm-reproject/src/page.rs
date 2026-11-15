@@ -363,11 +363,16 @@ pub struct Options {
     pub accuracy: Option<f64>,
     /// One candidate for every point, by its index.
     pub operation: Option<usize>,
+    /// The epoch of every point that has none of its own, a decimal year:
+    /// each is converted as a coordinate with that epoch (PROJ's fourth
+    /// value, `t`).
+    pub epoch: Option<f64>,
 }
 
 impl Options {
     /// From the page's JSON: `{"east_first": …, "area_of_interest": [w, s,
-    /// e, n], "accuracy": …, "operation": …}`, any of them left out.
+    /// e, n], "accuracy": …, "operation": …, "epoch": …}`, any of them left
+    /// out.
     pub fn from_json(text: &str) -> Result<Options> {
         let v: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
         let area_of_interest = match v["area_of_interest"].as_array() {
@@ -381,11 +386,21 @@ impl Options {
             }
             None => None,
         };
+        let epoch = match &v["epoch"] {
+            Value::Null => None,
+            epoch => Some(
+                epoch
+                    .as_f64()
+                    .filter(|e| e.is_finite() && *e > 0.0)
+                    .ok_or("the coordinate epoch is a decimal year, such as 2024.5")?,
+            ),
+        };
         Ok(Options {
             east_first: v["east_first"].as_bool().unwrap_or(false),
             area_of_interest,
             accuracy: v["accuracy"].as_f64(),
             operation: v["operation"].as_u64().map(|i| i as usize),
+            epoch,
         })
     }
 
@@ -398,9 +413,14 @@ impl Options {
     }
 }
 
+/// A point of the page's input with its own epoch, a decimal year, when
+/// its line has a fourth value.
+pub type Input = (Point, Option<f64>);
+
 /// The points as the page sends them: JSON, one entry per line, `null` for
-/// a blank or invalid line, else `[x, y]` or `[x, y, z]`.
-pub fn parse_points(text: &str) -> Result<Vec<Option<Point>>> {
+/// a blank or invalid line, else `[x, y]`, `[x, y, z]` or `[x, y, z, t]`,
+/// `t` being the point's epoch (PROJ's fourth value).
+pub fn parse_points(text: &str) -> Result<Vec<Option<Input>>> {
     let v: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
     let lines = v.as_array().ok_or("the points are a JSON array")?;
     lines
@@ -410,9 +430,15 @@ pub fn parse_points(text: &str) -> Result<Vec<Option<Point>>> {
             Value::Array(values) => {
                 let n: Vec<f64> = values.iter().filter_map(Value::as_f64).collect();
                 match n[..] {
-                    [x, y] => Ok(Some((x, y, None))),
-                    [x, y, z] => Ok(Some((x, y, Some(z)))),
-                    _ => Err(format!("a point has two or three numbers, not {line}")),
+                    [x, y] => Ok(Some(((x, y, None), None))),
+                    [x, y, z] => Ok(Some(((x, y, Some(z)), None))),
+                    [x, y, z, t] if t.is_finite() && t > 0.0 => {
+                        Ok(Some(((x, y, Some(z)), Some(t))))
+                    }
+                    [_, _, _, _] => Err(format!(
+                        "a point's epoch is a decimal year, not as in {line}"
+                    )),
+                    _ => Err(format!("a point has two to four numbers, not {line}")),
                 }
             }
             _ => Err(format!("not a point: {line}")),
@@ -422,7 +448,7 @@ pub fn parse_points(text: &str) -> Result<Vec<Option<Point>>> {
 
 /// Longitude and latitude bounds (west, south, east, north) of points in
 /// the CRS `src`, for "the points' bounds" as the area of interest.
-pub fn lonlat_bounds(src: u32, east_first: bool, points: &[Option<Point>]) -> Option<[f64; 4]> {
+pub fn lonlat_bounds(src: u32, east_first: bool, points: &[Option<Input>]) -> Option<[f64; 4]> {
     let crs = Crs::from_epsg(src).ok()?;
     let options = Options {
         east_first,
@@ -430,7 +456,7 @@ pub fn lonlat_bounds(src: u32, east_first: bool, points: &[Option<Point>]) -> Op
     };
     let geo = Geo::new(&crs, src, options.order())?;
     let mut bounds: Option<[f64; 4]> = None;
-    for p in points.iter().flatten() {
+    for (p, _) in points.iter().flatten() {
         let Some([lon, lat]) = geo.lonlat(*p) else {
             continue;
         };
@@ -450,6 +476,9 @@ pub struct Session {
     /// What converts the points: `all`, or one candidate forced.
     used: Transform,
     forced: Option<usize>,
+    /// The epoch of the points without one of their own, when the page has
+    /// one for every point.
+    epoch: Option<f64>,
     infos: Vec<OperationInfo>,
     inverse: OnceCell<Result<Transform>>,
     /// Through each candidate alone, made when first asked for.
@@ -495,6 +524,7 @@ impl Session {
             all,
             used,
             forced,
+            epoch: options.epoch,
             infos,
             inverse: OnceCell::new(),
             failed: RefCell::default(),
@@ -510,6 +540,7 @@ impl Session {
             "target": self.dst,
             "conversion": self.infos.is_empty(),
             "forced": self.forced,
+            "epoch": self.epoch,
             "source_dimension": self.all.source().dimension(),
             "target_dimension": self.all.target().dimension(),
             "operations": self.infos.iter().map(|info| operation_info_json(info, &failed)).collect::<Vec<_>>(),
@@ -518,9 +549,9 @@ impl Session {
 
     /// The grid data still to fetch before converting `points`, leaving out
     /// files that failed.
-    pub fn grid_requests(&self, points: &[Option<Point>]) -> Vec<GridRequest> {
+    pub fn grid_requests(&self, points: &[Option<Input>]) -> Vec<GridRequest> {
         let mut bounds: Option<[f64; 4]> = None;
-        for &(x, y, _) in points.iter().flatten() {
+        for &((x, y, _), _) in points.iter().flatten() {
             if !(x.is_finite() && y.is_finite()) {
                 continue;
             }
@@ -555,23 +586,41 @@ impl Session {
     /// Every line's result: `null` for a line without a point, else
     /// `{"out": [x, y(, z)], "op": index, "warnings": [...]}` or
     /// `{"error": …}`.
-    pub fn convert(&self, points: &[Option<Point>]) -> Value {
+    pub fn convert(&self, points: &[Option<Input>]) -> Value {
         Value::Array(
             points
                 .iter()
-                .map(|p| p.map_or(Value::Null, |p| self.point(p)))
+                .map(|p| {
+                    p.map_or(Value::Null, |(p, epoch)| {
+                        self.point(p, self.epoch_of(epoch))
+                    })
+                })
                 .collect(),
         )
     }
 
-    fn point(&self, p: Point) -> Value {
-        match self.check(p) {
+    /// The epoch a point is converted at: its own, else the one the page
+    /// has for every point.
+    fn epoch_of(&self, own: Option<f64>) -> Option<f64> {
+        own.or(self.epoch)
+    }
+
+    fn point(&self, p: Point, epoch: Option<f64>) -> Value {
+        match self.check(p, epoch) {
             Ok(c) => json!({
                 "out": coords(c.out),
                 "op": c.op,
                 "warnings": c.warnings,
             }),
-            Err(error) => json!({ "error": error }),
+            Err(error) => json!({ "missing_epoch": missing_epoch(&error), "error": error }),
+        }
+    }
+
+    /// How the choice goes for a point, at its epoch if it has one.
+    fn explain(&self, (x, y, z): Point, epoch: Option<f64>) -> Option<Explanation> {
+        match epoch {
+            Some(epoch) => self.all.explain_point_at(x, y, z, epoch),
+            None => self.all.explain_point(x, y, z),
         }
     }
 
@@ -587,7 +636,7 @@ impl Session {
     /// * `only_area`: outside the area of the only operation there is,
     ///   which PROJ uses everywhere;
     /// * `forced_area`: outside the area of the operation forced.
-    fn check(&self, p: Point) -> Result<Checked> {
+    fn check(&self, p: Point, epoch: Option<f64>) -> Result<Checked> {
         if let Some(lat_first) = self.src_geographic {
             let (lon, lat) = if lat_first { (p.1, p.0) } else { (p.0, p.1) };
             if lat.abs() > 90.0 || lon.abs() > 180.0 {
@@ -598,10 +647,10 @@ impl Session {
             }
         }
         let input = self.src_geo.as_ref().and_then(|g| g.lonlat(p));
-        let out = self.through(&self.used, p)?;
+        let out = self.through(&self.used, p, epoch)?;
         // The automatic choice, explained; with an operation forced, it
         // still says whether each area contains the point.
-        let explanation = self.all.explain_point(p.0, p.1, p.2);
+        let explanation = self.explain(p, epoch);
         let op = match self.forced {
             Some(index) => Some(index),
             None => explanation.as_ref().and_then(|e| e.used),
@@ -656,8 +705,17 @@ impl Session {
         })
     }
 
-    fn through(&self, transform: &Transform, (x, y, z): Point) -> Result<Point> {
-        transform.convert(x, y, z).map_err(|e| {
+    fn through(
+        &self,
+        transform: &Transform,
+        (x, y, z): Point,
+        epoch: Option<f64>,
+    ) -> Result<Point> {
+        let result = match epoch {
+            Some(epoch) => transform.convert_at(x, y, z, epoch),
+            None => transform.convert(x, y, z),
+        };
+        result.map_err(|e| {
             let mut message = e.to_string();
             let failed = self.failed.borrow();
             if e == xeibe_reproject::CoordinateError::GridNotLoaded && !failed.is_empty() {
@@ -690,28 +748,37 @@ impl Session {
     /// after, the operation used, the result through every candidate and
     /// how far each lands from it, and the round trip.
     pub fn details(&self, p: Point) -> Value {
+        self.details_at(p, None)
+    }
+
+    /// [`Session::details`] for a point with an epoch of its own, a
+    /// decimal year: its line's fourth value.
+    pub fn details_at(&self, p: Point, epoch: Option<f64>) -> Value {
+        let epoch = self.epoch_of(epoch);
         let input = self.src_geo.as_ref().and_then(|g| g.lonlat(p));
         let Checked {
             out,
             op,
             warnings,
             explanation,
-        } = match self.check(p) {
+        } = match self.check(p, epoch) {
             Ok(c) => c,
             Err(error) => {
-                let explanation = self.all.explain_point(p.0, p.1, p.2);
+                let explanation = self.explain(p, epoch);
                 return json!({
                     "input_lonlat": input,
+                    "epoch": epoch,
+                    "missing_epoch": missing_epoch(&error),
                     "error": error,
-                    "candidates": self.candidates_json(p, explanation.as_ref(), None),
-                    "trace": self.trace_json(p),
+                    "candidates": self.candidates_json(p, epoch, explanation.as_ref(), None),
+                    "trace": self.trace_json(p, epoch),
                 });
             }
         };
         let output = self.dst_geo.as_ref().and_then(|g| g.lonlat(out));
         let round_trip = match self.inverse() {
             Err(error) => json!({ "error": error }),
-            Ok(inverse) => match self.through(inverse, out) {
+            Ok(inverse) => match self.through(inverse, out, epoch) {
                 Err(error) => json!({ "error": error }),
                 Ok(back) => {
                     let back_lonlat = self.src_geo.as_ref().and_then(|g| g.lonlat(back));
@@ -720,28 +787,36 @@ impl Session {
                         "delta": [back.0 - p.0, back.1 - p.1, back.2.zip(p.2).map(|(a, b)| a - b)],
                         "distance": self.src_geo.as_ref().zip(input.zip(back_lonlat))
                             .map(|(g, (a, b))| g.distance(a, b)),
-                        "operation": inverse.operation_for(out.0, out.1, out.2),
+                        "operation": match epoch {
+                            Some(epoch) => inverse.operation_for_at(out.0, out.1, out.2, epoch),
+                            None => inverse.operation_for(out.0, out.1, out.2),
+                        },
                     })
                 }
             },
         };
         json!({
             "input_lonlat": input,
+            "epoch": epoch,
             "out": coords(out),
             "output_lonlat": output,
             "op": op,
             "warnings": warnings,
-            "candidates": self.candidates_json(p, explanation.as_ref(), Some((out, output))),
+            "candidates": self.candidates_json(p, epoch, explanation.as_ref(), Some((out, output))),
             "round_trip": round_trip,
-            "trace": self.trace_json(p),
+            "trace": self.trace_json(p, epoch),
         })
     }
 
     /// Each step the point goes through in the transform used, with the
     /// CRS and the coordinates after it (`Transform::trace_point`); `null`
     /// for a point that can't be placed.
-    fn trace_json(&self, (x, y, z): Point) -> Value {
-        let Some(trace) = self.used.trace_point(x, y, z) else {
+    fn trace_json(&self, (x, y, z): Point, epoch: Option<f64>) -> Value {
+        let trace = match epoch {
+            Some(epoch) => self.used.trace_point_at(x, y, z, epoch),
+            None => self.used.trace_point(x, y, z),
+        };
+        let Some(trace) = trace else {
             return Value::Null;
         };
         let order = self.used.order();
@@ -757,6 +832,7 @@ impl Session {
     fn candidates_json(
         &self,
         p: Point,
+        epoch: Option<f64>,
         explanation: Option<&Explanation>,
         chosen: Option<(Point, Option<[f64; 2]>)>,
     ) -> Vec<Value> {
@@ -769,7 +845,7 @@ impl Session {
                     _ => Value::Null,
                 };
                 let result = match self.candidate(index) {
-                    Some(Ok(t)) => self.through(t, p),
+                    Some(Ok(t)) => self.through(t, p, epoch),
                     Some(Err(e)) => Err(e.clone()),
                     None => Err("no such operation".into()),
                 };
@@ -941,6 +1017,12 @@ fn trace_axes(crs: &Crs) -> Vec<Value> {
         list.push(axis("Ellipsoidal height", "h", "up", "metre"));
     }
     list
+}
+
+/// The point failed for want of an epoch (a deformation model, or only
+/// routes through a time-specific Helmert): the page offers to set one.
+fn missing_epoch(error: &str) -> bool {
+    error == xeibe_reproject::CoordinateError::MissingEpoch.to_string()
 }
 
 /// What [`Session::check`] finds for a point.
