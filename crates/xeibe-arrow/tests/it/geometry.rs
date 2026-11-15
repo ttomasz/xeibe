@@ -362,6 +362,40 @@ fn a_bounded_by_box_column_holds_the_envelope() {
 }
 
 #[test]
+fn an_envelope_with_a_time_period_gives_its_spatial_part() {
+    // `gml:EnvelopeWithTimePeriod` is read like `gml:Envelope`; its
+    // `beginPosition`/`endPosition` are not read (support matrix §4).
+    let mut options = ReadOptions::default();
+    options.inference.gml.bounded_by = xeibe_schema::options::BoundedBy::BoxStruct;
+    let envelope = concat!(
+        "<gml:boundedBy><gml:EnvelopeWithTimePeriod srsName=\"EPSG:2180\">",
+        "<gml:lowerCorner>10 20</gml:lowerCorner><gml:upperCorner>30 40</gml:upperCorner>",
+        "<gml:beginPosition>2020-01-01</gml:beginPosition>",
+        "<gml:endPosition>2021-01-01</gml:endPosition>",
+        "</gml:EnvelopeWithTimePeriod></gml:boundedBy>"
+    );
+    let document =
+        gml::gml32_collection(&[&parcel("p1", &format!("{envelope}<app:area>1</app:area>"))]);
+    let read = crate::support::read_with(&document, "Parcel", None, &options);
+    assert_eq!(read.column_names(), ["@id", "boundedBy", "area"]);
+    let boxes = read.batches[0]
+        .column_by_name("boundedBy")
+        .expect("a box column")
+        .as_struct();
+    let value = |name: &str| {
+        boxes
+            .column_by_name(name)
+            .expect(name)
+            .as_primitive::<Float64Type>()
+            .value(0)
+    };
+    assert_eq!(
+        [value("xmin"), value("ymin"), value("xmax"), value("ymax")],
+        [10.0, 20.0, 30.0, 40.0]
+    );
+}
+
+#[test]
 fn a_crs_without_projjson_is_written_as_an_authority_code() {
     // PROJJSON exists for EPSG codes only; other CRSs fall back to
     // `authority:code` (`docs/geometry.md`, "CRS metadata").
