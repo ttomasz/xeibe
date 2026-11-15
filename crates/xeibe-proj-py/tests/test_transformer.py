@@ -280,8 +280,8 @@ def test_tt_in_containers_and_itransform() -> None:
     want = theirs.transform(*columns)
     for make in (list, tuple, lambda c: array("d", c), np.array):
         got = ours.transform(*(make(c) for c in columns))
-        # Degrees to 1e-9, heights to 1e-8 m: aarch64 fuses multiplications
-        # and additions that x86_64 rounds apart (2e-9 m in the heights).
+        # Degrees to 1e-9, heights to 1e-8 m: on aarch64 (macOS's libm and
+        # glibc's) the heights differ from pyproj's by 2e-9 m.
         for g, w, tol in zip(got[:3], want[:3], (1e-9, 1e-9, 1e-8)):
             assert list(g) == pytest.approx(list(w), abs=tol)
         assert list(got[3]) == EPOCHS

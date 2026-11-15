@@ -998,19 +998,31 @@ fn ulps(x: f64, y: f64) -> u64 {
     key(x).abs_diff(key(y))
 }
 
+/// How far apart two angles may be when they are more than a few ulps
+/// apart, in degrees: about 0.1 µm on the ground.
+const DEG: f64 = 1e-12;
+/// Lengths, in metres.
+const M: f64 = 1e-8;
+/// Areas, in square metres: a polygon's area sums large terms of opposite
+/// signs, so an ulp of a sine moves it by far more than its own ulps.
+const M2: f64 = 1e-3;
+
 /// Ours against pyproj's for every record of a `gen_geodesic_vectors.py`
 /// file: the number of values compared, and those more than `tolerance`
-/// ulps apart.
+/// ulps and more than their unit's bound (`DEG`, `M`, `M2`) apart.
 fn compare_with_pyproj(path: &std::path::Path, tolerance: u64) -> (usize, Vec<String>) {
     use serde_json::Value;
     let text = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     let (mut compared, mut off) = (0, Vec::new());
-    let mut check = |what: &str, r: &Value, ours: &[f64], theirs: &[f64]| {
+    let mut check = |what: &str, r: &Value, ours: &[f64], theirs: &[f64], bound: &[f64]| {
         assert_eq!(ours.len(), theirs.len(), "{what} {r}");
         for (i, (&o, &t)) in ours.iter().zip(theirs).enumerate() {
             compared += 1;
             let u = ulps(o, t);
-            if u > tolerance {
+            let b = bound[i.min(bound.len() - 1)];
+            // False for a NaN on one side only, which `ulps` sets apart.
+            let within = (o - t).abs() <= b;
+            if u > tolerance && !within {
                 off.push(format!(
                     "{what} {} [{i}]: {o:e} vs {t:e} ({u} ulps)",
                     r["in"]
@@ -1033,12 +1045,12 @@ fn compare_with_pyproj(path: &std::path::Path, tolerance: u64) -> (usize, Vec<St
             "inv" => {
                 let i = floats(&r["in"]);
                 let (s12, azi1, azi2) = g.inverse(i[0], i[1], i[2], i[3]);
-                check(kind, &r, &[s12, azi1, azi2], &floats(&r["out"]));
+                check(kind, &r, &[s12, azi1, azi2], &floats(&r["out"]), &[M, DEG]);
             }
             "fwd" => {
                 let i = floats(&r["in"]);
                 let (lat2, lon2, azi2) = g.direct(i[0], i[1], i[2], i[3]);
-                check(kind, &r, &[lat2, lon2, azi2], &floats(&r["out"]));
+                check(kind, &r, &[lat2, lon2, azi2], &floats(&r["out"]), &[DEG]);
             }
             "inv_line" | "fwd_line" => {
                 let i = floats(&r["in"]);
@@ -1063,9 +1075,9 @@ fn compare_with_pyproj(path: &std::path::Path, tolerance: u64) -> (usize, Vec<St
                     azis.push(azi);
                 }
                 let out = &r["out"];
-                check(kind, &r, &lats, &floats(&out["lats"]));
-                check(kind, &r, &lons, &floats(&out["lons"]));
-                check(kind, &r, &azis, &floats(&out["azis"]));
+                check(kind, &r, &lats, &floats(&out["lats"]), &[DEG]);
+                check(kind, &r, &lons, &floats(&out["lons"]), &[DEG]);
+                check(kind, &r, &azis, &floats(&out["azis"]), &[DEG]);
                 check(
                     kind,
                     &r,
@@ -1074,11 +1086,12 @@ fn compare_with_pyproj(path: &std::path::Path, tolerance: u64) -> (usize, Vec<St
                         out["del_s"].as_f64().unwrap(),
                         out["dist"].as_f64().unwrap(),
                     ],
+                    &[M],
                 );
             }
             "polygon" => {
                 let (area, perimeter) = g.polygon_area(&floats(&r["lats"]), &floats(&r["lons"]));
-                check(kind, &r, &[area, perimeter], &floats(&r["out"]));
+                check(kind, &r, &[area, perimeter], &floats(&r["out"]), &[M2, M]);
             }
             other => panic!("unknown kind {other}"),
         }
@@ -1086,12 +1099,13 @@ fn compare_with_pyproj(path: &std::path::Path, tolerance: u64) -> (usize, Vec<St
     (compared, off)
 }
 
-/// pyproj's vectors come from one libm (glibc 2.39's), and sin, cos and
-/// atan2 round differently in others, newer glibc releases among them
-/// (Ubuntu 26.04's differs by up to 3 ulps).
+/// pyproj's vectors come from one libm, glibc's on one CPU, and sin, cos
+/// and atan2 round differently in others: glibc picks its implementation
+/// by the CPU's features, and GitHub's Ubuntu 26.04 runners differ.
 const LIBM_ULPS: u64 = 4;
 
-/// To a few ulps of pyproj, whose vectors are committed.
+/// To a few ulps of pyproj, whose vectors are committed, or to `DEG`, `M`
+/// and `M2` where those few ulps are amplified.
 #[test]
 fn geodesics_match_pyproj() {
     let (n, off) = compare_with_pyproj(
