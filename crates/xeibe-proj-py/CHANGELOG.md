@@ -37,6 +37,9 @@ xeibe repository). Each entry names the EPSG Dataset version it embeds
     its area, goes through it when nothing else there is more accurate
     ("WGS 84 to ETRS89 (2)" at 2014.81 in the German and Dutch North Sea).
     These routes are not in `Transformer.operations` or the other lists.
+    Between two CRSs with nothing else (ITRF2000 to SIRGAS 2000, at
+    2000.4), the route converts a coordinate at its epoch wherever it is,
+    and any other coordinate raises `ProjError`.
 - Pairs that had no transformation, and have none in pyproj: Madrid 1870
   (Madrid) to ED50; ETRS89 + LAT-NLD or MSL-NLD depth to ETRS89
   ("Geographic3D to Depth"); ETRS89-SVK [SKTRF09] + EVRF2007 height to

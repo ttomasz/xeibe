@@ -92,7 +92,9 @@ pub enum Outcome {
     /// its area, as PROJ falls back.
     Fallback,
     /// The only operation there is (or the one forced): used for every
-    /// point, whatever its area, as PROJ does.
+    /// point, whatever its area, as PROJ does. A route through a
+    /// time-specific Helmert that is the only operation is used so for
+    /// every point at its epoch.
     Only,
     /// Its area contains the point, but operation `by` (an index into
     /// [`crate::Transform::operation_info`]) was preferred.

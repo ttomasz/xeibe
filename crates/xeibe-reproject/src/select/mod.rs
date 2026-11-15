@@ -332,7 +332,9 @@ pub struct OperationInfo {
     /// Through a time-specific Helmert, which holds at this one epoch (a
     /// decimal year): only a coordinate at it, its own epoch or the
     /// transform's, goes this way; others, and those without an epoch, go
-    /// through the other operations.
+    /// through the other operations. Where there are none, they fail, and
+    /// a coordinate at the epoch goes this way whatever the area of use, as
+    /// through any only operation.
     pub only_at_epoch: Option<f64>,
     /// EPSG's scope of the operation, when it is one EPSG operation (see
     /// `code`). Its remarks: `xeibe_crs::operation_remarks`.
@@ -1098,12 +1100,29 @@ impl Candidates {
             return Ok(found);
         }
         if self.list.iter().all(|p| p.only_at.is_some()) {
-            // Only routes through a time-specific Helmert, and the
-            // coordinate isn't at their epoch.
-            return Err(match epoch {
-                Some(_) => CoordinateError::EpochOutOfRange,
-                None => CoordinateError::MissingEpoch,
-            });
+            // Only routes through a time-specific Helmert: a coordinate
+            // must be at the epoch of one.
+            let Some(epoch) = epoch else {
+                return Err(CoordinateError::MissingEpoch);
+            };
+            let Some(first) = self.list.iter().position(|p| p.holds_at(epoch)) else {
+                return Err(CoordinateError::EpochOutOfRange);
+            };
+            // None that holds at the epoch converted the coordinate in its
+            // area. The first does, whatever its area: the only operation
+            // there is, as PROJ uses a single operation for every
+            // coordinate; or, of several, as PROJ falls back.
+            rec.fallback(first);
+            let result = run(
+                &self.list[first].steps,
+                src,
+                dst,
+                internal,
+                Some(epoch),
+                rec,
+            );
+            rec.tried(first, result.err());
+            return result.map(|out| (out, first));
         }
         if self.single {
             if R::DETAILED
@@ -1162,7 +1181,9 @@ impl Candidates {
 
     /// For a coordinate at a time-specific Helmert's epoch, inside the area
     /// of a route through it, the most accurate such route, if no other
-    /// operation there is more accurate; `None` to go on with the others.
+    /// operation there is more accurate; `None` to go on with the others
+    /// (or, where there are only such routes, with the first that holds at
+    /// the epoch, whatever its area).
     fn choose_at_epoch<R: Recorder>(
         &self,
         src: &Crs,
@@ -1174,11 +1195,7 @@ impl Candidates {
         if self.list.iter().all(|p| p.only_at.is_none()) {
             return Ok(None);
         }
-        let holds = |p: &Prepared| {
-            p.only_at
-                .zip(epoch)
-                .is_some_and(|(t, epoch)| (epoch - t).abs() <= SAME_EPOCH_YEARS)
-        };
+        let holds = |p: &Prepared| epoch.is_some_and(|epoch| p.holds_at(epoch));
         if R::DETAILED {
             for (i, p) in self.list.iter().enumerate() {
                 if p.only_at.is_some() && !holds(p) {
@@ -1245,6 +1262,12 @@ impl Candidates {
         Ok(result.ok().map(|out| (out, best)))
     }
 
+    /// One operation, and it goes through a time-specific Helmert.
+    fn only_route(&self) -> bool {
+        self.list.iter().all(|p| p.only_at.is_some())
+            && self.list.first().map(|p| p.index) == self.list.last().map(|p| p.index)
+    }
+
     /// How the operation for one coordinate is chosen, by operation of
     /// [`Candidates::info`].
     pub(crate) fn explain(
@@ -1262,8 +1285,9 @@ impl Candidates {
         for (i, p) in self.list.iter().enumerate() {
             let outcome = if used == Some(i) {
                 // A route through a time-specific Helmert is chosen for
-                // the coordinate's epoch, beside the only other operation.
-                if self.single && p.only_at.is_none() {
+                // the coordinate's epoch, beside the only other operation;
+                // alone, it is the only one for a coordinate at its epoch.
+                if (self.single && p.only_at.is_none()) || self.only_route() {
                     Outcome::Only
                 } else if rec.fallback == Some(i) {
                     Outcome::Fallback
@@ -1368,6 +1392,12 @@ impl Candidates {
 }
 
 impl Prepared {
+    /// A route through a time-specific Helmert that holds at `epoch`.
+    fn holds_at(&self, epoch: f64) -> bool {
+        self.only_at
+            .is_some_and(|t| (epoch - t).abs() <= SAME_EPOCH_YEARS)
+    }
+
     /// A candidate for every coordinate, whatever its area.
     fn everywhere(
         candidate: Arc<Candidate>,

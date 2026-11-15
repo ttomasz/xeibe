@@ -136,6 +136,8 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
   last, with `OperationInfo::only_at_epoch`. A pair with only such routes
   now sets up, and its coordinates fail without an epoch
   (`CoordinateError::MissingEpoch`) or at another one (`EpochOutOfRange`).
+  At the epoch such a pair's route converts them whatever its area, as any
+  only operation does ("ITRF2000 to SIRGAS 2000 (1)" at 2000.4).
   `Transform::explain_point` says of such a route that the coordinate isn't
   at its epoch (`Outcome::NotAtEpoch`), and of an operation it displaces
   why (`PassReason::AtEpoch` when the two are as accurate). The reproject

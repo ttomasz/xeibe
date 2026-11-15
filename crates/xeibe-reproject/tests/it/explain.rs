@@ -339,3 +339,46 @@ fn explanations_agree_with_the_choice_on_the_selection_vectors() {
         failures[..failures.len().min(20)].join("\n")
     );
 }
+
+/// "ITRF2000 to SIRGAS 2000 (1)" holds at 2000.4, in Latin America, and
+/// is all EPSG has between the two: a coordinate at that epoch goes
+/// through it whatever its area, as through any only operation.
+#[test]
+fn the_only_time_specific_route_is_used_whatever_its_area() {
+    let (a, b) = (Crs::from_epsg(7909).unwrap(), Crs::from_epsg(4989).unwrap());
+    let t = Transform::new(&a, &b, AxisOrder::EastFirst).unwrap();
+    let info = t.operation_info();
+    assert_eq!(info.len(), 1, "{:?}", t.operations());
+    assert_eq!(info[0].only_at_epoch, Some(2000.4));
+    let santiago = (-70.67, -33.45, Some(520.0));
+    let warsaw = (21.01, 52.23, Some(100.0));
+
+    let at = t.with_epochs(Some(2000.4), None).unwrap();
+    for (p, inside) in [(santiago, true), (warsaw, false)] {
+        let e = at.explain_point(p.0, p.1, p.2).unwrap();
+        check(&at, &e, p).unwrap();
+        assert_eq!(e.used, Some(0), "{e:?}");
+        assert_eq!(e.candidates[0].outcome, Outcome::Only);
+        assert_eq!(e.candidates[0].inside, Some(inside));
+        // The coordinate's own epoch does as the transform's.
+        assert_eq!(
+            t.convert_at(p.0, p.1, p.2, 2000.4),
+            at.convert(p.0, p.1, p.2)
+        );
+    }
+    // Not at its epoch: nothing converts the coordinate, wherever it is.
+    for p in [santiago, warsaw] {
+        assert_eq!(t.convert(p.0, p.1, p.2), Err(CoordinateError::MissingEpoch));
+        assert_eq!(
+            t.convert_at(p.0, p.1, p.2, 2020.0),
+            Err(CoordinateError::EpochOutOfRange)
+        );
+        let e = t
+            .with_epochs(Some(2020.0), None)
+            .unwrap()
+            .explain_point(p.0, p.1, p.2)
+            .unwrap();
+        assert_eq!(e.error, Some(CoordinateError::EpochOutOfRange));
+        assert_eq!(e.candidates[0].outcome, Outcome::NotAtEpoch);
+    }
+}

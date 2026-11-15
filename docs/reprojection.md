@@ -1367,8 +1367,13 @@ forced (`Transform::via`, `operation::only_forced`):
   area, and nothing else there is more accurate. Everything else, and
   every coordinate without an epoch, chooses as PROJ does. A pair with
   only such routes fails without an epoch (`MissingEpoch`) or at another
-  one (`EpochOutOfRange`). `Transform::explain_point` tells such a route
-  apart: `Outcome::NotAtEpoch` when the coordinate isn't at its epoch
+  one (`EpochOutOfRange`). At the epoch, a route whose area contains the
+  coordinate converts it, else the first one does whatever its area: the
+  only operation there is ("ITRF2000 to SIRGAS 2000 (1)", at 2000.4 in
+  Latin America, is all EPSG has between the two), as PROJ uses a single
+  operation for every coordinate, or of several, as PROJ falls back
+  (`Outcome::Only`, `Outcome::Fallback`). `Transform::explain_point` tells
+  such a route apart: `Outcome::NotAtEpoch` when the coordinate isn't at its epoch
   (`inside` still says whether its area contains the point), and where it
   is, `Chosen`, `Outside` or `Passed` as for any other, with
   `PassReason::AtEpoch` for the operation it displaces at equal accuracy.
