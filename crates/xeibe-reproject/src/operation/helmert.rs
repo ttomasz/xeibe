@@ -19,12 +19,14 @@
 //!
 //! The time-specific methods (1065, 1066), which PROJ imports but can't run,
 //! are a plain geocentric Helmert that holds at one epoch, the
-//! transformation reference epoch, and run only when forced
-//! (`operation::only_forced`). EPSG moves a point there and back by its
+//! transformation reference epoch. EPSG moves a point there and back by its
 //! own velocities (Guidance Note 7-2), which a coordinate here doesn't
-//! carry: a coordinate without an epoch is taken to be at it, and one at
-//! another epoch fails (`CoordinateError::EpochOutOfRange`), so the choice
-//! goes on to the next operation.
+//! carry: one at another epoch fails
+//! (`CoordinateError::EpochOutOfRange`). Forced (`Transform::via`,
+//! `operation::only_forced`), a coordinate without an epoch is taken to be
+//! at the operation's. In the choice, a route through one is only for a
+//! coordinate at its epoch (`select::time_specific_routes`); one without
+//! an epoch never takes it.
 //!
 //! A geographic-domain Helmert of zeros between ellipsoids within
 //! [`SAME_ELLIPSOID_M`] of each other, on one prime meridian, changes the CRS

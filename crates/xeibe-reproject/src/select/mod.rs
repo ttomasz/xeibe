@@ -1071,7 +1071,9 @@ impl Candidates {
     /// Run the best candidate for this coordinate (PROJ's `proj_trans` with
     /// alternatives), returning the target's internal coordinates and the
     /// candidate used. `epoch` is the coordinate's, a decimal year, for
-    /// the time-dependent operations; the choice doesn't look at it.
+    /// the time-dependent operations; the choice looks at it only for the
+    /// routes through a time-specific Helmert
+    /// ([`Candidates::choose_at_epoch`]).
     pub(crate) fn run_with(
         &self,
         src: &Crs,

@@ -151,8 +151,10 @@ Result on 2026-10-17: 38 projection methods are implemented. Every projected
 CRS PROJ can convert from EPSG's definition (6,594, deprecated ones included)
 and all 303 geocentric CRSs match PROJ, forward and inverse. Since
 2026-11-14, so are the five EPSG methods PROJ can't convert (below), so
-every live EPSG CRS converts. Most methods agree
-to within 0.1 µm. The exceptions are Krovak (1 µm), Transverse Mercator
+every live EPSG CRS converts, and the one CRS on Lambert Conic Conformal
+(2SP Belgium), EPSG:31300, follows EPSG's formulas, not PROJ's
+([Beyond PROJ](#beyond-proj)): the comparison leaves it out. Most methods
+agree to within 0.1 µm. The exceptions are Krovak (1 µm), Transverse Mercator
 (0.14 mm) and TM South Orientated (25 µm), where the worst cases come from the
 Bessel Namibia ellipsoid below. A unit test also checks that
 `AxisOrder::EastFirst` swaps exactly the CRSs `xeibe-crs` marks `NorthOrLat`.
@@ -1314,9 +1316,10 @@ formulas (Guidance Note 7-2, transcribed into the dataset with a worked
 example), xeibe runs it from them, and tests it against EPSG's example or,
 where EPSG gives none, against PROJ's results for what the method is made
 of (`tests/it/epsg_examples.rs`). A method beyond PROJ competes in the
-choice where PROJ has nothing proper for the pair; where it would displace
-an operation PROJ takes, it runs only when forced (`Transform::via`,
-`operation::only_forced`):
+choice where PROJ has nothing proper for the pair, or where it does better
+than what PROJ takes (listed below, each a deviation); where it would
+displace an operation PROJ takes without being better, it runs only when
+forced (`Transform::via`, `operation::only_forced`):
 
 - **Projections** (level 1): Lambert Conic Conformal (West Orientated),
   Polar Stereographic (variant C), Lambert Conic Near-Conformal, Tunisia

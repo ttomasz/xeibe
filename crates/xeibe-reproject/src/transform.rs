@@ -686,8 +686,10 @@ impl Transform {
     /// converted at that epoch: a time-dependent operation (see
     /// [`OperationInfo::time_dependent`]) applies its rates from its
     /// reference epoch to it, where a transform without epochs stays at
-    /// the reference epoch. Which operations there are and which one a
-    /// coordinate takes don't depend on the epoch.
+    /// the reference epoch. Which operations there are doesn't depend on
+    /// the epoch, and which one a coordinate takes only where a
+    /// time-specific Helmert holds at it
+    /// ([`OperationInfo::only_at_epoch`]).
     ///
     /// As in PROJ:
     ///

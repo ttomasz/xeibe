@@ -54,7 +54,7 @@ publish = true
 # siblings' releases, not their paths. The crates share the workspace version,
 # except xeibe-crs and xeibe-esri, which have their own (docs/releasing.md).
 xeibe-core = { path = "crates/xeibe-core", version = "0.2.0" }
-xeibe-crs = { path = "crates/xeibe-crs", version = "0.4.0" }
+xeibe-crs = { path = "crates/xeibe-crs", version = "0.4.3" }
 xeibe-esri = { path = "crates/xeibe-esri", version = "0.1.0" }
 # Without its `esri` feature (Esri's Apache-2.0 names, for reading ESRI WKT):
 # crates that take EPSG codes only don't need them. xeibe-proj-py turns it on.

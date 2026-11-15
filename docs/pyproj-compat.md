@@ -553,7 +553,14 @@ These are documented in the package README and in its `NotImplementedError` and
    which picks a different operation from PROJ at 38 of 21,132 test points,
    and keeps the coordinates through a Helmert of zeros between GRS 1980
    and WGS 84 ("NAD83 to WGS 84 (1)") next to another Helmert too, where
-   PROJ keeps the point in space: 0.1 mm.
+   PROJ keeps the point in space: 0.1 mm. And where EPSG has a method PROJ
+   doesn't import, can't run or maps differently, xeibe_proj follows EPSG
+   ([reprojection.md](reprojection.md#beyond-proj)): BD72 / Belge Lambert
+   72 (EPSG:31300) is 745 m from pyproj's, on EPSG's worked example; TM75,
+   Fiji's grids and ED50 to ED87 go through EPSG's polynomials; EVRF2019
+   zero-tide to mean-tide heights follow EPSG's formula; a coordinate whose
+   `tt` is the epoch of a time-specific Helmert goes through it; and the
+   CRSs on the five projection methods PROJ has no mapping for convert.
 5. **A newer EPSG.** CRS names, supersessions and the operations available
    can differ from those in pyproj's bundled `proj.db`.
 6. **Only EPSG** (and the three OGC CRSs) as an authority, and only the

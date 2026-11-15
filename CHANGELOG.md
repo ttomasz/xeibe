@@ -37,7 +37,9 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
   fail on URLs from about 2,000 bytes. Vendor parameters (`--param`) and a
   bbox are only sent by `GET`, so a request that must be a `POST` with them
   fails with a message. `next` links too long to send, which GeoServer
-  writes after a `POST`, give way to `startIndex` paging.
+  writes after a `POST`, give way to `startIndex` paging. A `POST` that
+  the server redirects, and that then fails or isn't answered with features,
+  is an error that names the URL to use as the service URL.
 - A WFS page whose `numberReturned` is below the features it holds (deegree
   writes `0`), or whose `numberMatched` is below the features received so
   far, no longer ends a `startIndex` read after the first page. The counted
@@ -80,6 +82,71 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
   time with `CoordinateError::EpochOutOfRange`. `OperationInfo::needs_epoch`
   tells in advance. The model's master file names its grids, so they are
   asked for (`Transform::grid_requests`) once it is loaded.
+- `xeibe-reproject`: the NKG transformations from ITRF2014 and ITRF2020 to
+  the Nordic and Baltic ETRS89 realizations, which start with the
+  velocities from the coordinate's epoch to 2000.0 ("ETRF2014 to NKG_ETRF14
+  (1)", EPSG method 1144). They need each coordinate's epoch
+  (`OperationInfo::needs_epoch`); a coordinate without one goes through the
+  next operation, as in PROJ.
+- `xeibe-reproject`: every live EPSG CRS now converts. The five projection
+  methods PROJ has no mapping for run from EPSG's formulas: Lambert Conic
+  Conformal (West Orientated), Polar Stereographic (variant C), Lambert
+  Conic Near-Conformal, Tunisia Mining Grid and Transverse Mercator Zoned
+  Grid System. 21 CRSs didn't convert before, and the 26 CRSs on these
+  methods are now identified from WKT.
+- `xeibe-reproject`: Lambert Conic Conformal (2SP Belgium) now turns the
+  grid by 29.2985″, as EPSG defines the method and PROJ doesn't.
+  Coordinates in BD72 / Belge Lambert 72 (EPSG:31300), the one CRS on it,
+  move by 745 m from 0.2.0 and from PROJ, onto EPSG's worked example.
+  Belgian Lambert 72 (EPSG:31370) is unchanged. PROJ strings still write
+  the CRS as PROJ does, without the turn.
+- `xeibe-reproject`: hydroid models to chart datum depths ("Geographic3D to
+  Depth", EPSG methods 1116 and 1121), which PROJ can't run. ETRS89 +
+  LAT-NLD or MSL-NLD depth now converts to ETRS89, also from UTM and RD
+  with those depths.
+- `xeibe-reproject`: heights on a national realization of ETRS89 reach the
+  ensemble through the realization's own geoid model. ETRS89-SVK [SKTRF09]
+  + EVRF2007 height to ETRS89 had no transformation, and SKTRF09 + Baltic
+  1957 height took the Czech geoid model: its results change.
+- `xeibe-reproject`: EPSG's concatenated operations with two vertical
+  conversions in a row ("KOC CD height to KOC WD depth (ft) (1)": an
+  offset, height to depth, metres to feet) were left out. They now convert
+  as in PROJ.
+- `xeibe-reproject`: EVRF2019 zero-tide to mean-tide heights (EPSG method
+  1107), from EPSG's formula, which PROJ doesn't import. It is in the
+  choice, so 4 pairs change: 0.2.0, like PROJ, applied a constant −0.054 m
+  everywhere, and the formula goes from −0.053 m at 42°N to +0.072 m at
+  69°N.
+- `xeibe-reproject`: EPSG's polynomial transformations (methods 9645, 9648,
+  9651 to 9654 and 9617), which PROJ doesn't import. Those that do at
+  least as well as what PROJ chooses are in the choice, so their pairs
+  change from 0.2.0 and from PROJ: TM75 to ETRS89 (1) and to WGS 84 (1)
+  (0.4 m, over the 1 m Helmert), Fiji's (over a route through a 5 m
+  Helmert) and ED50 to ED87 (1) (1 m, like the Helmert). Madrid 1870
+  (Madrid), which had no transformation, converts to ED50. The others
+  (NAM's RD polynomials, ED50 to WGS 84 (35), Belge Lambert 72 to ED50 /
+  UTM zone 31N) run only with `Transform::via`.
+- `xeibe-reproject`: time-specific Helmert transformations (EPSG methods
+  1065 and 1066), which hold at one epoch and which PROJ can't run. They
+  run with `Transform::via`, and in the choice only for a coordinate at
+  the operation's epoch (to the thousandth of a year), inside its area,
+  when nothing else there is more accurate: "WGS 84 to ETRS89 (2)" at
+  2014.81 in the German and Dutch North Sea, say. Every other coordinate,
+  and every one without an epoch, chooses as before. The routes are listed
+  last, with `OperationInfo::only_at_epoch`. A pair with only such routes
+  now sets up, and its coordinates fail without an epoch
+  (`CoordinateError::MissingEpoch`) or at another one (`EpochOutOfRange`).
+- `xeibe-crs` 0.4.3: the operations table gains the transformations of the
+  methods above that PROJ doesn't import (EVRF2019's and the polynomials).
+- Rust API changes that break callers, besides those above:
+  `MemberRule::element` gave way to `MemberRule::matches`;
+  `xeibe_geom::arcs::arc_by_bulge_midpoint` takes a `BulgeNormal`;
+  `xeibe_wfs::paging::NextPage`, `CoordinateError` and the `Error` enums of
+  `xeibe-reproject` and `xeibe-wfs` have new variants; `OperationInfo`,
+  `Capabilities`, `Constraints`, `GeometrySniff`, `GeometryStats`,
+  `InferenceOptions`, `GmlOptions` and `WfsOptions` have new fields; and
+  `xeibe_io::Error::HttpStatus` names the URL the response came from after
+  redirects.
 
 ## 0.2.0
 

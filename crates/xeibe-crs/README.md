@@ -198,6 +198,8 @@ container layout.
   rather than comparing metres against degrees.
 - **Coordinate operations without grid files.** Operations are extracted as
   PROJ imports them (the same methods, supersession rules and concatenations),
+  plus the transformations of a few methods PROJ doesn't import (EVRF2019
+  zero-tide to mean-tide heights, the polynomials),
   parameters included, but grid-based ones only name their grid file: the
   grids themselves aren't part of the EPSG Dataset
   ([reprojection document](https://github.com/ttomasz/xeibe/blob/main/docs/reprojection.md), level 3).
@@ -231,6 +233,15 @@ they match the Cargo version so the two cannot drift.
 
 The crate's own versions; [`CHANGELOG.md`](CHANGELOG.md) lists the EPSG Dataset
 releases embedded in each.
+
+### 0.4.3
+
+- `operations_json()` also has the transformations of methods PROJ doesn't
+  import, which `xeibe-reproject` runs from EPSG's formulas
+  (`docs/reprojection.md`, "Beyond PROJ"): EVRF2019 zero-tide to mean-tide
+  heights (method 1107) and the polynomials (9645, 9648, 9651 to 9654,
+  9617), with their remarks (`data/operations.bin`, `data/remarks.bin`).
+  The `xeibe-reproject` release after 0.2.0 needs them.
 
 ### 0.4.2
 
