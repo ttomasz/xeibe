@@ -165,6 +165,13 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
   `xeibe-reproject`: `Transform::explain_point_at`,
   `trace_point_at`, `operation_for_at` and `operation_index_for_at`, for a
   coordinate with an epoch of its own, as `convert_at` converts it.
+- The reproject page places the points of a CRS that isn't in degrees
+  from Greenwich where they are: NTF (Paris), in grads from the Paris
+  meridian, and the projected CRSs on it (the Lambert zones), say. Before,
+  their points were warned about as outside the CRS's area of use, "the
+  points' bounds" and the distances between results were off, latitudes
+  over 90 grad were refused, and the CRS's card gave the prime meridian's
+  longitude in grads as degrees.
 - `xeibe-crs` 0.4.3: the operations table gains the transformations of the
   methods above that PROJ doesn't import (EVRF2019's and the polynomials).
 - Rust API changes that break callers, besides those above:

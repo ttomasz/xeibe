@@ -437,3 +437,64 @@ fn a_point_that_fails_has_the_steps_up_to_the_failure() {
     assert!(trace["error"].is_string(), "{details:#}");
     assert_eq!(trace["steps"][0]["kind"], "start");
 }
+
+/// NTF (Paris) is in grads from the Paris meridian, 2.33722917° east of
+/// Greenwich: 54 grad north, 3 grad east of Paris is 48.6°N 5.03722917°E.
+#[test]
+fn a_crs_in_grads_from_paris_is_placed_in_degrees_from_greenwich() {
+    let close = |v: &serde_json::Value, to: f64| (v.as_f64().unwrap() - to).abs() < 1e-9;
+    let s = Session::new("4807", "4326", &Options::default()).unwrap();
+    // In France: no warning about the source's area of use.
+    let out = s.convert(&page::parse_points("[[54, 3]]").unwrap());
+    assert_eq!(
+        out[0]["warnings"].as_array().map(Vec::len),
+        Some(0),
+        "{out}"
+    );
+    let details = s.details((54.0, 3.0, None));
+    let lonlat = &details["input_lonlat"];
+    assert!(
+        close(&lonlat[0], 5.037_229_17) && close(&lonlat[1], 48.6),
+        "{lonlat}"
+    );
+    // Latitudes go to 100 grad: 95 grad is 85.5°, and only then out of range.
+    let out = s.convert(&page::parse_points("[[95, 3], [101, 3]]").unwrap());
+    assert!(out[0]["error"].is_null(), "{out}");
+    assert!(
+        out[1]["error"]
+            .as_str()
+            .is_some_and(|e| e.contains("out of range")),
+        "{out}"
+    );
+    // The card gives the meridian in degrees.
+    let meridian = &page::crs_card("4807")["datum"]["prime_meridian"];
+    assert!(close(&meridian["longitude"], 2.337_229_17), "{meridian}");
+}
+
+/// A projected CRS on such a base: Lambert zone II's origin is on the
+/// Paris meridian at 52 grad north, 46.8°.
+#[test]
+fn a_projected_crs_on_the_paris_meridian_is_placed_from_greenwich() {
+    let points = page::parse_points("[[600000, 2200000]]").unwrap();
+    let [west, south, east, north] = page::lonlat_bounds(27572, false, &points).unwrap();
+    for (got, want) in [
+        (west, 2.337_229_17),
+        (east, 2.337_229_17),
+        (south, 46.8),
+        (north, 46.8),
+    ] {
+        assert!((got - want).abs() < 1e-9, "{got} {want}");
+    }
+    let s = Session::new("27572", "4326", &Options::default()).unwrap();
+    let out = s.convert(&points);
+    assert_eq!(
+        out[0]["warnings"].as_array().map(Vec::len),
+        Some(0),
+        "{out}"
+    );
+    // The round trip's distance is between positions in degrees: 0.36 mm,
+    // as the differences in metres say.
+    let details = s.details((600_000.0, 2_200_000.0, None));
+    let distance = details["round_trip"]["distance"].as_f64().unwrap();
+    assert!((1e-4..1e-3).contains(&distance), "{details:#}");
+}

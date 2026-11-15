@@ -131,9 +131,13 @@ Each line is checked by a regular expression:
   padding, scrolled with it). Lines that don't match have their numbers in
   red, and are also listed under the textarea.
 - The regex checks syntax only. After parsing, from the source CRS:
-  latitude within ±90 and longitude within ±180 (geographic CRSs),
+  latitude within ±90° and longitude within ±180° (geographic CRSs, in
+  the CRS's unit: ±100 and ±200 for one in grads),
   outside the CRS's area of use (a warning, not an error), a third value
-  where neither CRS has a vertical axis.
+  where neither CRS has a vertical axis. For the areas of use a point is
+  placed in degrees from Greenwich, whatever the CRS's unit and prime
+  meridian (NTF (Paris) is in grads from Paris, and so are the Lambert
+  zones' base CRS).
 - **Axis order.** With plain decimals, latitude/longitude order is the
   classic mistake. Above the textarea: which value is which, from the
   CRS's axes ("Latitude (°), Longitude (°)"; "Easting (m), Northing (m)"),

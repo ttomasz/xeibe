@@ -115,6 +115,21 @@ fn number(value: &Value) -> Option<f64> {
     value.as_f64().or_else(|| value["value"].as_f64())
 }
 
+/// How many degrees one of an angular unit is, as PROJJSON writes units:
+/// a name ("degree"), or an object with its size in radians.
+fn unit_degrees(unit: &Value) -> f64 {
+    unit["conversion_factor"]
+        .as_f64()
+        .map_or(1.0, f64::to_degrees)
+}
+
+/// An angle as PROJJSON writes it, in degrees: a plain number is in
+/// degrees, `{"value": …, "unit": …}` in its unit (the Paris meridian is
+/// given in grads).
+fn degrees(value: &Value) -> Option<f64> {
+    Some(number(value)? * unit_degrees(&value["unit"]))
+}
+
 /// The axes in the CRS's own order, a compound CRS's horizontal then
 /// vertical.
 fn axes(json: &Value) -> Vec<Value> {
@@ -184,7 +199,7 @@ fn datum_json(json: &Value) -> Value {
         },
         "prime_meridian": prime_meridian.map(|p| json!({
             "name": p["name"],
-            "longitude": number(&p["longitude"]),
+            "longitude": degrees(&p["longitude"]),
         })),
     })
 }
@@ -294,21 +309,58 @@ fn ellipsoid(geographic: &Value) -> Option<(f64, f64)> {
     Some((a, f))
 }
 
-/// A CRS's points as longitude and latitude on its own datum, for the
-/// areas of use and the distances between results.
+/// A geographic CRS as PROJJSON with its latitude and longitude in
+/// degrees, whatever unit it has them in (NTF (Paris): grads), and how
+/// far east of Greenwich its prime meridian is, in degrees. Its
+/// longitudes stay from that meridian: the same datum, so a conversion.
+fn in_degrees(mut geographic: Value) -> (Value, f64) {
+    let datum = geographic
+        .get("datum")
+        .or_else(|| geographic.get("datum_ensemble"));
+    let meridian = datum
+        .and_then(|d| d.get("prime_meridian"))
+        .or_else(|| geographic.get("prime_meridian"))
+        .and_then(|p| degrees(&p["longitude"]))
+        .unwrap_or(0.0);
+    let mut changed = false;
+    if let Some(axes) = geographic["coordinate_system"]["axis"].as_array_mut() {
+        for axis in axes {
+            let angular = matches!(
+                axis["direction"].as_str(),
+                Some("north" | "south" | "east" | "west")
+            );
+            if angular && unit_degrees(&axis["unit"]) != 1.0 {
+                axis["unit"] = json!("degree");
+                changed = true;
+            }
+        }
+    }
+    // No longer the CRS its code names.
+    if changed && let Some(object) = geographic.as_object_mut() {
+        object.remove("id");
+    }
+    (geographic, meridian)
+}
+
+/// A CRS's points as longitude and latitude on its own datum, in degrees
+/// from Greenwich, for the areas of use and the distances between
+/// results.
 struct Geo {
     /// The page's axis order has the first two values the other way round
     /// from east first.
     swap: bool,
-    /// To the geographic CRS on the same datum: a conversion, exact.
+    /// To the geographic CRS on the same datum, in degrees from its own
+    /// prime meridian: a conversion, exact.
     lonlat: Transform,
+    /// That meridian, in degrees east of Greenwich.
+    meridian: f64,
     geodesic: Geodesic,
 }
 
 impl Geo {
     fn new(crs: &Crs, code: u32, order: AxisOrder) -> Option<Geo> {
         let json: Value = serde_json::from_str(xeibe_crs::projjson(code)?).ok()?;
-        let geographic = geographic_json(&json)?;
+        let (geographic, meridian) = in_degrees(geographic_json(&json)?);
         let (a, f) = ellipsoid(&geographic)?;
         let target = Crs::from_projjson(&geographic.to_string()).ok()?;
         let lonlat = Transform::new(crs, &target, AxisOrder::EastFirst).ok()?;
@@ -317,6 +369,7 @@ impl Geo {
         Some(Geo {
             swap,
             lonlat,
+            meridian,
             geodesic: Geodesic::new(a, f),
         })
     }
@@ -324,6 +377,14 @@ impl Geo {
     fn lonlat(&self, (x, y, z): Point) -> Option<[f64; 2]> {
         let (x, y) = if self.swap { (y, x) } else { (x, y) };
         let (lon, lat, _) = self.lonlat.convert(x, y, z).ok()?;
+        // From Greenwich, within ±180°. A CRS on Greenwich keeps its
+        // longitude to the last bit.
+        let mut lon = lon + self.meridian;
+        if lon > 180.0 {
+            lon -= 360.0;
+        } else if lon < -180.0 {
+            lon += 360.0;
+        }
         (lon.is_finite() && lat.is_finite()).then_some([lon, lat])
     }
 
@@ -486,8 +547,9 @@ pub struct Session {
     src_geo: Option<Geo>,
     dst_geo: Option<Geo>,
     /// For a geographic source CRS: whether the page's points have
-    /// latitude first.
-    src_geographic: Option<bool>,
+    /// latitude first, and how many degrees one of its unit is (0.9 for
+    /// grads).
+    src_geographic: Option<(bool, f64)>,
     /// Grid files that couldn't be fetched, and why.
     failed: RefCell<BTreeMap<String, String>>,
 }
@@ -520,7 +582,15 @@ impl Session {
             dst_geo: Geo::new(&dst_crs, dst, order),
             src_geographic: xeibe_crs::get(src)
                 .filter(|r| r.kind.is_geographic())
-                .map(|r| order == AxisOrder::Authority && r.first_axis == FirstAxis::NorthOrLat),
+                .map(|r| {
+                    let json: Value = xeibe_crs::projjson(src)
+                        .and_then(|j| serde_json::from_str(j).ok())
+                        .unwrap_or(Value::Null);
+                    (
+                        order == AxisOrder::Authority && r.first_axis == FirstAxis::NorthOrLat,
+                        unit_degrees(&json["coordinate_system"]["axis"][0]["unit"]),
+                    )
+                }),
             all,
             used,
             forced,
@@ -637,9 +707,9 @@ impl Session {
     ///   which PROJ uses everywhere;
     /// * `forced_area`: outside the area of the operation forced.
     fn check(&self, p: Point, epoch: Option<f64>) -> Result<Checked> {
-        if let Some(lat_first) = self.src_geographic {
+        if let Some((lat_first, unit)) = self.src_geographic {
             let (lon, lat) = if lat_first { (p.1, p.0) } else { (p.0, p.1) };
-            if lat.abs() > 90.0 || lon.abs() > 180.0 {
+            if (lat * unit).abs() > 90.0 || (lon * unit).abs() > 180.0 {
                 return Err(
                     "out of range: latitude is within ±90° and longitude within ±180°; are the axes the other way round?"
                         .into(),
