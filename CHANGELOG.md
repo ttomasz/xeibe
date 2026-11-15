@@ -6,7 +6,7 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
 ([crates/xeibe-crs/CHANGELOG.md](crates/xeibe-crs/CHANGELOG.md)), and
 `xeibe-proj` its own ([crates/xeibe-proj-py/CHANGELOG.md](crates/xeibe-proj-py/CHANGELOG.md)).
 
-## Unreleased
+## 0.3.0
 
 - GML Simple Features profile files that use their own collection element
   (as in the profile's Annex D.5) now read with default options. Before,
