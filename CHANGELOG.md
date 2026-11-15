@@ -49,6 +49,12 @@ together under one version by a `v*` tag ([docs/releasing.md](docs/releasing.md)
   output keeps the view types.
 - WFS 2.0 responses with several queries, and the features a `resolve`
   adds under `wfs:additionalObjects`, are now tested end to end.
+- `xeibe-reproject`: geocentric coordinates that are already in an
+  operation's source CRS go into it as they are. They used to be converted
+  to latitude, longitude and height and back first, which moved them by
+  about a nanometre and took most of the time. Conversions from, to or
+  through geocentric CRSs, such as ITRF2014 to GDA2020, are up to four
+  times faster, and a geocentric CRS to itself returns the input exactly.
 - `xeibe-reproject`: `Transform::trace_point` returns every step of one
   point's conversion. Each step is a projection, an operation (named, and
   marked when run inverted) or a leg through a Bound CRS's hub, and comes

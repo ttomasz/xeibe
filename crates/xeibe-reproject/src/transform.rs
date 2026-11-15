@@ -1310,13 +1310,22 @@ fn same_datums(src: &Crs, dst: &Crs) -> bool {
 
 /// Internal coordinates of one CRS to another on the same datum: through
 /// geographic coordinates, or, on an engineering datum, the same position in
-/// the grid's plane.
+/// the grid's plane. X, Y, Z stay as they are between two geocentric CRSs:
+/// to longitude, latitude and height on one ellipsoid and back they would
+/// come out a nanometre off, for twice the work of the operation between
+/// them. The step loop asks for every operation's source CRS, which the
+/// coordinates are often in already (`select::run`).
 pub(crate) fn on_one_datum(
     src: &Crs,
     dst: &Crs,
     internal: [f64; 3],
 ) -> Result<[f64; 3], CoordinateError> {
     if src.engineering_datum().is_some() {
+        return Ok(internal);
+    }
+    if let (Kind::Geocentric { datum: a }, Kind::Geocentric { datum: b }) = (&src.kind, &dst.kind)
+        && a.ellipsoid == b.ellipsoid
+    {
         return Ok(internal);
     }
     from_geographic(dst, to_geographic(src, internal)?)

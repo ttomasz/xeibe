@@ -156,6 +156,40 @@ fn a_geocentric_step_says_where_the_point_went() {
     for (j, s) in trace.steps.iter().enumerate() {
         assert_eq!(s.local_shift.is_some(), j == i, "{trace:#?}");
     }
+    // The operation's source CRS is where the coordinates are already:
+    // no step in between, which would only add rounding.
+    assert_eq!(
+        kinds(&trace)[..2],
+        [&TraceStep::Start, &TraceStep::Convert],
+        "{trace:#?}"
+    );
+    assert_eq!(i, 2, "{trace:#?}");
+    assert_eq!(trace.steps.len(), 4, "{trace:#?}");
+}
+
+#[test]
+fn geocentric_coordinates_stay_as_they_are_on_one_datum() {
+    // To latitude, longitude and height and back, X would come out a
+    // nanometre off.
+    let p = (-4646058.54885, 2553210.34113, Some(-3534377.96075));
+    let same = transform(7789, 7789, Grids::None);
+    assert_eq!(same.convert(p.0, p.1, p.2).unwrap(), p);
+    // And into an operation between geocentric CRSs, and out of it: only
+    // the operation changes them, so its inverse brings them back to a
+    // tenth of a micrometre.
+    let (there, back) = (
+        transform(7789, 7842, Grids::None),
+        transform(7842, 7789, Grids::None),
+    );
+    let q = there.convert(p.0, p.1, p.2).unwrap();
+    let trace = there.trace_point(p.0, p.1, p.2).unwrap();
+    check(&there, &trace, p).unwrap();
+    assert_eq!(trace.steps.len(), 2, "{trace:#?}");
+    assert!(matches!(trace.steps[1].step, TraceStep::Operation { .. }));
+    let r = back.convert(q.0, q.1, q.2).unwrap();
+    for (a, b) in [(r.0, p.0), (r.1, p.1), (r.2.unwrap(), p.2.unwrap())] {
+        assert!((a - b).abs() < 1e-7, "{r:?}");
+    }
 }
 
 #[test]

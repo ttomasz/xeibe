@@ -631,7 +631,11 @@ Details that turned out to matter, each found by the differential:
   Helmert followed by its own inverse cancels exactly. Run step by step, both
   leave millimetres. A Helmert of zeros between GRS 1980 and WGS 84 is no
   step at all when nothing geocentric is next to it, which xeibe
-  generalises (see the deviations).
+  generalises (see the deviations). And PROJ's pipeline has no step between
+  two geocentric CRSs on one datum: X, Y, Z go into an operation defined
+  between geocentric CRSs (the ITRF realisations, GDA2020) as they are,
+  and come out of it so. Through longitude, latitude and height and back
+  they would be a nanometre off, at several times the operation's cost.
 - **What PROJ can run.** Time-specific Helmert methods (1065, 1066) have no
   PROJ pipeline and never compete (xeibe takes them only for a coordinate
   at their epoch, or when forced);
