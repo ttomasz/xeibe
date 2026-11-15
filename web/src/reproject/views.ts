@@ -209,17 +209,26 @@ function row(label: string, value: string): string {
   return `<tr><th>${label}</th><td>${value}</td></tr>`;
 }
 
-function conversionRows(conversion: Conversion): string {
+/** A projection's method, linked, with its code. */
+function conversionMethod(conversion: Conversion): string {
   const method = conversion.method;
-  const methodText = method.code
+  return method.code
     ? `${link(methodUrl(method.code, method.name), escape(method.name))} <span class="muted">(EPSG method ${method.code})</span>`
     : escape(method.name);
+}
+
+/** A projection's parameters as a table, or nothing when it has none. */
+function conversionParams(conversion: Conversion): string {
   const params = (conversion.parameters ?? [])
     .map((p) => `<tr><td>${escape(p.name ?? '')}</td><td class="num">${projectionValue(p.value, p.unit)}</td></tr>`)
     .join('');
+  return params ? `<table class="params">${params}</table>` : '';
+}
+
+function conversionRows(conversion: Conversion): string {
+  const params = conversionParams(conversion);
   return (
-    row('Projection', `${escape(conversion.name)}: ${methodText}`) +
-    (params ? row('Parameters', `<table class="params">${params}</table>`) : '')
+    row('Projection', `${escape(conversion.name)}: ${conversionMethod(conversion)}`) + (params ? row('Parameters', params) : '')
   );
 }
 
@@ -276,10 +285,16 @@ export function crsCard(title: string, card: Card | null): string {
     ${error}<table class="facts">${rows.join('')}</table>`;
 }
 
-function epsgOperation(op: EpsgOperation, inverse: boolean): string {
-  const method = op.method
+/** An EPSG operation's method, linked, with its code. */
+function epsgMethod(op: EpsgOperation): string {
+  return op.method
     ? `${link(methodUrl(op.method.code, op.method.name), escape(op.method.name ?? ''))} <span class="muted">(EPSG method ${op.method.code})</span>`
     : '';
+}
+
+/** What an EPSG operation's step has under its head: the parameters,
+ * the notes and EPSG's remarks. The head names the operation. */
+function epsgOperation(op: EpsgOperation, inverse: boolean): string {
   const pvcf = /Position Vector|Coordinate Frame/.test(op.method?.name ?? '')
     ? `<p class="note">Position Vector and Coordinate Frame rotations differ only in the rotations' sign: check which convention your parameters follow.</p>`
     : '';
@@ -293,7 +308,6 @@ function epsgOperation(op: EpsgOperation, inverse: boolean): string {
     ? `<ol class="substeps">${op.steps!.map((s) => `<li>${link(operationUrl(s.code, s.name, s.table), `EPSG:${s.code}`)} ${escape(s.name ?? '')}${s.method ? `: ${escape(s.method.name ?? '')}` : ''}</li>`).join('')}</ol>`
     : '';
   return `<div class="op-detail">
-    <div>${link(operationUrl(op.code, op.name, op.table), `EPSG:${op.code}`)} ${escape(op.name ?? '')}${method ? `: ${method}` : ''}</div>
     ${params ? `<table class="params">${params}</table>` : ''}${steps}${pvcf}${inv}
     ${op.remarks ? `<details class="remarks"><summary>EPSG's remarks</summary><p>${escape(op.remarks)}</p></details>` : ''}
   </div>`;
@@ -309,7 +323,7 @@ const STEP_KINDS: Record<Step['kind'], string> = {
   ballpark_vertical: 'Ballpark vertical',
 };
 
-function stepHtml(step: Step): string {
+function stepHtml(step: Step, info: Info): string {
   const kind = STEP_KINDS[step.kind];
   const flag =
     step.kind === 'ballpark_vertical'
@@ -320,16 +334,33 @@ function stepHtml(step: Step): string {
   let body = '';
   const d = step.detail;
   if (step.kind === 'epsg' && d?.operation) body = epsgOperation(d.operation, !!d.inverse);
+  // A projection is named once, with its method. Its parameters are in
+  // the card of the CRS it belongs to, when that is the source or the
+  // target; the projection of a CRS without a card keeps them here.
+  let projection = '';
+  let pointer = '';
   if (step.kind === 'projection' && d?.conversion) {
-    body = `<table class="facts">${conversionRows(d.conversion)}</table>${d.inverse ? '<p class="note">Inverse: from projected coordinates to geographic.</p>' : ''}`;
+    const card = d.crs === info.source ? ['#srcCard', 'From'] : d.crs === info.target ? ['#dstCard', 'To'] : null;
+    projection = `: ${conversionMethod(d.conversion)}`;
+    if (card) pointer = ` · parameters in the <a href="${card[0]}">${card[1]} card</a>`;
+    else body = `<div class="op-detail">${conversionParams(d.conversion)}</div>`;
   }
   if (step.kind === 'ensemble_identity' && d?.method) {
     body = `<div class="op-detail">${escape(d.method.name ?? '')} <span class="muted">(EPSG method ${d.method.code})</span>, with zero parameters</div>`;
   }
   const crs = (c: Step['source']) => `<span title="${escape(c.name ?? '')}">${escape(c.label)}</span>`;
+  // An EPSG operation's step is named once: its code, linked, the step's
+  // name (which says when it runs inverted) and its method.
+  const epsg = step.kind === 'epsg' ? d?.operation : undefined;
+  const method = epsg ? epsgMethod(epsg) : '';
+  const name = epsg
+    ? `${link(operationUrl(epsg.code, epsg.name, epsg.table), `EPSG:${epsg.code}`)} ${escape(step.name)}${method ? `: ${method}` : ''}`
+    : escape(step.name) + projection;
+  // A projection or a conversion on one datum is exact: no accuracy to state.
+  const exact = step.kind === 'projection' || step.kind === 'same_datum';
   return `<li class="step">
-    <div class="step-head"><span class="kind">${kind}</span> ${escape(step.name)}
-      <span class="muted">${crs(step.source)} → ${crs(step.target)}${step.accuracy !== null ? `, ${accuracy(step.accuracy)}` : ''}</span></div>
+    <div class="step-head"><span class="kind">${kind}</span> ${name}
+      <span class="muted">${crs(step.source)} → ${crs(step.target)}${step.accuracy !== null && !exact ? `, ${accuracy(step.accuracy)}` : ''}${pointer}</span></div>
     ${flag}${body}
   </li>`;
 }
@@ -443,23 +474,29 @@ function operationHtml(op: Operation, index: number, info: Info, count: number, 
     flags.push('<span class="muted">datum ensemble to a member: no shift</span>');
   const used = info.forced !== null ? info.forced === index : count > 0;
   const where = op.area_name ? escape(op.area_name.length > 70 ? `${op.area_name.slice(0, 68)}…` : op.area_name) : '';
+  // The summary line is the only place for the accuracy and the points
+  // that went through the operation, and says nothing of points for none.
+  const stated =
+    op.accuracy === null ? 'accuracy unknown' : `<span title="Accuracy, as EPSG states it">${accuracy(op.accuracy)}</span>`;
+  // An operation that is one EPSG transformation has that step's remarks:
+  // they are shown once, in the step, beside the parameters they are about.
+  const remarks = op.remarks && !op.chain.some((s) => s.detail?.operation?.remarks === op.remarks) ? op.remarks : null;
   return `<li class="operation${used ? ' used' : ''}" style="--c:${colour(index)}"><details>
     <summary class="op-head">${opTag(index)} <b>${escape(op.name)}</b>
-      <span class="op-sum">${accuracy(op.accuracy)}${op.grids.length ? ' · grid' : ''}${op.only_at_epoch !== null ? ` · at epoch ${op.only_at_epoch} only` : ''}${flags.length ? ' · <span class="warn">⚠</span>' : ''}
-        · ${count} point${count === 1 ? '' : 's'}</span>
+      <span class="op-sum">${stated}${op.grids.length ? ' · grid' : ''}${op.only_at_epoch !== null ? ` · at epoch ${op.only_at_epoch} only` : ''}${flags.length ? ' · <span class="warn">⚠</span>' : ''}${
+        count ? ` · ${count} point${count === 1 ? '' : 's'}` : ''
+      }</span>
       <span class="op-area muted">${where}</span></summary>
     <table class="facts">
       ${row('EPSG', code)}
-      ${row('Accuracy', accuracy(op.accuracy))}
       ${op.area_name || op.area ? row('Area of use', `${escape(op.area_name ?? '')}${op.area ? ` <span class="muted">${box(op.area)}</span>` : ''}`) : ''}
       ${op.scope ? row('Scope', escape(op.scope)) : ''}
       ${grids ? row('Grids', grids) : ''}
       ${flags.length + notes.length ? row('Note', [...flags, ...notes].join('; ')) : ''}
-      ${row('Points', `${count} of the points went through it`)}
     </table>
-    ${op.remarks ? `<details class="remarks"><summary>EPSG's remarks</summary><p>${escape(op.remarks)}</p></details>` : ''}
+    ${remarks ? `<details class="remarks"><summary>EPSG's remarks</summary><p>${escape(remarks)}</p></details>` : ''}
     <details class="steps" open><summary>${op.chain.length} step${op.chain.length === 1 ? '' : 's'}: methods and parameters</summary>
-      <ol>${op.chain.map(stepHtml).join('')}</ol></details>
+      <ol>${op.chain.map((s) => stepHtml(s, info)).join('')}</ol></details>
   </details></li>`;
 }
 

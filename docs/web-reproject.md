@@ -229,8 +229,8 @@ the area of use, deprecated and its replacements, EPSG's remarks
 | Grids, each fetched / failed and its size | `grids` |
 | Time-dependent (without a coordinate epoch it runs at its reference epoch: said so; a deformation model needs one, so its points fail: said so; each with a link to set one. With an epoch: that it runs at it) | `time_dependent`, `needs_epoch` |
 | Through a time-specific Helmert (it holds at one epoch: without that epoch set no point goes through it unless forced: said so, with a button that sets it; such routes aren't counted among the candidates) | `only_at_epoch` |
-| Every step: projection, datum shift, ensemble null operation, ballpark vertical…, with its CRSs | `chain` |
-| How many of the points went through it | `operation_index_for` per point |
+| Every step: projection, datum shift, ensemble null operation, ballpark vertical…, with its CRSs. An EPSG step is named once, with its code and method; a projection is one line, its parameters being in the CRS's card (in the step when the CRS has no card) | `chain` |
+| How many of the points went through it, when any did | `operation_index_for` per point |
 
 A conversion on one datum has no candidates: the card says so ("same
 datum: a conversion, exact").
@@ -353,7 +353,8 @@ already, with no engine change:
   shows them as EPSG publishes them (arc-seconds, ppm). Whether it runs
   inverted;
 - a projection step: the projected CRS's conversion parameters, from its
-  PROJJSON;
+  PROJJSON (listed in the CRS's card when it is the source or the target,
+  in the step otherwise);
 - each CRS's ellipsoid (a, 1/f) and prime meridian.
 
 The last traced coordinate is `convert`'s result: the test.
