@@ -418,3 +418,44 @@ fn the_only_time_specific_route_is_used_whatever_its_area() {
         assert_eq!(e.candidates[0].outcome, Outcome::NotAtEpoch);
     }
 }
+
+/// The routes through a time-specific Helmert meet the selection as the
+/// other operations do: "WGS 84 to ETRS89 (2)" (0.1 m, the German and Dutch
+/// North Sea) is left out by a finer accuracy or an area of interest
+/// elsewhere, so that nothing at all may be left, as in PROJ.
+#[test]
+fn a_selection_limits_time_specific_routes() {
+    let (a, b) = (Crs::from_epsg(4326).unwrap(), Crs::from_epsg(4258).unwrap());
+    let with =
+        |selection| Transform::with_selection(&a, &b, AxisOrder::Authority, Grids::None, selection);
+    let at_epoch = |t: &Transform| {
+        t.operation_info()
+            .iter()
+            .filter(|o| o.only_at_epoch == Some(2014.81))
+            .count()
+    };
+    assert!(
+        with(Selection {
+            accuracy: Some(0.05),
+            ..Selection::default()
+        })
+        .is_err()
+    );
+    // Only the route is as accurate as 0.5 m.
+    let t = with(Selection {
+        accuracy: Some(0.5),
+        ..Selection::default()
+    })
+    .unwrap();
+    assert!(t.operation_info().iter().all(|o| o.only_at_epoch.is_some()));
+    assert_eq!(at_epoch(&t), 1);
+    // Poland: the ordinary operations, without the route.
+    let t = with(Selection {
+        area_of_interest: Some([14.1, 49.0, 24.2, 54.9]),
+        ..Selection::default()
+    })
+    .unwrap();
+    assert!(!t.operation_info().is_empty());
+    assert_eq!(at_epoch(&t), 0);
+    assert_eq!(at_epoch(&with(Selection::default()).unwrap()), 1);
+}

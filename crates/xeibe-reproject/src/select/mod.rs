@@ -638,12 +638,30 @@ fn time_specific_routes(
         };
         if let Some(c) = candidate::concatenate(route, true, crs)
             && filter::is_forcible(&c)
+            && selected(&c, selection)
             && let Some(epoch) = operation::time_specific_epoch(op)
         {
             out.push((c, epoch));
         }
     }
     out
+}
+
+/// Whether a route meets the user's `selection`, as `filter::filter_out`
+/// judges the other candidates: at least as accurate as asked (an unknown
+/// accuracy is not), and with an area that meets the area of interest.
+fn selected(c: &Candidate, selection: &Selection) -> bool {
+    let accurate = selection
+        .accuracy
+        .is_none_or(|a| a == 0.0 || (c.accuracy >= 0.0 && c.accuracy <= a));
+    let inside = match (selection.area_of_interest, &c.extent) {
+        (None, _) => true,
+        (Some(_), None) => false,
+        (Some([w, s, e, n]), Some(extent)) => {
+            extent.intersects(&crate::extent::Extent::new(None, w, s, e, n))
+        }
+    };
+    accurate && inside
 }
 
 fn is_priority(name: &str) -> bool {
