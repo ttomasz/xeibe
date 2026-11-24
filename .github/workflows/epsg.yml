@@ -9,7 +9,7 @@ name: EPSG Dataset
 # update on the check.
 #
 # Detection uses the public GeoRepository API, which needs no account. The
-# download page is behind an OpenID Connect login, so `update` signs in with
+# download page is behind an OpenID Connect login, so `resolve` signs in with
 # the EPSG_LOGIN_USER / EPSG_LOGIN_PASSWORD secrets. Those credentials do one
 # thing: read the link targets off the gated page. The archives themselves are
 # public CDN URLs, fetched unauthenticated. Without the secrets, dispatch this
@@ -93,9 +93,99 @@ jobs:
             echo "- update available: ${{ steps.check.outputs.update_available }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  update:
+  # Reads the download page before anything is downloaded. EPSG's API can
+  # announce a release days before the gated page offers it (13.107 was
+  # announced on 2026-11-20 while the page still served 13.106 on the 24th),
+  # and `update` would otherwise download, regenerate and test the release
+  # already committed, only to find nothing to commit.
+  resolve:
     needs: check
     if: needs.check.outputs.update_available == 'true' || inputs.force
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      ready: ${{ steps.resolve.outputs.ready }}
+      postgresql_url: ${{ steps.resolve.outputs.postgresql_url }}
+      wkt_url: ${{ steps.resolve.outputs.wkt_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        # Pinned by exact tag: this runs unattended on a schedule, and the
+        # shell installer would silently pick up whatever uv ships that day.
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.3"
+          # The PEP 723 blocks in the scripts are the dependency manifest.
+          enable-cache: true
+          cache-dependency-glob: "scripts/**/*.py"
+
+      - name: Resolve the download links
+        id: resolve
+        env:
+          SQL_URL: ${{ inputs.postgresql_url }}
+          WKT_URL: ${{ inputs.wkt_url }}
+          CURRENT: ${{ needs.check.outputs.current }}
+          LATEST: ${{ needs.check.outputs.latest }}
+          FORCE: ${{ inputs.force }}
+          # Used only to read the link targets off the gated download page.
+          # The archives themselves are public. Never echoed.
+          EPSG_LOGIN_USER: ${{ secrets.EPSG_LOGIN_USER }}
+          EPSG_LOGIN_PASSWORD: ${{ secrets.EPSG_LOGIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Explicit URLs, from a manual dispatch, are taken as they are.
+          if [ -n "$SQL_URL" ] && [ -n "$WKT_URL" ]; then
+            {
+              echo "ready=true"
+              echo "postgresql_url=$SQL_URL"
+              echo "wkt_url=$WKT_URL"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "${EPSG_LOGIN_USER:-}" ] || [ -z "${EPSG_LOGIN_PASSWORD:-}" ]; then
+            echo "::error::no EPSG_LOGIN_USER/EPSG_LOGIN_PASSWORD secrets, and no URLs given." >&2
+            echo "::error::Either add the secrets, or dispatch again with both URL inputs filled in." >&2
+            exit 1
+          fi
+
+          # Signs in and reads the page's version and links; downloads nothing.
+          resolved=$(mktemp)
+          GITHUB_OUTPUT=$resolved ./scripts/fetch_epsg_dataset.py --print-links --github --formats PostgreSQL WKT
+          offered=$(sed -n 's/^version=//p' "$resolved")
+          case "$offered" in
+            [0-9]*.[0-9]*) ;;
+            *) echo "::error::could not read the offered version off the download page ('$offered'); the portal changed" >&2; exit 1 ;;
+          esac
+
+          # Newer than what is committed; not necessarily the latest, since
+          # the generator reads the version out of the archive anyway.
+          newest=$(printf '%s\n%s\n' "$CURRENT" "$offered" | sort -V | tail -n 1)
+          if [ "$offered" != "$CURRENT" ] && [ "$newest" = "$offered" ]; then
+            ready=true
+          elif [ "$FORCE" = "true" ]; then
+            ready=true
+            echo "::notice::the download page offers v$offered, not newer than the committed v$CURRENT; going ahead because of force"
+          else
+            ready=false
+            echo "::warning::EPSG announced v$LATEST, but the download page still offers v$offered (committed: v$CURRENT). Skipping the update; tomorrow's run tries again."
+          fi
+          {
+            echo "ready=$ready"
+            grep -E '^(postgresql_url|wkt_url)=' "$resolved"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### EPSG download page"
+            echo
+            echo "- announced: v$LATEST"
+            echo "- offered:   v$offered"
+            echo "- committed: v$CURRENT"
+            echo "- update runs: $ready"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  update:
+    needs: [check, resolve]
+    if: needs.resolve.outputs.ready == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -114,12 +204,10 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "scripts/**/*.py"
 
-      # Either explicit URLs or a sign-in, never both.
-      - name: Download the EPSG archives (explicit URLs)
-        if: inputs.postgresql_url != '' && inputs.wkt_url != ''
+      - name: Download the EPSG archives
         env:
-          SQL_URL: ${{ inputs.postgresql_url }}
-          WKT_URL: ${{ inputs.wkt_url }}
+          SQL_URL: ${{ needs.resolve.outputs.postgresql_url }}
+          WKT_URL: ${{ needs.resolve.outputs.wkt_url }}
         run: |
           set -euo pipefail
           # Only ever fetch from EPSG's own CDN, so a mistyped input cannot
@@ -133,24 +221,6 @@ jobs:
           mkdir -p example_data
           curl -fsSL --max-time 300 "$SQL_URL" -o example_data/EPSG-PostgreSQL.zip
           curl -fsSL --max-time 300 "$WKT_URL" -o example_data/EPSG-WKT.Zip
-
-      - name: Download the EPSG archives (sign in)
-        if: inputs.postgresql_url == '' || inputs.wkt_url == ''
-        env:
-          # Used only to read the link targets off the gated download page.
-          # The archives themselves are public. Never echoed.
-          EPSG_LOGIN_USER: ${{ secrets.EPSG_LOGIN_USER }}
-          EPSG_LOGIN_PASSWORD: ${{ secrets.EPSG_LOGIN_PASSWORD }}
-        run: |
-          set -euo pipefail
-          if [ -z "${EPSG_LOGIN_USER:-}" ] || [ -z "${EPSG_LOGIN_PASSWORD:-}" ]; then
-            echo "::error::no EPSG_LOGIN_USER/EPSG_LOGIN_PASSWORD secrets, and no URLs given." >&2
-            echo "::error::Either add the secrets, or dispatch again with both URL inputs filled in." >&2
-            exit 1
-          fi
-          ./scripts/fetch_epsg_dataset.py --out example_data --formats PostgreSQL WKT
-          mv example_data/EPSG-*PostgreSQL.zip example_data/EPSG-PostgreSQL.zip
-          mv example_data/EPSG-*WKT.[Zz]ip example_data/EPSG-WKT.Zip
 
       - name: Check what was downloaded
         run: |

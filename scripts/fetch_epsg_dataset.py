@@ -32,6 +32,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urljoin
 
 import requests
 
@@ -78,7 +79,7 @@ def field(text: str, name: str) -> str | None:
     return None
 
 
-def post_form(session: requests.Session, text: str) -> requests.Response | None:
+def post_form(session: requests.Session, text: str, base: str) -> requests.Response | None:
     """Submit an auto-posting form, as the browser's onload handler would.
 
     OIDC here uses `response_mode=form_post`, so the authorization result comes
@@ -99,50 +100,69 @@ def post_form(session: requests.Session, text: str) -> requests.Response | None:
         return None
     if "error" in fields:
         sys.exit(f"the login was rejected by epsg.org ({fields['error']}); check the credentials")
-    return session.post(html.unescape(action.group(1)), data=fields, timeout=60)
+    target = urljoin(base, html.unescape(action.group(1)))
+    return session.post(target, data=fields, timeout=60)
 
 
-def sign_in() -> requests.Session:
+def sign_in() -> tuple[requests.Session, str]:
+    """Returns the session and the download page the flow lands on.
+
+    The page is taken from the landing response rather than fetched again:
+    since November 2026 a second GET in the same session gets an empty HTTP 500.
+    """
     user, password = load_credentials()
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
 
     response = session.get(DOWNLOAD_PAGE, timeout=60)
     if "/Account/Login" not in response.url:
-        return session  # already public, or already signed in
+        return session, response.text  # already public, or already signed in
 
     token = field(response.text, "__RequestVerificationToken")
-    return_url = field(response.text, "ReturnUrl") or ""
+    # The form names it `returnUrl`; before the November 2026 redesign it was
+    # `ReturnUrl`. ASP.NET binds either, so send what the page has.
+    return_url = field(response.text, "returnUrl") or field(response.text, "ReturnUrl") or ""
     if not token:
         sys.exit("could not find the antiforgery token on the login page; the portal changed")
 
     response = session.post(
         response.url,
         data={
+            # `Email` since the November 2026 redesign, `Username` before.
+            # Unknown fields are ignored, so both go along.
+            "Email": user,
             "Username": user,
             "Password": password,
-            "ReturnUrl": return_url,
+            "returnUrl": return_url,
             # Omitting this gets a bare HTTP 400: ASP.NET checks the form token
             # against the cookie the GET above set.
             "__RequestVerificationToken": token,
+            "RememberMe": "false",
             "RememberLogin": "false",
-            # The handler branches on this. Without it the post is treated as
-            # a cancel and the flow comes back with error=access_denied.
+            # The old handler branched on this. Without it the post was
+            # treated as a cancel and came back with error=access_denied.
             "button": "login",
         },
         timeout=60,
     )
+    # A login page served back means the sign-in failed. Its form posts to the
+    # login page itself, so it must not be mistaken for the OIDC hop below.
+    if "/Account/Login" in response.url:
+        errors = re.findall(r"(?is)validation-summary-errors.*?<li>(.*?)</li>", response.text)
+        detail = f" ({'; '.join(e.strip() for e in errors)})" if errors else ""
+        sys.exit(f"still on the login page after signing in{detail}; check the credentials, or the portal changed")
     # Complete the OIDC form_post hop, which sets the session cookie.
-    if (hop := post_form(session, response.text)) is not None:
+    if (hop := post_form(session, response.text, response.url)) is not None:
         response = hop
     if "/Account/Login" in response.url:
         sys.exit("still on the login page after signing in; check the credentials")
-    return session
+    response.raise_for_status()
+    return session, response.text
 
 
-def resolve_links(session: requests.Session) -> tuple[str, dict[str, str]]:
+def resolve_links(text: str) -> tuple[str, dict[str, str]]:
     """Returns the advertised version and {archive name: CDN url}."""
-    page = html.unescape(session.get(DOWNLOAD_PAGE, timeout=60).text)
+    page = html.unescape(text)
     if "/Account/Login" in page and "Download Version" not in page:
         sys.exit("the download page is still gated; sign-in did not take effect")
 
@@ -176,8 +196,8 @@ def main() -> int:
     ap.add_argument("--github", action="store_true", help="append key=value pairs to $GITHUB_OUTPUT")
     args = ap.parse_args()
 
-    session = sign_in()
-    version, links = resolve_links(session)
+    _, page = sign_in()
+    version, links = resolve_links(page)
     print(f"signed in; EPSG Dataset v{version}, {len(links)} archives offered")
 
     chosen = dict(pick(links, fmt) for fmt in args.formats)
