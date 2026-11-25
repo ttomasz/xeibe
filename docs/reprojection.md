@@ -1425,8 +1425,11 @@ forced (`Transform::via`, `operation::only_forced`):
     "modified by subtracting (1/ms)") holds; it agrees with the route
     through both CRSs' transformations to WGS 84 to 4 m.
 
-  EPSG gives no example for the general polynomials: TM75 to ETRS89 (1)
-  agrees with the 1 m Helmert to 1.6 m.
+  The dataset quotes no example for the general polynomials, but GN7-2
+  (July 2026, §4.7.1) works TM75 to ETRS89 (1) through for 55°N 6°30′W,
+  and xeibe gives its corrections to all ten published digits
+  (+0.0000297229°, −0.0009491261°). It agrees with the 1 m Helmert to
+  1.6 m. Fiji's has no example.
 
 ## Test oracle notes
 

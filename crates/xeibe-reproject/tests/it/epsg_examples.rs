@@ -304,14 +304,20 @@ fn madrid_to_ed50_polynomial() {
     assert_near(lon3, lon, 1e-10, "longitude back");
 }
 
-/// General polynomials: EPSG gives no example. TM75 to ETRS89 (1) (degree
-/// 6, 0.4 m) agrees with the 1 m Helmert "TM75 to ETRS89 (2)" to 1.6 m over
-/// Ireland, and Viti Levu Grid to Fiji Map Grid (degree 2, in links to
-/// metres, northing first to easting first) with the route through both
-/// CRSs' transformations to WGS 84 to 4 m. Their reverse is by iteration.
+/// General polynomials. GN7-2 (July 2026, §4.7.1) works TM75 to ETRS89 (1)
+/// (degree 6, 0.4 m) through for 55°N 6°30′W: dX = +0.0000297229°, dY =
+/// −0.0009491261°, which the dataset's method doesn't quote. It also agrees
+/// with the 1 m Helmert "TM75 to ETRS89 (2)" to 1.6 m over Ireland. EPSG
+/// gives no example for Viti Levu Grid to Fiji Map Grid (degree 2, in links
+/// to metres, northing first to easting first), which agrees with the route
+/// through both CRSs' transformations to WGS 84 to 4 m. Their reverse is by
+/// iteration.
 #[test]
 fn general_polynomials() {
     let poly = forced(4300, 4258, 1041);
+    let (lat, lon, _) = poly.convert(55.0, -6.5, None).unwrap();
+    assert_near(lat - 55.0, 0.000_029_722_9, 5e-11, "GN7-2 dX");
+    assert_near(lon + 6.5, -0.000_949_126_1, 5e-11, "GN7-2 dY");
     let helmert = forced(4300, 4258, 1953);
     for (lat, lon) in [(51.6, -10.0), (53.35, -6.26), (55.2, -7.0), (52.5, -8.5)] {
         let (a, b, _) = poly.convert(lat, lon, None).unwrap();
