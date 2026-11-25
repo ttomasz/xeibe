@@ -24,6 +24,9 @@ So this adds four checks, none of which ship in the crate:
                 also carries deprecated CRSs. Compares conversion method and
                 parameters, axis directions, ellipsoid and prime meridian --
                 not names, which legitimately differ between EPSG releases.
+                And the facts table's first axis: the generator's reading of
+                the document's axes, and northing first exactly where PROJ
+                swaps the axes for always_xy (polar CRSs included).
   --regression  the regenerated tables against the committed ones: codes that
                 vanished, axis orders that flipped, units that changed.
   --operations  the coordinate operations (`data/operations.bin`) against
@@ -347,6 +350,71 @@ def known_divergence(ours: dict, theirs: dict, keys: list[str]) -> str | None:
     return None
 
 
+GEOCENTRIC_AXES = [
+    {"name": f"Geocentric {a}", "abbreviation": a, "direction": f"geocentric{a}", "unit": "metre"} for a in "XYZ"
+]
+
+
+def proj_swaps_axes(pyproj, code: int) -> bool | None:
+    """Whether PROJ swaps the CRS's first two axes for visualization
+    (`always_xy`, `proj_normalize_for_visualization`), or None where it
+    can't tell: a point is converted into the CRS from geocentric
+    coordinates on its own datum, once in the CRS's order and once in
+    PROJ's normalized one. None for a CRS PROJ doesn't have or can't
+    convert to (northing then westing: the Greenland zones), or whose
+    ordinates at that point are too close to tell apart."""
+    import math
+
+    try:
+        crs = pyproj.CRS.from_authority("EPSG", str(code))
+        base = crs.geodetic_crs.to_json_dict()
+        geocentric = {
+            "$schema": base.get("$schema"),
+            "type": "GeodeticCRS",
+            "name": "geocentric",
+            "coordinate_system": {"subtype": "Cartesian", "axis": GEOCENTRIC_AXES},
+        }
+        for key in ("datum", "datum_ensemble"):
+            if key in base:
+                geocentric[key] = base[key]
+        source = pyproj.CRS.from_json_dict(geocentric)
+        area = crs.area_of_use
+        if area is None:
+            return None
+        # Off the area's centre, so that a world-wide geographic CRS doesn't
+        # land on (0, 0), which reads the same in either order.
+        east = area.east if area.east >= area.west else area.east + 360
+        lon = math.radians(area.west + 0.6 * (east - area.west))
+        lat = math.radians(area.south + 0.35 * (area.north - area.south))
+        ellipsoid = crs.ellipsoid
+        f = 1 / ellipsoid.inverse_flattening if ellipsoid.inverse_flattening else 0.0
+        e2 = f * (2 - f)
+        n = ellipsoid.semi_major_metre / math.sqrt(1 - e2 * math.sin(lat) ** 2)
+        xyz = (
+            n * math.cos(lat) * math.cos(lon),
+            n * math.cos(lat) * math.sin(lon),
+            n * (1 - e2) * math.sin(lat),
+        )
+        (x0, y0), (x1, y1) = (
+            pyproj.Transformer.from_crs(source, crs, always_xy=xy).transform(*xyz)[:2] for xy in (False, True)
+        )
+    except pyproj.exceptions.ProjError:
+        return None
+    if not all(map(math.isfinite, (x0, y0, x1, y1))):
+        return None
+
+    def same(a: float, b: float) -> bool:
+        return abs(a - b) <= 1e-6 * max(1.0, abs(a), abs(b))
+
+    if same(x0, y0):
+        return None
+    if same(x0, x1) and same(y0, y1):
+        return False
+    if same(x0, y1) and same(y0, x1):
+        return True
+    return None
+
+
 def check_pyproj(report: Report, table: dict, docs: dict) -> None:
     import pyproj
 
@@ -378,8 +446,13 @@ def check_pyproj(report: Report, table: dict, docs: dict) -> None:
                 f"PROJ={str(theirs_f.get(keys[0]))[:80]}"
             )
 
-    # Also check the facts table, which the WKT gate never sees.
-    axis_mismatch = []
+    # Also check the facts table, which the WKT gate never sees: its first
+    # axis is the generator's reading of the document's axes, and northing
+    # first exactly where PROJ swaps the axes for visualization.
+    first_axis = load_generator().first_axis
+    axis_names = ("EastOrLon", "NorthOrLat", "Other")
+    axis_mismatch, swap_mismatch = [], []
+    swaps_compared = swaps_undecided = 0
     for code, record in table.items():
         doc = docs.get(code)
         if not doc:
@@ -387,21 +460,40 @@ def check_pyproj(report: Report, table: dict, docs: dict) -> None:
         cs = doc.get("coordinate_system")
         if not cs or not cs["axis"]:
             continue
-        expected = {"east": "EastOrLon", "north": "NorthOrLat"}.get(cs["axis"][0]["direction"], "Other")
-        if record["first_axis"] != expected:
+        if record["first_axis"] != axis_names[first_axis(cs["axis"])]:
             axis_mismatch.append(code)
+        if record["kind"] not in ("Projected", "Geographic2d", "Geographic3d"):
+            continue
+        swaps = proj_swaps_axes(pyproj, code)
+        if swaps is None:
+            swaps_undecided += 1
+        elif swaps != (record["first_axis"] == "NorthOrLat"):
+            swap_mismatch.append(code)
+        else:
+            swaps_compared += 1
 
     known = "; ".join(f"{n} {reason}" for reason, n in allowed.most_common())
-    detail = f"{compared} CRSs vs PROJ {pyproj.proj_version_str} ({absent} not in its EPSG)"
+    detail = (
+        f"{compared} CRSs vs PROJ {pyproj.proj_version_str} ({absent} not in its EPSG); "
+        f"northing first where PROJ swaps for always_xy for all {swaps_compared} it converts "
+        f"({swaps_undecided} it can't)"
+    )
     if known:
         detail += f"; known divergences: {known}"
 
-    if axis_mismatch:
-        report.fail(
-            "pyproj cross-check",
-            f"{len(axis_mismatch)} facts-table axis orders disagree with the document "
-            f"(e.g. {axis_mismatch[:5]})",
-        )
+    if axis_mismatch or swap_mismatch:
+        parts = []
+        if axis_mismatch:
+            parts.append(
+                f"{len(axis_mismatch)} facts-table axis orders disagree with the document's axes "
+                f"(e.g. {axis_mismatch[:5]})"
+            )
+        if swap_mismatch:
+            parts.append(
+                f"{len(swap_mismatch)} are northing first where PROJ doesn't swap for always_xy "
+                f"or the reverse (e.g. {swap_mismatch[:5]})"
+            )
+        report.fail("pyproj cross-check", "; ".join(parts))
     elif differing:
         summary = ", ".join(f"{key}: {n}" for key, n in differing.most_common())
         report.fail("pyproj cross-check", f"unexplained differences -- {summary}. {'; '.join(examples)}")
