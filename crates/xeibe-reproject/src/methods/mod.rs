@@ -389,12 +389,16 @@ pub(crate) fn build(
                 params.get(param::VIEWPOINT_HEIGHT)?,
                 ellipsoid.a,
             )?;
-            Arc::new(sphere::Spherical::with(
+            // EPSG's method has no false easting and northing, nor has the
+            // WKT PROJ writes for `nsper`; a PROJ string's `x_0` and `y_0`
+            // come as them.
+            Arc::new(sphere::Spherical::with_false_origin(
                 unit,
                 params.get(param::LON_TOPOCENTRIC_ORIGIN)?,
-                params,
+                params.get(param::FALSE_EASTING).unwrap_or(0.0),
+                params.get(param::FALSE_NORTHING).unwrap_or(0.0),
                 ellipsoid.a,
-            )?)
+            ))
         }
         _ => return Err(BuildError::UnknownMethod),
     })

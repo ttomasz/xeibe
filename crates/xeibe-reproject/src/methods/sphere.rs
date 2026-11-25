@@ -95,14 +95,25 @@ impl<U: Unit> Spherical<U> {
 
     /// With this central meridian and radius.
     pub(crate) fn with(unit: U, lon0: f64, params: &Params, a: f64) -> Result<Self, BuildError> {
-        Ok(Spherical {
+        Ok(Self::with_false_origin(
             unit,
             lon0,
-            fe: params.get(param::FALSE_EASTING)?,
-            fn_: params.get(param::FALSE_NORTHING)?,
+            params.get(param::FALSE_EASTING)?,
+            params.get(param::FALSE_NORTHING)?,
+            a,
+        ))
+    }
+
+    /// With this central meridian, false easting and northing, and radius.
+    pub(crate) fn with_false_origin(unit: U, lon0: f64, fe: f64, fn_: f64, a: f64) -> Self {
+        Spherical {
+            unit,
+            lon0,
+            fe,
+            fn_,
             a,
             ra: 1.0 / a,
-        })
+        }
     }
 }
 

@@ -18,3 +18,4 @@ mod transformations;
 mod user_input;
 mod vectors;
 mod wkt;
+mod worked_examples;

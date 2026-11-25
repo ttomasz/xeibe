@@ -233,7 +233,12 @@ Geostationary Satellite, …) and the four EPSG methods no EPSG CRS uses
 (Orthographic, Equidistant Conic, Vertical Perspective, Mercator
 (Spherical)) are implemented as well, each a port of PROJ's code checked
 against PROJ over the whole globe, forwards and back
-([pyproj-phase3.md](pyproj-phase3.md#projs-own-methods)). Mercator
+([pyproj-phase3.md](pyproj-phase3.md#projs-own-methods)). Vertical
+Perspective is PROJ's `nsper`, on the sphere of the semi-major axis with
+the heights unused, where EPSG's method is ellipsoidal: GN7-2's example
+lands 410 m and 18 m from it. Since 2026-11-25 it reads without a false
+easting and northing, which EPSG's method doesn't have and PROJ's WKT (and
+xeibe's, as PROJ's) leaves out when zero. Mercator
 (Spherical) and Mercator (1SP) (Spherical) are on the conformal sphere at
 the latitude of origin, as EPSG has it; PROJ (`merc +R_C`) sets its sphere
 up before it reads `lat_0`, so it always takes the equator's
@@ -1432,6 +1437,57 @@ forced (`Transform::via`, `operation::only_forced`):
   1.6 m. Fiji's has no example.
 
 ## Test oracle notes
+
+- **EPSG's worked examples** (`tests/it/worked_examples.rs`, since
+  2026-11-25) check the methods xeibe and PROJ both run against an oracle
+  that isn't PROJ: EPSG Guidance Note 7-2 (IOGP Report 373-07-2, July
+  2026 revision, `example_data/373-07-2.pdf`), whose examples the dataset
+  mostly quotes too. 35 projections (through `Projection`, as GN7-2 states
+  them: Greenwich longitude, latitude), forwards to GN7-2's rounding and
+  GN7-2's easting and northing back to its point; 12 transformations
+  forced through EPSG's operation; 6 more on PROJ-data's grids, run with
+  `--ignored`, like the other tests on `target/proj-grids` (run them apart
+  from the cropped ones: grids are held per process by file name, and a
+  cropped file and the whole one share it). The methods only xeibe runs
+  are in `epsg_examples.rs`. Where xeibe and GN7-2 differ, xeibe agrees
+  with PROJ and with the formula evaluated exactly, and GN7-2's figure is
+  off; each such example says by how much:
+  - Transverse Mercator (OSGB36 / British National Grid) 6 and 8 mm, and
+    (South Orientated) Lo29 10 and 5 mm: Krüger's series in 40-digit
+    arithmetic gives xeibe's figures; GN7-2's constants are printed to 8
+    to 10 digits.
+  - Krovak (S-JTSK (Ferro) / Krovak and East North): 12 mm. GN7-2 prints
+    1050538.643 and 568990.997 there, and 1050538.631 and 568990.995 for
+    the same point in its Krovak Modified section, as xeibe and PROJ. The
+    2019 revision has the same figures.
+  - Albers Equal Area, the South American example: 3 and 6 mm from the
+    closed-form formula.
+  - Equal Earth and Local Orthographic: GN7-2 truncates instead of
+    rounding (−2390749.0428 printed as −2390749.042), under a millimetre.
+  - Position Vector (WGS 72 to WGS 84 parameters, geocentric): X is
+    3657660.774; GN7-2 prints 3657660.78.
+  - Typographical: Makassar / NEIEZ printed as EPSG:30020 (it is 3002);
+    δrZ multiplied as 1.5551 msec/yr where the parameter is 1.1551 (its
+    result uses 1.1551); Vanua Levu Grid in chains where EPSG:3139 is in
+    links now.
+
+  And three where GN7-2's example isn't what EPSG's data and PROJ do:
+  - Molodensky-Badekas (La Canoa to REGVEN (1)) is worked in 3D, with an
+    ellipsoidal height of 201.46 m, which PROJ's `molobadekas` reproduces
+    to the centimetre. EPSG's La Canoa is geographic 2D, and between
+    geographic 2D CRSs the height passes through the shift unchanged (PROJ's
+    `push v_3`), so EPSG:4247 to REGVEN's geocentric CRS lands 21 m from
+    GN7-2's; the horizontal position agrees to under a centimetre.
+  - Canada's velocity grid: GN7-2's velocities at its point aren't the
+    grid's bilinearly (see "Velocity grids are interpolated bilinearly"):
+    3 mm over 8 years.
+  - NZVD2016 to Dunedin 1958: GN7-2 rounds the interpolated offset to the
+    millimetre (0.304 m; the grid gives 0.3046 m).
+
+  GN7-2 has examples xeibe doesn't run: Mercator (variant C) and Vertical
+  Perspective (orthographic case), which no EPSG CRS uses and PROJ doesn't
+  map; Abridged Molodensky; geocentric and topocentric conversions; the
+  seismic bin grids, wells and the methods `epsg_examples.rs` lists.
 
 - pyproj's bundled `proj.db` lags EPSG (v12.029 for PROJ 9.8.1); level 2's
   vectors use the database `scripts/build_proj_oracle.py` builds from our EPSG
