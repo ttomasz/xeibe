@@ -26,9 +26,15 @@ So this adds four checks, none of which ship in the crate:
                 not names, which legitimately differ between EPSG releases.
   --regression  the regenerated tables against the committed ones: codes that
                 vanished, axis orders that flipped, units that changed.
+  --operations  the coordinate operations (`data/operations.bin`) against
+                PROJ's own import of the same EPSG release, the `proj.db`
+                that `scripts/build_proj_oracle.py` builds: the same
+                operations, in the same tables, between the same CRSs, but
+                for the differences listed here (`known_export_difference`).
 
-Run it with no flags for all of them. Exit status is non-zero if any check
-fails, so it works as a release gate.
+Run it with no flags for all of them (`--operations` is skipped with a
+warning when the oracle is missing or built from another EPSG release).
+Exit status is non-zero if any check fails, so it works as a release gate.
 
     scripts/verify_crs_tables.py
     scripts/verify_crs_tables.py --pyproj --regression
@@ -53,6 +59,8 @@ CRATE = REPO / "crates" / "xeibe-crs"
 TABLE_RS = CRATE / "src" / "table.rs"
 ALIASES_RS = CRATE / "src" / "aliases.rs"
 BLOB = CRATE / "data" / "projjson.bin"
+OPERATIONS_BLOB = CRATE / "data" / "operations.bin"
+ORACLE_DB = REPO / "target" / "proj-oracle" / "proj.db"
 
 # Float comparisons: PROJ rounds conversion factors to 15 significant digits,
 # so an exact match is not the right test.
@@ -440,6 +448,126 @@ def check_regression(report: Report, committed: dict, regenerated: dict, docs: d
         report.ok("regression", detail + ", no removals or axis changes")
 
 
+# The tables of `proj.db` the export follows, by the name each operation's
+# `table` gives.
+OPERATION_TABLES = (
+    "helmert_transformation",
+    "grid_transformation",
+    "other_transformation",
+    "concatenated_operation",
+)
+
+# Operations exported although the oracle doesn't have them, which aren't
+# deliberate but are accepted, each with the reason. A warning lists them,
+# and another one an entry that no longer applies, so the list is dropped
+# when the reason goes away.
+KNOWN_EXPORT_MISMATCHES = {
+    11440: "method 1162 (PatchJGD), which PROJ 9.8.1's build_db.py doesn't take with two "
+    "parameters (it asserts; build_proj_oracle.py skips it); PROJ's master imports it",
+    11441: "concatenated operation through 11440",
+    26004: "EPSG v13.106 gives a geographic 2D source CRS (10305), which PROJ's consistency "
+    "triggers reject; v13.107 corrects it to 10304",
+    26005: "as 26004",
+}
+
+
+def read_committed_operations() -> dict:
+    raw = OPERATIONS_BLOB.read_bytes()
+    if raw[:4] != b"XOP1":
+        sys.exit(f"{OPERATIONS_BLOB}: not an operations blob")
+    (size,) = struct.unpack("<I", raw[4:8])
+    return json.loads(lz4.block.decompress(raw[8:], uncompressed_size=size))
+
+
+def known_export_difference(op: dict, ours: dict, beyond_proj: set[int]) -> bool:
+    """Whether an operation xeibe exports and PROJ doesn't import is so by
+    design: a method xeibe runs beyond PROJ (`gen_crs_tables.py`'s
+    `BEYOND_PROJ_METHODS`), or a concatenated operation through one."""
+    if op["table"] == "concatenated_operation":
+        return any(
+            (step := ours.get(code)) is not None and known_export_difference(step, ours, beyond_proj)
+            for code in op.get("steps", [])
+        )
+    return op.get("method") in beyond_proj
+
+
+def check_operations(report: Report, required: bool) -> None:
+    """The exported operations against PROJ's import of the same release."""
+    import sqlite3
+
+    absent = report.fail if required else report.warn
+    if not ORACLE_DB.exists():
+        absent("operations", f"no {ORACLE_DB.relative_to(REPO)}; run scripts/build_proj_oracle.py")
+        return
+    doc = read_committed_operations()
+    db = sqlite3.connect(f"file:{ORACLE_DB}?mode=ro", uri=True)
+    (oracle_version,) = db.execute("select value from metadata where key = 'EPSG.VERSION'").fetchone()
+    if oracle_version.removeprefix("v") != doc["epsg_version"]:
+        absent(
+            "operations",
+            f"the oracle is EPSG {oracle_version}, the tables {doc['epsg_version']}; "
+            "rerun scripts/build_proj_oracle.py",
+        )
+        return
+
+    ours = {op["code"]: op for op in doc["operations"] if op["table"] in OPERATION_TABLES}
+    proj: dict[int, dict] = {}
+    for table in OPERATION_TABLES:
+        method = "null" if table == "concatenated_operation" else "method_code"
+        for code, src, dst, method_code, deprecated in db.execute(
+            f"select code, source_crs_code, target_crs_code, {method}, deprecated "
+            f"from {table} where auth_name = 'EPSG'"
+        ):
+            proj[int(code)] = {
+                "table": table,
+                "src": int(src),
+                "dst": int(dst),
+                "method": int(method_code) if method_code is not None else None,
+                "deprecated": bool(deprecated),
+            }
+
+    beyond_proj = set(load_generator().BEYOND_PROJ_METHODS)
+    problems, known = [], []
+    for code in sorted(set(ours) - set(proj)):
+        op = ours[code]
+        if known_export_difference(op, ours, beyond_proj):
+            continue
+        if code in KNOWN_EXPORT_MISMATCHES:
+            known.append(f"{code} ({KNOWN_EXPORT_MISMATCHES[code]})")
+            continue
+        problems.append(f"{code} {op['name']!r} ({op['table']}, method {op.get('method')}) not in PROJ's")
+    for code in sorted(set(proj) - set(ours)):
+        # Unit changes between CRSs EPSG doesn't name (methods 1068 and
+        # 1069): `gen_crs_tables.py` leaves them out, as nothing can reach them.
+        if proj[code]["table"] == "other_transformation" and proj[code]["method"] in (1068, 1069):
+            continue
+        problems.append(f"{code} ({proj[code]['table']}) imported by PROJ but not exported")
+    for code in sorted(set(ours) & set(proj)):
+        op, theirs = ours[code], proj[code]
+        for key, value in (
+            ("table", op["table"]),
+            ("src", op.get("src")),
+            ("dst", op.get("dst")),
+            ("deprecated", op.get("deprecated", False)),
+        ):
+            if value != theirs[key]:
+                problems.append(f"{code}: {key} {value!r}, PROJ's {theirs[key]!r}")
+    stale = sorted(code for code in KNOWN_EXPORT_MISMATCHES if code not in ours or code in proj)
+
+    detail = f"{len(ours)} exported, {len(proj)} in PROJ's import"
+    if problems:
+        report.fail("operations", f"{detail}; {len(problems)} unexpected differences: {problems[:8]}")
+    elif known or stale:
+        parts = [detail]
+        if known:
+            parts.append(f"{len(known)} known mismatches: {'; '.join(known)}")
+        if stale:
+            parts.append(f"KNOWN_EXPORT_MISMATCHES entries that no longer apply: {stale}")
+        report.warn("operations", "; ".join(parts))
+    else:
+        report.ok("operations", detail + ", the same but for xeibe's methods beyond PROJ")
+
+
 # --------------------------------------------------------------------------
 
 
@@ -449,11 +577,12 @@ def main() -> int:
     ap.add_argument("--schema", action="store_true")
     ap.add_argument("--pyproj", action="store_true")
     ap.add_argument("--regression", action="store_true")
+    ap.add_argument("--operations", action="store_true")
     ap.add_argument("--sql", type=Path, help="EPSG archive for --regression (default: example_data)")
     ap.add_argument("--markdown", type=Path, help="also write a summary table here")
     args = ap.parse_args()
 
-    everything = not (args.do_self or args.schema or args.pyproj or args.regression)
+    everything = not (args.do_self or args.schema or args.pyproj or args.regression or args.operations)
     report = Report()
 
     print("reading committed tables")
@@ -490,6 +619,8 @@ def main() -> int:
                     "linear_unit_m": record["linear_unit_m"],
                 }
         check_regression(report, table, regenerated, docs)
+    if everything or args.operations:
+        check_operations(report, required=args.operations)
 
     if args.markdown:
         args.markdown.write_text(

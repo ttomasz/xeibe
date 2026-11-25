@@ -140,8 +140,11 @@ sources, but their contents haven't been checked against the local copies:
   targets off the gated page; the archives themselves are public.
 - `scripts/verify_crs_tables.py` checks the generated tables beyond the
   generator's own WKT gate: PROJJSON schema and a pyproj cross-check (both
-  cover the ~836 deprecated CRSs EPSG publishes no WKT for), plus a
-  regression diff against what is committed. Run it before releasing.
+  cover the ~836 deprecated CRSs EPSG publishes no WKT for), a
+  regression diff against what is committed, and the exported operations
+  against PROJ's import of the same release in `target/proj-oracle/`
+  (`--operations`; skipped with a warning without that oracle). Run it
+  before releasing.
 - `scripts/gen_reprojection_vectors.py` writes level-1 test vectors for
   `xeibe-reproject` (PROJ via pyproj, fed our PROJJSON);
   `scripts/build_proj_oracle.py` rebuilds PROJ's `proj.db` from our EPSG
