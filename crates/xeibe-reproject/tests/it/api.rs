@@ -104,6 +104,49 @@ fn different_datums_go_through_a_transformation() {
     );
 }
 
+/// A projection of one's own on OSGB36, as PROJ writes it (pyproj's
+/// `ProjectedCRS(TransverseMercatorConversion(…), geodetic_crs=CRS(4277))`):
+/// the base CRS has EPSG's id, its datum none. The datum is EPSG's
+/// (`docs/crs-wkt.md`, decision 4), so it converts from its own base, and
+/// through EPSG's transformations from another datum.
+const CUSTOM_ON_OSGB36: &str = r#"{"type":"ProjectedCRS","name":"undefined","base_crs":{"type":"GeographicCRS","name":"OSGB36","datum":{"type":"GeodeticReferenceFrame","name":"Ordnance Survey of Great Britain 1936","ellipsoid":{"name":"Airy 1830","semi_major_axis":6377563.396,"inverse_flattening":299.3249646}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"id":{"authority":"EPSG","code":4277}},"conversion":{"name":"unknown","method":{"name":"Transverse Mercator","id":{"authority":"EPSG","code":9807}},"parameters":[{"name":"Latitude of natural origin","value":0,"unit":"degree","id":{"authority":"EPSG","code":8801}},{"name":"Longitude of natural origin","value":-2,"unit":"degree","id":{"authority":"EPSG","code":8802}},{"name":"Scale factor at natural origin","value":1,"unit":"unity","id":{"authority":"EPSG","code":8805}},{"name":"False easting","value":0,"unit":"metre","id":{"authority":"EPSG","code":8806}},{"name":"False northing","value":0,"unit":"metre","id":{"authority":"EPSG","code":8807}}]},"coordinate_system":{"subtype":"Cartesian","axis":[{"name":"Easting","abbreviation":"E","direction":"east","unit":"metre"},{"name":"Northing","abbreviation":"N","direction":"north","unit":"metre"}]}}"#;
+
+#[test]
+fn a_projection_of_ones_own_on_an_epsg_base_crs() {
+    let osgb36 = Crs::from_epsg(4277).unwrap();
+    let custom = Crs::from_projjson(CUSTOM_ON_OSGB36).unwrap();
+    let (x, _, _) = Transform::new(&osgb36, &custom, AxisOrder::EastFirst)
+        .unwrap()
+        .convert(-2.0, 52.0, None)
+        .unwrap();
+    assert!(x.abs() < 1e-6, "on the central meridian: {x}");
+    let wgs84 = Transform::new(
+        &Crs::from_epsg(4326).unwrap(),
+        &custom,
+        AxisOrder::EastFirst,
+    )
+    .unwrap();
+    assert!(
+        wgs84
+            .operations()
+            .iter()
+            .any(|o| o.contains("OSGB36 to WGS 84")),
+        "{:?}",
+        wgs84.operations()
+    );
+    // Without the base CRS's id, by the datum's name, on its ellipsoid.
+    let by_name = CUSTOM_ON_OSGB36.replace(r#","id":{"authority":"EPSG","code":4277}"#, "");
+    let custom = Crs::from_projjson(&by_name).unwrap();
+    assert!(Transform::new(&osgb36, &custom, AxisOrder::EastFirst).is_ok());
+    // EPSG's name on another ellipsoid isn't EPSG's datum.
+    let other = by_name.replace("6377563.396", "6378137");
+    let custom = Crs::from_projjson(&other).unwrap();
+    assert!(matches!(
+        Transform::new(&osgb36, &custom, AxisOrder::EastFirst),
+        Err(Error::UnknownDatum { .. })
+    ));
+}
+
 #[test]
 fn routes_through_a_national_realization_both_ways() {
     // RT90 to ETRS89: EPSG's operation to SWEREF 99 (0.1 m) and the ensemble

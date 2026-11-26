@@ -238,6 +238,16 @@ WKT1 needs translation, not just mapping:
 
   An unresolved datum keeps its name, and transformations to it then fail,
   as they would in PROJ.
+
+  WKT2 and PROJJSON (which WKT2 is read through) give an id only on the
+  outermost object that has one, so a projection of one's own on an EPSG
+  geographic CRS has the base CRS's id and a datum without. Since
+  2026-11-25 such a datum is resolved too: to the datum of the EPSG CRS
+  whose id its CRS has, when the name is that datum's (or an alias); else
+  by name, as above, when the EPSG datum's ellipsoid is the one given.
+  Before, it kept its name as its key, and a custom projection on OSGB36,
+  NAD27 or ED50 had an unknown datum, even to its own base CRS (WGS 84
+  and ETRS89 worked: their ensembles carry ids).
 - **Web Mercator.** GDAL's WKT1 for EPSG:3857 is `Mercator_1SP` on the
   WGS 84 ellipsoid, plus
   `EXTENSION["PROJ4","+proj=merc +a=6378137 +b=6378137 … +nadgrids=@null …"]`.

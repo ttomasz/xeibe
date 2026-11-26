@@ -1228,11 +1228,11 @@ impl Ctx<'_> {
             _ => return Err(self.invalid("no datum or datum ensemble")),
         };
         let name = datum["name"].as_str().unwrap_or("unnamed datum").to_owned();
-        let key = match epsg_id(datum) {
+        let ellipsoid = self.ellipsoid(&datum["ellipsoid"])?;
+        let key = match epsg_id(datum).or_else(|| self.resolved_datum(crs, &name, &ellipsoid)) {
             Some(code) => format!("EPSG:{code}"),
             None => name.clone(),
         };
-        let ellipsoid = self.ellipsoid(&datum["ellipsoid"])?;
         let inverse_flattening = self.inverse_flattening(&datum["ellipsoid"])?;
         // A datum ensemble carries no prime meridian; EPSG's are all Greenwich.
         let prime_meridian = match &datum["prime_meridian"] {
@@ -1255,6 +1255,32 @@ impl Ctx<'_> {
             prime_meridian,
             dynamic: is_dynamic_frame(datum),
         })
+    }
+
+    /// The EPSG datum that a geodetic datum written without an id is
+    /// (`docs/crs-wkt.md`, decision 4). PROJ writes an id only on the
+    /// outermost object that has one, so a projection of one's own on an
+    /// EPSG geographic CRS carries the base CRS's id and a datum without:
+    /// that CRS's datum, when the name is its. Else the EPSG datum of that
+    /// name or alias, as WKT1's are resolved, if its ellipsoid is the one
+    /// given.
+    fn resolved_datum(&self, crs: &Value, name: &str, ellipsoid: &Ellipsoid) -> Option<u32> {
+        use crate::wkt::datums;
+        use xeibe_crs::DatumKind;
+        let named = datums::all_by_name(name, DatumKind::Geodetic);
+        if let Some(code) = epsg_id(crs).and_then(xeibe_crs::get).and_then(|r| r.datum)
+            && named.iter().any(|d| d.code == code)
+        {
+            return Some(code);
+        }
+        let found = datums::by_name(name, DatumKind::Geodetic)?;
+        let epsg = crate::registry::registry().datums.get(&found.code)?;
+        let object = xeibe_crs::object(xeibe_crs::ObjectKind::Ellipsoid, epsg.ellipsoid)?;
+        let theirs = self
+            .ellipsoid(&serde_json::from_str::<Value>(object.projjson).ok()?)
+            .ok()?;
+        ((theirs.a - ellipsoid.a).abs() < 1e-3 && (theirs.b - ellipsoid.b).abs() < 1e-3)
+            .then_some(found.code)
     }
 
     /// An ellipsoid's inverse flattening, when it is given by one rather
