@@ -8,6 +8,7 @@ mod epsg_examples;
 mod equivalent;
 mod explain;
 mod geodesic;
+mod gigs;
 mod grids;
 mod operations;
 mod parts;

@@ -1489,6 +1489,43 @@ forced (`Transform::via`, `operation::only_forced`):
   map; Abridged Molodensky; geocentric and topocentric conversions; the
   seismic bin grids, wells and the methods `epsg_examples.rs` lists.
 
+- **IOGP's GIGS test dataset** (v2.1, `tests/it/gigs.rs`, since
+  2026-11-25): its conversions (series 5100: 13 procedures, Transverse
+  Mercator to Transverse Mercator (South Orientated)) and transformations
+  (5200), each point with GIGS's tolerance (0.03 m or 3e-7°, mostly) and
+  its round trips (1000 times back and forth, within 6 mm or 6e-8°).
+  `scripts/gen_gigs_vectors.py` builds the CRSs (EPSG's equivalent, or
+  PROJJSON from GIGS's definitions), forces the EPSG operation GIGS's
+  transformation is, and records PROJ's results; GIGS's licence isn't
+  open, so the data stays in `example_data/` and the test runs with
+  `--ignored`. Of 760 points, every conversion is within GIGS's
+  tolerance (at worst 0.79 of it). The transformations are too, but for
+  7 points where xeibe gives PROJ's result to 1e-11° and GIGS's is off:
+  longitudes at 70° to 80° from the 7-parameter Helmerts, up to 7e-7°,
+  which there is 1.3 cm (GIGS's tolerance is in degrees, whatever the
+  latitude); one NTv2 point at a grid's edge 3.5 cm off, and one at
+  another edge that GIGS converts and PROJ and xeibe don't. The round trips
+  of the three transformations between geographic 2D CRSs drift beyond
+  GIGS's tolerance (1e-4° in 1000 trips at 80°N, the height the shift
+  gives being dropped each way), in PROJ as here, to the same point.
+  Not run:
+  - **A geographic 3D or geocentric CRS on a datum EPSG has only a
+    geographic 2D CRS for** (OSGB36, Belge 1972): `Transform::via`
+    starts from EPSG's CRS on the datum of the same dimension, and there
+    is none (5203 and 5204 in 3D, 5211, 5212; 108 points). PROJ promotes
+    the 2D CRS to 3D. A gap, not a deviation.
+  - What isn't an EPSG operation: GIGS's own Molodensky-Badekas
+    parameters and NADCON grids (5205, 5206), the P6 seismic bin grid
+    (5209), the Abridged Molodensky outputs GIGS gives for reference, and
+    5101's outputs by the USGS formulas (xeibe and PROJ use the exact
+    series, which GIGS's JHS outputs give).
+
+  Reading GIGS's projected CRSs found a bug, fixed the same day: a
+  datum without an id in PROJJSON or WKT2 kept its name as its key, so a
+  projection of one's own on an EPSG geographic CRS other than WGS 84 or
+  ETRS89 (PROJ writes the base CRS's id, not the datum's) had an unknown
+  datum, and nothing converted to it, its own base CRS included. See
+  [crs-wkt.md](crs-wkt.md) decision 4.
 - pyproj's bundled `proj.db` lags EPSG (v12.029 for PROJ 9.8.1); level 2's
   vectors use the database `scripts/build_proj_oracle.py` builds from our EPSG
   archive instead (`pyproj.datadir.set_data_dir`, since pyproj ignores

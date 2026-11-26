@@ -168,6 +168,12 @@ sources, but their contents haven't been checked against the local copies:
   `target/proj-grids/`, else from the CDN); `scripts/gen_grid_catalog.py` regenerates the
   EPSG-to-PROJ-data grid name table from PROJ's `grid_alternatives`. See
   `docs/reprojection.md`.
+- `scripts/gen_gigs_vectors.py` downloads IOGP's GIGS test dataset (pinned
+  commit of `IOGP-GIGS/GIGSTestDataset`, not an open licence, so it stays in
+  `example_data/gigs/`) and writes `target/gigs/gigs.jsonl`: GIGS's
+  conversions (5100) and transformations (5200) with their tolerances,
+  round trips and PROJ's result for each, which `xeibe-reproject`'s
+  `--ignored` `gigs` test runs. Needs the oracle and `target/proj-grids/`.
 - `scripts/gen_wkt_vectors.py` writes WKT test vectors with PROJ on the full
   oracle database (`target/proj-oracle/`): every EPSG CRS in `WKT2_2019`,
   `WKT2_2015`, `WKT1_GDAL` and `WKT1_ESRI` with PROJ's reading of each back
