@@ -215,6 +215,12 @@ WKT1 needs translation, not just mapping:
     is an error.
 - **Units.** Matched by conversion factor; the name is only used to write
   the unit back out (`"Degree"`, `"metre"`, `"Meter"`, `"US survey foot"`).
+  A `PARAMETER` has no unit of its own. As in PROJ's
+  `guessUnitForParameter`, its name says which it is: scale, angle (the
+  `GEOGCS`'s unit) or length (the `PROJCS`'s). "Zone width" (the UTM grid
+  system, EPSG:32600 and 32700) says none, so its PROJJSON has no unit,
+  as PROJ's has. `Crs` takes it in the base CRS's angle unit, as WKT1's
+  angles are, and so reads it as the EPSG CRS where PROJ doesn't.
 - **Axes.** PROJ's rules, as measured:
 
   | WKT1 input | PROJ's axes |

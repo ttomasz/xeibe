@@ -902,6 +902,10 @@ const KNOWN_WKT1: &[(&[u32], &str)] = &[
         &[2985, 2986, 3408, 3409, 27702],
         "polar axes that are east and north",
     ),
+    // WKT1 gives the UTM grid system's "Zone width" no unit, and PROJ
+    // keeps it without one; we take it in the GEOGCS's unit, as WKT1's
+    // angles are.
+    (&[32600, 32700], "a zone width without a unit"),
     // "degree minute second hemisphere" with a degree's factor.
     (&[4226], "a unit equal by factor, not by name"),
     // GDAL writes M'poraloko as M_poraloko; the AUTHORITY ids agree.
@@ -1076,6 +1080,43 @@ fn wkt1_reading() {
     assert_eq!(utm(15.0, 0.0)["id"]["code"], 16033);
     assert_eq!(utm(-177.0, 10_000_000.0)["name"], "UTM zone 1S");
     assert_eq!(utm(16.0, 0.0)["name"], "unnamed");
+    // The UTM grid system's "Zone width" has no unit in WKT1, in PROJ's
+    // reading too, and is in the GEOGCS's unit, as the initial longitude
+    // is: 6° from 180°W, or 20/3 grad from 200 grad W.
+    let zoned = |unit: &str, initial: &str, width: &str| {
+        format!(
+            r#"PROJCS["WGS 84 / UTM grid system (northern hemisphere)",GEOGCS["WGS 84",
+            DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],PRIMEM["Greenwich",0],
+            {unit}],PROJECTION["Transverse_Mercator_Zoned_Grid_System"],
+            PARAMETER["Latitude of natural origin",0],PARAMETER["Initial longitude",{initial}],
+            PARAMETER["Zone width",{width}],PARAMETER["Scale factor at natural origin",0.9996],
+            PARAMETER["False easting",500000],PARAMETER["False northing",0],UNIT["metre",1],
+            AXIS["Easting",EAST],AXIS["Northing",NORTH]]"#
+        )
+    };
+    let degrees = zoned(r#"UNIT["degree",0.0174532925199433]"#, "-180", "6");
+    let json: Value = serde_json::from_str(&wkt::to_projjson(&degrees).unwrap()).unwrap();
+    assert_eq!(json["conversion"]["parameters"][2]["name"], "Zone width");
+    assert!(json["conversion"]["parameters"][2]["unit"].is_null());
+    let epsg = Crs::from_epsg(32600).unwrap();
+    for text in [
+        degrees,
+        zoned(
+            r#"UNIT["grad",0.0157079632679489]"#,
+            "-200",
+            "6.66666666666667",
+        ),
+    ] {
+        let crs = Crs::from_wkt(&text).unwrap();
+        let convert = |dst: &Crs| {
+            Transform::new(&Crs::from_epsg(4326).unwrap(), dst, AxisOrder::EastFirst)
+                .unwrap()
+                .convert(21.0, 52.0, None)
+                .unwrap()
+        };
+        let ((x, y, _), (ex, ey, _)) = (convert(&crs), convert(&epsg));
+        assert!((x - ex).abs() < 1e-6 && (y - ey).abs() < 1e-6, "{x} {y}");
+    }
 }
 
 #[test]

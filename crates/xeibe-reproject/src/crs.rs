@@ -642,7 +642,7 @@ impl Crs {
                         degree: base_degrees && is_degree(&p["unit"]),
                     })
                     .collect();
-                let mut params = ctx.params(conversion)?;
+                let mut params = ctx.params(conversion, base)?;
                 methods::complete(method_code, &mut params);
                 let projection = methods::build(method_code, &method, &params, &datum.ellipsoid)
                     .map_err(|e| match e {
@@ -684,7 +684,7 @@ impl Crs {
                     return Err(ctx.unsupported(&format!("a geographic CRS derived by {method}")));
                 }
                 let datum = ctx.datum(&value["base_crs"])?;
-                let params = ctx.params(conversion)?;
+                let params = ctx.params(conversion, &value["base_crs"])?;
                 let projection = methods::build(None, &method, &params, &datum.ellipsoid).map_err(
                     |e| match e {
                         methods::BuildError::Unsupported(what) => ctx.unsupported(&what),
@@ -1160,7 +1160,7 @@ pub(crate) fn projection_error(value: &Value) -> Option<String> {
         .as_str()
         .unwrap_or("unnamed method");
     let code = method_id(&conversion["method"]);
-    let mut params = ctx.params(conversion).ok()?;
+    let mut params = ctx.params(conversion, &value["base_crs"]).ok()?;
     methods::complete(code, &mut params);
     match methods::build(code, method, &params, &datum.ellipsoid) {
         Err(methods::BuildError::MissingParameter(c)) => {
@@ -1380,7 +1380,11 @@ impl Ctx<'_> {
                         .unwrap_or("unnamed");
                     self.unsupported(&format!("a bound CRS's transformation by {name}"))
                 })?;
-            (method, Table::Helmert, self.params(transformation)?)
+            (
+                method,
+                Table::Helmert,
+                self.params(transformation, &Value::Null)?,
+            )
         };
         Ok(Operation {
             code: 0,
@@ -1411,7 +1415,21 @@ impl Ctx<'_> {
         })
     }
 
-    fn params(&self, conversion: &Value) -> Result<Params, Error> {
+    /// A conversion's parameters (or a transformation's, with no `base`).
+    /// The base CRS's angle unit is a zone width's when it has none: WKT1's
+    /// angles are in its GEOGCS's unit, and its reader gives one only to a
+    /// parameter whose name says it is an angle, as PROJ's
+    /// `guessUnitForParameter` does, which "Zone width" (EPSG:8831) doesn't.
+    fn params(&self, conversion: &Value, base: &Value) -> Result<Params, Error> {
+        let unitless_angle = |param: &Value, code: u32| -> Result<Option<f64>, Error> {
+            if code != methods::param::ZONE_WIDTH || !param["unit"].is_null() || base.is_null() {
+                return Ok(None);
+            }
+            match &base["coordinate_system"]["axis"][0]["unit"] {
+                Value::Null => Ok(Some(PI / 180.0)),
+                unit => self.unit(unit, UnitKind::Angle).map(Some),
+            }
+        };
         let mut params = Params::default();
         // A projection PROJ has no CRS method for: its flags in the method's
         // name, its parameters named by PROJ key.
@@ -1445,7 +1463,10 @@ impl Ctx<'_> {
             let raw = param["value"]
                 .as_f64()
                 .ok_or_else(|| self.invalid("a parameter without a number"))?;
-            let factor = self.unit(&param["unit"], UnitKind::Scale)?;
+            let factor = match unitless_angle(param, code)? {
+                Some(factor) => factor,
+                None => self.unit(&param["unit"], UnitKind::Scale)?,
+            };
             params.push(code, raw * factor);
         }
         Ok(params)
