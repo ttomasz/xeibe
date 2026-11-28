@@ -895,8 +895,13 @@ const KNOWN_WKT1: &[(&[u32], &str)] = &[
         "a deprecated method under another's WKT1 name",
     ),
     // Axes along meridians that amount to east and north (EPSG's) against
-    // WKT1's east and north: equal here, not in PROJ.
-    (&[3408, 3409, 27702], "polar axes that are east and north"),
+    // WKT1's east and north: equal here, not in PROJ. Terre Adelie's
+    // Polar Stereographic (variant C) (2985, 2986) too, a method PROJ has
+    // no mapping for and reads with WKT1's east and north.
+    (
+        &[2985, 2986, 3408, 3409, 27702],
+        "polar axes that are east and north",
+    ),
     // "degree minute second hemisphere" with a degree's factor.
     (&[4226], "a unit equal by factor, not by name"),
     // GDAL writes M'poraloko as M_poraloko; the AUTHORITY ids agree.
@@ -1646,6 +1651,16 @@ const KNOWN_BOUND: &[(&[u32], &str)] = &[
     (&[6311, 6312], "ESRI's Helmert transformations"),
 ];
 
+/// Whether a CRS converts otherwise than in PROJ by design: on a projection
+/// method PROJ can't run (`transformations.rs`), or on Lambert Conic
+/// Conformal (2SP Belgium), whose grid PROJ leaves unturned by EPSG's
+/// 29.2985″ (745 m at BD72 / Belge Lambert 72). EPSG's worked examples
+/// check those instead (`tests/it/epsg_examples.rs`).
+fn converts_beyond_proj(code: u32) -> bool {
+    crate::transformations::projection_beyond_proj(code)
+        || xeibe_crs::get(code).and_then(|r| r.method) == Some(9803)
+}
+
 /// Reads each Bound CRS in `bound.jsonl` (`scripts/gen_wkt_vectors.py`):
 /// its PROJJSON as PROJ's, and its point converted to each target as PROJ
 /// converts it (2e-9°, or 0.2 mm or 2e-11 relative: PROJ's projections
@@ -1793,7 +1808,10 @@ fn check_bound(path: &Path) -> (usize, String) {
                 Err(e) if unbuilt(&e) => continue,
                 Err(e) => panic!("{e}"),
             };
-            if target.code().is_some_and(other_axes) {
+            if target.code().is_some_and(other_axes)
+                || converts_beyond_proj(code)
+                || target.code().is_some_and(converts_beyond_proj)
+            {
                 continue;
             }
             let label = if matches!(&t["target"], Value::Number(n) if n.as_u64() == Some(code.into()))

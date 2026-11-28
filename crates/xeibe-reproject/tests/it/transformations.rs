@@ -285,7 +285,7 @@ const BEYOND_PROJ_PAIRS: &[(u32, u32)] = &[
 /// pair with a CRS on one of them.
 const PROJECTIONS_BEYOND_PROJ: [u32; 5] = [9816, 9817, 9824, 9826, 9830];
 
-fn projection_beyond_proj(code: u32) -> bool {
+pub(crate) fn projection_beyond_proj(code: u32) -> bool {
     xeibe_crs::get(code)
         .and_then(|r| r.method)
         .is_some_and(|m| PROJECTIONS_BEYOND_PROJ.contains(&m))
